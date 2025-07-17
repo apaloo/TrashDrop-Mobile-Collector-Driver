@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import QRCodeScanner from './QRCodeScanner';
 import { PickupRequestStatus, WasteType } from '../utils/types';
+import { isWithinRadius } from '../utils/locationUtils';
 
 const RequestCard = ({ 
   request, 
@@ -15,6 +17,42 @@ const RequestCard = ({
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [scannedBags, setScannedBags] = useState(request.scanned_bags || []);
   const [expanded, setExpanded] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
+  const [isWithinRange, setIsWithinRange] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const RADIUS_METERS = 50; // 50 meter radius requirement
+  
+  // Get user's current location when QR scanner modal opens
+  useEffect(() => {
+    if (showQRScanner) {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords;
+            setUserLocation([latitude, longitude]);
+          },
+          (error) => {
+            console.error('Error getting location:', error);
+            // Keep default location if there's an error
+            setUserLocation([5.5913, -0.1969]); // Default location
+          },
+          { enableHighAccuracy: true }
+        );
+      }
+    }
+  }, [showQRScanner]);
+  
+  // Check if user is within range of pickup location
+  useEffect(() => {
+    if (userLocation && request.coordinates) {
+      // Convert request.coordinates from {lat, lng} format to [lat, lng] format
+      const requestCoords = [request.coordinates.lat, request.coordinates.lng];
+      const withinRange = isWithinRadius(userLocation, requestCoords, RADIUS_METERS);
+      setIsWithinRange(withinRange);
+    } else {
+      setIsWithinRange(false);
+    }
+  }, [userLocation, request.coordinates, RADIUS_METERS]);
   
   // Format date for display
   const formatDate = (dateString) => {
@@ -235,35 +273,67 @@ const RequestCard = ({
         </div>
       </div>
       
+      {/* Location Restriction Modal */}
+      {showLocationModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 text-center">
+            <div className="mb-4 text-red-500">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold mb-2">Location Restriction</h3>
+            <p className="text-gray-600 mb-6">
+              You must be within 50 meters of the pickup location to complete this pickup.
+              Please move closer to the location and try again.
+            </p>
+            <div className="flex justify-center">
+              <button
+                onClick={() => setShowLocationModal(false)}
+                className="px-6 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+              >
+                OK, I Understand
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* QR Scanner Modal */}
       {showQRScanner && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg w-full max-w-md">
-            <div className="p-4 border-b flex justify-between items-center">
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg w-full max-w-md my-8 mx-auto shadow-xl">
+            <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center z-10">
               <h2 className="text-lg font-medium">Scan QR Code</h2>
-              <button onClick={() => setShowQRScanner(false)} className="text-gray-500">
+              <button onClick={() => setShowQRScanner(false)} className="text-gray-500 hover:bg-gray-100 rounded-full p-1">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
-            <div className="p-4">
-              <div className="bg-gray-100 rounded-lg aspect-square flex items-center justify-center mb-4">
-                <div className="text-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <p className="text-gray-500">Camera simulation</p>
-                </div>
-              </div>
+            <div className="p-4 max-h-[70vh] overflow-y-auto">
+              {/* QR Code Scanner */}
+              <QRCodeScanner
+                onScanSuccess={(decodedText) => {
+                  console.log('QR Code scanned:', decodedText);
+                  // Process the QR code data
+                  handleScanQR();
+                }}
+                onScanError={(error) => {
+                  console.error('QR scan error:', error);
+                }}
+              />
               
-              {/* Simulate Scan Button - Moved to top of table */}
+              {/* Scan Now Button */}
               <button 
-                onClick={handleScanQR}
+                onClick={() => {
+                  // This button now serves as a manual fallback
+                  // in case the camera doesn't work properly
+                  handleScanQR();
+                }}
                 className="w-full bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-md mb-4"
               >
-                Simulate Scan
+                Scan Now
               </button>
               
               {/* Scanned Bags Table */}
@@ -309,16 +379,38 @@ const RequestCard = ({
                 </table>
               </div>
               
+              {/* Location Status Indicator */}
+              {scannedBags.length > 0 && (
+                <div className={`mb-4 p-3 rounded-md ${isWithinRange ? 'bg-green-50' : 'bg-red-50'}`}>
+                  <div className="flex items-center">
+                    <div className={`w-3 h-3 rounded-full mr-2 ${isWithinRange ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    <p className={`text-sm ${isWithinRange ? 'text-green-700' : 'text-red-700'}`}>
+                      {isWithinRange 
+                        ? 'You are within 50 meters of the pickup location' 
+                        : 'You must be within 50 meters of the pickup location'}
+                    </p>
+                  </div>
+                </div>
+              )}
+              
               {/* Complete Pickup Button - Moved inside modal after table */}
               {scannedBags.length > 0 && (
                 <button 
                   onClick={() => {
+                    if (!isWithinRange) {
+                      setShowLocationModal(true);
+                      return;
+                    }
                     onCompletePickup && onCompletePickup(request.id, scannedBags);
                     setShowQRScanner(false);
                   }}
-                  className="w-full bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-md flex items-center justify-center"
+                  className={`w-full py-2 px-4 rounded-md flex items-center justify-center text-white ${isWithinRange 
+                    ? 'bg-green-500 hover:bg-green-600' 
+                    : 'bg-red-400 cursor-not-allowed'}`}
                 >
-                  Complete Pickup ({scannedBags.length} bags)
+                  {isWithinRange 
+                    ? `Complete Pickup (${scannedBags.length} bags)` 
+                    : 'Too Far From Pickup Location'}
                 </button>
               )}
             </div>

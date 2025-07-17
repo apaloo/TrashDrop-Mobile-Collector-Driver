@@ -5,8 +5,8 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Development mode to bypass actual SMS sending
-// Set to true during development/testing to avoid Twilio errors
-const DEV_MODE = true;
+// Set to false for production to use actual Supabase authentication
+const DEV_MODE = false;
 
 // Create Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);

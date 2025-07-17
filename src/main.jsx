@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 // CSS styling
 import './index.css'
+import './styles/mapStyles.css' // Global map styles for z-index management
 import App from './App.jsx' // Using real App with proper credentials
 // import MockAuthContextApp from './MockAuthContextApp.jsx' // Mock auth no longer needed
 // import AuthContextApp from './AuthContextApp.jsx' // Testing component

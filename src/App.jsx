@@ -1,5 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { OfflineProvider } from './contexts/OfflineContext';
+import AppLayout from './components/AppLayout';
 
 // Pages
 import LoginPage from './pages/Login';
@@ -13,6 +15,7 @@ import AssignPage from './pages/Assign';
 import EarningsPage from './pages/Earnings';
 import ProfilePage from './pages/Profile';
 import DiagnosticPage from './pages/DiagnosticPage';
+import RouteOptimizationPage from './pages/RouteOptimization';
 
 // RouteGuard components to protect routes
 const ProtectedRoute = ({ children }) => {
@@ -50,8 +53,10 @@ const PublicRoute = ({ children }) => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
+      <OfflineProvider>
+        <Router>
+          <AppLayout>
+            <Routes>
           {/* Public Routes (only when not logged in) */}
           <Route path="/login" element={
             <PublicRoute>
@@ -94,6 +99,12 @@ function App() {
             </ProtectedRoute>
           } />
           
+          <Route path="/route-optimization" element={
+            <ProtectedRoute>
+              <RouteOptimizationPage />
+            </ProtectedRoute>
+          } />
+          
           {/* Diagnostic route */}
           <Route path="/diagnostic" element={<DiagnosticPage />} />
           
@@ -115,9 +126,11 @@ function App() {
               </button>
             </div>
           } />
-        </Routes>
+          </Routes>
+        </AppLayout>
       </Router>
-    </AuthProvider>
+    </OfflineProvider>
+  </AuthProvider>
   );
 }
 

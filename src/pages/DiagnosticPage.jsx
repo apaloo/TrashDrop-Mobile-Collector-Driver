@@ -1,8 +1,32 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import ReportModal from '../components/ReportModal';
 
 const DiagnosticPage = () => {
   const [status, setStatus] = useState('Loading...');
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  
+  // Mock data for the report modal
+  const mockAssignment = {
+    id: 'TEST-123',
+    address: '123 Test Street, Accra',
+    description: 'Test waste collection',
+    status: 'completed',
+    created_at: '2025-07-15T10:00:00Z',
+    completed_at: '2025-07-16T14:30:00Z',
+    disposed_at: '2025-07-16T16:45:00Z',
+    location: { lat: 5.6037, lng: -0.1870 },
+    photos: [
+      'https://example.com/photo1.jpg',
+      'https://example.com/photo2.jpg',
+      'https://example.com/photo3.jpg'
+    ],
+    disposal_site: {
+      name: 'Test Disposal Center',
+      address: '456 Disposal Road, Accra',
+      location: { lat: 5.6057, lng: -0.1890 }
+    }
+  };
 
   useEffect(() => {
     // Simple diagnostic function
@@ -48,7 +72,26 @@ const DiagnosticPage = () => {
             <div className="w-8 h-8 bg-danger rounded"></div>
           </div>
         </div>
+        
+        <div className="p-4 mt-4 bg-gray-50 rounded">
+          <h2 className="font-semibold mb-2">Component Tests:</h2>
+          <button
+            onClick={() => setReportModalOpen(true)}
+            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
+          >
+            Test Report Modal
+          </button>
+        </div>
       </div>
+      
+      {/* Report Modal for testing */}
+      {reportModalOpen && (
+        <ReportModal 
+          isOpen={reportModalOpen}
+          onClose={() => setReportModalOpen(false)}
+          assignment={mockAssignment}
+        />
+      )}
     </div>
   );
 };

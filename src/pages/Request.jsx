@@ -1108,7 +1108,7 @@ const RequestPage = () => {
   }, [isOnlineStatus, user]);
 
   return (
-    <div className="app-container bg-gray-100 min-h-screen">
+    <div className="app-container bg-gray-100 min-h-screen flex flex-col">
       <TopNavBar title="" />
       
       {/* Offline indicator */}
@@ -1118,12 +1118,15 @@ const RequestPage = () => {
         </div>
       )}
       
-      <main className="main-content p-4 pt-16 pb-20">
+      {/* Fixed Header Section */}
+      <div className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md pt-16 pb-0">
         {/* Page Title */}
-        <h1 className="text-2xl font-bold mb-4">Requests</h1>
+        <div className="px-4 pb-2">
+          <h1 className="text-3xl font-bold text-black">Requests</h1>
+        </div>
         
-        {/* Tab Navigation */}
-        <div className="flex border-b mb-6">
+        {/* Tab Navigation - Fixed */}
+        <div className="flex border-b bg-white text-black">
           <button 
             className={`flex-1 py-3 text-center font-medium ${activeTab === 'available' ? 'text-green-600 border-b-2 border-green-500' : 'text-gray-600'}`}
             onClick={() => setActiveTab('available')}
@@ -1146,7 +1149,7 @@ const RequestPage = () => {
         
         {/* Last Updated Info */}
         {lastUpdated && (
-          <div className="text-xs text-gray-500 text-center mb-4">
+          <div className="text-xs text-gray-500 text-center py-2 bg-white">
             Last updated: {new Date(lastUpdated).toLocaleString()}
             <button 
               onClick={fetchRequests} 
@@ -1157,6 +1160,10 @@ const RequestPage = () => {
             </button>
           </div>
         )}
+      </div>
+      
+      {/* Scrollable Content Area - with padding to account for fixed header and tabs */}
+      <main className="flex-1 overflow-y-auto pt-40 pb-20 px-4">
         
         {/* Toast notification */}
         {toast.show && (

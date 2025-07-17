@@ -21,12 +21,23 @@ L.Icon.Default.mergeOptions({
 // Function to create a custom user location marker icon
 const createUserLocationIcon = () => {
   return new L.Icon({
-    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
     iconSize: [25, 41],
     iconAnchor: [12, 41],
     popupAnchor: [1, -34],
-    shadowSize: [41, 41]
+    shadowSize: [41, 41],
+    className: 'user-location-marker z-1000'
+  });
+};
+
+// Function to create a custom marker icon based on waste type
+const createWasteTypeIcon = (type) => {
+  const color = getWasteTypeColor(type);
+  return L.divIcon({
+    html: `<div style="width: 1rem; height: 1rem; border-radius: 9999px; background-color: ${color}; border: 2px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); z-index: 1000;"></div>`,
+    className: 'custom-marker-icon',
+    iconSize: [20, 20],
   });
 };
 
@@ -68,7 +79,83 @@ const RecenterButton = ({ onClick }) => {
   );
 };
 
-// Filter panel component
+// New Filter Card component that appears at the bottom of the map
+const FilterCard = ({ filters, setFilters, applyFilters }) => {
+  // Group waste types into categories
+  const wasteTypeCategories = {
+    all: 'All Types',
+    recyclable: 'Recyclable',
+    general: 'General',
+    hazardous: 'Hazardous'
+  };
+  
+  // Map waste types to categories
+  const categoryMapping = {
+    recyclable: [WasteType.PLASTIC, WasteType.PAPER, WasteType.GLASS, WasteType.METAL, WasteType.RECYCLING],
+    general: [WasteType.GENERAL, WasteType.ORGANIC],
+    hazardous: [] // Add hazardous waste types if available
+  };
+  
+  // Handle category selection
+  const handleCategorySelect = (category) => {
+    let selectedTypes;
+    
+    if (category === 'all') {
+      selectedTypes = Object.values(WasteType);
+    } else {
+      selectedTypes = categoryMapping[category] || [];
+    }
+    
+    setFilters({
+      ...filters,
+      wasteTypes: selectedTypes,
+      activeFilter: category
+    });
+    
+    // Apply filters immediately
+    applyFilters();
+  };
+  
+  return (
+    <div className="absolute bottom-24 left-4 right-4 bg-white rounded-lg shadow-lg p-4 z-[2000] pointer-events-auto overflow-hidden" style={{ position: 'fixed', touchAction: 'none' }}>
+      <div className="mb-4">
+        <div className="flex justify-between items-center mb-2">
+          <span className="font-medium">Radius:</span>
+          <span className="bg-green-500 text-white rounded-full w-8 h-8 flex items-center justify-center">
+            {filters.maxDistance}
+          </span>
+        </div>
+        <input 
+          type="range" 
+          min="1" 
+          max="10" 
+          step="0.5"
+          value={filters.maxDistance} 
+          onChange={(e) => {
+            const newDistance = parseFloat(e.target.value);
+            setFilters({...filters, maxDistance: newDistance});
+            applyFilters();
+          }} 
+          className="w-full accent-green-500"
+        />
+      </div>
+      
+      <div className="grid grid-cols-2 gap-2">
+        {Object.entries(wasteTypeCategories).map(([category, label]) => (
+          <button
+            key={category}
+            onClick={() => handleCategorySelect(category)}
+            className={`py-2 px-4 rounded-md text-center ${filters.activeFilter === category ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Original Filter panel component (keep this for advanced filtering)
 const FilterPanel = ({ isOpen, onClose, filters, setFilters, applyFilters }) => {
   if (!isOpen) return null;
   
@@ -179,12 +266,14 @@ const MapPage = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [isOnlineStatus, setIsOnlineStatus] = useState(isOnline());
+  const [isCollectorOnline, setIsCollectorOnline] = useState(true); // New state for collector online status
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
   const [filters, setFilters] = useState({
     maxDistance: 5, // 5km
     wasteTypes: Object.values(WasteType), // All waste types
     minPayment: 0,
-    priority: 'all'
+    priority: 'all',
+    activeFilter: 'all' // 'all', 'recyclable', 'general', 'hazardous'
   });
   
   // Show toast notification
@@ -671,15 +760,15 @@ const MapPage = () => {
   // Get color for waste type
   const getWasteTypeColor = (type) => {
     const colors = {
-      plastic: 'blue-500',
-      paper: 'yellow-500',
-      metal: 'gray-500',
-      glass: 'blue-300',
-      organic: 'green-500',
-      general: 'red-500',
-      recycling: 'green-300'
+      plastic: '#3b82f6', // blue-500
+      paper: '#eab308',   // yellow-500
+      metal: '#6b7280',   // gray-500
+      glass: '#93c5fd',   // blue-300
+      organic: '#22c55e', // green-500
+      general: '#ef4444', // red-500
+      recycling: '#86efac' // green-300
     };
-    return colors[type] || 'gray-500';
+    return colors[type] || '#6b7280'; // default to gray-500
   };
 
   // Get priority badge color
@@ -756,7 +845,7 @@ const MapPage = () => {
   // Waste type legend component
   const WasteLegend = () => {
     return (
-      <div className="absolute top-16 right-2 bg-white p-2 rounded-md shadow z-30 max-h-60 overflow-y-auto">
+      <div className="absolute top-16 right-2 bg-white p-2 rounded-md shadow z-[2000] max-h-60 overflow-y-auto pointer-events-auto">
         <h3 className="font-medium text-sm mb-2">Waste Types</h3>
         <div className="space-y-1">
           {Object.entries({
@@ -769,7 +858,10 @@ const MapPage = () => {
             general: 'General'
           }).map(([type, label]) => (
             <div key={type} className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full bg-${getWasteTypeColor(type)}`} />
+              <div 
+                className="w-3 h-3 rounded-full" 
+                style={{ backgroundColor: getWasteTypeColor(type) }} 
+              />
               <span className="text-xs">{label}</span>
             </div>
           ))}
@@ -818,88 +910,105 @@ const MapPage = () => {
           </div>
         ) : (
           <>
-            {/* Loading state for initial load */}
-            {isLoading && !requests.length ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="flex flex-col items-center">
-                  <div className="animate-spin rounded-full h-10 w-10 border-4 border-primary border-t-transparent"></div>
-                  <p className="mt-4 text-gray-600">Loading pickup requests...</p>
+            {/* Error notification removed as requested */}
+            
+            {/* Custom zoom controls - moved outside map container */}
+            <div className="absolute bottom-24 right-4 z-[1000] flex flex-col space-y-2">
+              <button onClick={() => map?.zoomIn()} className="bg-white w-8 h-8 flex items-center justify-center rounded-md shadow text-xl">
+                +
+              </button>
+              <button onClick={() => map?.zoomOut()} className="bg-white w-8 h-8 flex items-center justify-center rounded-md shadow text-xl">
+                -
+              </button>
+            </div>
+            
+            {/* Filter card - moved outside map container */}
+            <FilterCard 
+              filters={filters} 
+              setFilters={setFilters} 
+              applyFilters={applyFilters} 
+            />
+            
+            {/* Waste type legend - moved outside map container */}
+            <WasteLegend />
+            
+            {/* Request count display - perfect circle */}
+            <div className="absolute top-16 left-2 z-[2000] pointer-events-auto">
+              <div className="bg-green-500 text-white rounded-full w-12 h-12 flex items-center justify-center text-lg shadow-md">
+                {requests.length}
+              </div>
+            </div>
+            
+            {/* Online/Offline toggle button - centered horizontally */}
+            <div className="absolute top-2 left-0 right-0 flex justify-center z-[2000] pointer-events-auto">
+              <div className="bg-white p-2 rounded-md shadow">
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-medium">Status:</span>
+                  <button 
+                    onClick={() => setIsCollectorOnline(!isCollectorOnline)}
+                    className={`px-3 py-1 rounded-full text-white text-xs ${isCollectorOnline ? 'bg-green-500' : 'bg-gray-500'}`}
+                  >
+                    {isCollectorOnline ? 'Online' : 'Offline'}
+                  </button>
                 </div>
               </div>
-            ) : (
-              <>
-                <MapContainer 
-                  center={position} 
-                  zoom={14} 
-                  style={{ width: '100%', height: '100%' }}
-                  zoomControl={false}
+            </div>
+            
+            <div className="relative h-full">
+              <MapContainer
+                center={position}
+                zoom={13}
+                style={{ height: '100%', width: '100%' }}
+                zoomControl={false}
+                ref={setMap}
+              >
+                {/* Error notification overlay removed - now outside MapContainer */}
+                
+                {/* OpenStreetMap TileLayer */}
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                
+                {/* Custom zoom controls removed - now outside MapContainer */}
+                
+                {/* User location marker */}
+                <Marker 
+                  position={position} 
+                  icon={createUserLocationIcon()}
                 >
-                  {/* Error notification overlay */}
-                  {error && (
-                    <div className="absolute top-2 left-0 right-0 z-50 mx-4">
-                      <div className="bg-red-50 p-3 rounded-md border border-red-200 shadow-lg flex justify-between items-center">
-                        <p className="text-red-500 text-sm">{error}</p>
-                        <button 
-                          onClick={refreshData}
-                          className="ml-2 px-3 py-1 bg-primary text-white text-xs rounded-md"
-                        >
-                          Try Again
-                        </button>
-                      </div>
+                  <Popup>
+                    <div>
+                      <p className="font-medium">Your location</p>
                     </div>
-                  )}
-                  {/* OpenStreetMap TileLayer */}
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  {/* Custom zoom controls */}
-                  <div className="absolute bottom-24 right-4 z-30 flex flex-col space-y-2">
-                    <button onClick={() => map?.zoomIn()} className="bg-white w-8 h-8 flex items-center justify-center rounded-md shadow text-xl">
-                      +
-                    </button>
-                    <button onClick={() => map?.zoomOut()} className="bg-white w-8 h-8 flex items-center justify-center rounded-md shadow text-xl">
-                      -
-                    </button>
-                  </div>
+                  </Popup>
+                </Marker>
+                
+                {/* Collection radius circle */}
+                <Circle 
+                  center={position} 
+                  radius={filters.maxDistance * 1000} // Convert km to meters for radius
+                  pathOptions={{ color: '#22C55E', fillColor: '#22C55E', fillOpacity: 0.1, weight: 2, zIndex: 400 }} 
+                />
+                
+                {/* Request markers */}
+                {requests.map(request => {
+                  // Skip rendering markers with invalid coordinates
+                  if (!request.coordinates || 
+                      !Array.isArray(request.coordinates) || 
+                      request.coordinates.length !== 2 ||
+                      request.coordinates[0] === undefined || 
+                      request.coordinates[1] === undefined) {
+                    console.log('Skipping marker with invalid coordinates:', request.id);
+                    return null;
+                  }
                   
-                  {/* User location marker */}
-                  <Marker 
-                    position={position} 
-                    icon={createUserLocationIcon()}
-                  >
-                    <Popup>
-                      <div>
-                        <p className="font-medium">Your location</p>
-                      </div>
-                    </Popup>
-                  </Marker>
-                  
-                  {/* Collection radius circle */}
-                  <Circle 
-                    center={position} 
-                    radius={filters.maxDistance * 1000} // Convert km to meters for radius
-                    pathOptions={{ color: '#4CAF50', fillOpacity: 0.1 }} 
-                  />
-                  
-                  {/* Request markers */}
-                  {requests.map(request => {
-                    // Skip rendering markers with invalid coordinates
-                    if (!request.coordinates || 
-                        !Array.isArray(request.coordinates) || 
-                        request.coordinates.length !== 2 ||
-                        request.coordinates[0] === undefined || 
-                        request.coordinates[1] === undefined) {
-                      console.log('Skipping marker with invalid coordinates:', request.id);
-                      return null;
-                    }
-                    
-                    return (
-                      <Marker 
-                        key={request.id}
-                        position={request.coordinates}
-                        icon={createWasteTypeIcon(request.type)}
-                      >
+                  return (
+                    <Marker 
+                      key={request.id}
+                      position={request.coordinates}
+                      icon={createWasteTypeIcon(request.type)}
+                    >
                       <Popup>
                         <div className="popup-content">
                           <h3 className="font-medium">{request.type.toUpperCase()}</h3>
@@ -918,48 +1027,46 @@ const MapPage = () => {
                         </div>
                       </Popup>
                     </Marker>
-                    );
-                  })}
+                  );
+                })}
                   
-                  <LocationUpdater 
-                    position={position} 
-                    setPosition={setPosition} 
-                    shouldCenter={shouldCenter} 
-                    setShouldCenter={setShouldCenter} 
-                  />
-                  
-                  {/* Recenter button */}
-                  <RecenterButton onClick={handleRecenter} />
-                  
-                  {/* Filter button */}
-                  <div className="absolute z-10 bottom-28 left-4">
-                    <button
-                      onClick={() => setShowFilters(true)}
-                      className="bg-white p-2 rounded-full shadow-md flex items-center justify-center"
-                      aria-label="Filter requests"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                      </svg>
-                    </button>
-                    {/* Filter count badge */}
-                    {(filters.wasteTypes.length < Object.values(WasteType).length || 
-                     filters.maxDistance < 5 || 
-                     filters.minPayment > 0 || 
-                     filters.priority !== 'all') && (
-                      <span className="absolute -top-2 -right-2 bg-primary text-white w-5 h-5 flex items-center justify-center rounded-full text-xs">
-                        !
-                      </span>
-                    )}
-                  </div>
-                  
-                  {/* Waste type legend */}
-                  <WasteLegend />
-                  
-                  {/* Refresh indicator */}
-                  {lastUpdated && (
-                    <div className="absolute z-10 top-2 left-2 bg-white bg-opacity-80 px-2 py-1 text-xs rounded-md">
-                      <div className="flex items-center">
+                <LocationUpdater 
+                  position={position} 
+                  setPosition={setPosition} 
+                  shouldCenter={shouldCenter} 
+                  setShouldCenter={setShouldCenter} 
+                />
+                
+                {/* Recenter button */}
+                <RecenterButton onClick={handleRecenter} />
+                
+                {/* Advanced Filter button */}
+                <div className="absolute z-10 top-4 right-4">
+                  <button
+                    onClick={() => setShowFilters(true)}
+                    className="bg-white p-2 rounded-full shadow-md flex items-center justify-center"
+                    aria-label="Advanced filters"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                    </svg>
+                  </button>
+                  {/* Filter count badge */}
+                  {(filters.wasteTypes.length < Object.values(WasteType).length || 
+                   filters.minPayment > 0 || 
+                   filters.priority !== 'all') && (
+                    <span className="absolute -top-2 -right-2 bg-primary text-white w-5 h-5 flex items-center justify-center rounded-full text-xs">
+                      !
+                    </span>
+                  )}
+                </div>
+                
+                {/* Filter card and waste type legend removed - now outside MapContainer */}
+                
+                {/* Refresh indicator */}
+                {lastUpdated && (
+                  <div className="absolute z-10 top-2 left-2 bg-white bg-opacity-80 px-2 py-1 text-xs rounded-md">
+                    <div className="flex items-center">
                         <span className="mr-2">Last updated: {lastUpdated.toLocaleTimeString()}</span>
                         <button 
                           onClick={refreshData}
@@ -987,23 +1094,22 @@ const MapPage = () => {
                     </div>
                   )}
                 </MapContainer>
-                
-                {/* Filter panel */}
-                <FilterPanel 
-                  isOpen={showFilters} 
-                  onClose={() => setShowFilters(false)} 
-                  filters={filters} 
-                  setFilters={setFilters} 
-                  applyFilters={applyFilters}
-                />
-                
-                {/* Loading overlay for refresh operations */}
-                <LoadingOverlay 
-                  show={isRefreshing && requests.length > 0} 
-                  message="Refreshing requests..."
-                />
-              </>
-            )}
+
+              {/* Filter panel */}
+              <FilterPanel 
+                isOpen={showFilters} 
+                onClose={() => setShowFilters(false)} 
+                filters={filters} 
+                setFilters={setFilters} 
+                applyFilters={applyFilters}
+              />
+              
+              {/* Loading overlay for refresh operations */}
+              <LoadingOverlay 
+                show={isRefreshing && requests.length > 0} 
+                message="Refreshing requests..."
+              />
+            </div>
           </>
         )}
       </div>

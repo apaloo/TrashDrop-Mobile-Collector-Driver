@@ -1,9 +1,13 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import { AssignmentStatus } from '../utils/types';
+import AssignmentDetailsModal from '../components/AssignmentDetailsModal';
+import CompletionModal from '../components/CompletionModal';
+import DisposalModal from '../components/DisposalModal';
+import ReportModal from '../components/ReportModal';
 
-const AssignmentCard = ({ assignment, onAccept, onComplete }) => {
+const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onDumpingSite, onDispose, onViewReport }) => {
   const [expanded, setExpanded] = useState(false);
   
   const getStatusRibbonColor = (status) => {
@@ -135,27 +139,37 @@ const AssignmentCard = ({ assignment, onAccept, onComplete }) => {
         )}
         
         {/* Footer */}
-        <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-100">
-          <button 
-            onClick={() => setExpanded(!expanded)} 
-            className="text-sm text-gray-500 hover:text-gray-700 flex items-center"
-          >
-            {expanded ? (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                </svg>
-                View Less
-              </>
-            ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-                View More
-              </>
-            )}
-          </button>
+        <div className="flex flex-col mt-3 pt-3 border-t border-gray-100">
+          {/* View More/Less Button */}
+          <div className="mb-3">
+            <button 
+              onClick={(e) => {
+                e.preventDefault();
+                if (onViewMore) {
+                  onViewMore(assignment);
+                } else {
+                  setExpanded(!expanded);
+                }
+              }} 
+              className="text-sm text-gray-500 hover:text-gray-700 flex items-center"
+            >
+              {expanded ? (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                  </svg>
+                  View Less
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                  View More
+                </>
+              )}
+            </button>
+          </div>
           
           {/* Action Buttons */}
           <div className="w-full">
@@ -172,15 +186,22 @@ const AssignmentCard = ({ assignment, onAccept, onComplete }) => {
             )}
             
             {assignment.status === AssignmentStatus.ACCEPTED && (
-              <div className="grid grid-cols-2 gap-2">
-                <button 
-                  className="py-3 bg-blue-500 text-white rounded-md flex items-center justify-center hover:bg-blue-600 transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                  </svg>
-                  Navigate
-                </button>
+              <div className="grid grid-cols-1 gap-2">
+                <div>
+                  <button 
+                    onClick={() => {
+                      // Open Google Maps with the location
+                      const location = encodeURIComponent(assignment.location);
+                      window.open(`https://www.google.com/maps/search/?api=1&query=${location}`, '_blank');
+                    }}
+                    className="py-3 bg-indigo-500 text-white rounded-md flex items-center justify-center hover:bg-indigo-600 transition-colors w-full"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                    Navigate
+                  </button>
+                </div>
                 <button 
                   onClick={() => onComplete(assignment.id)}
                   className="py-3 bg-green-500 text-white rounded-md flex items-center justify-center hover:bg-green-600 transition-colors"
@@ -192,6 +213,42 @@ const AssignmentCard = ({ assignment, onAccept, onComplete }) => {
                 </button>
               </div>
             )}
+            
+            {assignment.status === AssignmentStatus.COMPLETED && (
+              assignment.hasDisposed ? (
+                <button 
+                  onClick={() => onViewReport(assignment.id)}
+                  className="w-full py-3 bg-purple-500 text-white rounded-md flex items-center justify-center hover:bg-purple-600 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  View Report
+                </button>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <button 
+                    onClick={() => onDumpingSite(assignment.id)}
+                    className="py-3 bg-blue-500 text-white rounded-md flex items-center justify-center hover:bg-blue-600 transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Dumping Site
+                  </button>
+                  <button 
+                    onClick={() => onDispose(assignment.id)}
+                    className="py-3 bg-green-500 text-white rounded-md flex items-center justify-center hover:bg-green-600 transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Dispose
+                  </button>
+                </div>
+              )
+            )}
           </div>
         </div>
       </div>
@@ -201,8 +258,19 @@ const AssignmentCard = ({ assignment, onAccept, onComplete }) => {
 
 const AssignPage = () => {
   const [activeTab, setActiveTab] = useState('available');
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date().toISOString());
+  
+  // Modal states
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [completionModalOpen, setCompletionModalOpen] = useState(false);
+  const [disposalModalOpen, setDisposalModalOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [selectedAssignment, setSelectedAssignment] = useState(null);
+  
+  // Toast notification state
+  const [toast, setToast] = useState({ show: false, message: '', type: '' });
+  
   const [assignments, setAssignments] = useState({
     available: [
       {
@@ -255,15 +323,33 @@ const AssignPage = () => {
         priority: 'low',
         authority: 'Highway Authority',
         status: AssignmentStatus.COMPLETED,
-        created_at: '2025-07-14T09:00:00Z',
-        completed_at: '2025-07-14T10:00:00Z'
+        created_at: '2025-07-14T09:00:00Z'
       }
     ]
   });
-
+  
+  // Show toast notification
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000);
+  };
+  
+  // Open assignment details modal
+  const openDetailsModal = (assignment) => {
+    setSelectedAssignment(assignment);
+    setDetailsModalOpen(true);
+  };
+  
+  // Check if user is within geofence (simulated)
+  const isWithinGeofence = (assignmentId) => {
+    // In a real app, this would use the device's GPS to check if the user is within 50m of the assignment location
+    // For now, we'll simulate this with a random check that returns true 70% of the time
+    return Math.random() > 0.3;
+  };
+  
+  // Handle accept assignment
   const handleAccept = (assignmentId) => {
     const assignmentToAccept = assignments.available.find(assign => assign.id === assignmentId);
-    
     if (assignmentToAccept) {
       const updatedAssignment = {
         ...assignmentToAccept,
@@ -271,57 +357,192 @@ const AssignPage = () => {
         accepted_at: new Date().toISOString()
       };
       
-      const newAvailable = assignments.available.filter(assign => assign.id !== assignmentId);
-      const newAccepted = [...assignments.accepted, updatedAssignment];
+      setAssignments(prev => ({
+        available: prev.available.filter(assign => assign.id !== assignmentId),
+        accepted: [...prev.accepted, updatedAssignment],
+        completed: prev.completed
+      }));
       
-      setAssignments({
-        ...assignments,
-        available: newAvailable,
-        accepted: newAccepted
-      });
+      // Close modal if open
+      setDetailsModalOpen(false);
+      
+      // Show success toast
+      showToast('Assignment accepted successfully!');
     }
   };
-
-  const handleComplete = (assignmentId) => {
-    const assignmentToComplete = assignments.accepted.find(assign => assign.id === assignmentId);
+  
+  // Handle navigate to assignment
+  const handleNavigate = (assignment) => {
+    // In a real app, this would open Google Maps with directions to the assignment location
+    alert(`Navigating to: ${assignment.location}`);
     
+    // Close modal
+    setDetailsModalOpen(false);
+  };
+  
+  // Handle complete assignment
+  const handleComplete = (assignmentId) => {
+    // Check if user is within geofence
+    if (!isWithinGeofence(assignmentId)) {
+      showToast('You must be within 50m of the assignment location to complete it', 'error');
+      return;
+    }
+    
+    const assignmentToComplete = assignments.accepted.find(assign => assign.id === assignmentId);
+    if (assignmentToComplete) {
+      setSelectedAssignment(assignmentToComplete);
+      setCompletionModalOpen(true);
+      setDetailsModalOpen(false);
+    }
+  };
+  
+  // Handle completion submission
+  const handleCompletionSubmit = (assignmentId, photos) => {
+    const assignmentToComplete = assignments.accepted.find(assign => assign.id === assignmentId);
     if (assignmentToComplete) {
       const updatedAssignment = {
         ...assignmentToComplete,
         status: AssignmentStatus.COMPLETED,
-        completed_at: new Date().toISOString()
+        completed_at: new Date().toISOString(),
+        photos: photos.length, // In a real app, we would upload the photos to a server
+        hasDisposed: false
       };
       
-      const newAccepted = assignments.accepted.filter(assign => assign.id !== assignmentId);
-      const newCompleted = [...assignments.completed, updatedAssignment];
+      setAssignments(prev => ({
+        available: prev.available,
+        accepted: prev.accepted.filter(assign => assign.id !== assignmentId),
+        completed: [...prev.completed, updatedAssignment]
+      }));
       
-      setAssignments({
-        ...assignments,
-        accepted: newAccepted,
-        completed: newCompleted
-      });
+      // Show success toast
+      showToast('Assignment completed successfully!');
+    }
+  };
+  
+  // Handle dumping site
+  const handleDumpingSite = (assignmentId) => {
+    const assignmentToDispose = assignments.completed.find(assign => assign.id === assignmentId);
+    if (assignmentToDispose) {
+      setSelectedAssignment(assignmentToDispose);
+      setDisposalModalOpen(true);
+      setDetailsModalOpen(false);
+    }
+  };
+  
+  // Handle get directions to dumping site
+  const handleGetDirections = (site) => {
+    // In a real app, this would open Google Maps with directions to the dumping site
+    alert(`Getting directions to: ${site.name} at ${site.address}`);
+  };
+  
+  // Handle dispose
+  const handleDispose = (assignmentId, site) => {
+    // If site is not provided, we need to open the disposal modal instead
+    if (!site) {
+      handleDumpingSite(assignmentId);
+      return;
+    }
+    
+    const assignmentToDispose = assignments.completed.find(assign => assign.id === assignmentId);
+    if (assignmentToDispose) {
+      const updatedAssignment = {
+        ...assignmentToDispose,
+        hasDisposed: true,
+        disposedAt: new Date().toISOString(),
+        disposalSite: site.name
+      };
+      
+      setAssignments(prev => ({
+        available: prev.available,
+        accepted: prev.accepted,
+        completed: prev.completed.map(assign => 
+          assign.id === assignmentId ? updatedAssignment : assign
+        )
+      }));
+      
+      // Show success toast
+      showToast('Waste disposed successfully!');
+    }
+  };
+  
+  // Handle view report
+  const handleViewReport = (assignmentId) => {
+    const assignment = assignments.completed.find(assign => assign.id === assignmentId && assign.hasDisposed);
+    
+    if (assignment) {
+      // Open the report modal with the selected assignment
+      setSelectedAssignment(assignment);
+      setReportModalOpen(true);
+      
+      // Close details modal if open
+      setDetailsModalOpen(false);
     }
   };
   
   // Function to fetch assignments (simulated)
   const fetchAssignments = () => {
-    setIsLoading(true);
+    setLoading(true);
     
     // Simulate API call with timeout
     setTimeout(() => {
-      // Update last updated timestamp
+      // Sort assignments according to requirements
+      const sortedAssignments = {
+        // Available tab: Sort by proximity (nearest first)
+        available: [...assignments.available].sort((a, b) => {
+          // Extract distance values (assuming format like "1.7 km")
+          const distanceA = parseFloat(a.distance.split(' ')[0]);
+          const distanceB = parseFloat(b.distance.split(' ')[0]);
+          return distanceA - distanceB; // Ascending order (nearest first)
+        }),
+        
+        // Accepted tab: Sort by timestamp (oldest first) and then by proximity
+        accepted: [...assignments.accepted].sort((a, b) => {
+          // First sort by timestamp (oldest first)
+          const timeA = new Date(a.accepted_at || a.created_at).getTime();
+          const timeB = new Date(b.accepted_at || b.created_at).getTime();
+          
+          if (timeA !== timeB) {
+            return timeA - timeB; // Ascending order (oldest first)
+          }
+          
+          // If timestamps are equal, sort by proximity
+          const distanceA = parseFloat(a.distance.split(' ')[0]);
+          const distanceB = parseFloat(b.distance.split(' ')[0]);
+          return distanceA - distanceB; // Ascending order (nearest first)
+        }),
+        
+        // Completed tab: Sort by completion time (newest first)
+        completed: [...assignments.completed].sort((a, b) => {
+          const timeA = new Date(a.completed_at || a.created_at).getTime();
+          const timeB = new Date(b.completed_at || b.created_at).getTime();
+          return timeB - timeA; // Descending order (newest first)
+        })
+      };
+      
+      setAssignments(sortedAssignments);
+      setLoading(false);
       setLastUpdated(new Date().toISOString());
-      setIsLoading(false);
     }, 1500); // 1.5 second delay to show loading state
   };
+  
+  // Call fetchAssignments on initial load
+  useEffect(() => {
+    fetchAssignments();
+  }, []);
 
   return (
-    <div className="app-container bg-gray-100 min-h-screen">
+    <div className="app-container bg-gray-100 min-h-screen flex flex-col">
       <TopNavBar />
       
-      <main className="main-content p-4 pt-16 pb-20">
-        {/* Tab Navigation */}
-        <div className="flex border-b mb-4">
+      {/* Fixed Header Section */}
+      <div className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md pt-16 pb-0">
+        {/* Page Header */}
+        <div className="px-4 pb-2">
+          <h1 className="text-3xl font-bold text-black">Assignments</h1>
+        </div>
+        
+        {/* Tab Navigation - Fixed */}
+        <div className="flex border-b bg-white text-black">
           <button
             className={`flex-1 py-3 text-center font-medium ${activeTab === 'available' ? 'text-green-600 border-b-2 border-green-500' : 'text-gray-600'}`}
             onClick={() => setActiveTab('available')}
@@ -344,21 +565,25 @@ const AssignPage = () => {
         
         {/* Last Updated Info */}
         {lastUpdated && (
-          <div className="text-xs text-gray-500 text-center mb-4">
+          <div className="text-xs text-gray-500 text-center py-2 bg-white">
             Last updated: {new Date(lastUpdated).toLocaleString()}
             <button 
               onClick={fetchAssignments} 
               className="ml-2 text-green-600"
-              disabled={isLoading}
+              disabled={loading}
             >
               ↻
             </button>
           </div>
         )}
+      </div>
+      
+      {/* Scrollable Content Area with padding to account for fixed header */}
+      <main className="flex-1 overflow-y-auto pt-40 pb-20 px-4">
         
         {/* Assignment Cards */}
         <div className="assignments-container">
-          {isLoading ? (
+          {loading ? (
             <div className="flex justify-center items-center py-16">
               <div className="flex flex-col items-center">
                 <div className="relative">
@@ -391,6 +616,10 @@ const AssignPage = () => {
                       assignment={assignment} 
                       onAccept={handleAccept}
                       onComplete={handleComplete}
+                      onViewMore={openDetailsModal}
+                      onDumpingSite={handleDumpingSite}
+                      onDispose={handleDispose}
+                      onViewReport={handleViewReport}
                     />
                   ))}
                 </div>
@@ -404,6 +633,10 @@ const AssignPage = () => {
                       assignment={assignment}
                       onAccept={handleAccept}
                       onComplete={handleComplete}
+                      onViewMore={openDetailsModal}
+                      onDumpingSite={handleDumpingSite}
+                      onDispose={handleDispose}
+                      onViewReport={handleViewReport}
                     />
                   ))}
                 </div>
@@ -417,6 +650,10 @@ const AssignPage = () => {
                       assignment={assignment}
                       onAccept={handleAccept}
                       onComplete={handleComplete}
+                      onViewMore={openDetailsModal}
+                      onDumpingSite={handleDumpingSite}
+                      onDispose={handleDispose}
+                      onViewReport={handleViewReport}
                     />
                   ))}
                 </div>
@@ -427,6 +664,47 @@ const AssignPage = () => {
       </main>
       
       <BottomNavBar activeTab="assign" />
+      
+      {/* Modals */}
+      <AssignmentDetailsModal
+        assignment={selectedAssignment}
+        isOpen={detailsModalOpen}
+        onClose={() => setDetailsModalOpen(false)}
+        onAccept={handleAccept}
+        onNavigate={handleNavigate}
+        onComplete={handleComplete}
+        onDumpingSite={handleDumpingSite}
+        onDispose={handleDispose}
+        onViewReport={handleViewReport}
+      />
+      
+      <CompletionModal
+        assignment={selectedAssignment}
+        isOpen={completionModalOpen}
+        onClose={() => setCompletionModalOpen(false)}
+        onSubmit={handleCompletionSubmit}
+      />
+      
+      <DisposalModal
+        assignment={selectedAssignment}
+        isOpen={disposalModalOpen}
+        onClose={() => setDisposalModalOpen(false)}
+        onDispose={handleDispose}
+        onGetDirections={handleGetDirections}
+      />
+      
+      <ReportModal
+        assignment={selectedAssignment}
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+      />
+      
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className={`fixed bottom-20 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-md shadow-lg ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white`}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 };
