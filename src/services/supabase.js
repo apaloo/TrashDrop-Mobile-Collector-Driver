@@ -6,7 +6,8 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Development mode to bypass actual SMS sending
 // Set to false for production to use actual Supabase authentication
-const DEV_MODE = false;
+// Temporarily enabled for testing until SMS provider is configured
+const DEV_MODE = true;
 
 // Create Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
