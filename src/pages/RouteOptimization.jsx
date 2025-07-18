@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useOffline } from '../contexts/OfflineContext';
 import { SectionLoading } from '../components/LoadingIndicator';
 import PullToRefresh from '../components/PullToRefresh';
-import ErrorBoundary from '../components/ErrorBoundary';
+import Notification from '../components/Notification';
 import RouteOptimizer from '../components/RouteOptimizer';
 import RouteStatistics from '../components/RouteStatistics';
 import ItemList from '../components/ItemList';
@@ -215,9 +215,18 @@ const RouteOptimizationPage = () => {
   };
   
   return (
-    <ErrorBoundary>
-      <div className="bg-gray-100 min-h-screen pb-16">
-        <div className="bg-white shadow">
+    <div className="bg-gray-100 min-h-screen pb-16">
+      {/* Notification for showing temporary messages */}
+      {error && (
+        <Notification 
+          message={error} 
+          type="warning" 
+          duration={5000}
+          onClose={() => setError('')}
+        />
+      )}
+      
+      <div className="bg-white shadow">
           <div className="max-w-7xl mx-auto px-4 py-2">
             <div>
               <h1 className="text-xl font-bold text-gray-900">Route Optimization</h1>
@@ -234,24 +243,7 @@ const RouteOptimizationPage = () => {
               <SectionLoading text="Loading route data..." />
             ) : (
               <>
-                {/* Always show error message if present, but don't block content */}
-                {error && (
-                  <div className="bg-red-50 p-4 rounded-md mb-4">
-                    <div className="flex">
-                      <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      <div className="ml-3">
-                        <h3 className="text-sm font-medium text-red-800">Notice</h3>
-                        <div className="mt-2 text-sm text-red-700">
-                          <p>{error}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* Content area */}
               <div className="space-y-6">
                 {/* Route Optimizer Component */}
                 <RouteOptimizer 
@@ -278,7 +270,6 @@ const RouteOptimizationPage = () => {
           </div>
         </PullToRefresh>
       </div>
-    </ErrorBoundary>
   );
 };
 
