@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrashDrop Debug</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        button {
+            padding: 10px;
+            margin: 10px 0;
+            cursor: pointer;
+        }
+        #logs {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>TrashDrop Debug Console</h1>
+    <p>This page will help diagnose issues with the deployed app.</p>
+    
+    <button id="checkEnv">Check Environment Variables</button>
+    <button id="testSupabase">Test Supabase Connection</button>
+    
+    <div id="logs"></div>
+
+    <script>
+        const logsDiv = document.getElementById('logs');
+        
+        function log(message, isError = false) {
+            const pre = document.createElement('pre');
+            pre.textContent = typeof message === 'object' ? JSON.stringify(message, null, 2) : message;
+            if (isError) {
+                pre.style.color = 'red';
+            }
+            logsDiv.appendChild(pre);
+        }
+
+        // Check environment variables
+        document.getElementById('checkEnv').addEventListener('click', () => {
+            log('Checking environment variables...');
+            try {
+                const envVars = {
+                    SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL || 'Not defined',
+                    SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY ? 'Defined (value hidden)' : 'Not defined',
+                    DEFAULT_LATITUDE: import.meta.env.VITE_DEFAULT_LATITUDE || 'Not defined',
+                    DEFAULT_LONGITUDE: import.meta.env.VITE_DEFAULT_LONGITUDE || 'Not defined',
+                    API_URL: import.meta.env.VITE_API_URL || 'Not defined',
+                    APP_NAME: import.meta.env.VITE_APP_NAME || 'Not defined',
+                    APP_VERSION: import.meta.env.VITE_APP_VERSION || 'Not defined'
+                };
+                log('Environment variables:', false);
+                log(envVars);
+            } catch (error) {
+                log(`Error checking environment variables: ${error.message}`, true);
+            }
+        });
+
+        // Test Supabase connection
+        document.getElementById('testSupabase').addEventListener('click', async () => {
+            log('Testing Supabase connection...');
+            try {
+                const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+                
+                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                
+                if (!supabaseUrl || !supabaseAnonKey) {
+                    throw new Error('Supabase credentials are not defined in environment variables');
+                }
+                
+                const supabase = createClient(supabaseUrl, supabaseAnonKey);
+                
+                // Test a simple query
+                const { data, error } = await supabase.from('profiles').select('*').limit(1);
+                
+                if (error) {
+                    throw error;
+                }
+                
+                log('Supabase connection successful!');
+                log('Sample data:');
+                log(data);
+            } catch (error) {
+                log(`Error testing Supabase connection: ${error.message}`, true);
+            }
+        });
+    </script>
+</body>
+</html>

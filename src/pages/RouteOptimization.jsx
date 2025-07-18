@@ -4,141 +4,118 @@ import { SectionLoading } from '../components/LoadingIndicator';
 import PullToRefresh from '../components/PullToRefresh';
 import ErrorBoundary from '../components/ErrorBoundary';
 import RouteOptimizer from '../components/RouteOptimizer';
+import RouteStatistics from '../components/RouteStatistics';
+import ItemList from '../components/ItemList';
 
 // Part 1: Main component and state management
 const RouteOptimizationPage = () => {
-  // State for assignments and user location
+  // State for assignments, requests, and user location
   const [assignments, setAssignments] = useState([]);
+  const [requests, setRequests] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [usingFallback, setUsingFallback] = useState(false);
   
   // Get offline status
   const { online } = useOffline();
   
-  // Fetch user's current location with retry mechanism
+  // Get default location from environment variables
+  const getDefaultLocation = () => ({
+    latitude: import.meta.env.VITE_DEFAULT_LATITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LATITUDE) : 5.6037, // Default to Accra, Ghana
+    longitude: import.meta.env.VITE_DEFAULT_LONGITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LONGITUDE) : -0.1870,
+    isFallback: true // Flag to indicate this is a fallback location
+  });
+  
+  // Initialize location handling
   useEffect(() => {
-    // Track retry attempts
-    let retryCount = 0;
-    const maxRetries = 3;
+    // Immediately set default location to ensure we have something to work with
+    const defaultLocation = getDefaultLocation();
+    setUserLocation(defaultLocation);
+    setUsingFallback(true);
     
-    // Set geolocation options with higher timeout and maximum age
+    // Don't block the UI while we try to get the real location
+    setIsLoading(false);
+    
+    // Check if geolocation is supported
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser. Using default location.');
+      return; // Early return if geolocation is not supported
+    }
+    
+    // Geolocation options
     const geoOptions = {
-      enableHighAccuracy: true,
-      timeout: 10000, // 10 seconds
-      maximumAge: 30000 // 30 seconds
+      enableHighAccuracy: false, // Use low accuracy for faster response
+      timeout: 5000,            // 5 seconds timeout
+      maximumAge: 60000         // 1 minute cache
     };
     
-    const getLocation = () => {
-      if (!navigator.geolocation) {
-        setError('Geolocation is not supported by your browser');
-        setIsLoading(false);
-        return;
-      }
-      
-      // Create a copy of the options for this attempt
-      const currentGeoOptions = {...geoOptions};
-      
-      // Decrease accuracy requirements on retries
-      if (retryCount > 0) {
-        currentGeoOptions.enableHighAccuracy = false;
-        currentGeoOptions.timeout = 15000; // 15 seconds on retry
-      }
-      
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          // Success - store location and clear errors
-          setUserLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-            timestamp: new Date().getTime()
-          });
-          setIsLoading(false);
-          setError(null);
-          console.log('Location successfully retrieved:', position.coords);
-        },
-        (error) => {
-          console.error(`Error getting location (attempt ${retryCount + 1}):`, error);
-          
-          // Try again with reduced accuracy if we haven't exceeded max retries
-          if (retryCount < maxRetries) {
-            console.log(`Retrying geolocation (${retryCount + 1}/${maxRetries})...`);
-            retryCount++;
-            // Wait a moment before retrying
-            setTimeout(getLocation, 1000);
-            return;
-          }
-          
-          // All retries failed, show error and use fallback
-          // Provide more specific error messages
-          let errorMessage = 'Unable to retrieve your location';
-          
-          switch(error.code) {
-            case error.PERMISSION_DENIED:
-              errorMessage = 'Location access denied. Please enable location permissions in your browser settings and reload the page.';
-              break;
-            case error.POSITION_UNAVAILABLE:
-              errorMessage = 'Location information is unavailable. This may be due to poor GPS signal or network connectivity issues.';
-              break;
-            case error.TIMEOUT:
-              errorMessage = 'Location request timed out. Please check your connection and try again.';
-              break;
-            default:
-              errorMessage = `Location error: ${error.message}`;
-          }
-          
-          setError(errorMessage);
-          setIsLoading(false);
-          
-          // Fallback to default location if we can't get user's location
-          setUserLocation({
-            latitude: import.meta.env.VITE_DEFAULT_LATITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LATITUDE) : 5.6037, // Default to Accra, Ghana
-            longitude: import.meta.env.VITE_DEFAULT_LONGITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LONGITUDE) : -0.1870,
-            isFallback: true // Flag to indicate this is a fallback location
-          });
-        },
-        currentGeoOptions
-      );
-    };
+    // Try to get the user's location once
+    const locationTimeout = setTimeout(() => {
+      // If this timeout fires, we're already using the fallback location
+      console.log('Location request taking too long, continuing with default location');
+    }, 6000); // Slightly longer than the geolocation timeout
     
-    getLocation();
-    
-    // Set up location watching with better error handling
-    const watchId = navigator.geolocation.watchPosition(
+    // Attempt to get precise location
+    navigator.geolocation.getCurrentPosition(
       (position) => {
+        // Success - we got a real location
+        clearTimeout(locationTimeout);
+        
         setUserLocation({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
-          timestamp: new Date().getTime()
+          timestamp: new Date().getTime(),
+          isFallback: false
         });
+        setUsingFallback(false);
         setError(null);
+        console.log('Location successfully retrieved:', position.coords);
       },
       (error) => {
-        console.error('Error watching location:', error);
-        // Don't update error state here to avoid overriding the initial error message
+        // Error getting location - already using fallback
+        clearTimeout(locationTimeout);
+        
+        console.error('Error getting precise location:', error);
+        let errorMessage = 'Using approximate location for route planning.';
+        
+        switch(error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Location access denied. Using approximate location for route planning.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Location information unavailable. Using approximate location for route planning.';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Location request timed out. Using approximate location for route planning.';
+            break;
+        }
+        
+        // Show a non-blocking error message
+        setError(errorMessage);
       },
       geoOptions
     );
     
-    // Clean up
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-    };
+    // No need for retries or watch position - we're already showing content with the fallback location
+    // This simplifies the code and reduces the chance of errors
+    
+    // No cleanup needed since we're not setting up any watches
   }, []);
   
-  // Fetch assignments data
+  // Fetch assignments and requests data
   useEffect(() => {
-    const fetchAssignments = async () => {
+    const fetchData = async () => {
       setIsLoading(true);
       
       try {
-        // In a real app, this would be an API call
+        // In a real app, this would be API calls
         // For now, we'll use mock data
         const mockAssignments = [
           {
-            id: '1',
+            id: 'a1',
+            type: 'assignment',
             status: 'accepted',
             location: '123 Main St, City',
             customer_name: 'John Doe',
@@ -146,7 +123,8 @@ const RouteOptimizationPage = () => {
             longitude: userLocation ? userLocation.longitude + 0.01 : 0
           },
           {
-            id: '2',
+            id: 'a2',
+            type: 'assignment',
             status: 'accepted',
             location: '456 Oak Ave, City',
             customer_name: 'Jane Smith',
@@ -154,7 +132,8 @@ const RouteOptimizationPage = () => {
             longitude: userLocation ? userLocation.longitude - 0.01 : 0
           },
           {
-            id: '3',
+            id: 'a3',
+            type: 'assignment',
             status: 'accepted',
             location: '789 Pine Rd, City',
             customer_name: 'Bob Johnson',
@@ -163,17 +142,40 @@ const RouteOptimizationPage = () => {
           }
         ];
         
+        // Mock requests data
+        const mockRequests = [
+          {
+            id: 'r1',
+            type: 'request',
+            status: 'pending',
+            location: '321 Elm St, City',
+            customer_name: 'Alice Williams',
+            latitude: userLocation ? userLocation.latitude - 0.015 : 0,
+            longitude: userLocation ? userLocation.longitude + 0.015 : 0
+          },
+          {
+            id: 'r2',
+            type: 'request',
+            status: 'pending',
+            location: '654 Maple Dr, City',
+            customer_name: 'David Brown',
+            latitude: userLocation ? userLocation.latitude + 0.025 : 0,
+            longitude: userLocation ? userLocation.longitude + 0.01 : 0
+          }
+        ];
+        
         setAssignments(mockAssignments);
+        setRequests(mockRequests);
         setIsLoading(false);
       } catch (error) {
-        console.error('Error fetching assignments:', error);
-        setError('Failed to load assignments');
+        console.error('Error fetching data:', error);
+        setError('Failed to load data');
         setIsLoading(false);
       }
     };
     
     if (userLocation) {
-      fetchAssignments();
+      fetchData();
     }
   }, [userLocation]);
   
@@ -195,7 +197,15 @@ const RouteOptimizationPage = () => {
         longitude: assignment.longitude + (Math.random() * 0.002 - 0.001)
       }));
       
+      // Update mock requests with slightly different coordinates
+      const refreshedRequests = requests.map(request => ({
+        ...request,
+        latitude: request.latitude + (Math.random() * 0.002 - 0.001),
+        longitude: request.longitude + (Math.random() * 0.002 - 0.001)
+      }));
+      
       setAssignments(refreshedAssignments);
+      setRequests(refreshedRequests);
       return Promise.resolve();
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -222,27 +232,31 @@ const RouteOptimizationPage = () => {
           <div className="max-w-7xl mx-auto px-4 py-2">
             {isLoading ? (
               <SectionLoading text="Loading route data..." />
-            ) : error ? (
-              <div className="bg-red-50 p-4 rounded-md">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">Error</h3>
-                    <div className="mt-2 text-sm text-red-700">
-                      <p>{error}</p>
+            ) : (
+              <>
+                {/* Always show error message if present, but don't block content */}
+                {error && (
+                  <div className="bg-red-50 p-4 rounded-md mb-4">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <div className="ml-3">
+                        <h3 className="text-sm font-medium text-red-800">Notice</h3>
+                        <div className="mt-2 text-sm text-red-700">
+                          <p>{error}</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            ) : (
+                )}
               <div className="space-y-6">
                 {/* Route Optimizer Component */}
                 <RouteOptimizer 
-                  assignments={assignments} 
+                  assignments={assignments}
+                  requests={requests}
                   userLocation={userLocation} 
                 />
                 
@@ -252,12 +266,14 @@ const RouteOptimizationPage = () => {
                   userLocation={userLocation} 
                 />
                 
-                {/* Assignment List */}
-                <AssignmentList 
-                  assignments={assignments} 
+                {/* Item List - Shows both assignments and requests */}
+                <ItemList 
+                  assignments={assignments}
+                  requests={requests}
                   userLocation={userLocation} 
                 />
               </div>
+              </>
             )}
           </div>
         </PullToRefresh>

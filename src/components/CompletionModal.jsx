@@ -326,10 +326,10 @@ const CompletionModal = ({
   };
   
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center p-4 overflow-hidden">
       {/* Location Restriction Modal */}
       {showLocationModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 z-[60] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-75 z-[10000] flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 text-center">
             <div className="mb-4 text-red-500">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -353,7 +353,7 @@ const CompletionModal = ({
         </div>
       )}
       
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col relative my-auto">
         {/* Header */}
         <div className="p-4 border-b border-gray-200 flex justify-between items-center">
           <h2 className="text-xl font-bold text-gray-800">Complete Assignment</h2>
@@ -368,11 +368,11 @@ const CompletionModal = ({
         </div>
         
         {/* Content */}
-        <div className="overflow-y-auto p-4 max-h-[calc(90vh-16rem)]">
+        <div className="overflow-y-auto p-4 flex-1 pb-16">
           <div>
             {/* Photo Upload Section */}
             <div className="mb-6">
-              <h3 className="font-medium text-gray-700 mb-2">Upload Photos</h3>
+              <h3 className="font-medium text-gray-700 mb-2">Capture Photos *</h3>
               <p className="text-sm text-gray-500 mb-4">
                 Please take at least 3 photos (maximum 6) showing the completed assignment.
               </p>
@@ -403,7 +403,7 @@ const CompletionModal = ({
                 ))}
                 
                 {photos.length < 6 && (
-                  <div onClick={openCamera} className="aspect-square bg-gray-100 rounded-md flex flex-col items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors">
+                  <div onClick={openCamera} className="aspect-square bg-gray-100 rounded-md flex flex-col items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors border-2 border-dashed border-gray-300 p-4">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -421,11 +421,13 @@ const CompletionModal = ({
                 )}
               </div>
               
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-gray-500 mt-2">
+                <p>Add at least 1 photo (up to 6) to document the illegal dumping</p>
+                <p className="mt-1 text-blue-500">Note: Photos can only be taken with your device's camera</p>
                 {photos.length < 3 ? (
-                  <span className="text-red-500">Please take at least {3 - photos.length} more photo(s)</span>
+                  <p className="mt-2 text-red-500">Please take at least {3 - photos.length} more photo(s)</p>
                 ) : (
-                  <span className="text-green-500">✓ Minimum photo requirement met</span>
+                  <p className="mt-2 text-green-500">✓ Minimum photo requirement met</p>
                 )}
               </div>
             </div>
@@ -545,7 +547,7 @@ const CompletionModal = ({
         </div>
         
         {/* Footer */}
-        <div className="p-4 border-t border-gray-200 flex justify-between">
+        <div className="p-4 border-t border-gray-200 flex justify-between sticky bottom-0 bg-white">
           <button
             onClick={onClose}
             className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"

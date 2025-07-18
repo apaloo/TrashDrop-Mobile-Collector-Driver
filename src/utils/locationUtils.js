@@ -4,13 +4,16 @@
 
 /**
  * Calculate the distance between two coordinates in meters using the Haversine formula
- * @param {Array} coord1 - First coordinate [latitude, longitude]
- * @param {Array} coord2 - Second coordinate [latitude, longitude]
+ * @param {Array|Object} coord1 - First coordinate [latitude, longitude] or {latitude, longitude}
+ * @param {Array|Object} coord2 - Second coordinate [latitude, longitude] or {latitude, longitude}
  * @returns {Number} - Distance in meters
  */
 export const calculateDistance = (coord1, coord2) => {
-  const [lat1, lon1] = coord1;
-  const [lat2, lon2] = coord2;
+  // Handle both array format [lat, lng] and object format {latitude, longitude}
+  const lat1 = Array.isArray(coord1) ? coord1[0] : coord1.latitude;
+  const lon1 = Array.isArray(coord1) ? coord1[1] : coord1.longitude;
+  const lat2 = Array.isArray(coord2) ? coord2[0] : coord2.latitude;
+  const lon2 = Array.isArray(coord2) ? coord2[1] : coord2.longitude;
   
   const R = 6371e3; // Earth's radius in meters
   const φ1 = lat1 * Math.PI / 180;
@@ -29,8 +32,8 @@ export const calculateDistance = (coord1, coord2) => {
 
 /**
  * Check if user is within specified radius of a target location
- * @param {Array} userCoords - User coordinates [latitude, longitude]
- * @param {Array} targetCoords - Target coordinates [latitude, longitude]
+ * @param {Array|Object} userCoords - User coordinates [latitude, longitude] or {latitude, longitude}
+ * @param {Array|Object} targetCoords - Target coordinates [latitude, longitude] or {latitude, longitude}
  * @param {Number} radiusMeters - Radius in meters
  * @returns {Boolean} - True if within radius, false otherwise
  */

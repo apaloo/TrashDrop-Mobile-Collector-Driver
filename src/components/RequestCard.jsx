@@ -81,23 +81,24 @@ const RequestCard = ({
     }
   };
   
-  // Simulate QR code scanning
-  const handleScanQR = () => {
-    // In a real app, this would use the device camera to scan a QR code
-    // For this simulation, we'll generate a random bag
+  // Process QR code scanning
+  const handleScanQR = (qrData) => {
+    // Process the QR code data from a valid TrashDrop QR code
+    // In a real app, this would extract data from the QR code
+    // For this simulation, we'll use the QR data or generate values if not provided
     
     const bagTypes = Object.values(WasteType);
-    const randomType = bagTypes[Math.floor(Math.random() * bagTypes.length)];
-    const randomWeight = (Math.random() * 5 + 0.5).toFixed(1);
-    const randomPoints = Math.floor(Math.random() * 30) + 10;
-    const randomFee = (Math.random() * 5 + 1).toFixed(2);
+    const bagType = qrData?.type || bagTypes[Math.floor(Math.random() * bagTypes.length)];
+    const bagWeight = qrData?.weight || (Math.random() * 5 + 0.5).toFixed(1);
+    const bagPoints = qrData?.points || Math.floor(Math.random() * 30) + 10;
+    const bagFee = qrData?.fee || (Math.random() * 5 + 1).toFixed(2);
     
     const newBag = {
-      id: `bag-${Date.now()}`,
-      type: randomType,
-      weight: parseFloat(randomWeight),
-      points: randomPoints,
-      fee: parseFloat(randomFee)
+      id: qrData?.bagId || `bag-${Date.now()}`,
+      type: bagType,
+      weight: parseFloat(bagWeight),
+      points: bagPoints,
+      fee: parseFloat(bagFee)
     };
     
     const updatedBags = [...scannedBags, newBag];
@@ -314,27 +315,25 @@ const RequestCard = ({
             <div className="p-4 max-h-[70vh] overflow-y-auto">
               {/* QR Code Scanner */}
               <QRCodeScanner
+                isWithinRange={isWithinRange}
                 onScanSuccess={(decodedText) => {
                   console.log('QR Code scanned:', decodedText);
-                  // Process the QR code data
-                  handleScanQR();
+                  try {
+                    // Parse the QR code data
+                    const qrData = JSON.parse(decodedText);
+                    if (qrData && qrData.source === 'trashdrop' && qrData.bagId) {
+                      // Process the QR code data from TrashDrop
+                      handleScanQR(qrData);
+                    }
+                  } catch (e) {
+                    console.error('Error processing QR data:', e);
+                  }
                 }}
                 onScanError={(error) => {
                   console.error('QR scan error:', error);
+                  // Display error to user if needed
                 }}
               />
-              
-              {/* Scan Now Button */}
-              <button 
-                onClick={() => {
-                  // This button now serves as a manual fallback
-                  // in case the camera doesn't work properly
-                  handleScanQR();
-                }}
-                className="w-full bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-md mb-4"
-              >
-                Scan Now
-              </button>
               
               {/* Scanned Bags Table */}
               <div className="mb-4 overflow-x-auto">
@@ -379,19 +378,17 @@ const RequestCard = ({
                 </table>
               </div>
               
-              {/* Location Status Indicator */}
-              {scannedBags.length > 0 && (
-                <div className={`mb-4 p-3 rounded-md ${isWithinRange ? 'bg-green-50' : 'bg-red-50'}`}>
-                  <div className="flex items-center">
-                    <div className={`w-3 h-3 rounded-full mr-2 ${isWithinRange ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                    <p className={`text-sm ${isWithinRange ? 'text-green-700' : 'text-red-700'}`}>
-                      {isWithinRange 
-                        ? 'You are within 50 meters of the pickup location' 
-                        : 'You must be within 50 meters of the pickup location'}
-                    </p>
-                  </div>
+              {/* Location Status Indicator - Always visible */}
+              <div className={`mb-4 p-3 rounded-md ${isWithinRange ? 'bg-green-50' : 'bg-red-50'}`}>
+                <div className="flex items-center">
+                  <div className={`w-3 h-3 rounded-full mr-2 ${isWithinRange ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  <p className={`text-sm ${isWithinRange ? 'text-green-700' : 'text-red-700'}`}>
+                    {isWithinRange 
+                      ? 'You are within 50 meters of the pickup location' 
+                      : 'You must be within 50 meters of the pickup location'}
+                  </p>
                 </div>
-              )}
+              </div>
               
               {/* Complete Pickup Button - Moved inside modal after table */}
               {scannedBags.length > 0 && (

@@ -297,7 +297,7 @@ const DisposalModal = ({
                 />
                 
                 {/* Markers for all dumping sites */}
-                {dumpingSites.map(site => (
+                {disposalCenters.map(site => (
                   <React.Fragment key={site.id}>
                     <Marker 
                       position={site.coordinates}

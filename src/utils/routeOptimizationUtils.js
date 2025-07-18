@@ -60,18 +60,14 @@ export const calculateNearestNeighborRoute = (assignments, startPosition) => {
     // Find the nearest unvisited assignment
     let nearestIndex = 0;
     let shortestDistance = calculateDistance(
-      currentPosition.lat,
-      currentPosition.lng,
-      unvisited[0].latitude,
-      unvisited[0].longitude
+      { latitude: currentPosition.lat, longitude: currentPosition.lng },
+      { latitude: unvisited[0].latitude, longitude: unvisited[0].longitude }
     );
     
     for (let i = 1; i < unvisited.length; i++) {
       const distance = calculateDistance(
-        currentPosition.lat,
-        currentPosition.lng,
-        unvisited[i].latitude,
-        unvisited[i].longitude
+        { latitude: currentPosition.lat, longitude: currentPosition.lng },
+        { latitude: unvisited[i].latitude, longitude: unvisited[i].longitude }
       );
       
       if (distance < shortestDistance) {
@@ -129,10 +125,8 @@ export const calculateRouteDistance = (route, startPosition) => {
   // Calculate distance between each point in the route
   for (const assignment of route) {
     totalDistance += calculateDistance(
-      currentPosition.lat,
-      currentPosition.lng,
-      assignment.latitude,
-      assignment.longitude
+      { latitude: currentPosition.lat, longitude: currentPosition.lng },
+      { latitude: assignment.latitude, longitude: assignment.longitude }
     );
     
     currentPosition = {
