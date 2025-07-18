@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatPhoneNumber } from '../services/supabase';
 import logo from '../assets/logo.svg';
+// Background image import removed
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -83,7 +84,7 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-green-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-900">
       <div className="w-full max-w-md animate-slideUp">
         {/* Logo and App Name */}
         <div className="flex flex-col items-center mb-8 animate-fadeIn">

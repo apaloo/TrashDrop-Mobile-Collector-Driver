@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { WasteType } from '../utils/types';
+import { useCurrency } from '../context/CurrencyContext';
+import { formatCurrency } from '../utils/currencyUtils';
 
 const RequestDetailModal = ({ request, onClose }) => {
   const [activeDetailTab, setActiveDetailTab] = useState('overview');
+  // Get currency from context
+  const { currency } = useCurrency();
   
   if (!request) return null;
   
@@ -139,7 +143,7 @@ const RequestDetailModal = ({ request, onClose }) => {
                     </svg>
                   </div>
                   <div className="text-lg font-bold text-gray-800">
-                    ₵{request.scanned_bags ? request.scanned_bags.reduce((acc, bag) => acc + (bag.fee || 0), 0).toFixed(2) : '0.00'}
+                    {formatCurrency(request.scanned_bags ? request.scanned_bags.reduce((acc, bag) => acc + (bag.fee || 0), 0) : 0, currency)}
                   </div>
                   <div className="text-xs text-gray-600">Bag Collection Fees</div>
                 </div>
@@ -151,7 +155,7 @@ const RequestDetailModal = ({ request, onClose }) => {
                     </svg>
                   </div>
                   <div className="text-lg font-bold text-gray-800">
-                    ₵{request.completion_bonus ? request.completion_bonus.toFixed(2) : '0.00'}
+                    {formatCurrency(request.completion_bonus || 0, currency)}
                   </div>
                   <div className="text-xs text-gray-600">Completion Bonus</div>
                 </div>
@@ -174,7 +178,7 @@ const RequestDetailModal = ({ request, onClose }) => {
                 <div className="mt-4 pt-3 border-t border-gray-200">
                   <div className="flex justify-between items-center">
                     <span className="font-medium text-gray-700">Total Earnings:</span>
-                    <span className="text-lg font-bold text-green-600">₵{request.total_earnings.toFixed(2)}</span>
+                    <span className="text-lg font-bold text-green-600">{formatCurrency(request.total_earnings, currency)}</span>
                   </div>
                 </div>
               )}
@@ -197,7 +201,7 @@ const RequestDetailModal = ({ request, onClose }) => {
                           {bag.points} pts
                         </span>
                         <span className="bg-green-50 text-green-700 px-2 py-1 rounded-full text-xs">
-                          ₵{bag.fee?.toFixed(2)}
+                          {formatCurrency(bag.fee, currency)}
                         </span>
                       </div>
                     </div>

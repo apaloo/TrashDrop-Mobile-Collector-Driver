@@ -30,6 +30,8 @@ const RequestPage = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [currentReport, setCurrentReport] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
+  // Using Map page's radius setting instead of local radius slider
+  const [searchRadius, setSearchRadius] = useState(10); // Default 10km radius
 
   // Format date to show in the format shown in screenshots
   const formatDate = (dateString) => {
@@ -72,10 +74,16 @@ const RequestPage = () => {
   };
 
   // Transform raw data from Supabase into the format we need
-  const transformRequestsData = (rawData) => {
+  const transformRequestsData = (rawData, filterByRadius = false, status = null) => {
     if (!rawData) return [];
     
     const transformedData = rawData.map(item => {
+      // Calculate distance from user's current location if available
+      const distanceFromUser = userLocation ? calculateDistance(
+        item.coordinates,
+        userLocation
+      ) : 999999;
+      
       // Calculate actual distance to disposal center if coordinates are valid
       const distanceToDisposal = calculateDistance(
         item.coordinates, 
@@ -94,8 +102,9 @@ const RequestPage = () => {
         accepted_at: item.accepted_at,
         picked_up_at: item.picked_up_at,
         completed_at: item.completed_at,
-        distance: `${distanceToDisposal.toFixed(1)} km away`,
-        distanceValue: distanceToDisposal, // Store actual distance value for sorting
+        distance: `${distanceFromUser.toFixed(1)} km away`,
+        distanceValue: distanceFromUser, // Store actual distance from user for sorting
+        distanceToDisposal: distanceToDisposal, // Store distance to disposal center
         type: item.type || 'General',
         scanned_bags: item.scanned_bags || [],
         disposal_complete: item.disposal_complete || false,
@@ -157,9 +166,33 @@ const RequestPage = () => {
         
         if (picked_up_error) throw picked_up_error;
         
-        // Transform data
-        const available = transformRequestsData(availableData);
+        // Transform data and apply radius filtering for available requests
+        // For available requests, filter by radius if user location is available
+        let available = [];
+        if (userLocation) {
+          // Filter available requests by radius
+          available = transformRequestsData(availableData)
+            .filter(req => req.distanceValue <= searchRadius);
+        } else {
+          // If user location isn't available, show all requests
+          available = transformRequestsData(availableData);
+        }
+        
+        // Sort available requests by proximity to user (nearest first)
+        available.sort((a, b) => a.distanceValue - b.distanceValue);
+        
         const accepted = transformRequestsData(acceptedData);
+        // Sort accepted requests by timestamp (oldest first) and then by proximity
+        accepted.sort((a, b) => {
+          // First sort by accepted_at timestamp (oldest first)
+          const dateA = new Date(a.accepted_at || a.created_at || 0);
+          const dateB = new Date(b.accepted_at || b.created_at || 0);
+          if (dateA - dateB !== 0) return dateA - dateB;
+          
+          // If dates are equal, sort by proximity (nearest first)
+          return a.distanceValue - b.distanceValue;
+        });
+        
         const picked_up = transformRequestsData(picked_up_data);
         
         // Update state
@@ -249,8 +282,8 @@ const RequestPage = () => {
     };
   }, [user]);
 
-  // Handle accepting a request
-  const handleAcceptRequest = async (requestId) => {
+  // Handle accepting a single request
+  const handleAcceptRequest = async (requestId, showToasts = true) => {
     try {
       // Find the request in the available list
       const requestToAccept = requests.available.find(req => req.id === requestId);
@@ -297,11 +330,12 @@ const RequestPage = () => {
       // Update cache
       saveToCache(CACHE_KEYS.ALL_REQUESTS, updatedRequests);
       
-      // Show success toast
-      showToast(`Successfully accepted ${requestToAccept.type} pickup!`, 'success');
-      
-      // Switch to accepted tab
-      setActiveTab('accepted');
+      // Show success toast and switch tab only if showToasts is true (single accept mode)
+      if (showToasts) {
+        showToast(`Successfully accepted ${requestToAccept.type} pickup!`, 'success');
+        // Switch to accepted tab
+        setActiveTab('accepted');
+      }
     } catch (err) {
       console.error('Error accepting request:', err);
       showToast('Failed to accept request. Please try again.', 'error');
@@ -1165,6 +1199,8 @@ const RequestPage = () => {
       {/* Scrollable Content Area - with padding to account for fixed header and tabs */}
       <main className="flex-1 overflow-y-auto pt-40 pb-20 px-4">
         
+        {/* Radius Filter and Multi-select controls removed - using Map page's radius setting instead */}
+        
         {/* Toast notification */}
         {toast.show && (
           <div className={`fixed bottom-20 left-0 right-0 mx-auto w-5/6 p-4 rounded-md shadow-lg ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white text-center z-50`}>
@@ -1237,6 +1273,9 @@ const RequestPage = () => {
                           request={request} 
                           onAccept={handleAcceptRequest}
                           onOpenDirections={handleOpenDirections}
+                          selectable={false}
+                          selected={false}
+                          onSelect={() => {}}
                         />
                       )
                     ))

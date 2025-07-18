@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import logo from '../assets/logo.svg';
+import { useAuth } from '../context/AuthContext';
 
 /**
  * Top navigation bar component with logo and profile dropdown
  */
 export const TopNavBar = ({ user }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const { logout } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <nav className="fixed top-0 left-0 right-0 bg-white shadow-md px-4 py-2 z-10 nav-top-bar">
@@ -14,7 +17,7 @@ export const TopNavBar = ({ user }) => {
         {/* Logo */}
         <Link to="/" className="flex items-center">
           <img src={logo} alt="TrashDrop Logo" className="h-8 mr-2" />
-          <span className="text-green-500 text-xl font-bold">TrashDrop</span>
+          <span className="text-green-500 text-xl font-bold">TrashDrop Carter</span>
         </Link>
 
         {/* Profile Dropdown */}
@@ -27,7 +30,7 @@ export const TopNavBar = ({ user }) => {
               {user?.first_name?.[0] || 'U'}
             </div>
             <span className="ml-2 hidden md:inline">{user?.first_name || 'User'}</span>
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="green">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
@@ -50,9 +53,12 @@ export const TopNavBar = ({ user }) => {
               </Link>
               <button
                 className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100"
-                onClick={() => {
-                  // Handle logout logic here
+                onClick={async () => {
                   setIsDropdownOpen(false);
+                  const { success } = await logout();
+                  if (success) {
+                    navigate('/login');
+                  }
                 }}
               >
                 Logout

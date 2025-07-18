@@ -19,7 +19,7 @@ const Toast = ({ message, type = 'info', duration = 3000, onClose }) => {
   
   // Toast styling based on type
   const getToastStyles = () => {
-    const baseStyles = "fixed top-5 left-1/2 transform -translate-x-1/2 py-2 px-4 rounded-md shadow-lg z-50 transition-opacity duration-300 flex items-center";
+    const baseStyles = "fixed top-20 left-1/2 transform -translate-x-1/2 py-2 px-4 rounded-md shadow-lg z-[99999] transition-opacity duration-300 flex items-center";
     
     const typeStyles = {
       info: "bg-blue-100 text-blue-800 border-l-4 border-blue-500",
@@ -69,7 +69,7 @@ const Toast = ({ message, type = 'info', duration = 3000, onClose }) => {
   };
 
   return (
-    <div className={getToastStyles()}>
+    <div className={getToastStyles()} style={{position: 'fixed', zIndex: 99999}}>
       {getToastIcon()}
       <span>{message}</span>
       <button 

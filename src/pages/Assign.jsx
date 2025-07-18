@@ -676,6 +676,7 @@ const AssignPage = () => {
         onDumpingSite={handleDumpingSite}
         onDispose={handleDispose}
         onViewReport={handleViewReport}
+        tabContext={activeTab} // Pass the active tab context
       />
       
       <CompletionModal

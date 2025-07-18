@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import QRCodeScanner from './QRCodeScanner';
 import { PickupRequestStatus, WasteType } from '../utils/types';
 import { isWithinRadius } from '../utils/locationUtils';
+import { useCurrency } from '../context/CurrencyContext';
+import { formatCurrency } from '../utils/currencyUtils';
 
 const RequestCard = ({ 
   request, 
@@ -12,8 +14,13 @@ const RequestCard = ({
   onLocateSite, 
   onDisposeBag, 
   onViewReport,
-  onViewDetails
+  onViewDetails,
+  selectable = false,
+  selected = false,
+  onSelect
 }) => {
+  // Get currency from context
+  const { currency } = useCurrency();
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [scannedBags, setScannedBags] = useState(request.scanned_bags || []);
   const [expanded, setExpanded] = useState(false);
@@ -185,9 +192,21 @@ const RequestCard = ({
   };
   
   return (
-    <div className="bg-white rounded-lg shadow-md mb-4 overflow-hidden relative">
+    <div className={`bg-white rounded-lg shadow-md mb-4 overflow-hidden relative ${selected ? 'ring-2 ring-green-500' : ''}`}>
       {/* Green accent in top-right corner */}
       <div className="absolute top-0 right-0 w-12 h-12 bg-green-500 transform rotate-45 translate-x-6 -translate-y-6"></div>
+      
+      {/* Selection checkbox - only shown when selectable is true */}
+      {selectable && (
+        <div className="absolute top-2 left-2 z-10">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onSelect && onSelect(request.id)}
+            className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+          />
+        </div>
+      )}
       
       {/* Card Body */}
       <div className="p-4">
@@ -208,7 +227,7 @@ const RequestCard = ({
             {request.points || 100} points
           </span>
           <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
-            ${parseFloat(request.fee || 8.55).toFixed(2)}
+            {formatCurrency(request.fee || 8.55, currency)}
           </span>
         </div>
         
@@ -248,7 +267,7 @@ const RequestCard = ({
                       {bag.points} pts
                     </span>
                     <span className="bg-green-50 text-green-700 px-2 py-1 rounded-full text-xs">
-                      ${bag.fee?.toFixed(2)}
+                      {formatCurrency(bag.fee, currency)}
                     </span>
                   </div>
                 </div>
@@ -260,7 +279,7 @@ const RequestCard = ({
                   <div className="flex space-x-4">
                     <span>{scannedBags.reduce((acc, bag) => acc + bag.weight, 0).toFixed(1)} kg</span>
                     <span>{scannedBags.reduce((acc, bag) => acc + bag.points, 0)} pts</span>
-                    <span>${scannedBags.reduce((acc, bag) => acc + (bag.fee || 0), 0).toFixed(2)}</span>
+                    <span>{formatCurrency(scannedBags.reduce((acc, bag) => acc + (bag.fee || 0), 0), currency)}</span>
                   </div>
                 </div>
               </div>

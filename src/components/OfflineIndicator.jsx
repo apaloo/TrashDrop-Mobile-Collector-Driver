@@ -13,7 +13,7 @@ const OfflineIndicator = () => {
   }
   
   return (
-    <div className={`fixed bottom-0 left-0 right-0 z-50 p-2 text-sm font-medium text-white ${online ? 'bg-blue-600' : 'bg-red-600'}`}>
+    <div className={`fixed top-0 left-0 right-0 z-[9999] p-2 text-sm font-medium text-white bg-red-600`}>
       <div className="container mx-auto flex items-center justify-between">
         <div className="flex items-center">
           {!online && (

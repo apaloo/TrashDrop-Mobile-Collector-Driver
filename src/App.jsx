@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { OfflineProvider } from './contexts/OfflineContext';
+import { CurrencyProvider } from './context/CurrencyContext';
 import AppLayout from './components/AppLayout';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -56,7 +57,8 @@ function App() {
   return (
     <AuthProvider>
       <OfflineProvider>
-        <Router>
+        <CurrencyProvider>
+          <Router>
           <ToastContainer position="top-center" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
           <AppLayout>
             <Routes>
@@ -132,6 +134,7 @@ function App() {
           </Routes>
         </AppLayout>
       </Router>
+      </CurrencyProvider>
     </OfflineProvider>
   </AuthProvider>
   );

@@ -59,11 +59,22 @@ const PullToRefresh = ({
         setPullDistance(0);
         
         // Call onRefresh and reset when done
-        Promise.resolve(onRefresh())
-          .finally(() => {
-            setIsRefreshing(false);
-            setIsPulling(false);
-          });
+        // Wrap the onRefresh call to catch any errors and prevent them from affecting the auth state
+        try {
+          Promise.resolve(onRefresh())
+            .catch(err => {
+              console.error('Error during refresh:', err);
+              // Don't propagate the error to prevent potential auth state changes
+            })
+            .finally(() => {
+              setIsRefreshing(false);
+              setIsPulling(false);
+            });
+        } catch (err) {
+          console.error('Error during refresh:', err);
+          setIsRefreshing(false);
+          setIsPulling(false);
+        }
       } else {
         // Reset without refreshing
         setPullDistance(0);

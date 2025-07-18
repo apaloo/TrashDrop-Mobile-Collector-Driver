@@ -9,7 +9,7 @@ import {
 } from '../utils/routeOptimizationUtils';
 import { calculateDistance } from '../utils/locationUtils';
 import { initOfflineMapStorage, createOfflineTileLayer, optimizeMapPerformance } from '../utils/mapUtils';
-import { startMarkerIcon, assignmentMarkerIcon, requestMarkerIcon, getStopIcon } from '../utils/markerIcons';
+import { startMarkerIcon, assignmentMarkerIcon, requestMarkerIcon, getStopIcon, tricycleIcon } from '../utils/markerIcons';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import 'leaflet/dist/leaflet.css';
@@ -418,67 +418,80 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
         </div>
       </div>
       
-      {isLoading ? (
-        <div className="flex justify-center items-center py-4">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
-          <span className="ml-2 text-gray-600">Calculating optimal route...</span>
-        </div>
-      ) : optimizedRoute.length === 0 ? (
-        <div className="py-4 text-center text-gray-600">
-          <p>No accepted assignments to optimize.</p>
-          <p className="text-sm mt-1">Accept assignments to plan your route.</p>
-        </div>
-      ) : (
-        <div className="mt-2">
-          <div className="flex justify-between text-sm text-gray-600 mb-2">
-            <span>Total distance: {totalDistance.toFixed(1)} km</span>
-            <span>Estimated time: {estimatedTime} min</span>
+      {/* Fixed position container for route info and navigation button */}
+      <div className="sticky top-0 z-[1000] bg-white shadow-md border-b border-gray-200 mb-2">
+        {isLoading ? (
+          <div className="flex justify-center items-center py-4">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
+            <span className="ml-2 text-gray-600">Calculating optimal route...</span>
           </div>
-          
-          <button
-            onClick={navigateToRoute}
-            className="w-full py-2 bg-green-500 text-white rounded-md flex items-center justify-center hover:bg-green-600 transition-colors mb-2"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-            </svg>
-            Navigate Route
-          </button>
-          
-          {/* Offline map controls */}
-          <div className="flex space-x-2">
-            {isSavingTiles ? (
-              <div className="w-full py-2 bg-blue-100 text-blue-800 rounded-md flex items-center justify-center">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
-                <span>Saving map tiles... {savingProgress}%</span>
+        ) : optimizedRoute.length === 0 ? (
+          <div className="py-4 text-center text-gray-600">
+            <p>No accepted assignments to optimize.</p>
+            <p className="text-sm mt-1">Accept assignments to plan your route.</p>
+          </div>
+        ) : (
+          <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+            <div className="flex justify-between text-sm text-gray-700 font-medium mb-3">
+              <div className="flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+                <span>Total distance: <span className="text-green-600">{totalDistance.toFixed(1)} km</span></span>
               </div>
-            ) : isOfflineMode ? (
-              <button
-                onClick={handleClearMapTiles}
-                className="flex-1 py-2 bg-red-100 text-red-700 rounded-md flex items-center justify-center hover:bg-red-200 transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              <div className="flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Clear Offline Maps
-              </button>
-            ) : (
-              <button
-                onClick={handleSaveMapTiles}
-                className="flex-1 py-2 bg-blue-100 text-blue-700 rounded-md flex items-center justify-center hover:bg-blue-200 transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Save Maps for Offline
-              </button>
-            )}
+                <span>Estimated time: <span className="text-green-600">{estimatedTime} min</span></span>
+              </div>
+            </div>
+            
+            <button
+              onClick={navigateToRoute}
+              className="w-full py-2.5 bg-green-500 text-white rounded-md flex items-center justify-center hover:bg-green-600 transition-colors mb-2 font-medium shadow-sm"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+              Navigate Route
+            </button>
+            
+            {/* Offline map controls */}
+            <div className="flex space-x-2">
+              {isSavingTiles ? (
+                <div className="w-full py-2 bg-blue-100 text-blue-800 rounded-md flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
+                  <span>Saving map tiles... {savingProgress}%</span>
+                </div>
+              ) : isOfflineMode ? (
+                <button
+                  onClick={handleClearMapTiles}
+                  className="flex-1 py-2 bg-red-100 text-red-700 rounded-md flex items-center justify-center hover:bg-red-200 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Clear Offline Maps
+                </button>
+              ) : (
+                <button
+                  onClick={handleSaveMapTiles}
+                  className="flex-1 py-2 bg-blue-100 text-blue-700 rounded-md flex items-center justify-center hover:bg-blue-200 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Save Maps for Offline
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
       
-      <div className="h-72 relative z-0 mb-16" style={{ position: 'relative' }}>
-        <div style={{ height: '100%', width: '100%', position: 'absolute', top: 0, left: 0, backgroundColor: '#f0f0f0' }}>
+      <div className="relative z-0 mb-4" style={{ height: 'calc(100vh - 400px)', minHeight: '300px', position: 'relative' }}>
+        <div style={{ height: '100%', width: '100%', position: 'absolute', top: 0, left: 0, backgroundColor: '#f0f0f0', borderRadius: '0.5rem', overflow: 'hidden' }}>
           {!isLoading && (
             <MapContainer 
               key={`map-${userLocation?.latitude || 0}-${userLocation?.longitude || 0}-${isOfflineMode ? 'offline' : 'online'}-${Date.now()}`}
@@ -518,7 +531,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
               {userLocation && (
                 <Marker 
                   position={[userLocation.latitude, userLocation.longitude]}
-                  icon={startMarkerIcon}
+                  icon={tricycleIcon}
                 >
                   <Popup>
                     <div className="text-center">
@@ -603,53 +616,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
         </div>
       </div>
       
-      {optimizedRoute.length > 0 && (
-        <div className="p-4 border-t">
-          <h3 className="font-medium text-gray-800 mb-2">Route Details</h3>
-          <ol className="text-sm">
-            {optimizedRoute.map((stop, index) => {
-              // Determine if this is an assignment or request
-              const isRequest = stop.type === 'request';
-              const bgColor = isRequest ? 'bg-red-500' : 'bg-blue-500';
-              
-              return (
-                <li key={stop.id} className="py-2 border-b last:border-0 flex items-start">
-                  <div className={`flex-shrink-0 w-6 h-6 rounded-full ${bgColor} text-white flex items-center justify-center mr-3 mt-1`}>
-                    {index + 1}
-                  </div>
-                  <div className="flex-grow">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-medium">{stop.location}</p>
-                        <p className="text-xs text-gray-600">{stop.customer_name}</p>
-                      </div>
-                      <span className={`text-xs px-2 py-1 rounded-full ${isRequest ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
-                        {isRequest ? 'Request' : 'Assignment'}
-                      </span>
-                    </div>
-                    {stop.waste_type && (
-                      <p className="text-xs mt-1 bg-gray-100 px-2 py-1 rounded inline-block">
-                        {stop.waste_type}
-                      </p>
-                    )}
-                    {index < optimizedRoute.length - 1 && (
-                      <div className="mt-1 text-xs text-gray-500 flex items-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                        </svg>
-                        Next stop: {(calculateDistance(
-                          { latitude: stop.latitude, longitude: stop.longitude },
-                          { latitude: optimizedRoute[index + 1].latitude, longitude: optimizedRoute[index + 1].longitude }
-                        )).toFixed(1)} km
-                      </div>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-      )}
+      {/* Route details card removed as requested */}
     </div>
   );
 };
