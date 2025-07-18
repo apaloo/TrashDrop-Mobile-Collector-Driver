@@ -120,7 +120,7 @@ const FilterCard = ({ filters, setFilters, applyFilters }) => {
     <div className="absolute bottom-24 left-4 right-4 bg-white rounded-lg shadow-lg p-4 z-[2000] pointer-events-auto overflow-hidden" style={{ position: 'fixed', touchAction: 'none' }}>
       <div className="mb-4">
         <div className="flex justify-between items-center mb-2">
-          <span className="font-medium">Radius:</span>
+          <span className="font-medium" style={{ color: '#0a0a0a' }}>Radius:</span>
           <span className="bg-green-500 text-white rounded-full w-8 h-8 flex items-center justify-center">
             {filters.maxDistance}
           </span>
@@ -844,30 +844,7 @@ const MapPage = () => {
   
   // Waste type legend component
   const WasteLegend = () => {
-    return (
-      <div className="absolute top-16 right-2 bg-white p-2 rounded-md shadow z-[2000] max-h-60 overflow-y-auto pointer-events-auto">
-        <h3 className="font-medium text-sm mb-2">Waste Types</h3>
-        <div className="space-y-1">
-          {Object.entries({
-            plastic: 'Plastic',
-            paper: 'Paper',
-            metal: 'Metal',
-            glass: 'Glass', 
-            organic: 'Organic',
-            recycling: 'Recycling',
-            general: 'General'
-          }).map(([type, label]) => (
-            <div key={type} className="flex items-center space-x-2">
-              <div 
-                className="w-3 h-3 rounded-full" 
-                style={{ backgroundColor: getWasteTypeColor(type) }} 
-              />
-              <span className="text-xs">{label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+    return null;
   };
   
   // Initial data fetch
@@ -940,7 +917,7 @@ const MapPage = () => {
             </div>
             
             {/* Online/Offline toggle button - centered horizontally */}
-            <div className="absolute top-2 left-0 right-0 flex justify-center z-[2000] pointer-events-auto">
+            <div className="absolute top-2 right-0 flex justify-center z-[2000] pointer-events-auto" style={{ color: '#0a0a0a', marginRight: '0.4rem' }}>
               <div className="bg-white p-2 rounded-md shadow">
                 <div className="flex items-center space-x-2">
                   <span className="text-sm font-medium">Status:</span>
@@ -1041,7 +1018,7 @@ const MapPage = () => {
                 <RecenterButton onClick={handleRecenter} />
                 
                 {/* Advanced Filter button */}
-                <div className="absolute z-10 top-4 right-4">
+                {/* <div className="absolute z-10 top-4 right-4">
                   <button
                     onClick={() => setShowFilters(true)}
                     className="bg-white p-2 rounded-full shadow-md flex items-center justify-center"
@@ -1051,7 +1028,6 @@ const MapPage = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                     </svg>
                   </button>
-                  {/* Filter count badge */}
                   {(filters.wasteTypes.length < Object.values(WasteType).length || 
                    filters.minPayment > 0 || 
                    filters.priority !== 'all') && (
@@ -1059,13 +1035,13 @@ const MapPage = () => {
                       !
                     </span>
                   )}
-                </div>
+                </div> */}
                 
                 {/* Filter card and waste type legend removed - now outside MapContainer */}
                 
                 {/* Refresh indicator */}
                 {lastUpdated && (
-                  <div className="absolute z-10 top-2 left-2 bg-white bg-opacity-80 px-2 py-1 text-xs rounded-md">
+                  <div className="absolute z-10 top-2 left-2 bg-white bg-opacity-80 px-2 py-1 text-xs rounded-md" style={{ color: '#0a0a0a' }}>
                     <div className="flex items-center">
                         <span className="mr-2">Last updated: {lastUpdated.toLocaleTimeString()}</span>
                         <button 

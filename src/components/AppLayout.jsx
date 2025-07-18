@@ -22,7 +22,7 @@ const AppLayout = ({ children }) => {
       {!isPublicRoute && <TopNavBar user={user} />}
       
       {/* Main content with padding for nav bars */}
-      <main className={`flex-grow relative z-0 ${!isPublicRoute ? 'pt-14 pb-16' : ''}`}>
+      <main className={`flex-grow relative z-0`}>
         {children}
       </main>
       
