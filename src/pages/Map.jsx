@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
 import { CACHE_KEYS, saveToCache, getFromCache, isOnline, registerConnectivityListeners } from '../utils/cacheUtils';
+import { requestMarkerIcon, assignmentMarkerIcon, startMarkerIcon } from '../utils/markerIcons';
 
 // Fix for default Leaflet marker icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -92,14 +93,16 @@ const createUserLocationIcon = () => {
   });
 };
 
-// Function to create a custom marker icon based on waste type
-const createWasteTypeIcon = (type) => {
-  const color = getWasteTypeColor(type);
-  return L.divIcon({
-    html: `<div style="width: 1rem; height: 1rem; border-radius: 9999px; background-color: ${color}; border: 2px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); z-index: 1000;"></div>`,
-    className: 'custom-marker-icon',
-    iconSize: [20, 20],
-  });
+// Function to get the appropriate icon based on request status
+const getRequestIcon = (status) => {
+  switch (status) {
+    case 'completed':
+      return startMarkerIcon; // Green for completed
+    case 'accepted':
+      return assignmentMarkerIcon; // Blue for accepted
+    default:
+      return requestMarkerIcon; // Red for available/requested
+  }
 };
 
 // Custom marker icons
@@ -1045,7 +1048,7 @@ const MapPage = () => {
                     <Marker 
                       key={request.id}
                       position={request.coordinates}
-                      icon={createWasteTypeIcon(request.type)}
+                      icon={getRequestIcon(request.status)}
                     >
                       <Popup>
                         <div className="popup-content">
