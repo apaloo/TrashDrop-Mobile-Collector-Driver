@@ -1,5 +1,5 @@
 {
-  "name": "TrashDrop Mobile Collector Driver",
+  "name": "TrashDrop Carter",
   "short_name": "TrashDrop Carter",
   "theme_color": "#4CAF50",
   "background_color": "#ffffff",
@@ -9,14 +9,10 @@
   "start_url": "/",
   "icons": [
     {
-      "src": "icons/icon-72x72.png",
-      "sizes": "72x72",
-      "type": "image/png"
-    },
-    {
-      "src": "icons/icon-96x96.png",
-      "sizes": "96x96",
-      "type": "image/png"
+      "src": "logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     },
     {
       "src": "icons/icon-128x128.png",

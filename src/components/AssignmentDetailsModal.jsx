@@ -89,11 +89,11 @@ const AssignmentDetailsModal = ({
   
   // Different styling based on which tab opened the modal
   const modalContainerClass = isAvailableTab
-    ? "fixed inset-x-0 top-[130px] bottom-0 z-[1000] flex flex-col items-center p-4 pt-0 pointer-events-none"
+    ? "fixed inset-x-0 top-[130px] bottom-[80px] z-[1000] flex flex-col items-center p-4 pt-0 pointer-events-none"
     : "fixed inset-0 bg-black bg-opacity-50 z-[1000] flex items-center justify-center p-4";
     
   const modalContentClass = isAvailableTab
-    ? "bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[calc(100vh-150px)] overflow-hidden pointer-events-auto relative"
+    ? "bg-white rounded-lg shadow-xl w-full max-w-lg h-full overflow-hidden pointer-events-auto relative flex flex-col"
     : "bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden relative";
   
   return (
@@ -113,7 +113,7 @@ const AssignmentDetailsModal = ({
         </div>
         
         {/* Content */}
-        <div className={`overflow-y-auto p-4 ${isAvailableTab ? 'max-h-[calc(100vh-200px)]' : 'max-h-[calc(90vh-8rem)]'}`}>
+        <div className={`overflow-y-auto p-4 flex-1 ${isAvailableTab ? 'pb-20' : 'max-h-[calc(90vh-8rem)]'}`}>
           {/* Basic Info */}
           <div className="mb-4">
             <h3 className="font-bold text-lg">{assignment.type} Assignment</h3>
@@ -193,8 +193,8 @@ const AssignmentDetailsModal = ({
           </div>
         </div>
         
-        {/* Footer with Action Buttons */}
-        <div className="border-t border-gray-200 p-4">
+        {/* Action Buttons */}
+        <div className="p-4 border-t border-gray-200 bg-white sticky bottom-0">
           {assignment.status === AssignmentStatus.AVAILABLE && (
             <button 
               onClick={() => onAccept(assignment.id)} 
