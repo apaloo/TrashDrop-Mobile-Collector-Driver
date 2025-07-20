@@ -343,12 +343,12 @@ const EarningsPage = () => {
           .from('authority_assignments')
           .select('*')
           .eq('status', 'completed')
-          .order('completed_at', { ascending: false }),
+          .order('updated_at', { ascending: false }),
         supabase
           .from('pickup_requests')
           .select('*')
           .eq('status', 'completed')
-          .order('completed_at', { ascending: false })
+          .order('updated_at', { ascending: false })
       ]);
       
       if (assignmentsResult.error) {
