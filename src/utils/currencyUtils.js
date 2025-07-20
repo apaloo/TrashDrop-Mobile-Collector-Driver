@@ -25,19 +25,33 @@ export const CURRENCY_MAP = {
  */
 export const getCurrencyFromCoordinates = async (coordinates) => {
   if (!coordinates || !coordinates[0] || !coordinates[1]) {
-    return CURRENCY_MAP.DEFAULT;
+    console.warn('Invalid coordinates provided, using default currency');
+    return CURRENCY_MAP.GH; // Default to Ghana Cedi
   }
   
+  const [latitude, longitude] = coordinates;
+  
   try {
-    const [latitude, longitude] = coordinates;
-    
     // Use reverse geocoding to get country
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+      {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'TrashDrop-Mobile-App', // Required by Nominatim usage policy
+          'Accept': 'application/json'
+        }
+      }
     );
     
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
-      throw new Error('Failed to fetch location data');
+      console.warn(`Geocoding API returned status ${response.status}`);
+      return CURRENCY_MAP.GH; // Default to Ghana Cedi
     }
     
     const data = await response.json();
@@ -47,7 +61,8 @@ export const getCurrencyFromCoordinates = async (coordinates) => {
       return CURRENCY_MAP[countryCode];
     }
     
-    // Default to Ghana if country not found or not supported
+    console.warn(`No currency mapping found for country code: ${countryCode}`);
+    return CURRENCY_MAP.GH; // Default to Ghana Cedi if country not found or not supported
     return CURRENCY_MAP.GH;
   } catch (error) {
     console.error('Error determining currency from location:', error);

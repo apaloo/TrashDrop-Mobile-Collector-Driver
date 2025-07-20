@@ -19,31 +19,58 @@ export const CurrencyProvider = ({ children }) => {
       try {
         setIsLoading(true);
         
-        // Get user's current location
+        // First try to get from localStorage (cached value)
+        const storedCurrency = localStorage.getItem('trashdrop_currency');
+        if (storedCurrency) {
+          console.log('[Currency] Using cached currency from localStorage');
+          setCurrency(JSON.parse(storedCurrency));
+        } else {
+          console.log('[Currency] No cached currency found in localStorage');
+        }
+        
+        // Then try to get fresh location if geolocation is available
         if (navigator.geolocation) {
+          const geolocationOptions = {
+            enableHighAccuracy: false, // Set to false to avoid network location provider errors
+            timeout: 5000, // 5 seconds timeout
+            maximumAge: 1000 * 60 * 60 // 1 hour cache
+          };
+          
+          console.log('[Currency] Attempting to get current position...');
           navigator.geolocation.getCurrentPosition(
             async (position) => {
-              const { latitude, longitude } = position.coords;
-              const detectedCurrency = await getCurrencyFromCoordinates([latitude, longitude]);
-              setCurrency(detectedCurrency);
-              setIsLoading(false);
-              
-              // Store in local storage for offline use
-              localStorage.setItem('trashdrop_currency', JSON.stringify(detectedCurrency));
+              try {
+                console.log('[Currency] Position obtained, detecting currency...');
+                const { latitude, longitude } = position.coords;
+                const detectedCurrency = await getCurrencyFromCoordinates([latitude, longitude]);
+                console.log('[Currency] Detected currency:', detectedCurrency.code);
+                setCurrency(detectedCurrency);
+                // Store in local storage for offline use
+                localStorage.setItem('trashdrop_currency', JSON.stringify(detectedCurrency));
+                console.log('[Currency] Currency saved to localStorage');
+              } catch (error) {
+                console.warn('[Currency] Error processing location data:', error);
+                // Continue with default or stored currency
+              } finally {
+                setIsLoading(false);
+              }
             },
             (error) => {
-              console.error('Error getting location:', error);
-              // Try to get from localStorage if available
-              const storedCurrency = localStorage.getItem('trashdrop_currency');
-              if (storedCurrency) {
-                setCurrency(JSON.parse(storedCurrency));
+              console.warn('Error getting location:', error.message);
+              // If we have a stored currency, use it, otherwise use default
+              if (!storedCurrency) {
+                setCurrency(CURRENCY_MAP.GH); // Default to Ghana Cedi
               }
               setIsLoading(false);
             },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 3600000 } // 1 hour cache
+            geolocationOptions
           );
         } else {
           // Geolocation not supported
+          console.warn('Geolocation is not supported by this browser');
+          if (!storedCurrency) {
+            setCurrency(CURRENCY_MAP.GH); // Default to Ghana Cedi
+          }
           setIsLoading(false);
         }
       } catch (error) {

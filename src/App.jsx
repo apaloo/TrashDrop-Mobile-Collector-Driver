@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { OfflineProvider } from './contexts/OfflineContext';
 import { CurrencyProvider } from './context/CurrencyContext';
+import { FilterProvider } from './context/FilterContext';
 import AppLayout from './components/AppLayout';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -58,6 +59,7 @@ function App() {
     <AuthProvider>
       <OfflineProvider>
         <CurrencyProvider>
+          <FilterProvider>
           <Router>
           <ToastContainer position="top-center" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
           <AppLayout>
@@ -134,6 +136,7 @@ function App() {
           </Routes>
         </AppLayout>
       </Router>
+          </FilterProvider>
       </CurrencyProvider>
     </OfflineProvider>
   </AuthProvider>

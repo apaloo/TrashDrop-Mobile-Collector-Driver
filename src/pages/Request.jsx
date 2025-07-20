@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useFilters } from '../context/FilterContext';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import { PickupRequestStatus, WasteType, AssignmentStatus } from '../utils/types';
+import { transformRequestsData } from '../utils/requestUtils';
+import { getCurrentLocation, getLocationWithRetry, isWithinRadius } from '../utils/geoUtils';
 import { supabase } from '../services/supabase';
 import RequestCard from '../components/RequestCard';
 import { useAuth } from '../context/AuthContext';
@@ -27,11 +30,12 @@ const RequestPage = () => {
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
   const [isOnlineStatus, setIsOnlineStatus] = useState(true);
   const { user } = useAuth();
+  const [userLocation, setUserLocation] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [currentReport, setCurrentReport] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
-  // Using Map page's radius setting instead of local radius slider
-  const [searchRadius, setSearchRadius] = useState(10); // Default 10km radius
+  // Get filters and filtered requests from context
+  const { filters, filteredRequests, updateFilteredRequests } = useFilters();
 
   // Format date to show in the format shown in screenshots
   const formatDate = (dateString) => {
@@ -73,64 +77,34 @@ const RequestPage = () => {
     return distance;
   };
 
-  // Transform raw data from Supabase into the format we need
-  const transformRequestsData = (rawData, filterByRadius = false, status = null) => {
-    if (!rawData) return [];
-    
-    const transformedData = rawData.map(item => {
-      // Calculate distance from user's current location if available
-      const distanceFromUser = userLocation ? calculateDistance(
-        item.coordinates,
-        userLocation
-      ) : 999999;
-      
-      // Calculate actual distance to disposal center if coordinates are valid
-      const distanceToDisposal = calculateDistance(
-        item.coordinates, 
-        DISPOSAL_CENTER
-      );
-      
-      return {
-        id: item.id,
-        location: item.location,
-        coordinates: item.coordinates,
-        bags: item.bags || 1,
-        points: item.points || Math.floor(Math.random() * 50) + 50,
-        fee: item.fee || ((Math.random() * 10) + 5).toFixed(2),
-        status: item.status,
-        created_at: item.created_at,
-        accepted_at: item.accepted_at,
-        picked_up_at: item.picked_up_at,
-        completed_at: item.completed_at,
-        distance: `${distanceFromUser.toFixed(1)} km away`,
-        distanceValue: distanceFromUser, // Store actual distance from user for sorting
-        distanceToDisposal: distanceToDisposal, // Store distance to disposal center
-        type: item.type || 'General',
-        scanned_bags: item.scanned_bags || [],
-        disposal_complete: item.disposal_complete || false,
-        disposal_site: item.disposal_site || null,
-        disposal_timestamp: item.disposal_timestamp || null,
-        environmental_impact: item.environmental_impact || null
-      };
-    });
-    
-    // Sort by created_at (latest first) and then by proximity to disposal center
-    return transformedData.sort((a, b) => {
-      // First sort by date (latest first)
-      const dateA = new Date(a.created_at || 0);
-      const dateB = new Date(b.created_at || 0);
-      if (dateB - dateA !== 0) return dateB - dateA;
-      
-      // If dates are equal, sort by proximity to disposal center
-      return a.distanceValue - b.distanceValue;
-    });
-  };
-
   // Fetch requests from Supabase
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
+      
+      // Get user location with retry and fallback
+      try {
+        const location = await getLocationWithRetry(2, 1000);
+        setUserLocation({
+          latitude: location.lat,
+          longitude: location.lng,
+          accuracy: location.accuracy,
+          isFallback: location.isFallback
+        });
+        
+        if (location.isFallback) {
+          console.warn('Using fallback location');
+        }
+      } catch (error) {
+        console.error('Error getting location:', error);
+        // Set default location if location fails
+        setUserLocation({
+          latitude: 5.6037,
+          longitude: -0.1870,
+          isFallback: true
+        });
+      }
       
       // Check if we're online
       const online = await isOnline();
@@ -139,49 +113,73 @@ const RequestPage = () => {
       if (online) {
         // Fetch from Supabase
         const { data: availableData, error: availableError } = await supabase
-          .from('authority_assignments')
+          .from('pickup_requests')
           .select('*')
-          .eq('status', AssignmentStatus.AVAILABLE)
+          .eq('status', 'available')
           .order('created_at', { ascending: false });
         
         if (availableError) throw availableError;
         
         // Fetch accepted requests for this user
         const { data: acceptedData, error: acceptedError } = await supabase
-          .from('authority_assignments')
+          .from('pickup_requests')
           .select('*')
-          .eq('status', AssignmentStatus.ACCEPTED)
+          .eq('status', 'accepted')
           .eq('collector_id', user?.id)
-          .order('accepted_at', { ascending: false });
+          .order('accepted_at', { ascending: true }); // Oldest first for accepted
         
         if (acceptedError) throw acceptedError;
         
         // Fetch picked up requests for this user
         const { data: picked_up_data, error: picked_up_error } = await supabase
-          .from('authority_assignments')
+          .from('pickup_requests')
           .select('*')
-          .eq('status', AssignmentStatus.COMPLETED)
+          .eq('status', 'picked_up')
           .eq('collector_id', user?.id)
-          .order('completed_at', { ascending: false });
+          .order('picked_up_at', { ascending: false }); // Newest first for completed
         
         if (picked_up_error) throw picked_up_error;
         
-        // Transform data and apply radius filtering for available requests
-        // For available requests, filter by radius if user location is available
+        // Transform all data first
+        const allAvailable = transformRequestsData(availableData);
+        const accepted = transformRequestsData(acceptedData);
+        const picked_up = transformRequestsData(picked_up_data);
+        
+        // Filter available requests based on current filters and user location
         let available = [];
         if (userLocation) {
-          // Filter available requests by radius
-          available = transformRequestsData(availableData)
-            .filter(req => req.distanceValue <= searchRadius);
+          available = allAvailable.filter(req => {
+            // Filter by distance
+            if (req.distanceValue > filters.searchRadius) return false;
+            
+            // Filter by waste type
+            if (!filters.wasteTypes.includes('All Types') && 
+                !filters.wasteTypes.includes(req.type)) {
+              return false;
+            }
+            
+            // Filter by minimum payment
+            if (req.fee < filters.minPayment) {
+              return false;
+            }
+            
+            // Filter by priority
+            if (filters.priority !== 'all' && req.priority !== filters.priority) {
+              return false;
+            }
+            
+            return true;
+          });
+          
+          // Sort available requests by proximity to user (nearest first)
+          available.sort((a, b) => a.distanceValue - b.distanceValue);
         } else {
-          // If user location isn't available, show all requests
-          available = transformRequestsData(availableData);
+          // If user location isn't available, use previously filtered requests from context
+          available = filteredRequests.available.length > 0 ? 
+            filteredRequests.available : 
+            allAvailable;
         }
         
-        // Sort available requests by proximity to user (nearest first)
-        available.sort((a, b) => a.distanceValue - b.distanceValue);
-        
-        const accepted = transformRequestsData(acceptedData);
         // Sort accepted requests by timestamp (oldest first) and then by proximity
         accepted.sort((a, b) => {
           // First sort by accepted_at timestamp (oldest first)
@@ -190,14 +188,15 @@ const RequestPage = () => {
           if (dateA - dateB !== 0) return dateA - dateB;
           
           // If dates are equal, sort by proximity (nearest first)
-          return a.distanceValue - b.distanceValue;
+          return (a.distanceValue || 0) - (b.distanceValue || 0);
         });
         
-        const picked_up = transformRequestsData(picked_up_data);
-        
-        // Update state
+        // Update state with filtered requests
         const newRequests = { available, accepted, picked_up };
         setRequests(newRequests);
+        
+        // Update filtered requests in context
+        updateFilteredRequests({ available });
         
         // Update cache
         saveToCache(CACHE_KEYS.ALL_REQUESTS, newRequests);
@@ -234,7 +233,7 @@ const RequestPage = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user?.id, userLocation, filters.searchRadius, filters.wasteTypes, filters.minPayment, filters.priority]);
 
   // Handle tab change
   const handleTabChange = (tab) => {
@@ -686,35 +685,144 @@ const RequestPage = () => {
     }
   };
 
-  // Handle locate site
-  const handleLocateSite = (requestId) => {
-    // Find the request
-    const request = requests.picked_up.find(req => req.id === requestId);
-    
-    if (!request) {
-      showToast('Request not found', 'error');
-      return;
-    }
-    
-    // In a real app, this would locate the nearest disposal site
-    // For this simulation, we'll just show a toast and simulate opening Google Maps
-    const disposalSite = 'Accra Recycling Center, Ring Road';
-    
-    showToast(`Locating nearest disposal site: ${disposalSite}`, 'info');
-    
-    // Simulate opening Google Maps
-    window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(disposalSite)}`, '_blank');
-  };
-
-  // User's current location state
-  const [userLocation, setUserLocation] = useState(null);
-  const [locationError, setLocationError] = useState(null);
-  const [geofenceModalOpen, setGeofenceModalOpen] = useState(false);
-  const [locationFetchAttempts, setLocationFetchAttempts] = useState(0);
-  const [locationFetchInProgress, setLocationFetchInProgress] = useState(false);
+// Geofence Error Modal Component
+const GeofenceErrorModal = ({ 
+  isOpen, 
+  onClose, 
+  onRetry, 
+  onBypass, 
+  locationError,
+  onLocateSite
+}) => {
+  if (!isOpen) return null;
   
-  // For demo/development purposes - allow bypassing location check
+  // Handle retry location
+  const handleRetry = () => {
+    if (onRetry) onRetry();
+  };
+  
+  // Handle bypass for testing
+  const handleBypass = () => {
+    if (onBypass) onBypass();
+  };
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg p-6 max-w-md w-full">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold text-red-600">Location Restriction</h3>
+          <button 
+            onClick={onClose} 
+            className="text-gray-500 hover:text-gray-700"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+        
+        <div className="mb-6">
+          <div className="flex items-center justify-center mb-4 text-red-500">
+            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </div>
+          
+          <p className="text-center text-lg font-medium mb-2">Location Restriction</p>
+          <p className="text-center mb-4">You must be within 50 meters of the disposal center to dispose bags.</p>
+          
+          {locationError && (
+            <div className="bg-red-50 border border-red-200 rounded p-3 mb-4">
+              <p className="text-sm text-red-600 font-medium">Error: {locationError}</p>
+              <p className="text-sm text-gray-600 mt-1">Please enable location services in your browser settings.</p>
+              
+              {locationError.includes('timeout') && (
+                <div className="mt-2 pt-2 border-t border-red-100">
+                  <p className="text-sm text-gray-700">Location request timed out. This could be due to:</p>
+                  <ul className="list-disc list-inside text-sm text-gray-700 mt-1">
+                    <li>Poor GPS signal</li>
+                    <li>Browser location permissions not granted</li>
+                    <li>Device location services disabled</li>
+                  </ul>
+                </div>
+              )}
+              
+              <button 
+                onClick={handleRetry}
+                className="w-full mt-2 bg-red-100 hover:bg-red-200 text-red-700 py-1 px-2 rounded text-sm"
+              >
+                Retry Location Detection
+              </button>
+            </div>
+          )}
+          
+          <div className="bg-blue-50 border border-blue-200 rounded p-3">
+            <p className="text-sm text-blue-600">Please move closer to the disposal center and try again.</p>
+            <p className="text-sm text-gray-600 mt-1">The disposal center is located at: <strong>Accra Recycling Center, Ring Road</strong></p>
+          </div>
+        </div>
+        
+        <div className="flex flex-wrap justify-end gap-2">
+          {onLocateSite && (
+            <button 
+              onClick={onLocateSite}
+              className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md"
+            >
+              Get Directions
+            </button>
+          )}
+          
+          <button 
+            onClick={onClose}
+            className="bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 px-4 rounded-md"
+          >
+            Close
+          </button>
+          
+          {onBypass && (
+            <button 
+              onClick={handleBypass}
+              className="w-full mt-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 py-1 px-2 rounded text-xs border border-yellow-300"
+            >
+              Bypass Location Check (Testing Only)
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Handle locate site
+const handleLocateSite = (requestId) => {
+  // Find the request
+  const request = requests.picked_up.find(req => req.id === requestId);
+  
+  if (!request) {
+    showToast('Request not found', 'error');
+    return;
+  }
+  
+  // In a real app, this would locate the nearest disposal site
+  // For this simulation, we'll just show a toast and simulate opening Google Maps
+  const disposalSite = 'Accra Recycling Center, Ring Road';
+  
+  showToast(`Locating nearest disposal site: ${disposalSite}`, 'info');
+  
+  // Get the scanned bags from the request
+  const scannedBags = request.scanned_bags || [];
+  
+  // Calculate completion bonus (10% of total bag fees)
+  const totalBagFees = scannedBags.reduce((sum, bag) => sum + (bag.fee || 0), 0);
+  const completionBonus = totalBagFees * 0.1;
+  const totalEarnings = totalBagFees + completionBonus;
+  
+  // State for location handling
   const [bypassLocationCheck, setBypassLocationCheck] = useState(false);
+  const [locationFetchInProgress, setLocationFetchInProgress] = useState(false);
+  const [locationFetchAttempts, setLocationFetchAttempts] = useState(0);
+  const [locationError, setLocationError] = useState(null);
+  const [showGeofenceModal, setShowGeofenceModal] = useState(false);
 
   // Check if user is within range of disposal center
   const isWithinDisposalRange = (userCoords) => {
@@ -747,11 +855,19 @@ const RequestPage = () => {
           setLocationError(null);
           setLocationFetchInProgress(false);
           setLocationFetchAttempts(0); // Reset attempts on success
+          
+          // Check if we're in range after getting location
+          if (isWithinDisposalRange(userCoords)) {
+            setShowGeofenceModal(false);
+          } else {
+            setShowGeofenceModal(true);
+          }
         },
         (error) => {
           console.error('Error getting location:', error);
           setLocationError(error.message || 'Unable to get your location');
           setLocationFetchInProgress(false);
+          setShowGeofenceModal(true);
           
           // Only show toast on first few errors to avoid spamming
           if (locationFetchAttempts <= 2) {
@@ -777,6 +893,7 @@ const RequestPage = () => {
     } else {
       setLocationError('Geolocation is not supported by this browser');
       showToast('Geolocation is not supported by this browser.', 'error', 8000);
+      setShowGeofenceModal(true);
     }
   };
 
@@ -790,103 +907,41 @@ const RequestPage = () => {
     
     return () => clearInterval(locationInterval);
   }, []);
-
-  // Geofence Error Modal Component
-  const GeofenceErrorModal = ({ isOpen, onClose }) => {
-    if (!isOpen) return null;
-    
-    const handleRetryLocation = () => {
-      // Reset location fetch attempts to start fresh
-      setLocationFetchAttempts(0);
-      setLocationFetchInProgress(false);
-      // Try to get location again
-      updateUserLocation();
-    };
-    
-    const handleBypassForTesting = () => {
-      setBypassLocationCheck(true);
-      onClose();
-      showToast('Location check bypassed for testing', 'success');
-    };
-    
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg p-6 max-w-md w-full">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold text-red-600">Location Restriction</h3>
-            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-              </svg>
-            </button>
-          </div>
-          
-          <div className="mb-6">
-            <div className="flex items-center justify-center mb-4 text-red-500">
-              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-            </div>
-            <p className="text-center text-lg font-medium mb-2">Location Restriction</p>
-            <p className="text-center mb-4">You must be within 50 meters of the disposal center to dispose bags.</p>
-            
-            {locationError && (
-              <div className="bg-red-50 border border-red-200 rounded p-3 mb-4">
-                <p className="text-sm text-red-600 font-medium">Error: {locationError}</p>
-                <p className="text-sm text-gray-600 mt-1">Please enable location services in your browser settings.</p>
-                
-                {locationError.includes('timeout') && (
-                  <div className="mt-2 pt-2 border-t border-red-100">
-                    <p className="text-sm text-gray-700">Location request timed out. This could be due to:</p>
-                    <ul className="list-disc list-inside text-sm text-gray-700 mt-1">
-                      <li>Poor GPS signal</li>
-                      <li>Browser location permissions not granted</li>
-                      <li>Device location services disabled</li>
-                    </ul>
-                  </div>
-                )}
-                
-                <button 
-                  onClick={handleRetryLocation}
-                  className="w-full mt-2 bg-red-100 hover:bg-red-200 text-red-700 py-1 px-2 rounded text-sm"
-                >
-                  Retry Location Detection
-                </button>
-              </div>
-            )}
-            
-            <div className="bg-blue-50 border border-blue-200 rounded p-3">
-              <p className="text-sm text-blue-600">Please move closer to the disposal center and try again.</p>
-              <p className="text-sm text-gray-600 mt-1">The disposal center is located at: <strong>Accra Recycling Center, Ring Road</strong></p>
-            </div>
-          </div>
-          
-          <div className="flex flex-wrap justify-end gap-2">
-            <button 
-              onClick={() => onLocateSite()} 
-              className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md"
-            >
-              Get Directions
-            </button>
-            <button 
-              onClick={onClose} 
-              className="bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 px-4 rounded-md"
-            >
-              Close
-            </button>
-            
-            {/* Development/testing bypass button */}
-            <button 
-              onClick={handleBypassForTesting}
-              className="w-full mt-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 py-1 px-2 rounded text-xs border border-yellow-300"
-            >
-              Bypass Location Check (Testing Only)
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+  
+  // Handle retry location
+  const handleRetryLocation = () => {
+    // Reset location fetch attempts to start fresh
+    setLocationFetchAttempts(0);
+    setLocationFetchInProgress(false);
+    // Try to get location again
+    updateUserLocation();
   };
+  
+  // Handle bypass for testing
+  const handleBypassForTesting = () => {
+    setBypassLocationCheck(true);
+    setShowGeofenceModal(false);
+    showToast('Location check bypassed for testing', 'success');
+  };
+  
+  // Handle open directions in maps
+  const handleOpenDirections = () => {
+    // Open Google Maps with directions to disposal site
+    const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${DISPOSAL_CENTER.lat},${DISPOSAL_CENTER.lng}&travelmode=driving`;
+    window.open(mapsUrl, '_blank');
+  };
+
+  return (
+    <GeofenceErrorModal 
+      isOpen={showGeofenceModal}
+      onClose={() => setShowGeofenceModal(false)}
+      onRetry={handleRetryLocation}
+      onBypass={handleBypassForTesting}
+      locationError={locationError}
+      onLocateSite={handleOpenDirections}
+    />
+  );
+};
 
   // Handle dispose bag
   const handleDisposeBag = async (requestId) => {
@@ -1028,6 +1083,9 @@ const RequestPage = () => {
   };
 
   // View details functionality removed as per requirements
+  
+  // State for geofence modal
+  const [geofenceModalOpen, setGeofenceModalOpen] = useState(false);
 
   // Add real-time subscription for assignments
   useEffect(() => {
@@ -1042,11 +1100,11 @@ const RequestPage = () => {
         
         // Then set up real-time subscription
         subscription = supabase
-          .channel('assignments_requests_changes')
+          .channel('pickup_requests_changes')
           .on('postgres_changes', {
-            event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+            event: '*', 
             schema: 'public',
-            table: 'authority_assignments'
+            table: 'pickup_requests'
           }, (payload) => {
             try {
               if (!payload) {

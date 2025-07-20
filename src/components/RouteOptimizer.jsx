@@ -546,7 +546,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
               {optimizedRoute && optimizedRoute.length > 0 && optimizedRoute.map((stop, index) => {
                 return (
                   <Marker
-                    key={`stop-${stop.id}`}
+                    key={`stop-${stop.id || 'stop'}-${index}`}
                     position={[stop.latitude, stop.longitude]}
                     icon={getStopIcon(stop)}
                   >

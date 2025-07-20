@@ -1,6 +1,6 @@
 // ***********************************************************
-// This example support/e2e.js is processed and
-// loaded automatically before your test files.
+// This example support/component.js is processed and
+// loaded automatically before your component test files.
 //
 // This is a great place to put global configuration and
 // behavior that modifies Cypress.
@@ -14,7 +14,19 @@
 // ***********************************************************
 
 // Import commands.js using ES2015 syntax:
-import './commands';
+import './commands'
 
-// Import auth commands
-import './auth/commands';
+// Alternatively you can use CommonJS syntax:
+// require('./commands')
+
+// Import global styles
+import '../../src/index.css'
+
+// Import the mount command from cypress/react18
+import { mount } from 'cypress/react18'
+
+// Add the mount command to Cypress
+Cypress.Commands.add('mount', mount)
+
+// Example use:
+// cy.mount(<MyComponent />)

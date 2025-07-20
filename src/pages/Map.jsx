@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
+import { useFilters } from '../context/FilterContext';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -9,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
 import { CACHE_KEYS, saveToCache, getFromCache, isOnline, registerConnectivityListeners } from '../utils/cacheUtils';
+import { requestMarkerIcon } from '../utils/markerIcons';
 
 // Fix for default Leaflet marker icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -92,14 +94,27 @@ const createUserLocationIcon = () => {
   });
 };
 
+// Function to get color based on waste type
+const getWasteTypeColor = (type) => {
+  const colors = {
+    'plastic': '#3b82f6', // blue-500
+    'paper': '#eab308',   // yellow-500
+    'metal': '#6b7280',   // gray-500
+    'glass': '#93c5fd',   // blue-300
+    'organic': '#22c55e', // green-500
+    'general': '#ef4444', // red-500
+    'recycling': '#86efac', // green-300
+    'recyclable': '#2196F3', // blue
+    'hazardous': '#F44336', // red
+    'e-waste': '#9C27B0' // purple
+  };
+  return colors[type?.toLowerCase()] || '#6b7280'; // default to gray-500
+};
+
 // Function to create a custom marker icon based on waste type
 const createWasteTypeIcon = (type) => {
   const color = getWasteTypeColor(type);
-  return L.divIcon({
-    html: `<div style="width: 1rem; height: 1rem; border-radius: 9999px; background-color: ${color}; border: 2px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); z-index: 1000;"></div>`,
-    className: 'custom-marker-icon',
-    iconSize: [20, 20],
-  });
+  return createCustomIcon(color);
 };
 
 // Custom marker icons
@@ -111,16 +126,170 @@ const createCustomIcon = (color) => {
   });
 };
 
-// Location update component
-const LocationUpdater = ({ position, setPosition, shouldCenter, setShouldCenter }) => {
-  const map = useMap();
+// Dustbin icon SVG (base64 encoded)
+const dustbinIcon = new L.Icon({
+  iconUrl: `data:image/svg+xml;base64,${btoa(`
+    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      <path d="M24 7h-4V5c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H8v2h1v16c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V9h1V7zm-10-2h4v2h-4V5zm7 20H11V9h10v14z" fill="#3b82f6"/>
+      <path d="M13 11h2v12h-2zM17 11h2v12h-2z" fill="#fff"/>
+    </svg>
+  `)}`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32]
+});
 
+// Location update component with improved error handling and fallbacks
+const LocationUpdater = ({ position, setPosition, shouldCenter, setShouldCenter, onLocationError }) => {
+  const map = useMap();
+  const watchId = useRef(null);
+  const defaultPosition = [5.6037, -0.1870]; // Default to Accra, Ghana
+  const positionRef = useRef(position || defaultPosition);
+  const errorCount = useRef(0);
+  const MAX_RETRIES = 3;
+  const isMounted = useRef(true);
+
+  // Update position ref when position changes
+  useEffect(() => {
+    if (position) {
+      positionRef.current = position;
+    }
+  }, [position]);
+
+  // Set default position if no position is set
+  useEffect(() => {
+    if (!position) {
+      setPosition(defaultPosition);
+      map.setView(defaultPosition, 13);
+    }
+  }, [map, position, setPosition]);
+
+  // Handle successful geolocation
+  const handleSuccess = useCallback((pos) => {
+    if (!isMounted.current) return;
+    
+    errorCount.current = 0; // Reset error count on success
+    const { latitude, longitude, accuracy } = pos.coords;
+    
+    console.log('Geolocation success:', { latitude, longitude, accuracy });
+    
+    // Accept positions with accuracy up to 2000m
+    if (accuracy > 2000) {
+      console.warn('Low accuracy position received, but using it as fallback', { accuracy });
+    }
+
+    const newPosition = [latitude, longitude];
+    positionRef.current = newPosition;
+    setPosition(newPosition);
+    
+    if (shouldCenter) {
+      map.setView(newPosition, 15);
+      setShouldCenter(false);
+    }
+  }, [map, setPosition, setShouldCenter, shouldCenter]);
+
+  // Handle geolocation errors
+  const handleError = useCallback((error) => {
+    if (!isMounted.current) return;
+    
+    console.warn('Geolocation error:', {
+      code: error.code,
+      message: error.message,
+      errorCount: errorCount.current
+    });
+    
+    errorCount.current++;
+    
+    // Only trigger error callback on first error or if we've given up
+    if (errorCount.current === 1 || errorCount.current >= MAX_RETRIES) {
+      if (onLocationError) {
+        onLocationError(error);
+      }
+    }
+    
+    // Fallback to default position if we keep getting errors
+    if (errorCount.current >= MAX_RETRIES) {
+      console.log('Falling back to default position after', MAX_RETRIES, 'errors');
+      positionRef.current = defaultPosition;
+      setPosition(defaultPosition);
+      if (shouldCenter) {
+        map.setView(defaultPosition, 13);
+        setShouldCenter(false);
+      }
+    }
+  }, [defaultPosition, map, onLocationError, setPosition, setShouldCenter, shouldCenter]);
+
+  // Set up geolocation watcher
+  useEffect(() => {
+    isMounted.current = true;
+    
+    const initGeolocation = () => {
+      if (!navigator.geolocation) {
+        console.warn('Geolocation is not supported by this browser');
+        handleError({ code: 0, message: 'Geolocation is not supported' });
+        return;
+      }
+
+      // First try with high accuracy (but don't wait too long)
+      navigator.geolocation.getCurrentPosition(
+        handleSuccess,
+        (highAccuracyError) => {
+          console.warn('High accuracy geolocation failed, trying with lower accuracy', highAccuracyError);
+          
+          // Fall back to low accuracy with longer timeout
+          navigator.geolocation.getCurrentPosition(
+            handleSuccess,
+            (lowAccuracyError) => {
+              console.warn('Low accuracy geolocation also failed', lowAccuracyError);
+              handleError(lowAccuracyError);
+            },
+            {
+              enableHighAccuracy: false,
+              maximumAge: 5 * 60 * 1000, // 5 minutes
+              timeout: 10000 // 10 seconds
+            }
+          );
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 0, // Force fresh position
+          timeout: 10000 // 10 seconds
+        }
+      );
+
+      // Set up watch position with less aggressive settings
+      watchId.current = navigator.geolocation.watchPosition(
+        handleSuccess,
+        handleError,
+        {
+          enableHighAccuracy: false,
+          maximumAge: 5 * 60 * 1000, // 5 minutes
+          timeout: 10000, // 10 seconds
+          distanceFilter: 10 // Only update if moved at least 10 meters
+        }
+      );
+    };
+
+    // Initial setup with a small delay to avoid blocking the UI
+    const timeoutId = setTimeout(initGeolocation, 100);
+
+    // Cleanup function
+    return () => {
+      isMounted.current = false;
+      clearTimeout(timeoutId);
+      if (watchId.current !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchId.current);
+      }
+    };
+  }, [handleSuccess, handleError]);
+
+  // Handle map centering when position or shouldCenter changes
   useEffect(() => {
     if (position && shouldCenter) {
       map.setView(position, map.getZoom());
       setShouldCenter(false);
     }
-  }, [position, map, shouldCenter, setShouldCenter]);
+  }, [position, shouldCenter, map, setShouldCenter]);
 
   return null;
 };
@@ -141,7 +310,21 @@ const RecenterButton = ({ onClick }) => {
 };
 
 // New Filter Card component that appears at the bottom of the map
-const FilterCard = ({ filters, setFilters, applyFilters }) => {
+const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
+  // Ensure filters has all required properties with defaults
+  const safeFilters = {
+    searchRadius: typeof filters.searchRadius === 'number' ? filters.searchRadius : 5,
+    wasteTypes: Array.isArray(filters.wasteTypes) ? filters.wasteTypes : [],
+    minPayment: typeof filters.minPayment === 'number' ? filters.minPayment : 0,
+    priority: ['all', 'high', 'medium', 'low'].includes(filters.priority) ? filters.priority : 'all',
+    ...filters
+  };
+  
+  // Handle filter changes
+  const handleFilterChange = (updates) => {
+    updateFilters(updates);
+    applyFilters();
+  };
   // Group waste types into categories
   const wasteTypeCategories = {
     all: 'All Types',
@@ -167,35 +350,27 @@ const FilterCard = ({ filters, setFilters, applyFilters }) => {
       selectedTypes = categoryMapping[category] || [];
     }
     
-    setFilters({
-      ...filters,
+    handleFilterChange({
       wasteTypes: selectedTypes,
       activeFilter: category
     });
-    
-    // Apply filters immediately
-    applyFilters();
   };
   
   return (
     <div className="absolute bottom-24 left-4 right-4 bg-white rounded-lg shadow-lg p-4 z-[2000] pointer-events-auto overflow-hidden" style={{ position: 'fixed', touchAction: 'none' }}>
       <div className="mb-4">
         <div className="flex justify-between items-center mb-2">
-          <span className="font-medium" style={{ color: '#0a0a0a' }}>Radius:</span>
-          <span className="bg-green-500 text-white rounded-full w-8 h-8 flex items-center justify-center">
-            {filters.maxDistance}
-          </span>
+          <span className="font-medium" style={{ color: '#0a0a0a' }}>Radius: {safeFilters.searchRadius} km</span>
         </div>
         <input 
           type="range" 
           min="1" 
-          max="10" 
-          step="0.5"
-          value={filters.maxDistance} 
+          max="20" 
+          step="1"
+          value={safeFilters.searchRadius} 
           onChange={(e) => {
-            const newDistance = parseFloat(e.target.value);
-            setFilters({...filters, maxDistance: newDistance});
-            applyFilters();
+            const newDistance = parseFloat(e.target.value) || 5;
+            handleFilterChange({ searchRadius: newDistance });
           }} 
           className="w-full accent-green-500"
         />
@@ -217,8 +392,24 @@ const FilterCard = ({ filters, setFilters, applyFilters }) => {
 };
 
 // Original Filter panel component (keep this for advanced filtering)
-const FilterPanel = ({ isOpen, onClose, filters, setFilters, applyFilters }) => {
+const FilterPanel = ({ isOpen, onClose, filters, updateFilters, applyFilters }) => {
   if (!isOpen) return null;
+  
+  // Ensure filters have default values
+  const safeFilters = {
+    maxDistance: typeof filters.maxDistance === 'number' ? filters.maxDistance : 5,
+    wasteTypes: Array.isArray(filters.wasteTypes) ? [...filters.wasteTypes] : [],
+    minPayment: typeof filters.minPayment === 'number' ? filters.minPayment : 0,
+    priority: ['all', 'high', 'medium', 'low'].includes(filters.priority) ? filters.priority : 'all'
+  };
+  
+  // Handle waste type toggle
+  const toggleWasteType = (type) => {
+    const newTypes = safeFilters.wasteTypes.includes(type)
+      ? safeFilters.wasteTypes.filter(t => t !== type)
+      : [...safeFilters.wasteTypes, type];
+    updateFilters({ wasteTypes: newTypes });
+  };
   
   return (
     <div className="absolute top-0 left-0 z-20 w-full h-full bg-white bg-opacity-95 p-4 flex flex-col">
@@ -240,8 +431,8 @@ const FilterPanel = ({ isOpen, onClose, filters, setFilters, applyFilters }) => 
             min="1" 
             max="10" 
             step="0.5"
-            value={filters.maxDistance} 
-            onChange={(e) => setFilters({...filters, maxDistance: parseFloat(e.target.value)})} 
+            value={safeFilters.maxDistance} 
+            onChange={(e) => updateFilters({ maxDistance: parseFloat(e.target.value) })} 
             className="w-full"
           />
           <span className="ml-2 text-sm">{filters.maxDistance} km</span>
@@ -257,13 +448,8 @@ const FilterPanel = ({ isOpen, onClose, filters, setFilters, applyFilters }) => 
               <input 
                 type="checkbox"
                 id={`type-${type}`}
-                checked={filters.wasteTypes.includes(type)}
-                onChange={(e) => {
-                  const newTypes = e.target.checked
-                    ? [...filters.wasteTypes, type]
-                    : filters.wasteTypes.filter(t => t !== type);
-                  setFilters({...filters, wasteTypes: newTypes});
-                }}
+                checked={safeFilters.wasteTypes.includes(type)}
+                onChange={() => toggleWasteType(type)}
                 className="mr-2"
               />
               <label htmlFor={`type-${type}`} className="text-sm capitalize">{type}</label>
@@ -278,8 +464,8 @@ const FilterPanel = ({ isOpen, onClose, filters, setFilters, applyFilters }) => 
         <input 
           type="number" 
           min="0"
-          value={filters.minPayment}
-          onChange={(e) => setFilters({...filters, minPayment: parseInt(e.target.value || 0)})}
+          value={safeFilters.minPayment}
+          onChange={(e) => updateFilters({ minPayment: parseInt(e.target.value || 0) })}
           className="w-full p-2 border rounded"
         />
       </div>
@@ -288,8 +474,8 @@ const FilterPanel = ({ isOpen, onClose, filters, setFilters, applyFilters }) => 
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
         <select 
-          value={filters.priority}
-          onChange={(e) => setFilters({...filters, priority: e.target.value})}
+          value={safeFilters.priority}
+          onChange={(e) => updateFilters({ priority: e.target.value })}
           className="w-full p-2 border rounded"
         >
           <option value="all">All Priorities</option>
@@ -314,8 +500,9 @@ const FilterPanel = ({ isOpen, onClose, filters, setFilters, applyFilters }) => 
 
 const MapPage = () => {
   const { user } = useAuth();
+  const { filters, updateFilters, updateFilteredRequests } = useFilters();
   const [map, setMap] = useState(null);
-  const [position, setPosition] = useState([5.6037, -0.1870]); // Default: Accra, Ghana
+  const [position, setPosition] = useState([5.6037, -0.1870]); // Default to Accra, Ghana
   const [error, setError] = useState(null);
   const [watchId, setWatchId] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -327,15 +514,18 @@ const MapPage = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [isOnlineStatus, setIsOnlineStatus] = useState(isOnline());
-  const [isCollectorOnline, setIsCollectorOnline] = useState(true); // New state for collector online status
+  const [isCollectorOnline, setIsCollectorOnline] = useState(true);
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
-  const [filters, setFilters] = useState({
-    maxDistance: 5, // 5km
-    wasteTypes: Object.values(WasteType), // All waste types
-    minPayment: 0,
-    priority: 'all',
-    activeFilter: 'all' // 'all', 'recyclable', 'general', 'hazardous'
-  });
+  
+  // Refs for error handling
+  const lastErrorRef = useRef(null);
+  const errorToastShownRef = useRef(false);
+  const positionRef = useRef(position);
+  
+  // Update position ref when position changes
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
   
   // Show toast notification
   const showToast = (message, type = 'info', duration = 3000) => {
@@ -372,15 +562,15 @@ const MapPage = () => {
 
   // Use default location instead of attempting geolocation
   useEffect(() => {
-    // Default location (Accra, Ghana)
-    const defaultLocation = [5.6037, -0.1870];
+    // Use the same coordinates we set in the state
+    const defaultLocation = [5.672524779099469, -0.2808150610819718];
     
     // Initialize with default location immediately
     setPosition(defaultLocation);
     setLastUpdated(new Date());
     
-    // Display a simple message
-    setError('Using default location in Accra');
+    // Clear any previous error
+    setError(null);
     
     // If there's a watchId from before, clean it up
     if (watchId) {
@@ -429,20 +619,138 @@ const MapPage = () => {
     return `${distance.toFixed(1)}km`;
   };
   
-  // Refresh data handler
-  const refreshData = async () => {
-    if (isRefreshing) return;
-    
+  // Fetch requests from Supabase
+  const fetchRequests = useCallback(async () => {
     try {
-      setIsRefreshing(true);
-      await fetchAssignments();
-      setLastUpdated(new Date());
-    } catch (err) {
-      console.error('Error refreshing data:', err);
+      setIsLoading(true);
+      setError(null);
+      
+      // Check if we're online
+      const online = await isOnline();
+      setIsOnlineStatus(online);
+      
+      if (online) {
+        console.log('Fetching pickup requests from Supabase...');
+        
+        // Log Supabase configuration
+        console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
+        
+        // Fetch available pickup requests
+        const { data, error, count } = await supabase
+          .from('pickup_requests')
+          .select('*', { count: 'exact' })
+          .eq('status', 'available')
+          .order('created_at', { ascending: false });
+        
+        console.log('Supabase query results:', { data, error, count });
+        
+        if (error) {
+          console.error('Supabase query error:', error);
+          throw error;
+        }
+        
+        // Transform the data to match our expected format
+        const transformedData = data
+          .map(item => {
+            try {
+              if (!item) return null;
+              
+              const coords = parseCoordinates(item.coordinates);
+              
+              // Skip items with invalid coordinates
+              if (!Array.isArray(coords) || coords.length !== 2 || 
+                  typeof coords[0] !== 'number' || typeof coords[1] !== 'number' ||
+                  isNaN(coords[0]) || isNaN(coords[1])) {
+                console.warn('Skipping item with invalid coordinates:', item.id, item.coordinates);
+                return null;
+              }
+              
+              return {
+                id: item.id || `temp-${Math.random().toString(36).substr(2, 9)}`,
+                type: item.waste_type || 'general',
+                coordinates: coords,
+                location: item.location || 'Unknown location',
+                fee: Number(item.fee) || 0,
+                status: item.status || 'available',
+                priority: item.priority || 'medium',
+                bag_count: Number(item.bag_count) || 1,
+                special_instructions: item.special_instructions || '',
+                created_at: item.created_at || new Date().toISOString(),
+                updated_at: item.updated_at || new Date().toISOString(),
+                distance: calculateDistance(
+                  { lat: position[0], lng: position[1] },
+                  { lat: coords[0], lng: coords[1] }
+                ),
+                estimated_time: item.estimated_time || 'Unknown',
+                distanceValue: calculateDistance(
+                  { lat: position[0], lng: position[1] },
+                  { lat: coords[0], lng: coords[1] }
+                )
+              };
+            } catch (error) {
+              console.error('Error processing request:', item?.id, error);
+              return null;
+            }
+          })
+          .filter(Boolean); // Remove any null entries
+        
+        // Update state and cache
+        setAllRequests(transformedData);
+        setRequests(transformedData);
+        setLastUpdated(new Date());
+        saveToCache(CACHE_KEYS.PICKUP_REQUESTS, transformedData);
+        
+        if (transformedData.length > 0) {
+          showToast(`${transformedData.length} pickup requests found`, 'success');
+        } else {
+          showToast('No pickup requests found', 'info');
+        }
+      } else {
+        // Try to load from cache if offline
+        const cachedData = await getFromCache(CACHE_KEYS.PICKUP_REQUESTS);
+        if (cachedData) {
+          setAllRequests(cachedData);
+          setRequests(cachedData);
+          setLastUpdated(new Date());
+          showToast('Showing cached data', 'info');
+        } else {
+          showToast('No cached data available', 'warning');
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching pickup requests:', error);
+      showToast('Failed to load pickup requests', 'error');
+      
+      // Try to load from cache on error
+      const cachedData = await getFromCache(CACHE_KEYS.PICKUP_REQUESTS);
+      if (cachedData) {
+        setAllRequests(cachedData);
+        setRequests(cachedData);
+        showToast('Showing cached data', 'info');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [position]);
+
+  // Refresh data
+  const refreshData = useCallback(async () => {
+    if (!isOnlineStatus) {
+      showToast('Cannot refresh while offline', 'error');
+      return;
+    }
+    
+    setIsRefreshing(true);
+    try {
+      await fetchRequests();
+      showToast('Data refreshed', 'success');
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      showToast('Failed to refresh data', 'error');
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [isOnlineStatus, fetchRequests]);
 
   // Auto refresh every 2 minutes
   useEffect(() => {
@@ -453,207 +761,177 @@ const MapPage = () => {
     return () => clearInterval(intervalId);
   }, []);
 
+  // Helper function to extract number from distance string
+  const getDistanceNumber = (distanceStr) => {
+    if (!distanceStr) return 0;
+    // Extract the first number from the string (e.g., "2.5 km away" -> 2.5)
+    const match = distanceStr.match(/(\d+\.?\d*)/);
+    return match ? parseFloat(match[0]) : 0;
+  };
+
   // Apply filters to requests
-  const applyFilters = () => {
-    if (!allRequests || allRequests.length === 0) return;
+  const applyFilters = useCallback(() => {
+    if (!allRequests || allRequests.length === 0) {
+      console.log('No requests to filter');
+      return;
+    }
     
-    // Convert distance strings to numbers for comparison
-    const getDistanceNumber = (distStr) => {
-      if (typeof distStr === 'string') {
-        if (distStr.endsWith('m')) {
-          // Convert meters to km
-          return parseFloat(distStr.replace('m', '')) / 1000;
-        } else if (distStr.endsWith('km')) {
-          return parseFloat(distStr.replace('km', ''));
-        }
-      }
-      return 999; // Default large value for unknown distances
-    };
+    console.log('Applying filters to', allRequests.length, 'requests');
+    console.log('Current filters:', filters);
+    
+    const searchRadius = filters.searchRadius || filters.maxDistance || 10; // Use searchRadius with fallback to maxDistance
     
     const filteredRequests = allRequests.filter(req => {
-      // Distance filter
-      const distNumber = getDistanceNumber(req.distance);
-      if (distNumber > filters.maxDistance) return false;
+      // Skip if request is invalid
+      if (!req || !req.coordinates) {
+        return false;
+      }
       
-      // Waste type filter
-      if (!filters.wasteTypes.includes(req.type)) return false;
+      // Filter by status - only show available requests
+      if (req.status !== 'available') {
+        return false;
+      }
       
-      // Payment filter
-      if (req.fee < filters.minPayment) return false;
+      // Filter by distance
+      if (position && position[0] && position[1]) {
+        try {
+          const distance = calculateDistance(
+            { lat: position[0], lng: position[1] },
+            { lat: req.coordinates[0], lng: req.coordinates[1] }
+          );
+          
+          if (distance > searchRadius) {
+            return false;
+          }
+          
+          // Add distance to request for sorting
+          req.distance = distance;
+        } catch (error) {
+          console.error('Error calculating distance:', error);
+          return false;
+        }
+      }
       
-      // Priority filter
-      if (filters.priority !== 'all' && req.priority !== filters.priority) return false;
+      // Filter by waste type
+      if (filters.wasteTypes?.length > 0 && !filters.wasteTypes.includes('All Types')) {
+        if (!filters.wasteTypes.includes(req.type)) {
+          return false;
+        }
+      }
+      
+      // Filter by minimum payment
+      const minPayment = parseFloat(filters.minPayment) || 0;
+      if (minPayment > 0 && (parseFloat(req.fee) || 0) < minPayment) {
+        return false;
+      }
+      
+      // Filter by priority
+      if (filters.priority && filters.priority !== 'all' && req.priority !== filters.priority) {
+        return false;
+      }
       
       return true;
     });
     
+    // Sort by distance if we have a position
+    if (position && position[0] && position[1]) {
+      filteredRequests.sort((a, b) => (a.distance || 0) - (b.distance || 0));
+    }
+    
+    console.log('Filtered requests:', filteredRequests.length, 'out of', allRequests.length);
     setRequests(filteredRequests);
-  };
-  
+    
+    // Update filtered requests in context
+    updateFilteredRequests({ available: filteredRequests });
+  }, [allRequests, filters, position, updateFilteredRequests]);
+
   // Effect to apply filters when filter criteria change
   useEffect(() => {
     applyFilters();
   }, [filters]);
   
-  // Fetch assignments from Supabase
-  const fetchAssignments = async () => {
-    try {
-      // Check network status first
-      if (!isOnlineStatus) {
-        // Use cached data if offline
-        const cachedRequests = getFromCache(CACHE_KEYS.PICKUP_REQUESTS);
-        const cachedTimestamp = getFromCache(CACHE_KEYS.LAST_UPDATED);
-        
-        if (cachedRequests) {
-          // Update distances based on current position
-          const updatedRequests = cachedRequests.map(item => ({
-            ...item,
-            distance: calculateDistance(position, item.coordinates)
-          }));
-          
-          setAllRequests(updatedRequests);
-          applyFilters();
-          
-          if (cachedTimestamp) {
-            setLastUpdated(new Date(cachedTimestamp));
-          }
-          
-          showToast('Showing cached pickup requests', 'offline');
-          setIsLoading(false);
-          return;
-        }
-      }
-      
-      // Online or no cache available - fetch from Supabase
-      const { data, error } = await supabase
-        .from('authority_assignments')
-        .select('*')
-        .eq('status', AssignmentStatus.AVAILABLE)
-        .order('created_at', { ascending: false });
-      
-      let transformedData;
-      
-      if (error) {
-        // Check for network-related errors
-        if (!navigator.onLine || error.message?.includes('network') || error.message?.includes('connection')) {
-          // Network issue - mark as offline and try to use cache
-          setIsOnlineStatus(false);
-          const cachedRequests = getFromCache(CACHE_KEYS.PICKUP_REQUESTS);
-          
-          if (cachedRequests) {
-            setAllRequests(cachedRequests);
-            applyFilters();
-            showToast('Network issue - using cached data', 'warning');
-            setIsLoading(false);
-            return;
-          } else {
-            throw new Error('Unable to connect to server and no cached data available');
-          }
-        } else {
-          // Other Supabase error
-          throw error;
-        }
-      }
-      
-      if (!data || data.length === 0) {
-        // If no real data, use sample data for development
-        const sampleData = [
-          {
-            id: '1',
-            type: 'plastic',
-            coordinates: { lat: position[0] + 0.01, lng: position[1] - 0.01 },
-            location: '123 Main St',
-            payment: 15,
-            status: 'available',
-            priority: 'medium',
-            estimated_time: '30 mins'
-          },
-          {
-            id: '2',
-            type: 'glass',
-            coordinates: { lat: position[0] - 0.005, lng: position[1] + 0.005 },
-            location: '456 Beach Rd',
-            payment: 20,
-            status: 'available',
-            priority: 'high',
-            estimated_time: '45 mins'
-          },
-          {
-            id: '3',
-            type: 'paper',
-            coordinates: { lat: position[0] - 0.01, lng: position[1] - 0.01 },
-            location: '789 Market Ave',
-            payment: 10,
-            status: 'available',
-            priority: 'low',
-            estimated_time: '20 mins'
-          }
-        ];
-        
-        // Transform sample data
-        transformedData = sampleData.map(item => ({
-          id: item.id,
-          type: item.type || 'general',
-          coordinates: item.coordinates ? [item.coordinates.lat, item.coordinates.lng] : position,
-          location: item.location || 'Unknown location',
-          fee: item.payment || 0,
-          status: item.status,
-          priority: item.priority || 'medium',
-          estimated_time: item.estimated_time || 'Unknown',
-          distance: calculateDistance(position, item.coordinates ? [item.coordinates.lat, item.coordinates.lng] : position)
-        }));
-        
-        // Show toast for sample data
-        showToast('No pickup requests found - showing sample data', 'info');
-      } else {
-        // Transform real data for map display
-        transformedData = data.map(item => ({
-          id: item.id,
-          type: item.type || 'general',
-          coordinates: item.coordinates ? [item.coordinates.lat, item.coordinates.lng] : position,
-          location: item.location || 'Unknown location',
-          fee: item.payment || 0,
-          status: item.status,
-          priority: item.priority || 'medium',
-          estimated_time: item.estimated_time || 'Unknown',
-          distance: calculateDistance(position, item.coordinates ? [item.coordinates.lat, item.coordinates.lng] : position)
-        }));
-      }
-      
-      // Cache the transformed data
-      saveToCache(CACHE_KEYS.PICKUP_REQUESTS, transformedData);
-      saveToCache(CACHE_KEYS.LAST_UPDATED, new Date().toISOString());
-      
-      // Update all requests state
-      setAllRequests(transformedData);
-      
-      // Apply filters to set the filtered requests
-      applyFilters();
-      
-      // Update last updated timestamp
-      const now = new Date();
-      setLastUpdated(now);
-      
-      if (transformedData.length > 0 && isOnlineStatus) {
-        showToast(`${transformedData.length} pickup requests found`, 'success');
-      }
-    } catch (err) {
-      console.error('Error fetching assignments:', err);
-      setError(err.message || 'Failed to load assignments. Please try again later.');
-      showToast('Failed to load pickup requests', 'error');
-      
-      // Try to use cached data as last resort
-      const cachedRequests = getFromCache(CACHE_KEYS.PICKUP_REQUESTS);
-      if (cachedRequests) {
-        setAllRequests(cachedRequests);
-        applyFilters();
-        showToast('Using last cached data due to error', 'warning', 5000);
-      }
-    } finally {
-      setIsLoading(false);
+  // Helper function to parse PostGIS POINT string to [lat, lng] array
+  const parseCoordinates = (pointString) => {
+    // Return default position if no coordinates
+    if (!pointString) {
+      console.warn('No coordinates provided, using default position');
+      return position;
     }
+    
+    // If it's already in the correct format [lat, lng]
+    if (Array.isArray(pointString) && pointString.length === 2) {
+      return pointString;
+    }
+    
+    // Handle string format (WKT or JSON)
+    if (typeof pointString === 'string') {
+      // Check for WKT format (e.g., "POINT(lng lat)" or "SRID=4326;POINT(lng lat)")
+      const wktMatch = pointString.match(/(?:SRID=\d+;)?POINT\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
+      if (wktMatch) {
+        const lng = parseFloat(wktMatch[1]);
+        const lat = parseFloat(wktMatch[2]);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          return [lat, lng];
+        }
+      }
+      
+      // Try to parse as JSON
+      try {
+        const parsed = JSON.parse(pointString);
+        if (parsed && (parsed.lat !== undefined || parsed.latitude !== undefined)) {
+          return [
+            parsed.lat !== undefined ? parsed.lat : parsed.latitude,
+            parsed.lng !== undefined ? parsed.lng : parsed.longitude
+          ];
+        }
+      } catch (e) {
+        // Not a JSON string, continue to other formats
+      }
+      
+      // Try to parse as comma-separated string
+      const coords = pointString.split(',').map(coord => parseFloat(coord.trim()));
+      if (coords.length >= 2 && !coords.some(isNaN)) {
+        return [coords[0], coords[1]];
+      }
+    }
+    
+    // Handle object format
+    if (typeof pointString === 'object') {
+      if (pointString.lat !== undefined && pointString.lng !== undefined) {
+        return [pointString.lat, pointString.lng];
+      }
+      if (pointString.latitude !== undefined && pointString.longitude !== undefined) {
+        return [pointString.latitude, pointString.longitude];
+      }
+      if (Array.isArray(pointString) && pointString.length >= 2) {
+        return [pointString[0], pointString[1]];
+      }
+    }
+    
+    // Handle PostGIS binary format (0101000020E6100000...)
+    if (typeof pointString === 'string' && pointString.startsWith('0101000020E6100000')) {
+      try {
+        // Extract the hex part after the SRID (first 8 bytes)
+        const hex = pointString.substring(18);
+        // Convert hex to bytes and then to double (little endian)
+        const lngBytes = hex.substring(0, 16);
+        const latBytes = hex.substring(16, 32);
+        const lng = new DataView(new Uint8Array(lngBytes.match(/.{2}/g).map(b => parseInt(b, 16))).buffer).getFloat64(0, true);
+        const lat = new DataView(new Uint8Array(latBytes.match(/.{2}/g).map(b => parseInt(b, 16))).buffer).getFloat64(0, true);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          return [lat, lng];
+        }
+      } catch (e) {
+        console.error('Error parsing PostGIS binary format:', e);
+      }
+    }
+    
+    console.warn('Using default position, could not parse coordinates:', pointString);
+    return position; // Fallback to default position
   };
-  
+
+
+
   // Set up Supabase real-time subscription for assignments
   useEffect(() => {
     if (!isOnlineStatus) return;
@@ -663,33 +941,39 @@ const MapPage = () => {
     const setupRealtimeSubscription = async () => {
       try {
         // First fetch initial data
-        await fetchAssignments();
+        await fetchRequests();
         
         // Then set up real-time subscription
         subscription = supabase
-          .channel('authority_assignments_changes')
+          .channel('pickup_requests_changes')
           .on('postgres_changes', {
             event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
             schema: 'public',
-            table: 'authority_assignments'
+            table: 'pickup_requests',
+            filter: 'status=eq.available' // Only listen to available requests
           }, (payload) => {
             // Handle different event types
             const { eventType, new: newRecord, old: oldRecord } = payload;
             
             switch (eventType) {
               case 'INSERT': {
-                if (newRecord.status === AssignmentStatus.AVAILABLE) {
+                if (newRecord.status === 'available') {
+                  const coords = parseCoordinates(newRecord.coordinates);
                   // Transform the new record
                   const transformedRequest = {
                     id: newRecord.id,
-                    type: newRecord.type || 'general',
-                    coordinates: newRecord.coordinates ? [newRecord.coordinates.lat, newRecord.coordinates.lng] : position,
+                    type: newRecord.waste_type || 'general',
+                    coordinates: coords,
                     location: newRecord.location || 'Unknown location',
-                    fee: newRecord.payment || 0,
+                    fee: newRecord.fee || 0,
                     status: newRecord.status,
                     priority: newRecord.priority || 'medium',
-                    estimated_time: newRecord.estimated_time || 'Unknown',
-                    distance: calculateDistance(position, newRecord.coordinates ? [newRecord.coordinates.lat, newRecord.coordinates.lng] : position)
+                    bag_count: newRecord.bag_count || 1,
+                    special_instructions: newRecord.special_instructions || '',
+                    created_at: newRecord.created_at,
+                    updated_at: newRecord.updated_at,
+                    distance: calculateDistance(position, coords),
+                    estimated_time: newRecord.estimated_time || 'Unknown'
                   };
                   
                   // Add to the current requests
@@ -707,8 +991,8 @@ const MapPage = () => {
               }
               
               case 'UPDATE': {
-                if (oldRecord.status === AssignmentStatus.AVAILABLE && 
-                    newRecord.status !== AssignmentStatus.AVAILABLE) {
+                if (oldRecord.status === 'available' && 
+                    newRecord.status !== 'available') {
                   // Request was assigned or cancelled
                   setAllRequests(prev => {
                     const updated = prev.filter(r => r.id !== newRecord.id);
@@ -721,6 +1005,34 @@ const MapPage = () => {
                   if (newRecord.collector_id !== user?.id) {
                     showToast('A pickup request was claimed by another collector', 'info');
                   }
+                } else if (newRecord.status === 'available' && 
+                          oldRecord.status !== 'available') {
+                  // Request became available again
+                  const coords = parseCoordinates(newRecord.coordinates);
+                  const transformedRequest = {
+                    id: newRecord.id,
+                    type: newRecord.waste_type || 'general',
+                    coordinates: coords,
+                    location: newRecord.location || 'Unknown location',
+                    fee: newRecord.fee || 0,
+                    status: newRecord.status,
+                    priority: newRecord.priority || 'medium',
+                    bag_count: newRecord.bag_count || 1,
+                    special_instructions: newRecord.special_instructions || '',
+                    created_at: newRecord.created_at,
+                    updated_at: newRecord.updated_at,
+                    distance: calculateDistance(position, coords),
+                    estimated_time: newRecord.estimated_time || 'Unknown'
+                  };
+                  
+                  setAllRequests(prev => {
+                    const exists = prev.some(r => r.id === newRecord.id);
+                    if (exists) return prev;
+                    
+                    const updated = [...prev, transformedRequest];
+                    saveToCache(CACHE_KEYS.PICKUP_REQUESTS, updated);
+                    return updated;
+                  });
                 }
                 break;
               }
@@ -733,6 +1045,7 @@ const MapPage = () => {
                   saveToCache(CACHE_KEYS.PICKUP_REQUESTS, updated);
                   return updated;
                 });
+                showToast('A pickup request was removed', 'info');
                 break;
               }
             }
@@ -745,7 +1058,7 @@ const MapPage = () => {
           })
           .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
-              console.log('Subscribed to authority_assignments table');
+              console.log('Subscribed to pickup_requests table');
               showToast('Live updates enabled', 'success', 2000);
             }
           });
@@ -788,30 +1101,32 @@ const MapPage = () => {
       // Show processing toast
       showToast('Processing your request...', 'info');
       
-      // Update assignment in Supabase
+      // Update request in Supabase
       const { data, error } = await supabase
-        .from('authority_assignments')
+        .from('pickup_requests')
         .update({ 
-          status: AssignmentStatus.ASSIGNED,
+          status: 'accepted',
           collector_id: user?.id,
-          accepted_at: new Date().toISOString()
+          accepted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
-        .eq('id', requestId);
+        .eq('id', requestId)
+        .select();
       
       if (error) throw error;
       
-      // Show success toast
-      showToast(`Successfully accepted ${request.type} pickup!`, 'success');
+      // Remove the accepted request from the available requests
+      setAllRequests(prev => {
+        const updated = prev.filter(r => r.id !== requestId);
+        saveToCache(CACHE_KEYS.PICKUP_REQUESTS, updated);
+        return updated;
+      });
       
-      // Remove the accepted request from the list
-      const newRequests = allRequests.filter(r => r.id !== requestId);
-      setAllRequests(newRequests);
+      // Show success message
+      showToast('Pickup request accepted!', 'success');
       
-      // Apply filters to update display
-      applyFilters();
-      
-      // Update cache
-      saveToCache(CACHE_KEYS.PICKUP_REQUESTS, newRequests);
+      // Refresh the data to ensure consistency
+      await fetchAssignments();
     } catch (err) {
       console.error('Error accepting assignment:', err);
       showToast('Failed to accept request. Please try again.', 'error');
@@ -819,18 +1134,7 @@ const MapPage = () => {
   };
 
   // Get color for waste type
-  const getWasteTypeColor = (type) => {
-    const colors = {
-      plastic: '#3b82f6', // blue-500
-      paper: '#eab308',   // yellow-500
-      metal: '#6b7280',   // gray-500
-      glass: '#93c5fd',   // blue-300
-      organic: '#22c55e', // green-500
-      general: '#ef4444', // red-500
-      recycling: '#86efac' // green-300
-    };
-    return colors[type] || '#6b7280'; // default to gray-500
-  };
+  // Using the getWasteTypeColor function defined at the top of the file
 
   // Get priority badge color
   const getPriorityBadgeColor = (priority) => {
@@ -908,12 +1212,78 @@ const MapPage = () => {
     return null;
   };
   
+  // Handle location errors with more context and recovery options
+  const handleLocationError = useCallback((error) => {
+    console.warn('Location warning:', error);
+    
+    // Don't show repeated errors to avoid spamming the user
+    const now = Date.now();
+    if (lastErrorRef.current && (now - lastErrorRef.current.timestamp < 30000)) {
+      console.log('Suppressing duplicate location error');
+      return;
+    }
+    
+    let errorMessage = 'Using default location. ';
+    let showRecovery = false;
+    
+    switch(error.code) {
+      case 1: // PERMISSION_DENIED
+        errorMessage += 'Location access was denied. Please enable location services in your browser settings.';
+        showRecovery = true;
+        break;
+      case 2: // POSITION_UNAVAILABLE
+        errorMessage += 'Location information is currently unavailable. Using default location.';
+        break;
+      case 3: // TIMEOUT
+        errorMessage += 'Location request timed out. Using default location.';
+        showRecovery = true;
+        break;
+      default:
+        errorMessage += 'Using default location due to an unknown error.';
+    }
+    
+    // Store this error to prevent duplicates
+    lastErrorRef.current = {
+      code: error.code,
+      message: error.message,
+      timestamp: now
+    };
+    
+    // Only show toast if we haven't shown one recently for this error
+    if (!errorToastShownRef.current) {
+      errorToastShownRef.current = true;
+      showToast(
+        <div>
+          <p className="font-medium">{errorMessage}</p>
+          {showRecovery && (
+            <button 
+              onClick={() => {
+                // Force a refresh of the page to retry geolocation
+                window.location.reload();
+              }}
+              className="mt-2 text-sm text-blue-600 hover:underline"
+            >
+              Retry
+            </button>
+          )}
+        </div>, 
+        'warning',
+        10000 // Show for 10 seconds
+      );
+      
+      // Reset the error toast flag after some time
+      setTimeout(() => {
+        errorToastShownRef.current = false;
+      }, 30000);
+    }
+  }, [showToast]);
+
   // Initial data fetch
   useEffect(() => {
-    fetchAssignments();
+    fetchRequests();
   }, []);
 
-  // getWasteTypeColor is already defined above
+  // Using the getWasteTypeColor function defined at the top of the file
 
   // Return the component UI
   return (
@@ -963,17 +1333,45 @@ const MapPage = () => {
             {/* Filter card - moved outside map container */}
             <FilterCard 
               filters={filters} 
-              setFilters={setFilters} 
+              updateFilters={updateFilters} 
               applyFilters={applyFilters} 
             />
             
             {/* Waste type legend - moved outside map container */}
             <WasteLegend />
             
-            {/* Request count display - perfect circle */}
+            {/* Request count display - shows filtered requests count */}
             <div className="absolute top-16 left-2 z-[2000] pointer-events-auto">
               <div className="bg-green-500 text-white rounded-full w-12 h-12 flex items-center justify-center text-lg shadow-md">
-                {requests.length}
+                {(() => {
+                  // Use the filtered requests from state instead of refiltering
+                  if (!requests || !Array.isArray(requests)) {
+                    console.log('No filtered requests available');
+                    return '0';
+                  }
+                  
+                  // Only show count if we have a valid position
+                  if (!position || position[0] === undefined || position[1] === undefined) {
+                    console.log('No valid position, showing ?');
+                    return '?';
+                  }
+                  
+                  // Log the current state for debugging
+                  console.log('Request count display:', {
+                    totalRequests: allRequests?.length || 0,
+                    filteredRequests: requests.length,
+                    position,
+                    filters: {
+                      searchRadius: filters.searchRadius,
+                      maxDistance: filters.maxDistance,
+                      wasteTypes: filters.wasteTypes,
+                      minPayment: filters.minPayment,
+                      priority: filters.priority
+                    }
+                  });
+                  
+                  return requests.length;
+                })()}
               </div>
             </div>
             
@@ -1000,15 +1398,20 @@ const MapPage = () => {
                 zoomControl={false}
                 ref={setMap}
               >
-                {/* Error notification overlay removed - now outside MapContainer */}
+                {/* Enhanced LocationUpdater with error handling */}
+                <LocationUpdater 
+                  position={position}
+                  setPosition={setPosition}
+                  shouldCenter={shouldCenter}
+                  setShouldCenter={setShouldCenter}
+                  onLocationError={handleLocationError}
+                />
                 
                 {/* OpenStreetMap TileLayer */}
                 <TileLayer
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
-                
-                {/* Custom zoom controls removed - now outside MapContainer */}
                 
                 {/* User location marker */}
                 <Marker 
@@ -1022,81 +1425,71 @@ const MapPage = () => {
                   </Popup>
                 </Marker>
                 
-                {/* Collection radius circle */}
-                <Circle 
-                  center={position} 
-                  radius={filters.maxDistance * 1000} // Convert km to meters for radius
-                  pathOptions={{ color: '#22C55E', fillColor: '#22C55E', fillOpacity: 0.1, weight: 2, zIndex: 400 }} 
-                />
+                {/* Collection radius circle - uses searchRadius from filters */}
+                {position && position[0] && position[1] && (filters.searchRadius || filters.maxDistance) && (
+                  <Circle 
+                    center={position} 
+                    radius={(filters.searchRadius || filters.maxDistance || 5) * 1000} // Convert km to meters
+                    pathOptions={{ 
+                      color: '#3b82f6', 
+                      fillColor: '#3b82f6', 
+                      fillOpacity: 0.1, 
+                      weight: 2, 
+                      zIndex: 400 
+                    }}
+                    eventHandlers={{
+                      add: () => {
+                        console.log('Circle rendered with radius:', (filters.searchRadius || filters.maxDistance || 5) * 1000, 'meters');
+                      }
+                    }}
+                  />
+                )}
                 
                 {/* Request markers */}
-                {requests.map(request => {
-                  // Skip rendering markers with invalid coordinates
-                  if (!request.coordinates || 
-                      !Array.isArray(request.coordinates) || 
-                      request.coordinates.length !== 2 ||
-                      request.coordinates[0] === undefined || 
-                      request.coordinates[1] === undefined) {
-                    console.log('Skipping marker with invalid coordinates:', request.id);
-                    return null;
-                  }
-                  
-                  return (
+                {requests
+                  .filter(request => {
+                    // Filter out requests with invalid coordinates
+                    const isValid = request && 
+                                 request.id && 
+                                 request.coordinates && 
+                                 Array.isArray(request.coordinates) && 
+                                 request.coordinates.length === 2 &&
+                                 typeof request.coordinates[0] === 'number' &&
+                                 typeof request.coordinates[1] === 'number' &&
+                                 !isNaN(request.coordinates[0]) && 
+                                 !isNaN(request.coordinates[1]);
+                    
+                    if (!isValid) {
+                      console.warn('Skipping invalid request:', request.id, 'with coordinates:', request.coordinates);
+                      return false;
+                    }
+                    return true;
+                  })
+                  .map(request => (
                     <Marker 
-                      key={request.id}
+                      key={`marker-${request.id}-${request.coordinates[0]}-${request.coordinates[1]}`}
                       position={request.coordinates}
-                      icon={createWasteTypeIcon(request.type)}
+                      icon={dustbinIcon}
                     >
                       <Popup>
-                        <div className="popup-content">
-                          <h3 className="font-medium">{request.type.toUpperCase()}</h3>
-                          <p>{request.location}</p>
+                        <div className="popup-content p-2">
+                          <h3 className="font-medium text-sm">{request.type?.toUpperCase() || 'PICKUP'}</h3>
+                          <p className="text-xs">{request.location || 'Location not specified'}</p>
                           <div className="flex justify-between text-xs text-gray-500 mt-1">
-                            <span>{request.distance}</span>
-                            <span>{request.estimated_time}</span>
+                            <span>{request.distance ? `${request.distance} km` : 'Distance unknown'}</span>
+                            <span>{request.estimated_time || ''}</span>
                           </div>
-                          <p className="text-green-600 font-medium mt-2">₵{request.fee}</p>
+                          <p className="text-green-600 font-medium mt-1">₵{request.fee || '0'}</p>
                           <button 
                             onClick={() => handleAcceptAssignment(request.id)}
-                            className="bg-primary text-white text-sm px-3 py-1 rounded mt-2 w-full"
+                            className="mt-2 w-full bg-blue-600 text-white text-xs py-1 px-2 rounded hover:bg-blue-700 transition-colors"
                           >
-                            Accept
+                            Accept Request
                           </button>
                         </div>
                       </Popup>
                     </Marker>
-                  );
-                })}
-                  
-                <LocationUpdater 
-                  position={position} 
-                  setPosition={setPosition} 
-                  shouldCenter={shouldCenter} 
-                  setShouldCenter={setShouldCenter} 
-                />
-                
-                {/* Recenter button */}
-                <RecenterButton onClick={handleRecenter} />
-                
-                {/* Advanced Filter button */}
-                {/* <div className="absolute z-10 top-4 right-4">
-                  <button
-                    onClick={() => setShowFilters(true)}
-                    className="bg-white p-2 rounded-full shadow-md flex items-center justify-center"
-                    aria-label="Advanced filters"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                    </svg>
-                  </button>
-                  {(filters.wasteTypes.length < Object.values(WasteType).length || 
-                   filters.minPayment > 0 || 
-                   filters.priority !== 'all') && (
-                    <span className="absolute -top-2 -right-2 bg-primary text-white w-5 h-5 flex items-center justify-center rounded-full text-xs">
-                      !
-                    </span>
-                  )}
-                </div> */}
+                  ))}
                 
                 {/* Filter card and waste type legend removed - now outside MapContainer */}
                 
@@ -1137,7 +1530,7 @@ const MapPage = () => {
                 isOpen={showFilters} 
                 onClose={() => setShowFilters(false)} 
                 filters={filters} 
-                setFilters={setFilters} 
+                updateFilters={updateFilters} 
                 applyFilters={applyFilters}
               />
               

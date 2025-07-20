@@ -182,24 +182,16 @@ export const estimateRouteTime = (route, startPosition, averageSpeed = 30, avera
 };
 
 /**
- * Generate a Google Maps directions URL for a route.
+ * Generate an OSRM (Open Source Routing Machine) directions URL for a route.
  * 
- * Creates a URL that can be opened in Google Maps (web or app) to navigate
- * through the optimized route. The URL includes:
- * - Origin (starting position)
- * - Destination (last assignment in route)
- * - Waypoints (intermediate assignments, limited to 9 by Google Maps API)
- * - Travel mode (driving)
- * 
- * Note: Google Maps limits waypoints to 9 points in the free tier.
- * If the route has more than 10 total points (including origin and destination),
- * only the first 9 will be included as waypoints.
+ * Creates a URL that can be opened in a web browser or OSM-compatible app to navigate
+ * through the optimized route using the OSRM service.
  * 
  * @param {Array} route - Array of assignment objects with lat/lng coordinates in route order
  * @param {Object} startPosition - Starting position with lat/lng coordinates
  * @param {number} startPosition.lat - Latitude of starting position
  * @param {number} startPosition.lng - Longitude of starting position
- * @returns {string} - Google Maps directions URL
+ * @returns {string} - OSRM directions URL
  * @example
  * const route = [
  *   { id: '1', latitude: 37.7749, longitude: -122.4194 },
@@ -207,7 +199,7 @@ export const estimateRouteTime = (route, startPosition, averageSpeed = 30, avera
  * ];
  * const startPosition = { lat: 37.7749, lng: -122.4194 };
  * const url = generateDirectionsUrl(route, startPosition);
- * // Returns: https://www.google.com/maps/dir/?api=1&origin=37.7749,-122.4194&destination=37.3382,-121.8863&travelmode=driving
+ * // Returns: https://www.openstreetmap.org/directions?engine=graphhopper_car&route=37.7749,-122.4194;37.3382,-121.8863
  */
 export const generateDirectionsUrl = (route, startPosition) => {
   if (!route || route.length === 0) {
@@ -215,25 +207,13 @@ export const generateDirectionsUrl = (route, startPosition) => {
   }
   
   // Start with the origin
-  let url = `https://www.google.com/maps/dir/?api=1&origin=${startPosition.lat},${startPosition.lng}`;
+  let coordinates = `${startPosition.lng},${startPosition.lat}`;
   
-  // Add waypoints (limited to 9 by Google Maps)
-  if (route.length > 1) {
-    const waypoints = route.slice(0, -1).slice(0, 9).map(assignment => 
-      `${assignment.latitude},${assignment.longitude}`
-    ).join('|');
-    
-    if (waypoints) {
-      url += `&waypoints=${waypoints}`;
-    }
-  }
+  // Add all route points
+  route.forEach(assignment => {
+    coordinates += `;${assignment.longitude},${assignment.latitude}`;
+  });
   
-  // Add destination (last point in route)
-  const destination = route[route.length - 1];
-  url += `&destination=${destination.latitude},${destination.longitude}`;
-  
-  // Add travel mode
-  url += '&travelmode=driving';
-  
-  return url;
+  // Create OSRM URL using GraphHopper (OSM-based routing)
+  return `https://www.openstreetmap.org/directions?engine=graphhopper_car&route=${coordinates}`;
 };

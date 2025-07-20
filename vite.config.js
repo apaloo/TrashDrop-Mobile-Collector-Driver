@@ -4,13 +4,16 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  define: {
+    'import.meta.env.VITE_GOOGLE_MAPS_API_KEY': JSON.stringify(process.env.VITE_GOOGLE_MAPS_API_KEY || '')
+  },
   server: {
     proxy: {
-      // Block any requests to Google's location services
-      'https://www.googleapis.com/geolocation': {
-        target: 'http://localhost:5173',
+      // Proxy API requests to avoid CORS issues
+      '/api': {
+        target: 'http://localhost:3000',
         changeOrigin: true,
-        rewrite: (path) => '/',
+        rewrite: (path) => path.replace(/^\/api/, '')
       }
     },
   },

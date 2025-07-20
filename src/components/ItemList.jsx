@@ -193,9 +193,9 @@ const ItemList = ({ assignments, requests, userLocation }) => {
           </div>
         ) : (
           <ul className="divide-y divide-gray-200">
-            {filteredItems.map((item) => (
+            {filteredItems.map((item, index) => (
               <li 
-                key={item.id} 
+                key={`${item.id || 'item'}-${index}`}
                 className="item-list-item opacity-0"
                 style={{ display: 'block' }}
               >

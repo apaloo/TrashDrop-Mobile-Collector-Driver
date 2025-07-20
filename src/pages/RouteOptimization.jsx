@@ -6,6 +6,7 @@ import Notification from '../components/Notification';
 import RouteOptimizer from '../components/RouteOptimizer';
 import RouteStatistics from '../components/RouteStatistics';
 import ItemList from '../components/ItemList';
+import { supabase } from '../services/supabase';
 
 // Part 1: Main component and state management
 const RouteOptimizationPage = () => {
@@ -110,62 +111,33 @@ const RouteOptimizationPage = () => {
       setIsLoading(true);
       
       try {
-        // In a real app, this would be API calls
-        // For now, we'll use mock data
-        const mockAssignments = [
-          {
-            id: 'a1',
-            type: 'assignment',
-            status: 'accepted',
-            location: '123 Main St, City',
-            customer_name: 'John Doe',
-            latitude: userLocation ? userLocation.latitude + 0.01 : 0,
-            longitude: userLocation ? userLocation.longitude + 0.01 : 0
-          },
-          {
-            id: 'a2',
-            type: 'assignment',
-            status: 'accepted',
-            location: '456 Oak Ave, City',
-            customer_name: 'Jane Smith',
-            latitude: userLocation ? userLocation.latitude - 0.01 : 0,
-            longitude: userLocation ? userLocation.longitude - 0.01 : 0
-          },
-          {
-            id: 'a3',
-            type: 'assignment',
-            status: 'accepted',
-            location: '789 Pine Rd, City',
-            customer_name: 'Bob Johnson',
-            latitude: userLocation ? userLocation.latitude + 0.02 : 0,
-            longitude: userLocation ? userLocation.longitude - 0.02 : 0
-          }
-        ];
+        // Fetch accepted pickup requests from Supabase
+        const { data: acceptedRequests, error } = await supabase
+          .from('pickup_requests')
+          .select('*')
+          .eq('status', 'accepted')
+          .order('accepted_at', { ascending: true });
+          
+        if (error) throw error;
         
-        // Mock requests data
-        const mockRequests = [
-          {
-            id: 'r1',
-            type: 'request',
-            status: 'pending',
-            location: '321 Elm St, City',
-            customer_name: 'Alice Williams',
-            latitude: userLocation ? userLocation.latitude - 0.015 : 0,
-            longitude: userLocation ? userLocation.longitude + 0.015 : 0
-          },
-          {
-            id: 'r2',
-            type: 'request',
-            status: 'pending',
-            location: '654 Maple Dr, City',
-            customer_name: 'David Brown',
-            latitude: userLocation ? userLocation.latitude + 0.025 : 0,
-            longitude: userLocation ? userLocation.longitude + 0.01 : 0
-          }
-        ];
+        // Transform the data to match the expected format
+        const formattedAssignments = (acceptedRequests || []).map(request => ({
+          id: request.id,
+          type: 'assignment',
+          status: request.status,
+          location: request.location || 'Location not specified',
+          customer_name: request.customer_name || 'Customer',
+          latitude: request.coordinates?.lat || 0,
+          longitude: request.coordinates?.lng || 0,
+          fee: request.fee,
+          waste_type: request.waste_type,
+          special_instructions: request.special_instructions,
+          scheduled_date: request.scheduled_date,
+          preferred_time: request.preferred_time
+        }));
         
-        setAssignments(mockAssignments);
-        setRequests(mockRequests);
+        setAssignments(formattedAssignments);
+        setRequests([]); // We don't need pending requests for the route optimization
         setIsLoading(false);
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -182,30 +154,38 @@ const RouteOptimizationPage = () => {
   // Handle refresh
   const handleRefresh = async () => {
     if (!online) {
+      setError('You are currently offline. Some features may be limited.');
       return Promise.resolve();
     }
     
     try {
-      // In a real app, this would refresh data from the API
-      // For now, we'll just wait a bit to simulate a refresh
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Fetch the latest accepted requests from Supabase
+      const { data: acceptedRequests, error } = await supabase
+        .from('pickup_requests')
+        .select('*')
+        .eq('status', 'accepted')
+        .order('accepted_at', { ascending: true });
+        
+      if (error) throw error;
       
-      // Update mock assignments with slightly different coordinates
-      const refreshedAssignments = assignments.map(assignment => ({
-        ...assignment,
-        latitude: assignment.latitude + (Math.random() * 0.002 - 0.001),
-        longitude: assignment.longitude + (Math.random() * 0.002 - 0.001)
+      // Transform the data to match the expected format
+      const formattedAssignments = (acceptedRequests || []).map(request => ({
+        id: request.id,
+        type: 'assignment',
+        status: request.status,
+        location: request.location || 'Location not specified',
+        customer_name: request.customer_name || 'Customer',
+        latitude: request.coordinates?.lat || 0,
+        longitude: request.coordinates?.lng || 0,
+        fee: request.fee,
+        waste_type: request.waste_type,
+        special_instructions: request.special_instructions,
+        scheduled_date: request.scheduled_date,
+        preferred_time: request.preferred_time
       }));
       
-      // Update mock requests with slightly different coordinates
-      const refreshedRequests = requests.map(request => ({
-        ...request,
-        latitude: request.latitude + (Math.random() * 0.002 - 0.001),
-        longitude: request.longitude + (Math.random() * 0.002 - 0.001)
-      }));
-      
-      setAssignments(refreshedAssignments);
-      setRequests(refreshedRequests);
+      setAssignments(formattedAssignments);
+      setRequests([]); // We don't need pending requests for the route optimization
       return Promise.resolve();
     } catch (error) {
       console.error('Error refreshing data:', error);
