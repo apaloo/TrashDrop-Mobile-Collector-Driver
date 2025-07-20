@@ -148,6 +148,7 @@ const LocationUpdater = ({ position, setPosition, shouldCenter, setShouldCenter,
   const errorCount = useRef(0);
   const MAX_RETRIES = 3;
   const isMounted = useRef(true);
+  const hasTriedGeolocation = useRef(false);
 
   // Update position ref when position changes
   useEffect(() => {
@@ -224,50 +225,50 @@ const LocationUpdater = ({ position, setPosition, shouldCenter, setShouldCenter,
     isMounted.current = true;
     
     const initGeolocation = () => {
+      // Prevent multiple geolocation attempts
+      if (hasTriedGeolocation.current) {
+        return;
+      }
+      
+      hasTriedGeolocation.current = true;
+      
       if (!navigator.geolocation) {
         console.warn('Geolocation is not supported by this browser');
         handleError({ code: 0, message: 'Geolocation is not supported' });
         return;
       }
 
-      // First try with high accuracy (but don't wait too long)
+      // Single attempt with reasonable timeout
       navigator.geolocation.getCurrentPosition(
         handleSuccess,
-        (highAccuracyError) => {
-          console.warn('High accuracy geolocation failed, trying with lower accuracy', highAccuracyError);
-          
-          // Fall back to low accuracy with longer timeout
-          navigator.geolocation.getCurrentPosition(
-            handleSuccess,
-            (lowAccuracyError) => {
-              console.warn('Low accuracy geolocation also failed', lowAccuracyError);
-              handleError(lowAccuracyError);
-            },
-            {
-              enableHighAccuracy: false,
-              maximumAge: 5 * 60 * 1000, // 5 minutes
-              timeout: 10000 // 10 seconds
-            }
-          );
+        (error) => {
+          console.warn('Geolocation failed, using default location:', error);
+          handleError(error);
         },
         {
           enableHighAccuracy: true,
-          maximumAge: 0, // Force fresh position
-          timeout: 10000 // 10 seconds
+          maximumAge: 2 * 60 * 1000, // Accept 2-minute old position
+          timeout: 8000 // 8 seconds timeout
         }
       );
 
-      // Set up watch position with less aggressive settings
-      watchId.current = navigator.geolocation.watchPosition(
-        handleSuccess,
-        handleError,
-        {
-          enableHighAccuracy: false,
-          maximumAge: 5 * 60 * 1000, // 5 minutes
-          timeout: 10000, // 10 seconds
-          distanceFilter: 10 // Only update if moved at least 10 meters
-        }
-      );
+      // Only set up watch position if we haven't exceeded retries
+      if (errorCount.current < MAX_RETRIES) {
+        watchId.current = navigator.geolocation.watchPosition(
+          handleSuccess,
+          (error) => {
+            // Don't spam errors from watch position
+            if (errorCount.current < MAX_RETRIES) {
+              handleError(error);
+            }
+          },
+          {
+            enableHighAccuracy: false,
+            maximumAge: 5 * 60 * 1000, // 5 minutes
+            timeout: 8000, // 8 seconds
+          }
+        );
+      }
     };
 
     // Initial setup with a small delay to avoid blocking the UI
@@ -317,7 +318,7 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
     wasteTypes: Array.isArray(filters.wasteTypes) ? filters.wasteTypes : [],
     minPayment: typeof filters.minPayment === 'number' ? filters.minPayment : 0,
     priority: ['all', 'high', 'medium', 'low'].includes(filters.priority) ? filters.priority : 'all',
-    ...filters
+    activeFilter: filters.activeFilter || 'all' // Add activeFilter to safeFilters
   };
   
   // Handle filter changes
@@ -365,7 +366,7 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
         <input 
           type="range" 
           min="1" 
-          max="20" 
+          max="10" 
           step="1"
           value={safeFilters.searchRadius} 
           onChange={(e) => {
@@ -381,7 +382,7 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
           <button
             key={category}
             onClick={() => handleCategorySelect(category)}
-            className={`py-2 px-4 rounded-md text-center ${filters.activeFilter === category ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700'}`}
+            className={`py-2 px-4 rounded-md text-center ${safeFilters.activeFilter === category ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700'}`}
           >
             {label}
           </button>
@@ -593,7 +594,7 @@ const MapPage = () => {
   // Calculate distance between two coordinates in km
   const calculateDistance = (start, end) => {
     if (!start || !end || start.length !== 2 || end.length !== 2) {
-      return 'Unknown';
+      return Infinity; // Return large number for invalid coordinates
     }
     
     // Haversine formula to calculate distance between two points on Earth
@@ -611,12 +612,22 @@ const MapPage = () => {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distance = R * c;
     
-    if (distance < 1) {
-      // Show in meters if less than 1km
-      return `${Math.round(distance * 1000)}m`;
+    // Return numeric distance in km for filtering
+    return distance;
+  };
+  
+  // Format distance for display
+  const formatDistance = (distanceKm) => {
+    if (typeof distanceKm !== 'number' || distanceKm === Infinity) {
+      return 'Unknown';
     }
     
-    return `${distance.toFixed(1)}km`;
+    if (distanceKm < 1) {
+      // Show in meters if less than 1km
+      return `${Math.round(distanceKm * 1000)}m`;
+    }
+    
+    return `${distanceKm.toFixed(1)}km`;
   };
   
   // Fetch requests from Supabase
@@ -677,15 +688,15 @@ const MapPage = () => {
                 special_instructions: item.special_instructions || '',
                 created_at: item.created_at || new Date().toISOString(),
                 updated_at: item.updated_at || new Date().toISOString(),
-                distance: calculateDistance(
-                  { lat: position[0], lng: position[1] },
-                  { lat: coords[0], lng: coords[1] }
+                distance: formatDistance(calculateDistance(
+                  [position[0], position[1]],
+                  coords
+                )),
+                distanceValue: calculateDistance(
+                  [position[0], position[1]],
+                  coords
                 ),
                 estimated_time: item.estimated_time || 'Unknown',
-                distanceValue: calculateDistance(
-                  { lat: position[0], lng: position[1] },
-                  { lat: coords[0], lng: coords[1] }
-                )
               };
             } catch (error) {
               console.error('Error processing request:', item?.id, error);
@@ -696,7 +707,7 @@ const MapPage = () => {
         
         // Update state and cache
         setAllRequests(transformedData);
-        setRequests(transformedData);
+        // Don't set requests here - let applyFilters handle the filtered data
         setLastUpdated(new Date());
         saveToCache(CACHE_KEYS.PICKUP_REQUESTS, transformedData);
         
@@ -705,14 +716,20 @@ const MapPage = () => {
         } else {
           showToast('No pickup requests found', 'info');
         }
+        
+        // Apply filters to populate the requests state with filtered data
+        setTimeout(() => applyFilters(), 0);
       } else {
         // Try to load from cache if offline
         const cachedData = await getFromCache(CACHE_KEYS.PICKUP_REQUESTS);
         if (cachedData) {
           setAllRequests(cachedData);
-          setRequests(cachedData);
+          // Don't set requests here - let applyFilters handle the filtered data
           setLastUpdated(new Date());
           showToast('Showing cached data', 'info');
+          
+          // Apply filters to populate the requests state with filtered data
+          setTimeout(() => applyFilters(), 0);
         } else {
           showToast('No cached data available', 'warning');
         }
@@ -725,8 +742,11 @@ const MapPage = () => {
       const cachedData = await getFromCache(CACHE_KEYS.PICKUP_REQUESTS);
       if (cachedData) {
         setAllRequests(cachedData);
-        setRequests(cachedData);
+        // Don't set requests here - let applyFilters handle the filtered data
         showToast('Showing cached data', 'info');
+        
+        // Apply filters to populate the requests state with filtered data
+        setTimeout(() => applyFilters(), 0);
       }
     } finally {
       setIsLoading(false);
@@ -772,12 +792,24 @@ const MapPage = () => {
   // Apply filters to requests
   const applyFilters = useCallback(() => {
     if (!allRequests || allRequests.length === 0) {
-      console.log('No requests to filter');
+      console.log('DEBUG: No requests to filter. allRequests:', allRequests?.length || 0);
+      setRequests([]);
+      updateFilteredRequests({ available: [] });
       return;
     }
     
-    console.log('Applying filters to', allRequests.length, 'requests');
-    console.log('Current filters:', filters);
+    // CRITICAL FIX: Don't filter if we don't have position yet
+    if (!position || !position[0] || !position[1]) {
+      console.log('DEBUG: No position available, waiting for location before filtering');
+      setRequests([]);
+      updateFilteredRequests({ available: [] });
+      return;
+    }
+    
+    console.log('DEBUG: Applying filters to', allRequests.length, 'requests');
+    console.log('DEBUG: Current filters:', filters);
+    console.log('DEBUG: Current position:', position);
+    console.log('DEBUG: Sample requests:', allRequests.slice(0, 2));
     
     const searchRadius = filters.searchRadius || filters.maxDistance || 10; // Use searchRadius with fallback to maxDistance
     
@@ -796,8 +828,8 @@ const MapPage = () => {
       if (position && position[0] && position[1]) {
         try {
           const distance = calculateDistance(
-            { lat: position[0], lng: position[1] },
-            { lat: req.coordinates[0], lng: req.coordinates[1] }
+            [position[0], position[1]],
+            req.coordinates
           );
           
           if (distance > searchRadius) {
@@ -841,14 +873,29 @@ const MapPage = () => {
     console.log('Filtered requests:', filteredRequests.length, 'out of', allRequests.length);
     setRequests(filteredRequests);
     
+    // DEBUG: Log what we're sharing with Request page
+    console.log('DEBUG: Sharing filtered requests with Request page:', {
+      available: filteredRequests,
+      count: filteredRequests.length,
+      firstRequest: filteredRequests[0] || 'none'
+    });
+    
     // Update filtered requests in context
     updateFilteredRequests({ available: filteredRequests });
   }, [allRequests, filters, position, updateFilteredRequests]);
 
-  // Effect to apply filters when filter criteria change
+  // Effect to apply filters when filter criteria OR position changes
   useEffect(() => {
     applyFilters();
   }, [filters]);
+  
+  // Effect to reapply filters when position becomes available
+  useEffect(() => {
+    if (position && position[0] && position[1] && allRequests.length > 0) {
+      console.log('DEBUG: Position loaded, reapplying filters');
+      setTimeout(() => applyFilters(), 100); // Small delay to ensure state is updated
+    }
+  }, [position, allRequests]);
   
   // Helper function to parse PostGIS POINT string to [lat, lng] array
   const parseCoordinates = (pointString) => {
@@ -972,7 +1019,7 @@ const MapPage = () => {
                     special_instructions: newRecord.special_instructions || '',
                     created_at: newRecord.created_at,
                     updated_at: newRecord.updated_at,
-                    distance: calculateDistance(position, coords),
+                    distance: formatDistance(calculateDistance(position, coords)),
                     estimated_time: newRecord.estimated_time || 'Unknown'
                   };
                   
@@ -1021,7 +1068,7 @@ const MapPage = () => {
                     special_instructions: newRecord.special_instructions || '',
                     created_at: newRecord.created_at,
                     updated_at: newRecord.updated_at,
-                    distance: calculateDistance(position, coords),
+                    distance: formatDistance(calculateDistance(position, coords)),
                     estimated_time: newRecord.estimated_time || 'Unknown'
                   };
                   
@@ -1446,25 +1493,32 @@ const MapPage = () => {
                 )}
                 
                 {/* Request markers */}
-                {requests
-                  .filter(request => {
-                    // Filter out requests with invalid coordinates
-                    const isValid = request && 
-                                 request.id && 
-                                 request.coordinates && 
-                                 Array.isArray(request.coordinates) && 
-                                 request.coordinates.length === 2 &&
-                                 typeof request.coordinates[0] === 'number' &&
-                                 typeof request.coordinates[1] === 'number' &&
-                                 !isNaN(request.coordinates[0]) && 
-                                 !isNaN(request.coordinates[1]);
-                    
-                    if (!isValid) {
-                      console.warn('Skipping invalid request:', request.id, 'with coordinates:', request.coordinates);
-                      return false;
-                    }
-                    return true;
-                  })
+                {(() => {
+                  console.log('DEBUG: Rendering markers. requests.length:', requests?.length || 0);
+                  console.log('DEBUG: allRequests.length:', allRequests?.length || 0);
+                  console.log('DEBUG: First few requests:', requests?.slice(0, 3));
+                  
+                  return requests
+                    .filter(request => {
+                      // Filter out requests with invalid coordinates
+                      const isValid = request && 
+                                   request.id && 
+                                   request.coordinates && 
+                                   Array.isArray(request.coordinates) && 
+                                   request.coordinates.length === 2 &&
+                                   typeof request.coordinates[0] === 'number' &&
+                                   typeof request.coordinates[1] === 'number' &&
+                                   !isNaN(request.coordinates[0]) && 
+                                   !isNaN(request.coordinates[1]);
+                      
+                      if (!isValid) {
+                        console.warn('Skipping invalid request:', request?.id, 'with coordinates:', request?.coordinates);
+                        return false;
+                      }
+                      console.log('DEBUG: Valid request for marker:', request.id, request.coordinates);
+                      return true;
+                    });
+                })().slice(0, 50) // Limit to 50 markers for performance
                   .map(request => (
                     <Marker 
                       key={`marker-${request.id}-${request.coordinates[0]}-${request.coordinates[1]}`}
@@ -1519,7 +1573,7 @@ const MapPage = () => {
                         </button>
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
-                        {requests.length} pickup requests available
+                        {allRequests?.length || 0} pickup requests available
                       </div>
                     </div>
                   )}

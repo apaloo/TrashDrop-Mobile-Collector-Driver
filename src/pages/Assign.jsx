@@ -6,6 +6,12 @@ import AssignmentDetailsModal from '../components/AssignmentDetailsModal';
 import CompletionModal from '../components/CompletionModal';
 import DisposalModal from '../components/DisposalModal';
 import ReportModal from '../components/ReportModal';
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onDumpingSite, onDispose, onViewReport }) => {
   const [expanded, setExpanded] = useState(false);
@@ -272,61 +278,79 @@ const AssignPage = () => {
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
   
   const [assignments, setAssignments] = useState({
-    available: [
-      {
-        id: 'A001',
-        type: 'Street Cleaning',
-        location: '123 Main St, Accra',
-        distance: '1.7 km',
-        payment: 30,
-        estimated_time: '45 mins',
-        priority: 'high',
-        authority: 'Accra City Council',
-        status: AssignmentStatus.AVAILABLE,
-        created_at: '2025-07-14T12:30:00Z'
-      },
-      {
-        id: 'A002',
-        type: 'Bin Collection',
-        location: '456 Beach Rd, Accra',
-        distance: '0.9 km',
-        payment: 25,
-        estimated_time: '30 mins',
-        priority: 'medium',
-        authority: 'Waste Management Dept',
-        status: AssignmentStatus.AVAILABLE,
-        created_at: '2025-07-14T11:45:00Z'
-      }
-    ],
-    accepted: [
-      {
-        id: 'A003',
-        type: 'Waste Sorting',
-        location: '789 Market Ave, Accra',
-        distance: '2.3 km',
-        payment: 40,
-        estimated_time: '1 hour',
-        priority: 'medium',
-        authority: 'Recycling Center',
-        status: AssignmentStatus.ACCEPTED,
-        created_at: '2025-07-14T10:15:00Z'
-      }
-    ],
-    completed: [
-      {
-        id: 'A004',
-        type: 'Roadside Cleanup',
-        location: '321 Harbor St, Accra',
-        distance: '1.5 km',
-        payment: 35,
-        estimated_time: '50 mins',
-        priority: 'low',
-        authority: 'Highway Authority',
-        status: AssignmentStatus.COMPLETED,
-        created_at: '2025-07-14T09:00:00Z'
-      }
-    ]
+    available: [],
+    accepted: [],
+    completed: []
   });
+  const [fetchError, setFetchError] = useState(null);
+
+  // Fetch assignments from Supabase
+  const fetchAssignments = async () => {
+    try {
+      setLoading(true);
+      setFetchError(null);
+      
+      const { data, error } = await supabase
+        .from('authority_assignments')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching assignments:', error);
+        setFetchError('Failed to load assignments. Please try again.');
+        return;
+      }
+
+      // Transform data to match expected format and group by status
+      const transformedAssignments = data.map(assignment => ({
+        id: assignment.id,
+        type: assignment.type,
+        location: assignment.location,
+        distance: assignment.distance || 'Unknown',
+        payment: parseFloat(assignment.payment?.replace('$', '') || 0),
+        estimated_time: assignment.estimated_time || 'Unknown',
+        priority: assignment.priority,
+        authority: assignment.authority,
+        status: assignment.status === 'available' ? AssignmentStatus.AVAILABLE :
+                assignment.status === 'accepted' ? AssignmentStatus.ACCEPTED :
+                assignment.status === 'completed' ? AssignmentStatus.COMPLETED :
+                AssignmentStatus.AVAILABLE,
+        created_at: assignment.created_at,
+        coordinates: assignment.coordinates,
+        accepted_at: assignment.accepted_at,
+        completed_at: assignment.completed_at,
+        collector_id: assignment.collector_id
+      }));
+
+      // Group assignments by status
+      const groupedAssignments = {
+        available: transformedAssignments.filter(a => a.status === AssignmentStatus.AVAILABLE),
+        accepted: transformedAssignments.filter(a => a.status === AssignmentStatus.ACCEPTED),
+        completed: transformedAssignments.filter(a => a.status === AssignmentStatus.COMPLETED)
+      };
+
+      setAssignments(groupedAssignments);
+      setLastUpdated(new Date().toISOString());
+      
+      console.log('📊 Assignments loaded:', {
+        available: groupedAssignments.available.length,
+        accepted: groupedAssignments.accepted.length,
+        completed: groupedAssignments.completed.length,
+        total: transformedAssignments.length
+      });
+      
+    } catch (error) {
+      console.error('Unexpected error fetching assignments:', error);
+      setFetchError('An unexpected error occurred. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load assignments when component mounts
+  useEffect(() => {
+    fetchAssignments();
+  }, []);
   
   // Show toast notification
   const showToast = (message, type = 'success') => {
@@ -348,9 +372,31 @@ const AssignPage = () => {
   };
   
   // Handle accept assignment
-  const handleAccept = (assignmentId) => {
-    const assignmentToAccept = assignments.available.find(assign => assign.id === assignmentId);
-    if (assignmentToAccept) {
+  const handleAccept = async (assignmentId) => {
+    try {
+      const assignmentToAccept = assignments.available.find(assign => assign.id === assignmentId);
+      if (!assignmentToAccept) {
+        showToast('Assignment not found', 'error');
+        return;
+      }
+
+      // Update in Supabase
+      const { error } = await supabase
+        .from('authority_assignments')
+        .update({ 
+          status: 'accepted',
+          accepted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', assignmentId);
+
+      if (error) {
+        console.error('Error accepting assignment:', error);
+        showToast('Failed to accept assignment. Please try again.', 'error');
+        return;
+      }
+
+      // Update local state
       const updatedAssignment = {
         ...assignmentToAccept,
         status: AssignmentStatus.ACCEPTED,
@@ -368,13 +414,80 @@ const AssignPage = () => {
       
       // Show success toast
       showToast('Assignment accepted successfully!');
+      
+    } catch (error) {
+      console.error('Unexpected error accepting assignment:', error);
+      showToast('An unexpected error occurred. Please try again.', 'error');
     }
   };
   
-  // Handle navigate to assignment
+  // Handle navigate to assignment with enhanced GPS coordinates parsing
   const handleNavigate = (assignment) => {
-    // In a real app, this would open Google Maps with directions to the assignment location
-    alert(`Navigating to: ${assignment.location}`);
+    console.log('🗺️ Opening Google Maps navigation for assignment:', assignment?.id);
+    console.log('📍 Assignment coordinates data:', assignment?.coordinates);
+    
+    let googleMapsUrl = '';
+    let lat, lng;
+    
+    // Enhanced GPS coordinate parsing to handle multiple formats
+    if (assignment && assignment.coordinates) {
+      try {
+        // Handle different coordinate formats
+        if (Array.isArray(assignment.coordinates) && assignment.coordinates.length >= 2) {
+          // Format: [lat, lng]
+          lat = parseFloat(assignment.coordinates[0]);
+          lng = parseFloat(assignment.coordinates[1]);
+          console.log('📍 Parsed array coordinates:', { lat, lng });
+        } 
+        else if (typeof assignment.coordinates === 'object' && assignment.coordinates !== null && !Array.isArray(assignment.coordinates)) {
+          // Format: {lat: x, lng: y} or {latitude: x, longitude: y}
+          lat = parseFloat(assignment.coordinates.lat || assignment.coordinates.latitude);
+          lng = parseFloat(assignment.coordinates.lng || assignment.coordinates.longitude);
+          console.log('📍 Parsed object coordinates:', { lat, lng });
+        } 
+        else if (typeof assignment.coordinates === 'string') {
+          // Handle PostGIS POINT format: "POINT(lng lat)"
+          const pointMatch = assignment.coordinates.match(/POINT\(([+-]?\d+\.?\d*) ([+-]?\d+\.?\d*)\)/);
+          if (pointMatch) {
+            lng = parseFloat(pointMatch[1]);
+            lat = parseFloat(pointMatch[2]);
+            console.log('📍 Parsed PostGIS POINT coordinates:', { lat, lng });
+          } else {
+            // Try parsing as "lat,lng" string
+            const coordParts = assignment.coordinates.split(',').map(c => c.trim());
+            if (coordParts.length === 2) {
+              lat = parseFloat(coordParts[0]);
+              lng = parseFloat(coordParts[1]);
+              console.log('📍 Parsed comma-separated coordinates:', { lat, lng });
+            }
+          }
+        }
+        
+        // Validate GPS coordinates
+        if (lat && lng && !isNaN(lat) && !isNaN(lng) && 
+            lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+          googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+          console.log('✅ Using GPS coordinates for navigation:', googleMapsUrl);
+        } else {
+          console.warn('⚠️ Invalid GPS coordinates, falling back to address search');
+          console.log('❌ Invalid coordinates:', { lat, lng, assignment: assignment.coordinates });
+          throw new Error('Invalid coordinates');
+        }
+      } catch (error) {
+        console.warn('⚠️ Error parsing GPS coordinates:', error);
+        // Fallback to location string search
+        googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(assignment.location || 'assignment location')}`;
+        console.log('🔄 Using address search fallback:', googleMapsUrl);
+      }
+    } else {
+      // No coordinates available, use location string
+      googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(assignment.location || 'assignment location')}`;
+      console.log('🔄 No coordinates found, using address search:', googleMapsUrl);
+    }
+    
+    // Open Google Maps
+    console.log('🚀 Opening Google Maps:', googleMapsUrl);
+    window.open(googleMapsUrl, '_blank');
     
     // Close modal
     setDetailsModalOpen(false);
@@ -397,9 +510,31 @@ const AssignPage = () => {
   };
   
   // Handle completion submission
-  const handleCompletionSubmit = (assignmentId, photos) => {
-    const assignmentToComplete = assignments.accepted.find(assign => assign.id === assignmentId);
-    if (assignmentToComplete) {
+  const handleCompletionSubmit = async (assignmentId, photos) => {
+    try {
+      const assignmentToComplete = assignments.accepted.find(assign => assign.id === assignmentId);
+      if (!assignmentToComplete) {
+        showToast('Assignment not found', 'error');
+        return;
+      }
+
+      // Update in Supabase
+      const { error } = await supabase
+        .from('authority_assignments')
+        .update({ 
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', assignmentId);
+
+      if (error) {
+        console.error('Error completing assignment:', error);
+        showToast('Failed to complete assignment. Please try again.', 'error');
+        return;
+      }
+
+      // Update local state
       const updatedAssignment = {
         ...assignmentToComplete,
         status: AssignmentStatus.COMPLETED,
@@ -416,6 +551,10 @@ const AssignPage = () => {
       
       // Show success toast
       showToast('Assignment completed successfully!');
+      
+    } catch (error) {
+      console.error('Unexpected error completing assignment:', error);
+      showToast('An unexpected error occurred. Please try again.', 'error');
     }
   };
   
@@ -429,10 +568,37 @@ const AssignPage = () => {
     }
   };
   
-  // Handle get directions to dumping site
+  // Handle get directions to dumping site with GPS coordinates
   const handleGetDirections = (site) => {
-    // In a real app, this would open Google Maps with directions to the dumping site
-    alert(`Getting directions to: ${site.name} at ${site.address}`);
+    let googleMapsUrl = '';
+    
+    // Parse GPS coordinates from disposal site
+    if (site && site.coordinates) {
+      let lat, lng;
+      
+      // Handle different coordinate formats
+      if (Array.isArray(site.coordinates) && site.coordinates.length >= 2) {
+        lat = site.coordinates[0];
+        lng = site.coordinates[1];
+      } else if (typeof site.coordinates === 'object' && site.coordinates !== null) {
+        lat = site.coordinates.lat || site.coordinates.latitude;
+        lng = site.coordinates.lng || site.coordinates.longitude;
+      }
+      
+      // Use GPS coordinates if valid
+      if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
+        googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+      } else {
+        // Fallback to address search
+        googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.address || site.name || 'disposal site')}`;
+      }
+    } else {
+      // Fallback to address search
+      googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.address || site.name || 'disposal site')}`;
+    }
+    
+    // Open Google Maps
+    window.open(googleMapsUrl, '_blank');
   };
   
   // Handle dispose
@@ -479,56 +645,41 @@ const AssignPage = () => {
     }
   };
   
-  // Function to fetch assignments (simulated)
-  const fetchAssignments = () => {
-    setLoading(true);
-    
-    // Simulate API call with timeout
-    setTimeout(() => {
-      // Sort assignments according to requirements
-      const sortedAssignments = {
-        // Available tab: Sort by proximity (nearest first)
-        available: [...assignments.available].sort((a, b) => {
-          // Extract distance values (assuming format like "1.7 km")
-          const distanceA = parseFloat(a.distance.split(' ')[0]);
-          const distanceB = parseFloat(b.distance.split(' ')[0]);
-          return distanceA - distanceB; // Ascending order (nearest first)
-        }),
-        
-        // Accepted tab: Sort by timestamp (oldest first) and then by proximity
-        accepted: [...assignments.accepted].sort((a, b) => {
-          // First sort by timestamp (oldest first)
-          const timeA = new Date(a.accepted_at || a.created_at).getTime();
-          const timeB = new Date(b.accepted_at || b.created_at).getTime();
-          
-          if (timeA !== timeB) {
-            return timeA - timeB; // Ascending order (oldest first)
-          }
-          
-          // If timestamps are equal, sort by proximity
-          const distanceA = parseFloat(a.distance.split(' ')[0]);
-          const distanceB = parseFloat(b.distance.split(' ')[0]);
-          return distanceA - distanceB; // Ascending order (nearest first)
-        }),
-        
-        // Completed tab: Sort by completion time (newest first)
-        completed: [...assignments.completed].sort((a, b) => {
-          const timeA = new Date(a.completed_at || a.created_at).getTime();
-          const timeB = new Date(b.completed_at || b.created_at).getTime();
-          return timeB - timeA; // Descending order (newest first)
-        })
-      };
+  // Sorting function for assignments
+  const sortAssignments = (assignmentsData) => {
+    return {
+      // Available tab: Sort by proximity (nearest first)
+      available: [...assignmentsData.available].sort((a, b) => {
+        // Extract distance values (assuming format like "1.7 km")
+        const distanceA = parseFloat((a.distance || '0').split(' ')[0]);
+        const distanceB = parseFloat((b.distance || '0').split(' ')[0]);
+        return distanceA - distanceB; // Ascending order (nearest first)
+      }),
       
-      setAssignments(sortedAssignments);
-      setLoading(false);
-      setLastUpdated(new Date().toISOString());
-    }, 1500); // 1.5 second delay to show loading state
+      // Accepted tab: Sort by timestamp (oldest first) and then by proximity
+      accepted: [...assignmentsData.accepted].sort((a, b) => {
+        // First sort by timestamp (oldest first)
+        const timeA = new Date(a.accepted_at || a.created_at).getTime();
+        const timeB = new Date(b.accepted_at || b.created_at).getTime();
+        
+        if (timeA !== timeB) {
+          return timeA - timeB; // Ascending order (oldest first)
+        }
+        
+        // If timestamps are equal, sort by proximity
+        const distanceA = parseFloat((a.distance || '0').split(' ')[0]);
+        const distanceB = parseFloat((b.distance || '0').split(' ')[0]);
+        return distanceA - distanceB; // Ascending order (nearest first)
+      }),
+      
+      // Completed tab: Sort by completion time (newest first)
+      completed: [...assignmentsData.completed].sort((a, b) => {
+        const timeA = new Date(a.completed_at || a.created_at).getTime();
+        const timeB = new Date(b.completed_at || a.created_at).getTime();
+        return timeB - timeA; // Descending order (newest first)
+      })
+    };
   };
-  
-  // Call fetchAssignments on initial load
-  useEffect(() => {
-    fetchAssignments();
-  }, []);
 
   return (
     <div className="app-container bg-gray-100 min-h-screen flex flex-col">

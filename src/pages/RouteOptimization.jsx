@@ -44,57 +44,73 @@ const RouteOptimizationPage = () => {
       return; // Early return if geolocation is not supported
     }
     
-    // Geolocation options
+    // Enhanced geolocation options for better reliability (same as successful fixes on other pages)
     const geoOptions = {
-      enableHighAccuracy: false, // Use low accuracy for faster response
-      timeout: 5000,            // 5 seconds timeout
-      maximumAge: 60000         // 1 minute cache
+      enableHighAccuracy: false, // Disabled to avoid Google network provider 400 errors
+      timeout: 15000,            // 15 second timeout (longer to prevent premature timeouts)
+      maximumAge: 300000         // 5 minute cache (longer cache for better performance)
     };
     
-    // Try to get the user's location once
+    console.log('🌍 Attempting to get user location for route optimization...');
+    
+    // Enhanced success handler
+    const handleLocationSuccess = (position) => {
+      const { latitude, longitude, accuracy } = position.coords;
+      console.log(`✅ Location obtained: ${latitude}, ${longitude} (±${accuracy}m)`);
+      
+      setUserLocation({
+        latitude,
+        longitude,
+        accuracy,
+        timestamp: new Date().getTime(),
+        isFallback: false
+      });
+      setUsingFallback(false);
+      setError(null);
+    };
+    
+    // Enhanced error handler with specific error messages
+    const handleLocationError = (error) => {
+      let errorMessage = 'Using approximate location for route planning.';
+      
+      switch(error.code) {
+        case error.PERMISSION_DENIED:
+          errorMessage = 'Location access denied. Using approximate location for route planning.';
+          console.warn('🚫 Geolocation permission denied');
+          break;
+        case error.POSITION_UNAVAILABLE:
+          errorMessage = 'Location information unavailable. Using approximate location for route planning.';
+          console.warn('📍 Geolocation position unavailable');
+          break;
+        case error.TIMEOUT:
+          errorMessage = 'Location request timed out. Using approximate location for route planning.';
+          console.warn('⏰ Geolocation request timed out');
+          break;
+        default:
+          errorMessage = error.message || 'Failed to get location. Using approximate location for route planning.';
+          console.warn('❌ Geolocation error:', error);
+          break;
+      }
+      
+      console.log('🔄 Using fallback location due to geolocation error');
+      // Show a non-blocking error message
+      setError(errorMessage);
+    };
+    
+    // Try to get location with timeout protection
     const locationTimeout = setTimeout(() => {
-      // If this timeout fires, we're already using the fallback location
-      console.log('Location request taking too long, continuing with default location');
-    }, 6000); // Slightly longer than the geolocation timeout
+      console.log('⏰ Location request timeout protection triggered, continuing with fallback');
+    }, 16000); // Slightly longer than geolocation timeout
     
     // Attempt to get precise location
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        // Success - we got a real location
         clearTimeout(locationTimeout);
-        
-        setUserLocation({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          timestamp: new Date().getTime(),
-          isFallback: false
-        });
-        setUsingFallback(false);
-        setError(null);
-        console.log('Location successfully retrieved:', position.coords);
+        handleLocationSuccess(position);
       },
       (error) => {
-        // Error getting location - already using fallback
         clearTimeout(locationTimeout);
-        
-        console.error('Error getting precise location:', error);
-        let errorMessage = 'Using approximate location for route planning.';
-        
-        switch(error.code) {
-          case error.PERMISSION_DENIED:
-            errorMessage = 'Location access denied. Using approximate location for route planning.';
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMessage = 'Location information unavailable. Using approximate location for route planning.';
-            break;
-          case error.TIMEOUT:
-            errorMessage = 'Location request timed out. Using approximate location for route planning.';
-            break;
-        }
-        
-        // Show a non-blocking error message
-        setError(errorMessage);
+        handleLocationError(error);
       },
       geoOptions
     );

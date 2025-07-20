@@ -18,6 +18,7 @@ export const FilterProvider = ({ children }) => {
             : ['All Types'],
           minPayment: typeof parsed.minPayment === 'number' ? parsed.minPayment : 0,
           priority: parsed.priority || 'all',
+          activeFilter: parsed.activeFilter || 'all', // Default to 'all' types
         };
       }
     } catch (e) {
@@ -30,6 +31,7 @@ export const FilterProvider = ({ children }) => {
       wasteTypes: ['All Types'],
       minPayment: 0,
       priority: 'all',
+      activeFilter: 'all', // Default to 'all' types
     };
   });
   

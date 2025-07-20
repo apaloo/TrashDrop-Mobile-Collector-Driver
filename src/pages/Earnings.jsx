@@ -1,6 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Cash Out Modal Component
 const CashOutModal = ({ isOpen, onClose, totalEarnings, onWithdrawalSuccess }) => {
@@ -308,84 +314,265 @@ const EarningsPage = () => {
   const [period, setPeriod] = useState('week');
   const [activeTab, setActiveTab] = useState('summary');
   const [isCashOutModalOpen, setIsCashOutModalOpen] = useState(false);
-  const [currentEarnings, setCurrentEarnings] = useState(357.00); // Initialize with the total earnings amount
+  const [currentEarnings, setCurrentEarnings] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   
-  // Sample earnings data
-  const earningsData = {
-    week: [
-      { label: 'Mon', amount: 42 },
-      { label: 'Tue', amount: 65 },
-      { label: 'Wed', amount: 30 },
-      { label: 'Thu', amount: 75 },
-      { label: 'Fri', amount: 55 },
-      { label: 'Sat', amount: 90 },
-      { label: 'Sun', amount: 40 },
-    ],
-    month: [
-      { label: 'W1', amount: 240 },
-      { label: 'W2', amount: 320 },
-      { label: 'W3', amount: 280 },
-      { label: 'W4', amount: 350 },
-    ],
-    year: [
-      { label: 'Jan', amount: 1100 },
-      { label: 'Feb', amount: 950 },
-      { label: 'Mar', amount: 1300 },
-      { label: 'Apr', amount: 1050 },
-      { label: 'May', amount: 1200 },
-      { label: 'Jun', amount: 1400 },
-      { label: 'Jul', amount: 900 },
-      { label: 'Aug', amount: 0 },
-      { label: 'Sep', amount: 0 },
-      { label: 'Oct', amount: 0 },
-      { label: 'Nov', amount: 0 },
-      { label: 'Dec', amount: 0 },
-    ]
+  // Real data states
+  const [earningsData, setEarningsData] = useState({ week: [], month: [], year: [] });
+  const [transactions, setTransactions] = useState([]);
+  const [stats, setStats] = useState({
+    totalEarnings: 0,
+    completedJobs: 0,
+    avgPerJob: 0,
+    rating: 0,
+    completionRate: 0
+  });
+
+  // Fetch earnings and stats from Supabase
+  const fetchEarningsData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('📊 Fetching real earnings data from Supabase...');
+      
+      // Fetch completed assignments and requests
+      const [assignmentsResult, requestsResult] = await Promise.all([
+        supabase
+          .from('authority_assignments')
+          .select('*')
+          .eq('status', 'completed')
+          .order('completed_at', { ascending: false }),
+        supabase
+          .from('pickup_requests')
+          .select('*')
+          .eq('status', 'completed')
+          .order('completed_at', { ascending: false })
+      ]);
+      
+      if (assignmentsResult.error) {
+        console.error('Error fetching assignments:', assignmentsResult.error);
+        throw assignmentsResult.error;
+      }
+      
+      if (requestsResult.error) {
+        console.error('Error fetching requests:', requestsResult.error);
+        throw requestsResult.error;
+      }
+      
+      const completedAssignments = assignmentsResult.data || [];
+      const completedRequests = requestsResult.data || [];
+      
+      console.log(`✅ Found ${completedAssignments.length} completed assignments and ${completedRequests.length} completed requests`);
+      
+      // Calculate earnings and stats
+      const allCompletedJobs = [...completedAssignments, ...completedRequests];
+      const totalEarnings = allCompletedJobs.reduce((sum, job) => {
+        const payment = parseFloat((job.payment || job.fee || '0').toString().replace(/[\$₵,]/g, '')) || 0;
+        return sum + payment;
+      }, 0);
+      
+      const completedJobsCount = allCompletedJobs.length;
+      const avgPerJob = completedJobsCount > 0 ? totalEarnings / completedJobsCount : 0;
+      
+      // Calculate stats
+      const newStats = {
+        totalEarnings,
+        completedJobs: completedJobsCount,
+        avgPerJob,
+        rating: 4.8, // This could be calculated from user feedback in the future
+        completionRate: 98 // This could be calculated from total vs completed jobs
+      };
+      
+      setStats(newStats);
+      setCurrentEarnings(totalEarnings);
+      
+      // Generate earnings chart data
+      const chartData = generateEarningsChartData(allCompletedJobs);
+      setEarningsData(chartData);
+      
+      // Generate transactions list
+      const transactionsList = generateTransactionsList(completedAssignments, completedRequests);
+      setTransactions(transactionsList);
+      
+      console.log('💰 Earnings calculated:', {
+        totalEarnings: totalEarnings.toFixed(2),
+        completedJobs: completedJobsCount,
+        avgPerJob: avgPerJob.toFixed(2)
+      });
+      
+    } catch (error) {
+      console.error('Error fetching earnings data:', error);
+      setError('Failed to load earnings data. Please try again.');
+      
+      // Fallback to empty data
+      setStats({ totalEarnings: 0, completedJobs: 0, avgPerJob: 0, rating: 0, completionRate: 0 });
+      setCurrentEarnings(0);
+      setEarningsData({ week: [], month: [], year: [] });
+      setTransactions([]);
+    } finally {
+      setLoading(false);
+    }
   };
   
-  // Sample transactions
-  const transactions = [
-    {
-      id: 'TR001',
-      type: 'pickup_request',
-      amount: 15,
-      date: '2025-07-14T13:30:00Z',
-      note: 'Plastic waste collection'
-    },
-    {
-      id: 'TR002',
-      type: 'authority_assignment',
-      amount: 35,
-      date: '2025-07-13T14:45:00Z',
-      note: 'Street cleaning assignment'
-    },
-    {
-      id: 'TR003',
-      type: 'pickup_request',
-      amount: 20,
-      date: '2025-07-12T09:15:00Z',
-      note: 'Glass waste collection'
-    },
-    {
-      id: 'TR004',
-      type: 'bonus',
-      amount: 50,
-      date: '2025-07-10T16:20:00Z',
-      note: 'Weekly performance bonus'
-    },
-    {
-      id: 'TR005',
-      type: 'referral',
-      amount: 25,
-      date: '2025-07-08T11:10:00Z',
-      note: 'New driver referral'
+  // Generate chart data based on completed jobs
+  const generateEarningsChartData = (jobs) => {
+    const now = new Date();
+    
+    // Week data (last 7 days)
+    const weekData = [];
+    const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      const dayName = weekDays[date.getDay()];
+      
+      const dayEarnings = jobs
+        .filter(job => {
+          const jobDate = new Date(job.completed_at || job.created_at);
+          return jobDate.toDateString() === date.toDateString();
+        })
+        .reduce((sum, job) => {
+          const payment = parseFloat((job.payment || job.fee || '0').toString().replace(/[\$₵,]/g, '')) || 0;
+          return sum + payment;
+        }, 0);
+      
+      weekData.push({ label: dayName, amount: dayEarnings });
     }
-  ];
+    
+    // Month data (last 4 weeks)
+    const monthData = [];
+    for (let i = 3; i >= 0; i--) {
+      const weekStart = new Date(now);
+      weekStart.setDate(weekStart.getDate() - (i * 7) - 6);
+      const weekEnd = new Date(now);
+      weekEnd.setDate(weekEnd.getDate() - (i * 7));
+      
+      const weekEarnings = jobs
+        .filter(job => {
+          const jobDate = new Date(job.completed_at || job.created_at);
+          return jobDate >= weekStart && jobDate <= weekEnd;
+        })
+        .reduce((sum, job) => {
+          const payment = parseFloat((job.payment || job.fee || '0').toString().replace(/[\$₵,]/g, '')) || 0;
+          return sum + payment;
+        }, 0);
+      
+      monthData.push({ label: `W${4-i}`, amount: weekEarnings });
+    }
+    
+    // Year data (last 12 months)
+    const yearData = [];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    for (let i = 11; i >= 0; i--) {
+      const monthDate = new Date(now);
+      monthDate.setMonth(monthDate.getMonth() - i);
+      const monthName = months[monthDate.getMonth()];
+      
+      const monthEarnings = jobs
+        .filter(job => {
+          const jobDate = new Date(job.completed_at || job.created_at);
+          return jobDate.getMonth() === monthDate.getMonth() && jobDate.getFullYear() === monthDate.getFullYear();
+        })
+        .reduce((sum, job) => {
+          const payment = parseFloat((job.payment || job.fee || '0').toString().replace(/[\$₵,]/g, '')) || 0;
+          return sum + payment;
+        }, 0);
+      
+      yearData.push({ label: monthName, amount: monthEarnings });
+    }
+    
+    return { week: weekData, month: monthData, year: yearData };
+  };
+  
+  // Generate transactions list from completed jobs
+  const generateTransactionsList = (assignments, requests) => {
+    const allTransactions = [];
+    
+    // Add assignments as transactions
+    assignments.forEach(assignment => {
+      const payment = parseFloat((assignment.payment || '0').toString().replace(/[\$₵,]/g, '')) || 0;
+      if (payment > 0) {
+        allTransactions.push({
+          id: `ASSIGN-${assignment.id}`,
+          type: 'authority_assignment',
+          amount: payment,
+          date: assignment.completed_at || assignment.created_at,
+          note: `${assignment.type || 'Assignment'} - ${assignment.location || 'Location not specified'}`
+        });
+      }
+    });
+    
+    // Add requests as transactions
+    requests.forEach(request => {
+      const fee = parseFloat((request.fee || '0').toString().replace(/[\$₵,]/g, '')) || 0;
+      if (fee > 0) {
+        allTransactions.push({
+          id: `REQ-${request.id}`,
+          type: 'pickup_request',
+          amount: fee,
+          date: request.completed_at || request.created_at,
+          note: `${request.waste_type || 'Waste'} collection - ${request.location || 'Location not specified'}`
+        });
+      }
+    });
+    
+    // Sort by date (newest first) and limit to recent 20
+    return allTransactions
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 20);
+  };
+  
+  // Load data when component mounts
+  useEffect(() => {
+    fetchEarningsData();
+  }, []);
   
   // Use the current earnings state
   const totalEarnings = currentEarnings; // This will be updated after withdrawal
   const weeklyEarnings = earningsData.week.reduce((sum, d) => sum + d.amount, 0);
   const monthlyEarnings = earningsData.month.reduce((sum, d) => sum + d.amount, 0);
+  
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+        <TopNavBar user={{ first_name: 'Driver' }} />
+        <div className="flex-grow mt-14 mb-16 flex items-center justify-center">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <p className="mt-2 text-gray-600">Loading earnings data...</p>
+          </div>
+        </div>
+        <BottomNavBar />
+      </div>
+    );
+  }
+  
+  // Show error state
+  if (error) {
+    return (
+      <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+        <TopNavBar user={{ first_name: 'Driver' }} />
+        <div className="flex-grow mt-14 mb-16 flex items-center justify-center">
+          <div className="text-center px-4">
+            <div className="text-red-500 text-xl mb-2">⚠️</div>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <button 
+              onClick={fetchEarningsData}
+              className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+        <BottomNavBar />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -457,11 +644,11 @@ const EarningsPage = () => {
           </div>
           <div className="bg-white p-4 rounded-lg shadow">
             <p className="text-gray-500 text-sm mb-1">Completed Jobs</p>
-            <p className="text-xl font-bold">78</p>
+            <p className="text-xl font-bold">{stats.completedJobs}</p>
           </div>
           <div className="bg-white p-4 rounded-lg shadow">
             <p className="text-gray-500 text-sm mb-1">Avg. Per Job</p>
-            <p className="text-xl font-bold">₵{(totalEarnings / 78).toFixed(2)}</p>
+            <p className="text-xl font-bold">₵{stats.avgPerJob.toFixed(2)}</p>
           </div>
         </div>
         
@@ -490,12 +677,16 @@ const EarningsPage = () => {
             {/* Stats Summary */}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div className="card">
-                <p className="text-sm text-gray-500 mb-1">Collections</p>
-                <p className="text-xl font-bold">23</p>
+                <p className="text-sm text-gray-500 mb-1">This {period.charAt(0).toUpperCase() + period.slice(1)}</p>
+                <p className="text-xl font-bold">
+                  ₵{period === 'week' ? weeklyEarnings.toFixed(2) : 
+                      period === 'month' ? monthlyEarnings.toFixed(2) : 
+                      stats.totalEarnings.toFixed(2)}
+                </p>
               </div>
               <div className="card">
-                <p className="text-sm text-gray-500 mb-1">Avg. per Trip</p>
-                <p className="text-xl font-bold">₵18.25</p>
+                <p className="text-sm text-gray-500 mb-1">Avg. per Job</p>
+                <p className="text-xl font-bold">₵{stats.avgPerJob.toFixed(2)}</p>
               </div>
             </div>
             
@@ -503,18 +694,18 @@ const EarningsPage = () => {
               <h3 className="font-bold text-lg mb-2">Performance</h3>
               <div className="flex justify-between mb-2">
                 <span className="text-sm">Rating</span>
-                <span className="font-bold">4.8/5.0</span>
+                <span className="font-bold">{stats.rating.toFixed(1)}/5.0</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
-                <div className="bg-primary h-2.5 rounded-full" style={{ width: '96%' }}></div>
+                <div className="bg-primary h-2.5 rounded-full" style={{ width: `${(stats.rating / 5) * 100}%` }}></div>
               </div>
               
               <div className="flex justify-between mb-2">
                 <span className="text-sm">Completion Rate</span>
-                <span className="font-bold">98%</span>
+                <span className="font-bold">{stats.completionRate}%</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2.5">
-                <div className="bg-primary h-2.5 rounded-full" style={{ width: '98%' }}></div>
+                <div className="bg-primary h-2.5 rounded-full" style={{ width: `${stats.completionRate}%` }}></div>
               </div>
             </div>
           </div>
