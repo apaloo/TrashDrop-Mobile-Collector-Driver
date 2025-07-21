@@ -6,11 +6,13 @@ import L from 'leaflet';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import Toast from '../components/Toast';
+import StatusButton from '../components/StatusButton';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
 import { CACHE_KEYS, saveToCache, getFromCache, isOnline, registerConnectivityListeners } from '../utils/cacheUtils';
 import { requestMarkerIcon } from '../utils/markerIcons';
+import { statusService, COLLECTOR_STATUS } from '../services/statusService';
 
 // Fix for default Leaflet marker icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -515,7 +517,7 @@ const MapPage = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [isOnlineStatus, setIsOnlineStatus] = useState(isOnline());
-  const [isCollectorOnline, setIsCollectorOnline] = useState(true);
+  // Status management is now handled by StatusButton component and statusService
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
   
   // Refs for error handling
@@ -790,25 +792,31 @@ const MapPage = () => {
   };
 
   // Apply filters to requests
-  const applyFilters = useCallback(() => {
-    if (!allRequests || allRequests.length === 0) {
-      console.log('DEBUG: No requests to filter. allRequests:', allRequests?.length || 0);
-      setRequests([]);
-      updateFilteredRequests({ available: [] });
-      return;
-    }
+  const applyFilters = useCallback(async () => {
+    console.log('🔍 Applying filters...', { filters, allRequestsCount: allRequests.length, position });
     
-    // CRITICAL FIX: Don't filter if we don't have position yet
+    // Return empty if position is not available
     if (!position || !position[0] || !position[1]) {
-      console.log('DEBUG: No position available, waiting for location before filtering');
+      console.log('⚠️ Position not available, returning empty results');
       setRequests([]);
-      updateFilteredRequests({ available: [] });
+      updateFilteredRequests([]);
       return;
     }
+
+    // Check collector status - only show requests if online (Uber-like behavior)
+    const statusInfo = statusService.getStatus();
+    if (!statusInfo.isOnline) {
+      console.log('👤 Collector is offline - hiding all requests (Uber-style)');
+      setRequests([]);
+      updateFilteredRequests([]);
+      return;
+    }
+
+    const safeFilters = filters || {};
+    const activeFilter = safeFilters.activeFilter || 'all';
+    const radiusKm = parseFloat(safeFilters.radius) || 1;
     
-    console.log('DEBUG: Applying filters to', allRequests.length, 'requests');
-    console.log('DEBUG: Current filters:', filters);
-    console.log('DEBUG: Current position:', position);
+    console.log('🎯 Filter criteria:', { activeFilter, radiusKm, collectorStatus: statusInfo.status });
     console.log('DEBUG: Sample requests:', allRequests.slice(0, 2));
     
     const searchRadius = filters.searchRadius || filters.maxDistance || 10; // Use searchRadius with fallback to maxDistance
@@ -1347,12 +1355,6 @@ const MapPage = () => {
         />
       )}
       
-      {/* Offline indicator */}
-      {!isOnlineStatus && (
-        <div className="absolute top-16 w-full bg-gray-800 text-white py-1 text-center text-sm z-40">
-          You are currently offline. Limited functionality available.
-        </div>
-      )}
       
       <div className="flex-grow mt-14 mb-16 relative">
         {/* Always show the map, regardless of error state */}
@@ -1422,19 +1424,12 @@ const MapPage = () => {
               </div>
             </div>
             
-            {/* Online/Offline toggle button - centered horizontally */}
-            <div className="absolute top-2 right-0 flex justify-center z-[2000] pointer-events-auto" style={{ color: '#0a0a0a', marginRight: '0.4rem' }}>
-              <div className="bg-white p-2 rounded-md shadow">
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm font-medium">Status:</span>
-                  <button 
-                    onClick={() => setIsCollectorOnline(!isCollectorOnline)}
-                    className={`px-3 py-1 rounded-full text-white text-xs ${isCollectorOnline ? 'bg-green-500' : 'bg-gray-500'}`}
-                  >
-                    {isCollectorOnline ? 'Online' : 'Offline'}
-                  </button>
-                </div>
-              </div>
+            {/* Enhanced Online/Offline Status Button */}
+            <div className="absolute top-2 right-0 flex justify-center z-[2000] pointer-events-auto" style={{ marginRight: '0.4rem' }}>
+              <StatusButton 
+                showSessionInfo={true}
+                className="transition-all duration-300 hover:scale-105"
+              />
             </div>
             
             <div className="relative h-full">

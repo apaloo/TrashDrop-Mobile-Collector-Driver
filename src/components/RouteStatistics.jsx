@@ -7,8 +7,9 @@ import {
 
 /**
  * Component to display route statistics and metrics
+ * Now enhanced with real analytics data from Supabase
  */
-const RouteStatistics = ({ assignments, userLocation }) => {
+const RouteStatistics = ({ assignments, userLocation, analyticsService }) => {
   const [stats, setStats] = useState({
     totalDistance: 0,
     estimatedTime: 0,
@@ -16,6 +17,30 @@ const RouteStatistics = ({ assignments, userLocation }) => {
     fuelEstimate: 0,
     co2Savings: 0
   });
+  
+  const [performanceAnalytics, setPerformanceAnalytics] = useState(null);
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+  
+  // Fetch performance analytics
+  useEffect(() => {
+    const fetchPerformanceAnalytics = async () => {
+      if (!analyticsService) return;
+      
+      setIsLoadingAnalytics(true);
+      try {
+        const result = await analyticsService.getRoutePerformanceAnalytics('7d');
+        if (result.success) {
+          setPerformanceAnalytics(result.data);
+        }
+      } catch (error) {
+        console.error('Error fetching performance analytics:', error);
+      } finally {
+        setIsLoadingAnalytics(false);
+      }
+    };
+    
+    fetchPerformanceAnalytics();
+  }, [analyticsService]);
   
   useEffect(() => {
     if (!assignments || assignments.length === 0 || !userLocation) {
@@ -141,6 +166,31 @@ const RouteStatistics = ({ assignments, userLocation }) => {
                   </svg>
                   <span>Estimated {(stats.estimatedTime / stats.assignmentCount).toFixed(0)} minutes per pickup on average</span>
                 </li>
+                
+                {/* Performance Analytics from last 7 days */}
+                {performanceAnalytics && (
+                  <>
+                    <li className="flex items-start">
+                      <svg className="h-4 w-4 text-blue-500 mr-1 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Last 7 days: {performanceAnalytics.totalPickups} completed pickups, ₵{performanceAnalytics.totalEarnings.toFixed(2)} earned</span>
+                    </li>
+                    <li className="flex items-start">
+                      <svg className="h-4 w-4 text-purple-500 mr-1 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Your efficiency: {performanceAnalytics.timeEfficiency.toFixed(1)} pickups/hour, {performanceAnalytics.fuelEfficiency.toFixed(1)} km/L fuel</span>
+                    </li>
+                  </>
+                )}
+                
+                {isLoadingAnalytics && (
+                  <li className="flex items-start">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-blue-600 mr-1 mt-0.5"></div>
+                    <span>Loading performance data...</span>
+                  </li>
+                )}
               </ul>
             </div>
           </div>

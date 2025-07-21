@@ -1306,13 +1306,6 @@ const handleLocateSite = (requestId) => {
     <div className="app-container bg-gray-100 min-h-screen flex flex-col">
       <TopNavBar title="" />
       
-      {/* Offline indicator */}
-      {!isOnlineStatus && (
-        <div className="w-full bg-gray-800 text-white py-1 text-center text-sm z-40 mt-12">
-          You are currently offline. Limited functionality available.
-        </div>
-      )}
-      
       {/* Fixed Header Section */}
       <div className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md pt-16 pb-0">
         {/* Page Title */}
@@ -1358,7 +1351,7 @@ const handleLocateSite = (requestId) => {
       </div>
       
       {/* Scrollable Content Area - with padding to account for fixed header and tabs */}
-      <main className="flex-1 overflow-y-auto pt-40 pb-20 px-4">
+      <main className="flex-1 overflow-y-auto pt-40 pb-20 px-4" style={{paddingTop: '13rem'}}>
         
         {/* Radius Filter and Multi-select controls removed - using Map page's radius setting instead */}
         

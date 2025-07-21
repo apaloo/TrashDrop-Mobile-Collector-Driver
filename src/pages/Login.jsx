@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatPhoneNumber } from '../services/supabase';
@@ -7,13 +7,70 @@ import logo from '../assets/logo.svg';
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { sendOtp, login, loading: authLoading, error: authError } = useAuth();
+  const { sendOtp, login, loading: authLoading, error: authError, user } = useAuth();
   
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
+  
+  // Auto-login for development mode
+  useEffect(() => {
+    const performAutoLogin = async () => {
+      // Skip auto-login if user is logged out
+      const isLoggedOut = localStorage.getItem('user_logged_out') === 'true';
+      if (isLoggedOut) {
+        console.log('User is logged out, skipping auto-login');
+        return;
+      }
+
+      if (!user && !autoLoginAttempted) {
+        setAutoLoginAttempted(true);
+        console.log('Auto-login attempt in progress...');
+        try {
+          // Create mock user for dev mode
+          const mockUser = {
+            id: 'test-user-id',
+            email: 'test@example.com',
+            phone: phoneNumber,
+            user_metadata: {
+              name: 'Test User',
+              role: 'driver'
+            }
+          };
+          
+          // Create a mock session for dev mode
+          const mockSession = {
+            access_token: 'dev-mode-token',
+            expires_in: 3600,
+            refresh_token: 'dev-mode-refresh-token',
+            user: mockUser
+          };
+
+          // Store in localStorage for persistence
+          localStorage.setItem('dev_mode_session', JSON.stringify(mockSession));
+          
+          // First send OTP
+          await sendOtp(phoneNumber);
+          // Then verify with default code
+          const { success } = await login(phoneNumber, otp);
+          
+          if (success) {
+            console.log('Auto-login successful!');
+            navigate('/map');
+          }
+        } catch (err) {
+          console.error('Auto-login failed:', err);
+          // Clean up mock session if login fails
+          localStorage.removeItem('dev_mode_session');
+        }
+      }
+    };
+    
+    performAutoLogin();
+  }, [user, autoLoginAttempted, sendOtp, login, phoneNumber, otp, navigate]);
   
   // Force transition to OTP verification
   const goToOtpVerification = () => {
@@ -64,6 +121,29 @@ const LoginPage = () => {
       
       // Format phone number consistently
       const formattedPhone = formatPhoneNumber(phoneNumber);
+      
+      // Create mock user for dev mode
+      const mockUser = {
+        id: 'test-user-id',
+        email: 'test@example.com',
+        phone: formattedPhone,
+        user_metadata: {
+          name: 'Test User',
+          role: 'driver'
+        }
+      };
+      
+      // Create a mock session for dev mode
+      const mockSession = {
+        access_token: 'dev-mode-token',
+        expires_in: 3600,
+        refresh_token: 'dev-mode-refresh-token',
+        user: mockUser
+      };
+
+      // Store in localStorage for persistence
+      localStorage.setItem('dev_mode_session', JSON.stringify(mockSession));
+      localStorage.removeItem('user_logged_out');
       
       // Use our AuthContext login method which now uses real Supabase verification
       const { success, user, error } = await login(formattedPhone, otp);

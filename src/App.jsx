@@ -23,7 +23,19 @@ import RouteOptimizationPage from './pages/RouteOptimization';
 
 // RouteGuard components to protect routes
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user, hasLoggedOut } = useAuth();
+  
+  // Check for dev mode session in localStorage directly for extra safety
+  const hasDevModeSession = localStorage.getItem('dev_mode_session') !== null;
+  
+  // Debug logging
+  console.log('ProtectedRoute check:', { 
+    isAuthenticated, 
+    loading, 
+    hasUser: !!user,
+    hasDevModeSession,
+    hasLoggedOut
+  });
   
   if (loading) {
     return <div className="flex h-screen items-center justify-center">
@@ -31,7 +43,9 @@ const ProtectedRoute = ({ children }) => {
     </div>;
   }
   
-  if (!isAuthenticated) {
+  // Allow access if authenticated OR if we have a dev mode session AND user hasn't logged out
+  if ((!isAuthenticated && !hasDevModeSession) || hasLoggedOut) {
+    console.log('Access denied: User not authenticated or has logged out');
     return <Navigate to="/login" replace />;
   }
   
@@ -39,7 +53,18 @@ const ProtectedRoute = ({ children }) => {
 };
 
 const PublicRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, hasLoggedOut } = useAuth();
+  
+  // Check for dev mode session in localStorage directly for extra safety
+  const hasDevModeSession = localStorage.getItem('dev_mode_session') !== null;
+  
+  // Debug logging
+  console.log('PublicRoute check:', { 
+    isAuthenticated, 
+    loading, 
+    hasDevModeSession,
+    hasLoggedOut
+  });
   
   if (loading) {
     return <div className="flex h-screen items-center justify-center">
@@ -47,7 +72,9 @@ const PublicRoute = ({ children }) => {
     </div>;
   }
   
-  if (isAuthenticated) {
+  // Only redirect to map if authenticated OR if we have a dev mode session AND user hasn't logged out
+  if ((isAuthenticated || hasDevModeSession) && !hasLoggedOut) {
+    console.log('Redirecting to map: User is authenticated or has dev mode session and has not logged out');
     return <Navigate to="/map" replace />;
   }
   
@@ -145,7 +172,18 @@ function App() {
 
 // Component to handle default route redirect based on auth state
 const DefaultRedirect = () => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, hasLoggedOut } = useAuth();
+  
+  // Check for dev mode session in localStorage directly for extra safety
+  const hasDevModeSession = localStorage.getItem('dev_mode_session') !== null;
+  
+  // Debug logging
+  console.log('DefaultRedirect check:', { 
+    isAuthenticated, 
+    loading, 
+    hasDevModeSession,
+    hasLoggedOut
+  });
   
   if (loading) {
     return (
@@ -155,7 +193,14 @@ const DefaultRedirect = () => {
     );
   }
   
-  return isAuthenticated ? <Navigate to="/map" replace /> : <Navigate to="/login" replace />;
+  // Redirect based on authentication status OR dev mode session, but respect logout state
+  if ((isAuthenticated || hasDevModeSession) && !hasLoggedOut) {
+    console.log('DefaultRedirect: Redirecting to map');
+    return <Navigate to="/map" replace />;
+  } else {
+    console.log('DefaultRedirect: Redirecting to login');
+    return <Navigate to="/login" replace />;
+  }
 }
 
 export default App;

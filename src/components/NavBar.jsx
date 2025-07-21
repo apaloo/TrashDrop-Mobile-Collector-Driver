@@ -55,8 +55,10 @@ export const TopNavBar = ({ user }) => {
                 className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100"
                 onClick={async () => {
                   setIsDropdownOpen(false);
+                  console.log('Logging out user from NavBar...');
                   const { success } = await logout();
                   if (success) {
+                    console.log('Logout successful, navigating to login page...');
                     navigate('/login');
                   }
                 }}

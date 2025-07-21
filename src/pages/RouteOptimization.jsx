@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useOffline } from '../contexts/OfflineContext';
 import { SectionLoading } from '../components/LoadingIndicator';
 import PullToRefresh from '../components/PullToRefresh';
@@ -6,10 +7,13 @@ import Notification from '../components/Notification';
 import RouteOptimizer from '../components/RouteOptimizer';
 import RouteStatistics from '../components/RouteStatistics';
 import ItemList from '../components/ItemList';
-import { supabase } from '../services/supabase';
+import { createAnalyticsService } from '../services/analyticsService';
 
 // Part 1: Main component and state management
 const RouteOptimizationPage = () => {
+  // Get auth context
+  const { user } = useAuth();
+  
   // State for assignments, requests, and user location
   const [assignments, setAssignments] = useState([]);
   const [requests, setRequests] = useState([]);
@@ -17,9 +21,19 @@ const RouteOptimizationPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [usingFallback, setUsingFallback] = useState(false);
+  const [analyticsService, setAnalyticsService] = useState(null);
   
   // Get offline status
   const { online } = useOffline();
+  
+  // Initialize analytics service when user is available
+  useEffect(() => {
+    if (user?.id) {
+      const service = createAnalyticsService(user.id);
+      setAnalyticsService(service);
+      console.log('✅ Analytics service initialized for collector:', user.id);
+    }
+  }, [user]);
   
   // Get default location from environment variables
   const getDefaultLocation = () => ({
@@ -121,91 +135,89 @@ const RouteOptimizationPage = () => {
     // No cleanup needed since we're not setting up any watches
   }, []);
   
-  // Fetch assignments and requests data
+  // Fetch assignments and requests data using analytics service
   useEffect(() => {
     const fetchData = async () => {
+      if (!analyticsService || !online) {
+        console.log('📍 Skipping data fetch - missing analytics service or offline');
+        return;
+      }
+      
       setIsLoading(true);
+      setError(null);
       
       try {
-        // Fetch accepted pickup requests from Supabase
-        const { data: acceptedRequests, error } = await supabase
-          .from('pickup_requests')
-          .select('*')
-          .eq('status', 'accepted')
-          .order('accepted_at', { ascending: true });
+        console.log('📊 Fetching current route data from analytics service...');
+        
+        // Use analytics service to get current route data
+        const result = await analyticsService.getCurrentRouteData();
+        
+        if (result.success) {
+          const { assignments, requests } = result.data;
           
-        if (error) throw error;
-        
-        // Transform the data to match the expected format
-        const formattedAssignments = (acceptedRequests || []).map(request => ({
-          id: request.id,
-          type: 'assignment',
-          status: request.status,
-          location: request.location || 'Location not specified',
-          customer_name: request.customer_name || 'Customer',
-          latitude: request.coordinates?.lat || 0,
-          longitude: request.coordinates?.lng || 0,
-          fee: request.fee,
-          waste_type: request.waste_type,
-          special_instructions: request.special_instructions,
-          scheduled_date: request.scheduled_date,
-          preferred_time: request.preferred_time
-        }));
-        
-        setAssignments(formattedAssignments);
-        setRequests([]); // We don't need pending requests for the route optimization
-        setIsLoading(false);
+          console.log(`✅ Loaded ${assignments.length} assignments and ${requests.length} requests`);
+          
+          setAssignments(assignments);
+          setRequests(requests);
+          
+          // Log route optimization for analytics
+          if (assignments.length > 0) {
+            await analyticsService.logRouteOptimization({
+              total_assignments: assignments.length,
+              total_requests: requests.length,
+              timestamp: new Date().toISOString()
+            });
+          }
+        } else {
+          console.error('Failed to fetch route data:', result.error);
+          setError(result.error || 'Failed to load route data');
+        }
       } catch (error) {
-        console.error('Error fetching data:', error);
-        setError('Failed to load data');
+        console.error('Error in fetchData:', error);
+        setError('Failed to load data. Please try again.');
+      } finally {
         setIsLoading(false);
       }
     };
     
-    if (userLocation) {
+    if (userLocation && analyticsService) {
       fetchData();
     }
-  }, [userLocation]);
+  }, [userLocation, analyticsService, online]);
   
-  // Handle refresh
+  // Handle refresh using analytics service
   const handleRefresh = async () => {
-    if (!online) {
-      setError('You are currently offline. Some features may be limited.');
+    if (!online || !analyticsService) {
+      setError('You are currently offline or analytics service not available.');
       return Promise.resolve();
     }
     
     try {
-      // Fetch the latest accepted requests from Supabase
-      const { data: acceptedRequests, error } = await supabase
-        .from('pickup_requests')
-        .select('*')
-        .eq('status', 'accepted')
-        .order('accepted_at', { ascending: true });
+      console.log('🔄 Refreshing route data...');
+      
+      // Use analytics service to get fresh route data
+      const result = await analyticsService.getCurrentRouteData();
+      
+      if (result.success) {
+        const { assignments, requests } = result.data;
         
-      if (error) throw error;
-      
-      // Transform the data to match the expected format
-      const formattedAssignments = (acceptedRequests || []).map(request => ({
-        id: request.id,
-        type: 'assignment',
-        status: request.status,
-        location: request.location || 'Location not specified',
-        customer_name: request.customer_name || 'Customer',
-        latitude: request.coordinates?.lat || 0,
-        longitude: request.coordinates?.lng || 0,
-        fee: request.fee,
-        waste_type: request.waste_type,
-        special_instructions: request.special_instructions,
-        scheduled_date: request.scheduled_date,
-        preferred_time: request.preferred_time
-      }));
-      
-      setAssignments(formattedAssignments);
-      setRequests([]); // We don't need pending requests for the route optimization
-      return Promise.resolve();
+        console.log(`✅ Refreshed: ${assignments.length} assignments, ${requests.length} requests`);
+        
+        setAssignments(assignments);
+        setRequests(requests);
+        
+        // Clear any existing errors
+        setError(null);
+        
+        return Promise.resolve();
+      } else {
+        console.error('Failed to refresh route data:', result.error);
+        setError(result.error || 'Failed to refresh data');
+        return Promise.reject(new Error(result.error));
+      }
     } catch (error) {
       console.error('Error refreshing data:', error);
-      setError('Failed to refresh data');
+      setError('Failed to refresh data. Please try again.');
       return Promise.reject(error);
     }
   };
@@ -222,7 +234,8 @@ const RouteOptimizationPage = () => {
         />
       )}
       
-      <div className="bg-white shadow">
+      {/* Fixed header */}
+      <div className="fixed top-0 left-0 right-0 z-50 bg-white shadow pt-14">
           <div className="max-w-7xl mx-auto px-4 py-2">
             <div>
               <h1 className="text-xl font-bold text-gray-900">Route Optimization</h1>
@@ -231,8 +244,10 @@ const RouteOptimizationPage = () => {
               </p>
             </div>
           </div>
-        </div>
+      </div>
         
+      {/* Content area with top padding to account for fixed header */}
+      <div className="pt-28">
         <PullToRefresh onRefresh={handleRefresh}>
           <div className="max-w-7xl mx-auto px-4 py-2">
             {isLoading ? (
@@ -245,20 +260,23 @@ const RouteOptimizationPage = () => {
                 <RouteOptimizer 
                   assignments={assignments}
                   requests={requests}
-                  userLocation={userLocation} 
+                  userLocation={userLocation}
+                  analyticsService={analyticsService}
                 />
                 
                 {/* Route Statistics */}
                 <RouteStatistics 
                   assignments={assignments} 
-                  userLocation={userLocation} 
+                  userLocation={userLocation}
+                  analyticsService={analyticsService}
                 />
                 
                 {/* Item List - Shows both assignments and requests */}
                 <ItemList 
                   assignments={assignments}
                   requests={requests}
-                  userLocation={userLocation} 
+                  userLocation={userLocation}
+                  analyticsService={analyticsService}
                 />
               </div>
               </>
@@ -266,6 +284,7 @@ const RouteOptimizationPage = () => {
           </div>
         </PullToRefresh>
       </div>
+    </div>
   );
 };
 

@@ -730,7 +730,7 @@ const AssignPage = () => {
       </div>
       
       {/* Scrollable Content Area with padding to account for fixed header */}
-      <main className="flex-1 overflow-y-auto pt-40 pb-20 px-4">
+      <main className="flex-1 overflow-y-auto pt-40 pb-20 px-4" style={{paddingTop: '13rem'}}>
         
         {/* Assignment Cards */}
         <div className="assignments-container">
