@@ -1529,12 +1529,6 @@ const MapPage = () => {
                             <span>{request.estimated_time || ''}</span>
                           </div>
                           <p className="text-green-600 font-medium mt-1">₵{request.fee || '0'}</p>
-                          <button 
-                            onClick={() => handleAcceptAssignment(request.id)}
-                            className="mt-2 w-full bg-blue-600 text-white text-xs py-1 px-2 rounded hover:bg-blue-700 transition-colors"
-                          >
-                            Accept Request
-                          </button>
                         </div>
                       </Popup>
                     </Marker>
