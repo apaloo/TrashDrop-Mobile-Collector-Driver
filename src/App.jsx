@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { OfflineProvider } from './contexts/OfflineContext';
 import { CurrencyProvider } from './context/CurrencyContext';
@@ -6,6 +6,8 @@ import { FilterProvider } from './context/FilterContext';
 import AppLayout from './components/AppLayout';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { useEffect } from 'react';
+import ImageManager from './utils/imageManager';
 
 // Pages
 import LoginPage from './pages/Login';
@@ -20,6 +22,25 @@ import EarningsPage from './pages/Earnings';
 import ProfilePage from './pages/Profile';
 import DiagnosticPage from './pages/DiagnosticPage';
 import RouteOptimizationPage from './pages/RouteOptimization';
+
+// Component to handle cleanup on route changes
+const RouteCleanup = () => {
+  const location = useLocation();
+  
+  useEffect(() => {
+    // Clean up images when navigating away from request pages
+    if (!location.pathname.includes('/request/')) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🚀 Navigating away from request page, cleaning up images');
+      }
+      // Don't clear all images, just revoke blob URLs to free memory
+      const photos = ImageManager.getCapturedPhotos();
+      ImageManager.revokeBlobURLs(photos);
+    }
+  }, [location.pathname]);
+  
+  return null;
+};
 
 // RouteGuard components to protect routes
 const ProtectedRoute = ({ children }) => {
@@ -87,86 +108,43 @@ function App() {
       <OfflineProvider>
         <CurrencyProvider>
           <FilterProvider>
-          <Router>
-          <ToastContainer position="top-center" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
-          <AppLayout>
-            <Routes>
-          {/* Public Routes (only when not logged in) */}
-          <Route path="/login" element={
-            <PublicRoute>
-              <LoginPage />
-            </PublicRoute>
-          } />
-          <Route path="/signup" element={
-            <PublicRoute>
-              <SignupPage />
-            </PublicRoute>
-          } />
-          <Route path="/welcome" element={<WelcomePage />} />
-          <Route path="/terms" element={<TermsPage />} />
-          <Route path="/privacy" element={<PrivacyPage />} />
-          
-          {/* Protected Routes (only when logged in) */}
-          <Route path="/map" element={
-            <ProtectedRoute>
-              <MapPage />
-            </ProtectedRoute>
-          } />
-          <Route path="/request" element={
-            <ProtectedRoute>
-              <RequestPage />
-            </ProtectedRoute>
-          } />
-          <Route path="/assign" element={
-            <ProtectedRoute>
-              <AssignPage />
-            </ProtectedRoute>
-          } />
-          <Route path="/earnings" element={
-            <ProtectedRoute>
-              <EarningsPage />
-            </ProtectedRoute>
-          } />
-          <Route path="/profile" element={
-            <ProtectedRoute>
-              <ProfilePage />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/route-optimization" element={
-            <ProtectedRoute>
-              <RouteOptimizationPage />
-            </ProtectedRoute>
-          } />
-          
-          {/* Diagnostic route */}
-          <Route path="/diagnostic" element={<DiagnosticPage />} />
-          
-          {/* Default redirect */}
-          <Route path="/" element={
-            <DefaultRedirect />
-          } />
-          
-          {/* 404 fallback */}
-          <Route path="*" element={
-            <div className="flex flex-col h-screen items-center justify-center p-4">
-              <h1 className="text-2xl font-bold mb-4">Page Not Found</h1>
-              <p className="mb-6">The page you are looking for doesn't exist or has been moved.</p>
-              <button 
-                onClick={() => window.location.href = '/'}
-                className="btn btn-primary"
-              >
-                Go Home
-              </button>
-            </div>
-          } />
-          </Routes>
-        </AppLayout>
-      </Router>
+            <Router>
+              <AppLayout>
+                <RouteCleanup />
+                <Routes>
+                  <Route path="/" element={<DefaultRedirect />} />
+                  <Route path="/welcome" element={<WelcomePage />} />
+                  <Route path="/terms" element={<TermsPage />} />
+                  <Route path="/privacy" element={<PrivacyPage />} />
+                  <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+                  <Route path="/signup" element={<PublicRoute><SignupPage /></PublicRoute>} />
+                  <Route path="/map" element={<ProtectedRoute><MapPage /></ProtectedRoute>} />
+                  <Route path="/request/:id" element={<ProtectedRoute><RequestPage /></ProtectedRoute>} />
+                  <Route path="/assign" element={<ProtectedRoute><AssignPage /></ProtectedRoute>} />
+                  <Route path="/earnings" element={<ProtectedRoute><EarningsPage /></ProtectedRoute>} />
+                  <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+                  <Route path="/diagnostic" element={<DiagnosticPage />} />
+                  <Route path="/route-optimization" element={<ProtectedRoute><RouteOptimizationPage /></ProtectedRoute>} />
+                  <Route path="*" element={
+                    <div className="flex flex-col h-screen items-center justify-center p-4">
+                      <h1 className="text-2xl font-bold mb-4">Page Not Found</h1>
+                      <p className="mb-6">The page you are looking for doesn't exist or has been moved.</p>
+                      <button 
+                        onClick={() => window.location.href = '/'}
+                        className="btn btn-primary"
+                      >
+                        Go Home
+                      </button>
+                    </div>
+                  } />
+                </Routes>
+                <ToastContainer position="top-center" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
+              </AppLayout>
+            </Router>
           </FilterProvider>
-      </CurrencyProvider>
-    </OfflineProvider>
-  </AuthProvider>
+        </CurrencyProvider>
+      </OfflineProvider>
+    </AuthProvider>
   );
 }
 

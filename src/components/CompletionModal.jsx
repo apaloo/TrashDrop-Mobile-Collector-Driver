@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { isWithinRadius } from '../utils/locationUtils';
+import usePhotoCapture from '../hooks/usePhotoCapture';
 
 /**
  * Modal component for completing an assignment
@@ -15,15 +16,23 @@ const CompletionModal = ({
   onClose, 
   onSubmit 
 }) => {
-  const [photos, setPhotos] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [locationVerified, setLocationVerified] = useState(false);
   const [isWithinRange, setIsWithinRange] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const cameraInputRef = useRef(null);
-  const [imagesLoaded, setImagesLoaded] = useState(false);
   const RADIUS_METERS = 50; // 50 meter radius requirement
+  
+  // Use the photo capture hook
+  const {
+    photos,
+    capturePhoto,
+    removePhoto,
+    clearPhotos,
+    error: photoError,
+    hasPhotos
+  } = usePhotoCapture(assignment?.id);
   
   // Fix Leaflet icon issues with Webpack/Vite
   useEffect(() => {
@@ -42,33 +51,13 @@ const CompletionModal = ({
   const [coordinates, setCoordinates] = useState([defaultLat, defaultLng]); // Default coordinates from env vars
   const [userCoordinates, setUserCoordinates] = useState([defaultLat, defaultLng]); // Default user coordinates
   
-  // Load existing photos from assignment if available
+  // Show error toast if photo capture fails
   useEffect(() => {
-    if (isOpen && !imagesLoaded && assignment) {
-      // In production, we would fetch photos from Supabase
-      // based on the assignment_id using the assignment_photos table
-      const fetchAssignmentPhotos = async () => {
-        try {
-          // This would be a real Supabase query in production
-          // const { data, error } = await supabase
-          //   .from('assignment_photos')
-          //   .select('*')
-          //   .eq('assignment_id', assignment.id);
-          
-          // For now, we'll initialize with an empty array
-          // as we expect users to take new photos
-          setPhotos([]);
-          setImagesLoaded(true);
-        } catch (error) {
-          console.error('Error fetching assignment photos:', error);
-          setPhotos([]);
-          setImagesLoaded(true);
-        }
-      };
-      
-      fetchAssignmentPhotos();
+    if (photoError) {
+      console.error('Photo capture error:', photoError);
+      // You might want to show this to the user via a toast or alert
     }
-  }, [isOpen, imagesLoaded, assignment]);
+  }, [photoError]);
   
   // Set assignment coordinates on component mount
   useEffect(() => {
@@ -179,7 +168,7 @@ const CompletionModal = ({
   if (!isOpen || !assignment) return null;
   
   // Handle photo capture from camera
-  const handlePhotoCapture = (e) => {
+  const handlePhotoCapture = async (e) => {
     const files = Array.from(e.target.files);
     
     // Check if adding these files would exceed the maximum (6)
@@ -188,13 +177,15 @@ const CompletionModal = ({
       return;
     }
     
-    // Create URL objects for preview
-    const newPhotos = files.map(file => ({
-      file,
-      preview: URL.createObjectURL(file)
-    }));
-    
-    setPhotos([...photos, ...newPhotos]);
+    try {
+      // Process each file sequentially
+      for (const file of files) {
+        await capturePhoto(file);
+      }
+    } catch (error) {
+      console.error('Error capturing photos:', error);
+      // Error is already handled by the hook
+    }
   };
   
   // Open camera for photo capture
@@ -243,217 +234,6 @@ const CompletionModal = ({
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // Convert canvas to blob
-            canvas.toBlob(blob => {
-              // Create a file from the blob
-              const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
-              
-              // Create a new photo object
-              const newPhoto = {
-                file,
-                preview: URL.createObjectURL(blob)
-              };
-              
-              // Add to photos state
-              setPhotos(prev => [...prev, newPhoto]);
-              
-              // Clean up
-              stopStreamAndRemoveModal(stream, videoModal);
-            }, 'image/jpeg', 0.8);
-          });
-          
-          // Handle cancel button click
-          cancelButton.addEventListener('click', () => {
-            stopStreamAndRemoveModal(stream, videoModal);
-          });
-          
-        })
-        .catch(err => {
-          console.error('Error accessing camera:', err);
-          alert('Could not access camera. Please ensure camera permissions are granted.');
-          
-          // Fallback to file input as last resort
-          if (cameraInputRef.current) {
-            cameraInputRef.current.click();
-          }
-        });
-    } else {
-      // Fallback for browsers that don't support MediaDevices API
-      if (cameraInputRef.current) {
-        cameraInputRef.current.click();
-      }
-    }
-  };
-  
-  // Helper function to stop stream and remove video modal
-  const stopStreamAndRemoveModal = (stream, modal) => {
-    // Stop all video tracks
-    stream.getTracks().forEach(track => track.stop());
-    
-    // Remove the modal from DOM
-    if (modal && modal.parentNode) {
-      modal.parentNode.removeChild(modal);
-    }
-  };
-  
-  // Remove a photo
-  const removePhoto = (index) => {
-    const newPhotos = [...photos];
-    
-    // Only revoke URL if it's not a sample photo
-    if (!newPhotos[index].isSample) {
-      // Revoke the object URL to avoid memory leaks
-      URL.revokeObjectURL(newPhotos[index].preview);
-    }
-    
-    newPhotos.splice(index, 1);
-    setPhotos(newPhotos);
-  };
-  
-  // Handle form submission
-  const handleSubmit = async () => {
-    if (photos.length < 3) {
-      alert('Please upload at least 3 photos');
-      return;
-    }
-    
-    if (!locationVerified) {
-      alert('Location must be verified');
-      return;
-    }
-    
-    setIsSubmitting(true);
-    
-    // Simulate API call with timeout
-    setTimeout(() => {
-      // Clean up object URLs to avoid memory leaks (only for non-sample photos)
-      photos.forEach(photo => {
-        if (!photo.isSample && photo.preview) {
-          URL.revokeObjectURL(photo.preview);
-        }
-      });
-      
-      onSubmit(assignment.id, photos);
-      setIsSubmitting(false);
-      onClose();
-    }, 1500);
-  };
-  
-  // Verify location using real geolocation
-  const verifyLocation = () => {
-    setIsCheckingLocation(true);
-    
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          setUserCoordinates([latitude, longitude]);
-          
-          // Check if user is within range
-          const withinRange = isWithinRadius([latitude, longitude], coordinates, RADIUS_METERS);
-          setIsWithinRange(withinRange);
-          setLocationVerified(withinRange);
-          setIsCheckingLocation(false);
-          
-          // Show location restriction modal if not within range
-          if (!withinRange) {
-            setShowLocationModal(true);
-          }
-        },
-        (error) => {
-          console.error('Error getting location:', error);
-          setIsCheckingLocation(false);
-          setLocationVerified(false);
-          setIsWithinRange(false);
-          alert('Unable to get your location. Please check your device settings and try again.');
-        },
-        { enableHighAccuracy: true }
-      );
-    } else {
-      alert('Geolocation is not supported by this browser.');
-      setIsCheckingLocation(false);
-    }
-  };
-  
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center p-4 overflow-hidden">
-      {/* Location Restriction Modal */}
-      {showLocationModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 z-[10000] flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 text-center">
-            <div className="mb-4 text-red-500">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-bold mb-2">Location Restriction</h3>
-            <p className="text-gray-600 mb-6">
-              You must be within 50 meters of the assignment location to complete this task.
-              Please move closer to the location and try again.
-            </p>
-            <div className="flex justify-center">
-              <button
-                onClick={() => setShowLocationModal(false)}
-                className="px-6 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-              >
-                OK, I Understand
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col relative my-auto">
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-800">Complete Assignment</h2>
-          <button 
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        
-        {/* Content */}
-        <div className="overflow-y-auto p-4 flex-1 pb-16">
-          <div>
-            {/* Photo Upload Section */}
-            <div className="mb-6">
-              <h3 className="font-medium text-gray-700 mb-2">Capture Photos *</h3>
-              <p className="text-sm text-gray-500 mb-4">
-                Please take at least 3 photos (maximum 6) showing the completed assignment.
-              </p>
-              
-              {/* Photo Grid */}
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {photos.map((photo, index) => (
-                  <div key={index} className="relative aspect-square bg-gray-100 rounded-md overflow-hidden">
-                    <img 
-                      src={photo.preview} 
-                      alt={`Photo ${index + 1}`} 
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        // Fallback if image fails to load
-                        e.target.onerror = null;
-                        e.target.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wD///yH5BAEAAAEALAAAAAABAAEAAAICTAEAOw==';
-                      }}
-                    />
-                    <button
-                      onClick={() => removePhoto(index)}
-                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-                
-                {photos.length < 6 && (
                   <div onClick={openCamera} className="aspect-square bg-gray-100 rounded-md flex flex-col items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors border-2 border-dashed border-gray-300 p-4">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
