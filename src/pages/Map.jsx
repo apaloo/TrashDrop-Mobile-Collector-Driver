@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import { useFilters } from '../context/FilterContext';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
+import { useNavigate } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { TopNavBar } from '../components/NavBar';
@@ -502,6 +503,7 @@ const FilterPanel = ({ isOpen, onClose, filters, updateFilters, applyFilters }) 
 };
 
 const MapPage = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { filters, updateFilters, updateFilteredRequests } = useFilters();
   const [map, setMap] = useState(null);
@@ -1529,6 +1531,12 @@ const MapPage = () => {
                             <span>{request.estimated_time || ''}</span>
                           </div>
                           <p className="text-green-600 font-medium mt-1">₵{request.fee || '0'}</p>
+                          <button 
+                            onClick={() => navigate('/request', { state: { scrollToRequest: request.id } })}
+                            className="w-full mt-2 bg-green-500 hover:bg-green-600 text-white font-medium py-1 px-3 rounded-md text-sm transition-colors"
+                          >
+                            Get
+                          </button>
                         </div>
                       </Popup>
                     </Marker>
