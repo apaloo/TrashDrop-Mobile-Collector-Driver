@@ -150,37 +150,7 @@ const RequestPage = () => {
   }, [requestId]);
   
   // Handle request acceptance with photo requirements
-  const handleAcceptRequest = useCallback(async (requestId) => {
-    try {
-      // Check if we have the required photos (if any)
-      const requiredPhotos = 3; // Example: require 3 photos
-      if (getPhotoCount() < requiredPhotos) {
-        throw new Error(`Please capture at least ${requiredPhotos} photos before accepting this request`);
-      }
-      
-      // Proceed with request acceptance
-      // ... existing request acceptance logic ...
-      
-      // On success, clear photos if needed
-      clearPhotos();
-      
-      setToast({
-        show: true,
-        message: 'Request accepted successfully',
-        type: 'success',
-        duration: 3000
-      });
-      
-    } catch (error) {
-      console.error('Error accepting request:', error);
-      setToast({
-        show: true,
-        message: error.message || 'Failed to accept request',
-        type: 'error',
-        duration: 5000
-      });
-    }
-  }, [getPhotoCount, clearPhotos]);
+  // (Moved to the more complete implementation below with showToasts parameter)
   
   // Get filters and filtered requests from context
   const { filters, filteredRequests, updateFilteredRequests } = useFilters();

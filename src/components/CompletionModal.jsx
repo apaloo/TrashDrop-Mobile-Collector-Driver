@@ -4,11 +4,12 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { isWithinRadius } from '../utils/locationUtils';
 import usePhotoCapture from '../hooks/usePhotoCapture';
+import { assignmentService } from '../services/assignmentService';
+import { toast } from 'react-toastify';
 
 /**
  * Modal component for completing an assignment
  * Includes photo capture interface, location verification, and submit button
- * All in a single page form
  */
 const CompletionModal = ({ 
   assignment, 
@@ -16,17 +17,29 @@ const CompletionModal = ({
   onClose, 
   onSubmit 
 }) => {
+  // State management
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [locationVerified, setLocationVerified] = useState(false);
   const [isWithinRange, setIsWithinRange] = useState(false);
-  const [showLocationModal, setShowLocationModal] = useState(false);
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const cameraInputRef = useRef(null);
   const RADIUS_METERS = 50; // 50 meter radius requirement
   
-  // Use the photo capture hook
+  // Default coordinates from environment variables or fallback to Accra, Ghana
+  const defaultLat = import.meta.env.VITE_DEFAULT_LATITUDE 
+    ? parseFloat(import.meta.env.VITE_DEFAULT_LATITUDE) 
+    : 5.6037;
+  const defaultLng = import.meta.env.VITE_DEFAULT_LONGITUDE 
+    ? parseFloat(import.meta.env.VITE_DEFAULT_LONGITUDE) 
+    : -0.1870;
+  
+  // Set coordinates from assignment or use defaults
+  const coordinates = assignment?.coordinates || [defaultLat, defaultLng];
+  const [userCoordinates, setUserCoordinates] = useState(coordinates);
+  
+  // Photo capture hook
   const {
-    photos,
+    photos = [],
     capturePhoto,
     removePhoto,
     clearPhotos,
@@ -36,7 +49,6 @@ const CompletionModal = ({
   
   // Fix Leaflet icon issues with Webpack/Vite
   useEffect(() => {
-    // Fix Leaflet's icon paths
     delete L.Icon.Default.prototype._getIconUrl;
     L.Icon.Default.mergeOptions({
       iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
@@ -45,365 +57,326 @@ const CompletionModal = ({
     });
   }, []);
 
-  // State for map coordinates
-  const defaultLat = import.meta.env.VITE_DEFAULT_LATITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LATITUDE) : 5.6037;
-  const defaultLng = import.meta.env.VITE_DEFAULT_LONGITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LONGITUDE) : -0.1870;
-  const [coordinates, setCoordinates] = useState([defaultLat, defaultLng]); // Default coordinates from env vars
-  const [userCoordinates, setUserCoordinates] = useState([defaultLat, defaultLng]); // Default user coordinates
-  
   // Show error toast if photo capture fails
   useEffect(() => {
     if (photoError) {
-      console.error('Photo capture error:', photoError);
-      // You might want to show this to the user via a toast or alert
+      toast.error(photoError);
     }
   }, [photoError]);
   
-  // Set assignment coordinates on component mount
-  useEffect(() => {
-    if (isOpen && assignment && assignment.coordinates) {
-      // Use actual assignment coordinates if available
-      if (assignment.coordinates.lat && assignment.coordinates.lng) {
-        setCoordinates([assignment.coordinates.lat, assignment.coordinates.lng]);
-      } else {
-        // Fallback to default coordinates from environment variables
-        setCoordinates([defaultLat, defaultLng]);
-      }
-      
-      // Get user's current location
-      getUserLocation();
-    }
-  }, [isOpen, assignment]);
-  
-  // Get user's current location with enhanced error handling and fallbacks
+  // Get user's current location
   const getUserLocation = () => {
     if (!navigator.geolocation) {
-      console.warn('⚠️ Geolocation not supported by this browser');
-      handleGeolocationFallback('Geolocation not supported');
+      toast.error('Geolocation is not supported by your browser');
       return;
     }
 
     setIsCheckingLocation(true);
-    console.log('🌍 Requesting user location...');
 
-    // Enhanced geolocation options for better reliability
     const options = {
-      enableHighAccuracy: false, // Changed to false to avoid network provider errors
+      enableHighAccuracy: false,
       timeout: 15000, // 15 second timeout
-      maximumAge: 300000 // Accept cached location up to 5 minutes old
+      maximumAge: 300000 // 5 minutes
     };
 
     // Success handler
     const handleSuccess = (position) => {
-      const { latitude, longitude, accuracy } = position.coords;
-      console.log(`✅ Location obtained: ${latitude}, ${longitude} (±${accuracy}m)`);
-      
+      const { latitude, longitude } = position.coords;
       setUserCoordinates([latitude, longitude]);
       checkLocationProximity([latitude, longitude]);
       setIsCheckingLocation(false);
     };
 
-    // Enhanced error handler with specific error messages
+    // Error handler
     const handleError = (error) => {
-      let errorMessage = 'Unknown geolocation error';
+      let errorMessage = 'Error getting location';
       
       switch (error.code) {
         case error.PERMISSION_DENIED:
           errorMessage = 'Location access denied by user';
-          console.warn('🚫 Geolocation permission denied');
           break;
         case error.POSITION_UNAVAILABLE:
-          errorMessage = 'Location information unavailable';
-          console.warn('📍 Geolocation position unavailable');
+          errorMessage = 'Location information is unavailable';
           break;
         case error.TIMEOUT:
           errorMessage = 'Location request timed out';
-          console.warn('⏰ Geolocation request timed out');
-          break;
-        default:
-          errorMessage = error.message || 'Failed to get location';
-          console.warn('❌ Geolocation error:', error);
           break;
       }
       
-      handleGeolocationFallback(errorMessage);
+      toast.error(errorMessage);
+      setIsCheckingLocation(false);
     };
 
-    // Make the geolocation request
     navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
   };
 
-  // Handle geolocation fallback with enhanced logic
-  const handleGeolocationFallback = (reason) => {
-    console.log(`🔄 Using fallback location due to: ${reason}`);
-    
-    // Use environment variables as fallback
-    const fallbackCoords = [defaultLat, defaultLng];
-    setUserCoordinates(fallbackCoords);
-    setIsCheckingLocation(false);
-    
-    // For completion modal, we should be more lenient with location verification
-    // when geolocation fails, as the user might be in a location with poor GPS
-    if (coordinates) {
-      // Still check proximity with fallback coordinates, but don't be as strict
-      const withinRange = isWithinRadius(fallbackCoords, coordinates, RADIUS_METERS * 2); // Double the radius for fallback
-      setIsWithinRange(withinRange);
-      setLocationVerified(true); // Allow completion with fallback location for better UX
-      console.log(`📍 Fallback proximity check: ${withinRange ? 'within range' : 'outside range'} (relaxed criteria)`);
-    } else {
-      setLocationVerified(true); // Allow completion if no assignment coordinates available
-      setIsWithinRange(true);
-    }
-  };
-  
-  // Check if user is within range of assignment location
+  // Check if user is within allowed radius of assignment location
   const checkLocationProximity = (userCoords) => {
-    if (coordinates) {
-      const withinRange = isWithinRadius(userCoords, coordinates, RADIUS_METERS);
-      setIsWithinRange(withinRange);
-      setLocationVerified(withinRange);
+    const isInRange = isWithinRadius(
+      { lat: userCoords[0], lng: userCoords[1] },
+      { lat: coordinates[0], lng: coordinates[1] },
+      RADIUS_METERS
+    );
+    
+    setIsWithinRange(isInRange);
+    setLocationVerified(true);
+    
+    if (!isInRange) {
+      toast.error(`You must be within ${RADIUS_METERS}m of the assignment location`);
     }
   };
-  
-  if (!isOpen || !assignment) return null;
-  
-  // Handle photo capture from camera
+
+  // Verify location button handler
+  const verifyLocation = () => {
+    getUserLocation();
+  };
+
+  // Handle photo capture
   const handlePhotoCapture = async (e) => {
-    const files = Array.from(e.target.files);
-    
-    // Check if adding these files would exceed the maximum (6)
-    if (photos.length + files.length > 6) {
-      alert('Maximum 6 photos allowed');
+    if (e.target.files && e.target.files[0]) {
+      await capturePhoto(e.target.files[0]);
+    }
+  };
+
+  // Handle form submission
+  const handleSubmit = async () => {
+    if (photos.length < 3) {
+      toast.error('Please take at least 3 photos');
       return;
     }
     
+    if (!locationVerified || !isWithinRange) {
+      toast.error('Please verify your location first');
+      return;
+    }
+
+    setIsSubmitting(true);
+    
     try {
-      // Process each file sequentially
-      for (const file of files) {
-        await capturePhoto(file);
+      const { data, error } = await assignmentService.completeAssignment(
+        assignment.id,
+        photos,
+        { lat: userCoordinates[0], lng: userCoordinates[1] },
+        'Assignment completed via mobile app'
+      );
+      
+      if (error) throw new Error(error);
+      
+      toast.success('Assignment completed successfully!');
+      onClose();
+      
+      if (onSubmit && typeof onSubmit === 'function') {
+        onSubmit(data);
       }
     } catch (error) {
-      console.error('Error capturing photos:', error);
-      // Error is already handled by the hook
+      console.error('Error completing assignment:', error);
+      toast.error(error.message || 'Failed to complete assignment. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
-  
-  // Open camera for photo capture
-  const openCamera = () => {
-    // Check if the MediaDevices API is supported
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      // Use the Web Camera API directly instead of file input
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-        .then(stream => {
-          // Create a video element to show the stream
-          const videoModal = document.createElement('div');
-          videoModal.className = 'fixed inset-0 bg-black bg-opacity-75 z-[60] flex flex-col items-center justify-center';
-          
-          const videoContainer = document.createElement('div');
-          videoContainer.className = 'relative w-full max-w-md';
-          
-          const video = document.createElement('video');
-          video.className = 'w-full h-auto';
-          video.srcObject = stream;
-          video.autoplay = true;
-          
-          const buttonContainer = document.createElement('div');
-          buttonContainer.className = 'absolute bottom-4 left-0 right-0 flex justify-center';
-          
-          const captureButton = document.createElement('button');
-          captureButton.className = 'bg-white rounded-full w-16 h-16 flex items-center justify-center border-4 border-gray-300';
-          captureButton.innerHTML = '<div class="w-12 h-12 bg-red-500 rounded-full"></div>';
-          
-          const cancelButton = document.createElement('button');
-          cancelButton.className = 'absolute top-4 right-4 bg-black bg-opacity-50 text-white rounded-full w-10 h-10 flex items-center justify-center';
-          cancelButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>';
-          
-          buttonContainer.appendChild(captureButton);
-          videoContainer.appendChild(video);
-          videoContainer.appendChild(buttonContainer);
-          videoContainer.appendChild(cancelButton);
-          videoModal.appendChild(videoContainer);
-          
-          document.body.appendChild(videoModal);
-          
-          // Handle capture button click
-          captureButton.addEventListener('click', () => {
-            // Create a canvas to capture the image
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                  <div onClick={openCamera} className="aspect-square bg-gray-100 rounded-md flex flex-col items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors border-2 border-dashed border-gray-300 p-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    <span className="text-xs text-gray-500 mt-1">Take Photo</span>
-                    <input 
-                      ref={cameraInputRef}
-                      type="file" 
-                      accept="image/*" 
-                      capture="camera"
-                      className="hidden" 
-                      onChange={handlePhotoCapture}
+
+  if (!isOpen || !assignment) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        {/* Overlay */}
+        <div 
+          className="fixed inset-0 transition-opacity" 
+          aria-hidden="true" 
+          onClick={onClose}
+        >
+          <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+        </div>
+
+        {/* Modal */}
+        <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+          <div className="sm:flex sm:items-start">
+            <div className="mt-3 text-center sm:mt-0 sm:text-left w-full">
+              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                Complete Assignment
+              </h3>
+              
+              {/* Photo Capture Section */}
+              <div className="mb-6">
+                <h3 className="font-medium text-gray-700 mb-2">Photo Evidence</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Please take at least 3 photos of the completed assignment. Maximum 6 photos allowed.
+                </p>
+                
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  {/* Photo previews */}
+                  {photos.map((photo, index) => (
+                    <div key={`photo-${index}`} className="relative aspect-square">
+                      <img 
+                        src={photo.url || URL.createObjectURL(photo.file)} 
+                        alt={`Evidence ${index + 1}`}
+                        className="w-full h-full object-cover rounded-md"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(index)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                        aria-label="Remove photo"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  
+                  {/* Add photo button */}
+                  {photos.length < 6 && (
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="aspect-square bg-gray-100 rounded-md flex flex-col items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors border-2 border-dashed border-gray-300 p-4"
+                    >
+                      <svg 
+                        className="w-6 h-6 text-gray-400" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          strokeWidth={2} 
+                          d="M12 6v6m0 0v6m0-6h6m-6 0H6" 
+                        />
+                      </svg>
+                      <span className="text-xs text-gray-500 mt-1">
+                        {photos.length}/6 photos
+                      </span>
+                      <input
+                        type="file"
+                        ref={cameraInputRef}
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handlePhotoCapture}
+                        className="hidden"
+                        multiple
+                      />
+                    </button>
+                  )}
+                </div>
+                
+                {photoError && (
+                  <p className="text-red-500 text-sm mt-1">{photoError}</p>
+                )}
+                
+                <p className="text-xs text-gray-500">
+                  {photos.length < 3 
+                    ? `Minimum 3 photos required (${3 - photos.length} more needed)`
+                    : '3+ photos captured'}
+                </p>
+              </div>
+              
+              {/* Location Verification Section */}
+              <div className="mb-6">
+                <h3 className="font-medium text-gray-700 mb-2">Location Verification</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Please verify that you are at the assignment location. You must be within {RADIUS_METERS}m of the reported location.
+                </p>
+                
+                <div className="h-48 bg-gray-100 rounded-md mb-2 overflow-hidden">
+                  <MapContainer 
+                    center={coordinates} 
+                    zoom={16} 
+                    style={{ height: '100%', width: '100%' }}
+                    zoomControl={false}
+                  >
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     />
-                  </div>
-                )}
-              </div>
-              
-              <div className="text-sm text-gray-500 mt-2">
-                <p>Add at least 1 photo (up to 6) to document the illegal dumping</p>
-                <p className="mt-1 text-blue-500">Note: Photos can only be taken with your device's camera</p>
-                {photos.length < 3 ? (
-                  <p className="mt-2 text-red-500">Please take at least {3 - photos.length} more photo(s)</p>
-                ) : (
-                  <p className="mt-2 text-green-500">✓ Minimum photo requirement met</p>
-                )}
-              </div>
-            </div>
-            
-            {/* Location Verification Section */}
-            <div className="mb-6">
-              <h3 className="font-medium text-gray-700 mb-2">Verify Location</h3>
-              <p className="text-sm text-gray-500 mb-4">
-                Please verify that you are at the assignment location. You must be within 50m of the reported location.
-              </p>
-              
-              {/* Map */}
-              <div className="h-48 w-full bg-gray-200 rounded-md overflow-hidden">
-                <MapContainer 
-                  center={coordinates} 
-                  zoom={15} 
-                  style={{ height: '100%', width: '100%' }}
-                  zoomControl={true}
-                >
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  {/* Assignment location marker */}
-                  <Marker position={coordinates}>
-                    <Popup>
-                      {assignment.location}
-                    </Popup>
-                  </Marker>
-                  
-                  {/* User location marker */}
-                  <Marker position={userCoordinates}>
-                    <Popup>
-                      Your Location
-                    </Popup>
-                  </Marker>
-                  
-                  {/* 50m radius circle around assignment location */}
-                  <Circle 
-                    center={coordinates}
-                    radius={50}
-                    pathOptions={{ 
-                      color: isWithinRange ? 'green' : 'red', 
-                      fillColor: isWithinRange ? 'green' : 'red', 
-                      fillOpacity: 0.1 
-                    }}
-                  />
-                </MapContainer>
-              </div>
-              <div className="mt-2 text-sm text-gray-600">
-                <p>Assignment location: {assignment.location}</p>
-                <div className={`mt-2 p-2 rounded-md ${isWithinRange ? 'bg-green-50' : 'bg-red-50'}`}>
+                    <Marker position={coordinates}>
+                      <Popup>Assignment Location</Popup>
+                    </Marker>
+                    <Marker position={userCoordinates}>
+                      <Popup>Your Location</Popup>
+                    </Marker>
+                    <Circle
+                      center={coordinates}
+                      radius={RADIUS_METERS}
+                      color="blue"
+                      fillColor="#3b82f6"
+                      fillOpacity={0.2}
+                    />
+                  </MapContainer>
+                </div>
+                
+                <div className="flex items-center justify-between mt-2">
                   <div className="flex items-center">
-                    <div className={`w-3 h-3 rounded-full mr-2 ${isWithinRange ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                    <p className={`text-sm ${isWithinRange ? 'text-green-700' : 'text-red-700'}`}>
-                      {isCheckingLocation 
-                        ? 'Checking your location...' 
-                        : isWithinRange 
-                          ? 'You are within 50 meters of the assignment location ✓' 
-                          : 'You must be within 50 meters of the assignment location'}
-                    </p>
+                    {isCheckingLocation ? (
+                      <div className="flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900 mr-2"></div>
+                        <span className="text-sm text-gray-600">Checking location...</span>
+                      </div>
+                    ) : locationVerified ? (
+                      <div className="flex items-center text-green-600">
+                        <svg className="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        <span className="text-sm">
+                          {isWithinRange ? 'Location verified' : 'Too far from assignment location'}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-600">Verify your location</span>
+                    )}
                   </div>
+                  
+                  <button
+                    type="button"
+                    onClick={verifyLocation}
+                    disabled={isCheckingLocation}
+                    className={`px-3 py-1 rounded-md text-sm font-medium ${
+                      isCheckingLocation 
+                        ? 'bg-gray-200 text-gray-500 cursor-not-allowed' 
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
+                  >
+                    {isCheckingLocation ? 'Verifying...' : 'Verify Location'}
+                  </button>
                 </div>
               </div>
               
-              <div className="mt-4">
-                {!locationVerified ? (
-                  <button 
-                    onClick={verifyLocation}
-                    className={`w-full py-3 text-white rounded-md flex items-center justify-center transition-colors ${isCheckingLocation ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}`}
-                    disabled={isSubmitting || isCheckingLocation}
-                  >
-                    {isCheckingLocation ? (
-                      <>
-                        <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Checking Location...
-                      </>
-                    ) : (
-                      <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        Verify My Location
-                      </>
-                    )}
-                  </button>
-                ) : (
-                  <button 
-                    onClick={handleSubmit}
-                    className={`w-full py-3 text-white rounded-md flex items-center justify-center transition-colors ${isSubmitting || photos.length < 3 || !isWithinRange ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'}`}
-                    disabled={isSubmitting || photos.length < 3 || !isWithinRange}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Submitting...
-                      </>
-                    ) : !isWithinRange ? (
-                      'Too Far From Assignment Location'
-                    ) : photos.length < 3 ? (
-                      'Need At Least 3 Photos'
-                    ) : (
-                      'Submit Completion'
-                    )}
-                  </button>
-                )}
+              {/* Action Buttons */}
+              <div className="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                <button
+                  type="button"
+                  className="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:col-start-1 sm:text-sm"
+                  onClick={onClose}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting || photos.length < 3 || !locationVerified || !isWithinRange}
+                  className={`mt-3 w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 sm:mt-0 sm:col-start-2 sm:text-sm ${
+                    isSubmitting || photos.length < 3 || !locationVerified || !isWithinRange
+                      ? 'bg-blue-400 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
+                  }`}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Submitting...
+                    </>
+                  ) : (
+                    'Complete Assignment'
+                  )}
+                </button>
               </div>
             </div>
           </div>
-        </div>
-        
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-200 flex justify-between sticky bottom-0 bg-white">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-            disabled={isSubmitting}
-          >
-            Cancel
-          </button>
-          
-          <button
-            onClick={handleSubmit}
-            className="px-6 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors ml-auto flex items-center"
-            disabled={isSubmitting || !locationVerified || photos.length < 3}
-          >
-            {isSubmitting ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Submitting...
-              </>
-            ) : (
-              'Complete Assignment'
-            )}
-          </button>
         </div>
       </div>
     </div>

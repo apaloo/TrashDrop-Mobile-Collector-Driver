@@ -119,6 +119,7 @@ function App() {
                   <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
                   <Route path="/signup" element={<PublicRoute><SignupPage /></PublicRoute>} />
                   <Route path="/map" element={<ProtectedRoute><MapPage /></ProtectedRoute>} />
+                  <Route path="/request" element={<ProtectedRoute><RequestPage /></ProtectedRoute>} />
                   <Route path="/request/:id" element={<ProtectedRoute><RequestPage /></ProtectedRoute>} />
                   <Route path="/assign" element={<ProtectedRoute><AssignPage /></ProtectedRoute>} />
                   <Route path="/earnings" element={<ProtectedRoute><EarningsPage /></ProtectedRoute>} />
