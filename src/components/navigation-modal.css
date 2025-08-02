@@ -1,0 +1,46 @@
+/* Custom styles for Leaflet Routing Machine */
+
+/* Improve readability for routing instructions */
+.leaflet-routing-container {
+  color: #000 !important;
+  font-weight: 500 !important;
+}
+
+/* Make collapse button more visible */
+.leaflet-routing-collapse-btn {
+  color: #000 !important;
+  font-weight: bold !important;
+}
+
+/* Make all text elements in routing instructions black and bold */
+.leaflet-routing-alt {
+  color: #000 !important;
+}
+
+/* Ensure all spans within routing container are dark */
+.leaflet-routing-container span,
+.leaflet-routing-container div,
+.leaflet-routing-container h2,
+.leaflet-routing-container h3 {
+  color: #000 !important;
+}
+
+/* Make distance markers more visible */
+.leaflet-routing-icon {
+  background-color: #000;
+  border-radius: 50%;
+  margin-right: 8px !important;
+}
+
+/* Make selected route more visible */
+.leaflet-routing-alt tr.leaflet-routing-alt-minimized {
+  color: #000 !important;
+  font-weight: bold !important;
+}
+
+/* Improve the contrast of all text elements */
+.leaflet-routing-geocoder input,
+.leaflet-routing-geocoder input::placeholder,
+.leaflet-routing-summary {
+  color: #000 !important;
+}

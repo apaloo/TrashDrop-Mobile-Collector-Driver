@@ -289,6 +289,7 @@ CREATE TABLE public.authority_assignments (
   completed_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  cleanup_notes text,
   CONSTRAINT authority_assignments_pkey PRIMARY KEY (id),
   CONSTRAINT authority_assignments_collector_id_fkey FOREIGN KEY (collector_id) REFERENCES auth.users(id)
 );
@@ -301,8 +302,10 @@ CREATE TABLE public.bag_inventory (
   scan_date timestamp with time zone NOT NULL DEFAULT now(),
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  batch_id uuid,
   CONSTRAINT bag_inventory_pkey PRIMARY KEY (id),
-  CONSTRAINT bag_inventory_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT bag_inventory_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT bag_inventory_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.bag_orders(id)
 );
 CREATE TABLE public.bag_orders (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -315,34 +318,60 @@ CREATE TABLE public.bag_orders (
   points_used integer DEFAULT 0,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  batch_qr_code text NOT NULL UNIQUE,
   CONSTRAINT bag_orders_pkey PRIMARY KEY (id),
   CONSTRAINT bag_orders_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
   CONSTRAINT bag_orders_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.locations(id)
 );
 CREATE TABLE public.bags (
-  id text NOT NULL,
-  request_id text,
+  bag_id text NOT NULL,
+  batch_id text,
   type text NOT NULL CHECK (type = ANY (ARRAY['plastic'::text, 'paper'::text, 'metal'::text, 'glass'::text, 'organic'::text, 'general'::text, 'recycling'::text])),
   scanned boolean DEFAULT false,
-  scanned_at timestamp with time zone,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT bags_pkey PRIMARY KEY (id),
-  CONSTRAINT bags_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.pickup_requests(id..)
+  picked_up_at timestamp with time zone,
+  requested_at timestamp with time zone DEFAULT now(),
+  qr_code text UNIQUE,
+  status text,
+  created_at timestamp with time zone,
+  picked_up_by uuid,
+  CONSTRAINT bags_pkey PRIMARY KEY (bag_id),
+  CONSTRAINT bags_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.pickup_requests(id..)
+);
+CREATE TABLE public.bags_mobile (
+  bag_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  requested_at timestamp with time zone NOT NULL DEFAULT now(),
+  batch_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  status text,
+  picked_up_at timestamp without time zone,
+  picked_up_by uuid,
+  CONSTRAINT bags_mobile_pkey PRIMARY KEY (bag_id),
+  CONSTRAINT bags_mobile_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.batches(batch_id)
 );
 CREATE TABLE public.batches (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  created_by uuid NOT NULL,
-  quantity integer NOT NULL,
-  type text NOT NULL,
-  size text,
-  status text NOT NULL DEFAULT 'Active'::text,
+  batch_id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  number_of_bags integer NOT NULL,
+  trash_type text NOT NULL,
+  bag_size text,
+  batch_status text NOT NULL DEFAULT 'Active'::text,
   distributed integer DEFAULT 0,
   scanned integer DEFAULT 0,
   qr_prefix text,
-  created_at timestamp with time zone DEFAULT now(),
+  generation_date timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT batches_pkey PRIMARY KEY (id),
-  CONSTRAINT batches_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id)
+  CONSTRAINT batches_pkey PRIMARY KEY (batch_id),
+  CONSTRAINT batches_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.collector_sessions (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  collector_id uuid NOT NULL UNIQUE,
+  filter_criteria jsonb,
+  reserved_requests ARRAY DEFAULT ARRAY[]::uuid[],
+  session_start timestamp with time zone DEFAULT now(),
+  last_activity timestamp with time zone DEFAULT now(),
+  is_active boolean DEFAULT true,
+  CONSTRAINT collector_sessions_pkey PRIMARY KEY (id),
+  CONSTRAINT collector_sessions_collector_id_fkey FOREIGN KEY (collector_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.collectors (
   id uuid NOT NULL,
@@ -447,6 +476,18 @@ CREATE TABLE public.locations (
   CONSTRAINT locations_pkey PRIMARY KEY (id),
   CONSTRAINT locations_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
+CREATE TABLE public.payment_methods (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  type text NOT NULL CHECK (type = ANY (ARRAY['credit_card'::text, 'bank_account'::text, 'mobile_money'::text])),
+  provider text NOT NULL,
+  is_default boolean DEFAULT false,
+  details jsonb NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT payment_methods_pkey PRIMARY KEY (id),
+  CONSTRAINT payment_methods_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
 CREATE TABLE public.pickup_requests (
   id.. text NOT NULL,
   location text NOT NULL,
@@ -466,9 +507,13 @@ CREATE TABLE public.pickup_requests (
   preferred_time text,
   points_earned integer GENERATED ALWAYS AS IDENTITY NOT NULL,
   id uuid,
+  payment_method_id uuid,
+  payment_type text CHECK (payment_type = ANY (ARRAY['prepaid'::text, 'postpaid'::text])),
+  priority text,
   CONSTRAINT pickup_requests_pkey PRIMARY KEY (id..),
+  CONSTRAINT pickup_requests_id_fkey FOREIGN KEY (id) REFERENCES public.rewards(id),
   CONSTRAINT pickup_requests_collector_id_fkey FOREIGN KEY (collector_id) REFERENCES auth.users(id),
-  CONSTRAINT pickup_requests_id_fkey FOREIGN KEY (id) REFERENCES public.rewards(id)
+  CONSTRAINT pickup_requests_payment_method_fkey FOREIGN KEY (payment_method_id) REFERENCES public.payment_methods(id)
 );
 CREATE TABLE public.profiles (
   id uuid NOT NULL,
@@ -499,8 +544,8 @@ CREATE TABLE public.reward_redemptions (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT reward_redemptions_pkey PRIMARY KEY (id),
-  CONSTRAINT reward_redemptions_reward_id_fkey FOREIGN KEY (reward_id) REFERENCES public.rewards(id),
-  CONSTRAINT reward_redemptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT reward_redemptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT reward_redemptions_reward_id_fkey FOREIGN KEY (reward_id) REFERENCES public.rewards(id)
 );
 CREATE TABLE public.rewards (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -538,7 +583,7 @@ CREATE TABLE public.scans (
   notes text,
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT scans_pkey PRIMARY KEY (id),
-  CONSTRAINT scans_bag_id_fkey FOREIGN KEY (bag_id) REFERENCES public.bags(id),
+  CONSTRAINT scans_bag_id_fkey FOREIGN KEY (bag_id) REFERENCES public.bags(bag_id),
   CONSTRAINT scans_scanned_by_fkey FOREIGN KEY (scanned_by) REFERENCES auth.users(id)
 );
 CREATE TABLE public.scheduled_pickups (

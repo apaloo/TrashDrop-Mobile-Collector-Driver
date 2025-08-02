@@ -1,15 +1,17 @@
-import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, useContext } from 'react';
 import { useFilters } from '../context/FilterContext';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import { useNavigate } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { toast } from 'react-toastify';
+import MapControls from '../components/MapControls';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import Toast from '../components/Toast';
 import StatusButton from '../components/StatusButton';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../services/supabase';
+import { supabase, DEV_MODE } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
 import { CACHE_KEYS, saveToCache, getFromCache, isOnline, registerConnectivityListeners } from '../utils/cacheUtils';
 import { requestMarkerIcon } from '../utils/markerIcons';
@@ -142,8 +144,12 @@ const dustbinIcon = new L.Icon({
   popupAnchor: [0, -32]
 });
 
-// Location update component with improved error handling and fallbacks
+/**
+ * LocationUpdater component - Updates map with device location
+ * Uses useMap hook from react-leaflet to access map instance
+ */
 const LocationUpdater = ({ position, setPosition, shouldCenter, setShouldCenter, onLocationError }) => {
+  // Use the useMap hook to safely access the Leaflet map instance
   const map = useMap();
   const watchId = useRef(null);
   const defaultPosition = [5.6037, -0.1870]; // Default to Accra, Ghana
@@ -162,11 +168,11 @@ const LocationUpdater = ({ position, setPosition, shouldCenter, setShouldCenter,
 
   // Set default position if no position is set
   useEffect(() => {
-    if (!position) {
+    if (!position && map) {
       setPosition(defaultPosition);
       map.setView(defaultPosition, 13);
     }
-  }, [map, position, setPosition]);
+  }, [map, position, setPosition, defaultPosition]);
 
   // Handle successful geolocation
   const handleSuccess = useCallback((pos) => {
@@ -186,7 +192,7 @@ const LocationUpdater = ({ position, setPosition, shouldCenter, setShouldCenter,
     positionRef.current = newPosition;
     setPosition(newPosition);
     
-    if (shouldCenter) {
+    if (shouldCenter && map) {
       map.setView(newPosition, 15);
       setShouldCenter(false);
     }
@@ -212,7 +218,7 @@ const LocationUpdater = ({ position, setPosition, shouldCenter, setShouldCenter,
     }
     
     // Fallback to default position if we keep getting errors
-    if (errorCount.current >= MAX_RETRIES) {
+    if (errorCount.current >= MAX_RETRIES && map) {
       console.log('Falling back to default position after', MAX_RETRIES, 'errors');
       positionRef.current = defaultPosition;
       setPosition(defaultPosition);
@@ -289,12 +295,13 @@ const LocationUpdater = ({ position, setPosition, shouldCenter, setShouldCenter,
 
   // Handle map centering when position or shouldCenter changes
   useEffect(() => {
-    if (position && shouldCenter) {
+    if (position && shouldCenter && map) {
       map.setView(position, map.getZoom());
       setShouldCenter(false);
     }
   }, [position, shouldCenter, map, setShouldCenter]);
 
+  // No rendering, this is a controller component
   return null;
 };
 
@@ -634,7 +641,7 @@ const MapPage = () => {
     return `${distanceKm.toFixed(1)}km`;
   };
   
-  // Fetch requests from Supabase
+  // Fetch requests from Supabase or use mock data in DEV_MODE
   const fetchRequests = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -644,30 +651,96 @@ const MapPage = () => {
       const online = await isOnline();
       setIsOnlineStatus(online);
       
-      if (online) {
+      let data = [];
+      
+      // Use mock data in DEV_MODE to avoid API calls
+      if (DEV_MODE) {
+        console.log('[DEV MODE] Using mock pickup requests data...');
+        
+        // Mock data for development
+        data = [
+          {
+            id: 'mock-1',
+            waste_type: 'plastic',
+            coordinates: [5.672505, -0.280669], // Near Accra
+            location: 'East Legon, Accra',
+            fee: 50,
+            status: 'available',
+            priority: 'medium',
+            bag_count: 2,
+            special_instructions: 'Plastic bottles and containers',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          {
+            id: 'mock-2',
+            waste_type: 'organic',
+            coordinates: [5.6801, -0.2874], // Accra area
+            location: 'Osu, Accra',
+            fee: 30,
+            status: 'available',
+            priority: 'high',
+            bag_count: 1,
+            special_instructions: 'Food waste and organic materials',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          {
+            id: 'mock-3',
+            waste_type: 'paper',
+            coordinates: [5.6644, -0.2656], // Accra central
+            location: 'Adabraka, Accra',
+            fee: 25,
+            status: 'available',
+            priority: 'low',
+            bag_count: 3,
+            special_instructions: 'Old newspapers and cardboard',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }
+        ];
+      } else if (online) {
         console.log('Fetching pickup requests from Supabase...');
         
         // Log Supabase configuration
         console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
         
         // Fetch available pickup requests
-        const { data, error, count } = await supabase
+        const { data: supabaseData, error, count } = await supabase
           .from('pickup_requests')
           .select('*', { count: 'exact' })
           .eq('status', 'available')
           .order('created_at', { ascending: false });
         
-        console.log('Supabase query results:', { data, error, count });
+        console.log('Supabase query results:', { data: supabaseData, error, count });
         
         if (error) {
           console.error('Supabase query error:', error);
           throw error;
         }
         
-        // Transform the data to match our expected format
-        const transformedData = data
+        data = supabaseData || [];
+      } else {
+        // Try to load from cache if offline
+        const cachedData = await getFromCache(CACHE_KEYS.PICKUP_REQUESTS);
+        if (cachedData) {
+          setAllRequests(cachedData);
+          // Don't set requests here - let applyFilters handle the filtered data
+          setLastUpdated(new Date());
+          showToast('Showing cached data', 'info');
+          
+          // Apply filters to populate the requests state with filtered data
+          setTimeout(() => applyFilters(), 0);
+          return; // Early return for cache case
+        } else {
+          showToast('No cached data available', 'warning');
+          return; // Early return for no cache case
+        }
+      }
+      
+      // Transform the data to match our expected format (for DEV_MODE and online cases)
+      const transformedData = data
           .map(item => {
-            try {
               if (!item) return null;
               
               const coords = parseCoordinates(item.coordinates);
@@ -680,32 +753,41 @@ const MapPage = () => {
                 return null;
               }
               
-              return {
-                id: item.id || `temp-${Math.random().toString(36).substr(2, 9)}`,
-                type: item.waste_type || 'general',
-                coordinates: coords,
-                location: item.location || 'Unknown location',
-                fee: Number(item.fee) || 0,
-                status: item.status || 'available',
-                priority: item.priority || 'medium',
-                bag_count: Number(item.bag_count) || 1,
-                special_instructions: item.special_instructions || '',
-                created_at: item.created_at || new Date().toISOString(),
-                updated_at: item.updated_at || new Date().toISOString(),
-                distance: formatDistance(calculateDistance(
-                  [position[0], position[1]],
-                  coords
-                )),
-                distanceValue: calculateDistance(
-                  [position[0], position[1]],
-                  coords
-                ),
-                estimated_time: item.estimated_time || 'Unknown',
+              // Skip items with missing IDs (prevents 'Cannot accept temporary requests' error)
+              if (!item.id) {
+                console.warn('Skipping item with missing ID:', item);
+                return null;
+              }
+              
+              // Handle individual item processing errors gracefully
+              const safeProcessItem = () => {
+                return {
+                  id: item.id,
+                  type: item.waste_type || 'general',
+                  coordinates: coords,
+                  location: item.location || 'Unknown location',
+                  fee: Number(item.fee) || 0,
+                  status: item.status || 'available',
+                  priority: item.priority || 'medium',
+                  bag_count: Number(item.bag_count) || 1,
+                  special_instructions: item.special_instructions || '',
+                  created_at: item.created_at || new Date().toISOString(),
+                  updated_at: item.updated_at || new Date().toISOString(),
+                  distance: formatDistance(calculateDistance(
+                    [position[0], position[1]],
+                    coords
+                  )),
+                  distanceValue: calculateDistance(
+                    [position[0], position[1]],
+                    coords
+                  ),
+                  estimated_time: item.estimated_time || 'Unknown',
+                };
               };
-            } catch (error) {
-              console.error('Error processing request:', item?.id, error);
-              return null;
-            }
+              
+              // Process item safely without nested try-catch
+              const processedItem = safeProcessItem();
+              return processedItem;
           })
           .filter(Boolean); // Remove any null entries
         
@@ -723,21 +805,6 @@ const MapPage = () => {
         
         // Apply filters to populate the requests state with filtered data
         setTimeout(() => applyFilters(), 0);
-      } else {
-        // Try to load from cache if offline
-        const cachedData = await getFromCache(CACHE_KEYS.PICKUP_REQUESTS);
-        if (cachedData) {
-          setAllRequests(cachedData);
-          // Don't set requests here - let applyFilters handle the filtered data
-          setLastUpdated(new Date());
-          showToast('Showing cached data', 'info');
-          
-          // Apply filters to populate the requests state with filtered data
-          setTimeout(() => applyFilters(), 0);
-        } else {
-          showToast('No cached data available', 'warning');
-        }
-      }
     } catch (error) {
       console.error('Error fetching pickup requests:', error);
       showToast('Failed to load pickup requests', 'error');
@@ -1442,7 +1509,7 @@ const MapPage = () => {
                 zoomControl={false}
                 ref={setMap}
               >
-                {/* Enhanced LocationUpdater with error handling */}
+                {/* Direct children without function wrapper - modern react-leaflet approach */}
                 <LocationUpdater 
                   position={position}
                   setPosition={setPosition}
@@ -1450,7 +1517,7 @@ const MapPage = () => {
                   setShouldCenter={setShouldCenter}
                   onLocationError={handleLocationError}
                 />
-                
+            
                 {/* OpenStreetMap TileLayer */}
                 <TileLayer
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -1490,32 +1557,26 @@ const MapPage = () => {
                 )}
                 
                 {/* Request markers */}
-                {(() => {
-                  console.log('DEBUG: Rendering markers. requests.length:', requests?.length || 0);
-                  console.log('DEBUG: allRequests.length:', allRequests?.length || 0);
-                  console.log('DEBUG: First few requests:', requests?.slice(0, 3));
-                  
-                  return requests
-                    .filter(request => {
-                      // Filter out requests with invalid coordinates
-                      const isValid = request && 
-                                   request.id && 
-                                   request.coordinates && 
-                                   Array.isArray(request.coordinates) && 
-                                   request.coordinates.length === 2 &&
-                                   typeof request.coordinates[0] === 'number' &&
-                                   typeof request.coordinates[1] === 'number' &&
-                                   !isNaN(request.coordinates[0]) && 
-                                   !isNaN(request.coordinates[1]);
-                      
-                      if (!isValid) {
-                        console.warn('Skipping invalid request:', request?.id, 'with coordinates:', request?.coordinates);
-                        return false;
-                      }
-                      console.log('DEBUG: Valid request for marker:', request.id, request.coordinates);
-                      return true;
-                    });
-                })().slice(0, 50) // Limit to 50 markers for performance
+                {requests
+                  .filter(request => {
+                    // Filter out requests with invalid coordinates
+                    const isValid = request && 
+                                request.id && 
+                                request.coordinates && 
+                                Array.isArray(request.coordinates) && 
+                                request.coordinates.length === 2 &&
+                                typeof request.coordinates[0] === 'number' &&
+                                typeof request.coordinates[1] === 'number' &&
+                                !isNaN(request.coordinates[0]) && 
+                                !isNaN(request.coordinates[1]);
+                    
+                    if (!isValid) {
+                      console.warn('Skipping invalid request:', request?.id, 'with coordinates:', request?.coordinates);
+                      return false;
+                    }
+                    return true;
+                  })
+                  .slice(0, 50) // Limit to 50 markers for performance
                   .map(request => (
                     <Marker 
                       key={`marker-${request.id}-${request.coordinates[0]}-${request.coordinates[1]}`}
@@ -1540,41 +1601,17 @@ const MapPage = () => {
                         </div>
                       </Popup>
                     </Marker>
-                  ))}
+                  ))
+                }
                 
-                {/* Filter card and waste type legend removed - now outside MapContainer */}
-                
-                {/* Refresh indicator */}
-                {lastUpdated && (
-                  <div className="absolute z-10 top-2 left-2 bg-white bg-opacity-80 px-2 py-1 text-xs rounded-md" style={{ color: '#0a0a0a' }}>
-                    <div className="flex items-center">
-                        <span className="mr-2">Last updated: {lastUpdated.toLocaleTimeString()}</span>
-                        <button 
-                          onClick={refreshData}
-                          className="text-blue-600 flex items-center" 
-                          disabled={isRefreshing}
-                        >
-                          {isRefreshing ? (
-                            <>
-                              <div className="animate-spin w-3 h-3 border border-blue-600 border-t-transparent rounded-full mr-1"></div>
-                              <span>Refreshing</span>
-                            </>
-                          ) : (
-                            <>
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                              </svg>
-                              <span>Refresh</span>
-                            </>
-                      )}
-                        </button>
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {allRequests?.length || 0} pickup requests available
-                      </div>
-                    </div>
-                  )}
-                </MapContainer>
+                {/* MapControls component for overlay UI */}
+                <MapControls 
+                  lastUpdated={lastUpdated}
+                  isRefreshing={isRefreshing}
+                  refreshData={refreshData}
+                  requestCount={allRequests?.length || 0}
+                />
+              </MapContainer>
 
               {/* Filter panel */}
               <FilterPanel 

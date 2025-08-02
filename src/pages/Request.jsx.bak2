@@ -1,27 +1,18 @@
 import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import { Scanner } from '@yudiel/react-qr-scanner';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-
 import { useFilters } from '../context/FilterContext';
-import { useAuth } from '../context/AuthContext';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
-import RequestCard from '../components/RequestCard';
-import NavigationQRModal from '../components/NavigationQRModal';
-import Toast from '../components/Toast';
-
 import { PickupRequestStatus, WasteType, AssignmentStatus } from '../utils/types';
 import { transformRequestsData } from '../utils/requestUtils';
 import { getCurrentLocation, getLocationWithRetry, isWithinRadius } from '../utils/geoUtils';
-import { supabase, DEV_MODE } from '../services/supabase';
-import usePhotoCapture from '../hooks/usePhotoCapture';
-
+import { supabase } from '../services/supabase';
+import RequestCard from '../components/RequestCard';
 // OPTIMIZATION: Memoize RequestCard for better performance
 const MemoizedRequestCard = memo(RequestCard);
-
+import { useAuth } from '../context/AuthContext';
+import Toast from '../components/Toast';
+import usePhotoCapture from '../hooks/usePhotoCapture';
 import { requestManager } from '../services/requestManagement';
 import { 
   saveToCache, 
@@ -32,19 +23,11 @@ import {
   registerConnectivityListeners 
 } from '../utils/cacheUtils';
 
-// Fix Leaflet default marker icon issue
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
 const RequestPage = () => {
   const { id: requestId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { filters, filteredRequests = [], updateFilteredRequests } = useFilters() || {};
+  const { filters, filteredRequests, updateFilteredRequests } = useFilters();
   
   // Photo capture management
   const {
@@ -75,9 +58,6 @@ const RequestPage = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [currentReport, setCurrentReport] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [showNavigationModal, setShowNavigationModal] = useState(false);
-  const [navigationDestination, setNavigationDestination] = useState(null);
-  const [navigationRequestId, setNavigationRequestId] = useState(null);
 
   // Show toast notification
   const showToast = (message, type = 'info', duration = 3000) => {
@@ -107,18 +87,6 @@ const RequestPage = () => {
     accepted: { data: [], timestamp: 0 },
     completed: { data: [], timestamp: 0 }
   });
-
-  // Error boundary state
-  const [hasError, setHasError] = useState(false);
-  const [errorInfo, setErrorInfo] = useState(null);
-
-  // Error boundary handler
-  const handleError = (error, info) => {
-    console.error('RequestPage Error:', error);
-    setHasError(true);
-    setErrorInfo(info);
-    showToast('An error occurred. Please try refreshing the page.', 'error', 5000);
-  };
   
   // Fetch requests from Supabase
   const fetchRequests = useCallback(async () => {
@@ -175,172 +143,70 @@ const RequestPage = () => {
       const online = await isOnline();
       setIsOnlineStatus(online);
       
-      if (online || DEV_MODE) {
-        let availableResult, acceptedResult, pickedUpResult;
-        
-        if (DEV_MODE) {
-          console.log('[DEV MODE] Using mock request data...');
-          
-          // Mock data for development
-          availableResult = {
-            data: [
-              {
-                id: '00000000-0000-4000-a000-000000000001',
-                waste_type: 'plastic',
-                coordinates: [5.672505, -0.280669],
-                location: 'East Legon, Accra',
-                fee: 50,
-                status: 'available',
-                priority: 'medium',
-                bag_count: 2,
-                special_instructions: 'Plastic bottles and containers',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              },
-              {
-                id: '00000000-0000-4000-a000-000000000002',
-                waste_type: 'organic',
-                coordinates: [5.6801, -0.2874],
-                location: 'Osu, Accra',
-                fee: 30,
-                status: 'available',
-                priority: 'high',
-                bag_count: 1,
-                special_instructions: 'Food waste and organic materials',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              }
-            ]
-          };
-          
-          acceptedResult = {
-            data: [
-              {
-                id: '00000000-0000-4000-a000-000000000003',
-                waste_type: 'paper',
-                coordinates: [5.6644, -0.2656],
-                location: 'Adabraka, Accra',
-                fee: 25,
-                status: 'accepted',
-                priority: 'low',
-                bag_count: 3,
-                special_instructions: 'Old newspapers and cardboard',
-                collector_id: user?.id,
-                accepted_at: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              }
-            ]
-          };
-          
-          pickedUpResult = { data: [] };
-        } else {
-          // OPTIMIZATION: Parallelize all Supabase queries for faster loading
-          const [
-            availableRes,
-            acceptedRes, 
-            pickedUpRes
-          ] = await Promise.all([
-            // PERFORMANCE: Skip available requests query if we have filtered data from Map
-            filteredRequests.available && filteredRequests.available.length > 0 
-              ? { data: filteredRequests.available } 
-              : supabase
-                .from('pickup_requests')
-                .select('*')
-                .eq('status', PickupRequestStatus.AVAILABLE)
-                .order('created_at', { ascending: false }),
-                
-            // Get accepted requests
-            supabase
+      if (online) {
+        // OPTIMIZATION: Parallelize all Supabase queries for faster loading
+        const [
+          availableResult,
+          acceptedResult, 
+          pickedUpResult
+        ] = await Promise.all([
+          // PERFORMANCE: Skip available requests query if we have filtered data from Map
+          filteredRequests.available && filteredRequests.available.length > 0 
+            ? { data: filteredRequests.available } 
+            : supabase
               .from('pickup_requests')
               .select('*')
-              .eq('collector_id', user?.id)
-              .eq('status', PickupRequestStatus.ACCEPTED)
-              .order('accepted_at', { ascending: false }),
+              .eq('status', PickupRequestStatus.AVAILABLE)
+              .order('created_at', { ascending: false }),
               
-            // Get picked up requests
-            supabase
-              .from('pickup_requests')
-              .select('*')
-              .eq('collector_id', user?.id)
-              .eq('status', PickupRequestStatus.PICKED_UP)
-              .order('accepted_at', { ascending: false })
-          ]);
-          
-          availableResult = availableRes;
-          acceptedResult = acceptedRes;
-          pickedUpResult = pickedUpRes;
-        }
+          // Get accepted requests
+          supabase
+            .from('pickup_requests')
+            .select('*')
+            .eq('collector_id', user?.id)
+            .eq('status', PickupRequestStatus.ACCEPTED)
+            .order('accepted_at', { ascending: false }),
+            
+          // Get picked up requests
+          supabase
+            .from('pickup_requests')
+            .select('*')
+            .eq('collector_id', user?.id)
+            .eq('status', PickupRequestStatus.PICKED_UP)
+            .order('accepted_at', { ascending: false })
+        ]);
         
-        // Process results with TURBO mode
-        console.log('⚡ TURBO: Processing request data');
+        // Process results
         let availableRequests = [];
         let acceptedRequests = [];
         let pickedUpRequests = [];
         
         if (availableResult?.data) {
-          // OPTIMIZATION: Use filtered data from Map if available
-          if (filteredRequests.available && filteredRequests.available.length > 0) {
-            console.log('⚡ TURBO: Using pre-filtered requests');
-            availableRequests = filteredRequests.available;
-          } else {
-            availableRequests = transformRequestsData(availableResult.data);
-          }
+          // Transform data
+          availableRequests = transformRequestsData(availableResult.data);
           
           // Update request cache for snappy UX
-          requestAnimationFrame(() => {
-            setRequestCache(prev => ({
-              ...prev,
-              available: {
-                data: availableRequests,
-                timestamp: Date.now()
-              }
-            }));
-          });
+          setRequestCache(prev => ({
+            ...prev,
+            available: {
+              data: availableRequests,
+              timestamp: Date.now()
+            }
+          }));
         }
         
         if (acceptedResult?.data) {
           acceptedRequests = transformRequestsData(acceptedResult.data);
-          // Update accepted requests cache
-          requestAnimationFrame(() => {
-            setRequestCache(prev => ({
-              ...prev,
-              accepted: {
-                data: acceptedRequests,
-                timestamp: Date.now()
-              }
-            }));
-          });
         }
         
         if (pickedUpResult?.data) {
           pickedUpRequests = transformRequestsData(pickedUpResult.data);
-          // Update picked-up requests cache
-          requestAnimationFrame(() => {
-            setRequestCache(prev => ({
-              ...prev,
-              completed: {
-                data: pickedUpRequests,
-                timestamp: Date.now()
-              }
-            }));
-          });
         }
-
-        // OPTIMIZATION: Batch state updates for better performance
-        requestAnimationFrame(() => {
-          setRequests({
-            available: availableRequests,
-            accepted: acceptedRequests,
-            picked_up: pickedUpRequests
-          });
-          
-          setIsLoading(false);
-          setIsInitialLoading(false);
-          setIsRefreshing(false);
-          setLastUpdated(new Date());
-          
-          console.log('⚡ INSTANT: Request page data loaded');
+        
+        setRequests({
+          available: availableRequests || [],
+          accepted: acceptedRequests || [],
+          picked_up: pickedUpRequests || []
         });
         
         // Save to cache
@@ -349,6 +215,7 @@ const RequestPage = () => {
           accepted: acceptedRequests || [],
           picked_up: pickedUpRequests || []
         });
+        
         // Update timestamp
         setLastUpdated(new Date());
       } else {
@@ -470,43 +337,6 @@ const RequestPage = () => {
       // Determine if this is a pickup request or authority assignment
       const isPickupRequest = !requestToAccept.authority_id;
 
-      // Special handling for DEV_MODE mock requests
-      if (DEV_MODE && isPickupRequest) {
-        console.log('🔧 DEV_MODE: Handling mock request acceptance locally');
-        
-        // Handle mock acceptance in DEV_MODE without database operations
-        const updatedRequest = {
-          ...requestToAccept,
-          status: PickupRequestStatus.ACCEPTED,
-          accepted_at: new Date().toISOString(),
-          collector_id: user?.id
-        };
-        
-        // Update local state only
-        const newAvailable = requests.available.filter(req => req.id !== requestId);
-        const newAccepted = [...requests.accepted, updatedRequest];
-        
-        setRequests({
-          ...requests,
-          available: newAvailable,
-          accepted: newAccepted
-        });
-        
-        // Update cache for offline support
-        saveToCache(CACHE_KEYS.ALL_REQUESTS, {
-          ...requests,
-          available: newAvailable,
-          accepted: newAccepted
-        });
-        
-        if (showToasts) {
-          showToast(`Successfully accepted ${requestToAccept.waste_type || requestToAccept.type} pickup in DEV_MODE!`, 'success');
-          setActiveTab('accepted');
-        }
-        return;
-      }
-      
-      // Normal database operations for non-DEV_MODE or authority assignments
       let result;
       if (isPickupRequest) {
         // Use requestManager for pickup requests
@@ -526,17 +356,7 @@ const RequestPage = () => {
       if (result?.error) {
         // Handle specific error cases
         if (result.error.code === '22P02') {
-          console.error('UUID validation error:', result.error);
-          showToast('Invalid request ID format. This request may be test data.', 'error');
-          
-          // Force a cache reset to ensure no problematic IDs persist
-          localStorage.setItem('force_cache_reset', 'true');
-          
-          // Refresh the list to show current state after a short delay
-          setTimeout(() => {
-            fetchRequests();
-          }, 1000);
-          
+          showToast('Invalid request ID format', 'error');
           return;
         }
         throw result.error;
@@ -668,82 +488,126 @@ const RequestPage = () => {
     // Get requests and set up listeners
     fetchRequests();
     
-    // Add real-time subscription for assignments and connectivity listeners
+    // Setup variables that need to be cleaned up
     let subscription = null;
     let unregister = null;
-
+    
+    // 1. Set up real-time subscription
     const setupSubscription = async () => {
       try {
-        // Set up connectivity listeners
-        const connectivityListeners = await registerConnectivityListeners((isOnline) => {
-          setIsOnlineStatus(isOnline);
-          if (isOnline) {
-            fetchRequests();
-          }
-        });
-        unregister = connectivityListeners?.unregister || null;
-
-        // Skip real-time subscription in DEV_MODE to avoid API errors
-        if (DEV_MODE) {
-          console.log('[DEV MODE] Skipping real-time subscription setup');
-          return;
-        }
-
-        // Set up real-time subscription
+        // First fetch initial data
+        await fetchRequests();
+        
+        // Then set up real-time subscription
         subscription = supabase
           .channel('pickup_requests_changes')
           .on('postgres_changes', {
-            event: '*',
+            event: '*', 
             schema: 'public',
             table: 'pickup_requests'
-          }, async (payload) => {
-            if (!payload) {
-              console.error('Received empty payload in real-time subscription');
-              return;
+          }, (payload) => {
+            try {
+              if (!payload) {
+                console.error('Received empty payload in real-time subscription');
+                return;
+              }
+              
+              const { eventType, new: newRecord, old: oldRecord } = payload;
+              
+              if (!eventType || !newRecord) {
+                console.error('Invalid payload structure in real-time subscription', { eventType, newRecord });
+                return;
+              }
+              
+              // Handle different event types
+              switch (eventType) {
+                case 'INSERT':
+                  if (newRecord.status === AssignmentStatus.AVAILABLE) {
+                    // New available assignment
+                    const newRequest = transformRequestsData([newRecord])[0];
+                    setRequests(prev => ({
+                      ...prev,
+                      available: [...prev.available, newRequest]
+                    }));
+                    showToast('New pickup request available!', 'success');
+                  }
+                  break;
+              
+                case 'UPDATE':
+                  // Handle status changes
+                  if (oldRecord && newRecord) {
+                    if (oldRecord.status === AssignmentStatus.AVAILABLE && 
+                        newRecord.status === AssignmentStatus.ASSIGNED) {
+                      
+                      if (newRecord.collector_id === user?.id) {
+                        // Current user accepted this request - already handled by handleAccept
+                        // Nothing additional to do here
+                      } else {
+                        // Another user accepted this request - remove from available
+                        setRequests(prev => ({
+                          ...prev,
+                          available: prev.available.filter(req => req.id !== newRecord.id)
+                        }));
+                        showToast('A pickup request was claimed by another collector', 'info');
+                      }
+                    }
+                    
+                    // Status changed from ASSIGNED to PICKED_UP
+                    if (oldRecord.status === AssignmentStatus.ASSIGNED && 
+                        newRecord.status === AssignmentStatus.PICKED_UP && 
+                        newRecord.collector_id === user?.id) {
+                      
+                      // Move from accepted to picked_up list
+                      const updatedRequest = transformRequestsData([newRecord])[0];
+                      setRequests(prev => ({
+                        ...prev,
+                        accepted: prev.accepted.filter(req => req.id !== newRecord.id),
+                        picked_up: [...prev.picked_up, updatedRequest]
+                      }));
+                    }
+                  }
+                  break;
+                
+                default:
+                  console.log(`Unhandled event type: ${eventType}`);
+                  break;
+              }
+              
+              // Update cache after any change
+              saveToCache(CACHE_KEYS.ALL_REQUESTS, requests);
+            } catch (error) {
+              console.error('Error handling real-time subscription event:', error);
             }
-
-            const { eventType, new: newRecord } = payload;
-            if (!eventType || !newRecord) {
-              console.error('Invalid payload structure in real-time subscription', { eventType, newRecord });
-              return;
-            }
-
-            // Refresh requests when changes occur
-            await fetchRequests();
           })
-          .subscribe();
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              console.log('Subscribed to authority_assignments table');
+            }
+          });
       } catch (error) {
-        console.error('Error setting up subscription:', error);
-        showToast('Failed to set up real-time updates', 'error');
+        console.error('Error setting up real-time subscription:', error);
       }
     };
 
-    // Set up subscription when component mounts
-    setupSubscription();
-
-    // Cleanup function
+    // Register connectivity listeners
+    const { unregister } = registerConnectivityListeners({
+      onConnect: fetchRequests,
+      onDisconnect: () => setIsOnlineStatus(false)
+    });
+    
+    // Set up realtime subscriptions
+    setupRealtimeSubscription();
+    
     return () => {
-      // Clean up subscription if it exists
-      if (subscription) {
-        try {
-          supabase.removeChannel(subscription);
-        } catch (error) {
-          console.error('Error removing subscription channel:', error);
-        }
-      }
-
-      // Clean up connectivity listeners if unregister function exists
-      if (unregister && typeof unregister === 'function') {
-        try {
-          unregister();
-        } catch (error) {
-          console.error('Error unregistering connectivity listeners:', error);
-        }
-      }
+      // Cleanup when component unmounts
+      unregister();
+      supabase.removeChannel('pickup-requests');
+      // Clean up requestManager resources
+      requestManager.destroy();
     };
-  }, [user?.id, fetchRequests]);
+  }, [user?.id]);
 
-  // Handle opening directions with in-app navigation
+  // Handle opening directions with GPS coordinates
   const handleOpenDirections = (requestId, location) => {
     // Find the request to get GPS coordinates
     let request = null;
@@ -758,6 +622,8 @@ const RequestPage = () => {
     if (!request && requests.picked_up) {
       request = requests.picked_up.find(req => req && req.id === requestId);
     }
+    
+    let googleMapsUrl = '';
     
     if (request && request.coordinates) {
       // Parse coordinates from various formats
@@ -782,24 +648,23 @@ const RequestPage = () => {
         }
       }
       
-      // If we have valid coordinates, open in-app navigation
+      // If we have valid coordinates, use them for precise navigation
       if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
-        setNavigationDestination([lat, lng]);
-        setNavigationRequestId(requestId);
-        setShowNavigationModal(true);
-        showToast(`Opening in-app navigation to pickup location`, 'info');
+        googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+        showToast(`Opening GPS directions to pickup location`, 'info');
       } else {
-        // Fallback to external navigation if coordinates are invalid
-        const fallbackUrl = `https://www.openstreetmap.org/search?query=${encodeURIComponent(location || 'pickup location')}`;
-        window.open(fallbackUrl, '_blank');
+        // Fallback to location string if coordinates are invalid
+        googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location || 'pickup location')}`;
         showToast(`Opening directions to ${location || 'pickup location'}`, 'info');
       }
     } else {
-      // Fallback to external navigation if no request found or no coordinates
-      const fallbackUrl = `https://www.openstreetmap.org/search?query=${encodeURIComponent(location || 'pickup location')}`;
-      window.open(fallbackUrl, '_blank');
+      // Fallback to location string if no request found or no coordinates
+      googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location || 'pickup location')}`;
       showToast(`Opening directions to ${location || 'pickup location'}`, 'info');
     }
+    
+    // Open Google Maps in a new tab
+    window.open(googleMapsUrl, '_blank');
   };
 
   // Handle QR scan - Optimized for better performance
@@ -899,6 +764,7 @@ const RequestPage = () => {
                 user_id: user.id,
                 today_earnings: 0,
                 today_points: 0,
+                total_pickups: 0,
                 total_earnings: 0,
                 total_points: 0,
                 last_updated: new Date().toISOString()
@@ -908,6 +774,7 @@ const RequestPage = () => {
               existingStats.today_points = (existingStats.today_points || 0) + (latestBag.points || 0);
               existingStats.total_earnings = (existingStats.total_earnings || 0) + (latestBag.fee || 0);
               existingStats.total_points = (existingStats.total_points || 0) + (latestBag.points || 0);
+              existingStats.total_pickups = (existingStats.total_pickups || 0) + 1;
               existingStats.last_updated = new Date().toISOString();
               
               updates.push([statsKey, JSON.stringify(existingStats)]);
@@ -1038,7 +905,8 @@ const RequestPage = () => {
         const existingStats = JSON.parse(localStorage.getItem(`user_stats_${user?.id}`) || JSON.stringify({
           user_id: user?.id,
           today_earnings: 0,
-          today_points: 0,
+          week_earnings: 0,
+          month_earnings: 0,
           total_earnings: 0,
           total_points: 0,
           last_updated: new Date().toISOString()
@@ -1046,7 +914,8 @@ const RequestPage = () => {
         
         // Update stats with completion bonus
         existingStats.today_earnings = (existingStats.today_earnings || 0) + completionBonus;
-        existingStats.today_points = (existingStats.today_points || 0) + Math.floor(completionBonus * 5);
+        existingStats.week_earnings = (existingStats.week_earnings || 0) + completionBonus;
+        existingStats.month_earnings = (existingStats.month_earnings || 0) + completionBonus;
         existingStats.total_earnings = (existingStats.total_earnings || 0) + completionBonus;
         existingStats.total_points = (existingStats.total_points || 0) + Math.floor(completionBonus * 5);
         existingStats.last_updated = new Date().toISOString();
@@ -1507,29 +1376,25 @@ const handleLocateSite = (requestId) => {
 
   // Add real-time subscription for assignments and connectivity listeners
   useEffect(() => {
-    if (!user?.id) return;
-
+    if (!isOnlineStatus || !user) return;
+    
+    // Initial data fetch
+    fetchRequests();
+    
+    // Setup variables that need to be cleaned up
     let subscription = null;
     let unregister = null;
+    
+    // 1. Set up real-time subscription
     const setupSubscription = async () => {
       try {
-        // Set up connectivity listeners
-        const connectivityListeners = await registerConnectivityListeners((isOnline) => {
-          setIsOnlineStatus(isOnline);
-          if (isOnline) {
-            fetchRequests();
-          }
-        });
-        unregister = connectivityListeners?.unregister || null;
-
-        // Set up real-time subscription
         subscription = supabase
           .channel('pickup_requests_changes')
           .on('postgres_changes', {
-            event: '*',
+            event: '*', 
             schema: 'public',
             table: 'pickup_requests'
-          }, async (payload) => {
+          }, (payload) => {
             try {
               if (!payload) {
                 console.error('Received empty payload in real-time subscription');
@@ -1596,24 +1461,49 @@ const handleLocateSite = (requestId) => {
                   console.log(`Unhandled event type: ${eventType}`);
                   break;
               }
+              
+              // Update cache after any change
+              saveToCache(CACHE_KEYS.ALL_REQUESTS, requests);
             } catch (error) {
-              console.error('Error handling subscription payload:', error);
-              showToast('Error processing real-time update', 'error');
+              console.error('Error handling real-time subscription event:', error);
             }
           })
-          .subscribe();
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              console.log('Subscribed to authority_assignments table');
+            }
+          });
       } catch (error) {
-        console.error('Error setting up subscription:', error);
-        showToast('Failed to set up real-time updates', 'error');
+        console.error('Error setting up real-time subscription:', error);
       }
     };
-
-    // Initial data fetch and subscription setup
-    fetchRequests();
+    
+    // 2. Register connectivity listeners with proper error handling
+    const setupConnectivityListeners = () => {
+      try {
+        const listeners = registerConnectivityListeners({
+          onConnect: fetchRequests,
+          onDisconnect: () => setIsOnlineStatus(false)
+        });
+        
+        // Safely store the unregister function if available
+        if (listeners && typeof listeners.unregister === 'function') {
+          unregister = listeners.unregister;
+        } else {
+          console.warn('registerConnectivityListeners did not return a valid unregister function');
+        }
+      } catch (error) {
+        console.error('Error registering connectivity listeners:', error);
+      }
+    };
+    
+    // Initialize both subscription and connectivity listeners
     setupSubscription();
-
+    setupConnectivityListeners();
+    
     // Cleanup function
     return () => {
+      // Clean up subscription if it exists
       if (subscription) {
         try {
           supabase.removeChannel(subscription);
@@ -1621,7 +1511,8 @@ const handleLocateSite = (requestId) => {
           console.error('Error removing subscription channel:', error);
         }
       }
-
+      
+      // Clean up connectivity listeners if unregister function exists
       if (unregister && typeof unregister === 'function') {
         try {
           unregister();
@@ -1630,7 +1521,7 @@ const handleLocateSite = (requestId) => {
         }
       }
     };
-  }, [user?.id, fetchRequests]);
+  }, [isOnlineStatus, user]);
 
   return (
     <div className="app-container bg-gray-100 min-h-screen flex flex-col">
@@ -1832,49 +1723,6 @@ const handleLocateSite = (requestId) => {
       {/* Toast Notification */}
       {toast.show && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast({ ...toast, show: false })} />
-      )}
-      
-      {/* Navigation Modal */}
-      {showNavigationModal && navigationDestination && (
-        <NavigationQRModal
-          isOpen={showNavigationModal}
-          onClose={() => setShowNavigationModal(false)}
-          destination={navigationDestination}
-          requestId={navigationRequestId}
-          onQRScanned={(scannedValues) => {
-            // Handle multiple scanned QR codes
-            if (Array.isArray(scannedValues) && scannedValues.length > 0) {
-              // Process all scanned items
-              console.log(`Received ${scannedValues.length} scanned items:`, scannedValues);
-              
-              // Update the request with scanned items
-              if (navigationRequestId) {
-                // Here we would typically update the request with the scanned items
-                // For now, we just show a success message
-                showToast(`Successfully scanned ${scannedValues.length} items!`, 'success');
-                
-                // Find the request and update its state if needed
-                let request = null;
-                if (requests.accepted) {
-                  request = requests.accepted.find(req => req && req.id === navigationRequestId);
-                }
-                
-                if (request) {
-                  // Here you could update the request with the scanned items
-                  // For example: request.scannedItems = scannedValues;
-                }
-                
-                // Close the modal
-                setShowNavigationModal(false);
-              } else {
-                showToast('Error: No request ID associated with scan.', 'error');
-              }
-            } else {
-              showToast('No items were scanned. Please try again.', 'warning');
-            }
-          }}
-          expectedQRValue={navigationRequestId}
-        />
       )}
       
       {/* Report Modal will be implemented separately */}

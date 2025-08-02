@@ -5,96 +5,200 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
   const scannerRef = useRef(null);
   const html5QrCodeRef = useRef(null);
 
-  // Track camera initialization status
+  // State variables
   const [cameraInitialized, setCameraInitialized] = useState(false);
   const [cameraError, setCameraError] = useState('');
+  const [scannerActive, setScannerActive] = useState(false);
 
+  // Initialize scanner when component mounts
   useEffect(() => {
-    // Initialize scanner when component mounts
-    if (!html5QrCodeRef.current && scannerRef.current) {
-      html5QrCodeRef.current = new Html5Qrcode(scannerRef.current.id);
-      
-      // Automatically start scanner if within range
-      if (isWithinRange) {
-        startScanner();
+    console.log('QR Scanner component mounted, isWithinRange:', isWithinRange);
+
+    const initializeScanner = async () => {
+      if (!scannerRef.current) {
+        console.error('Scanner ref not ready');
+        return;
       }
-    }
+
+      try {
+        // Generate a unique ID for the scanner element
+        const scannerId = `qr-reader-${Date.now()}`;
+        scannerRef.current.id = scannerId;
+
+        // Create a new instance with the container ID
+        if (html5QrCodeRef.current) {
+          await html5QrCodeRef.current.clear();
+        }
+        html5QrCodeRef.current = new Html5Qrcode(scannerId);
+        console.log('Html5Qrcode instance created');
+
+        // Auto-start if within range
+        if (isWithinRange) {
+          console.log('Within range, auto-starting scanner');
+          // Request camera permission first
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            stream.getTracks().forEach(track => track.stop()); // Release camera immediately
+            console.log('Camera permission granted');
+            // Small timeout to ensure DOM is fully ready
+            setTimeout(() => startScanner(), 500);
+          } catch (err) {
+            console.error('Camera permission error:', err);
+            setCameraError('Camera access denied. Please grant camera permissions.');
+          }
+        }
+      } catch (err) {
+        console.error('Scanner initialization error:', err);
+        setCameraError('Failed to initialize scanner');
+      }
+    };
+
+    initializeScanner();
 
     // Clean up scanner when component unmounts
     return () => {
-      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-        html5QrCodeRef.current.stop()
-          .catch(err => console.error('Error stopping scanner:', err));
-      }
+      console.log('QR Scanner component unmounting, cleaning up resources');
+      const cleanup = async () => {
+        if (html5QrCodeRef.current) {
+          try {
+            if (html5QrCodeRef.current.isScanning) {
+              console.log('Stopping active scanner');
+              await html5QrCodeRef.current.stop();
+            }
+            console.log('Clearing scanner instance');
+            await html5QrCodeRef.current.clear();
+            html5QrCodeRef.current = null;
+          } catch (err) {
+            console.error('Error during scanner cleanup:', err);
+          }
+        }
+        // Reset all states
+        setCameraInitialized(false);
+        setScannerActive(false);
+        setCameraError('');
+      };
+      cleanup();
     };
   }, [isWithinRange]);
 
-  const [scannerActive, setScannerActive] = useState(false);
-
-  const startScanner = () => {
-    if (!html5QrCodeRef.current || !isWithinRange) return;
-
-    setScannerActive(true);
-    setCameraError('');
+  // Process successful scan
+  const handleScanSuccess = (decodedText) => {
+    console.log('QR scan detected:', decodedText);
     
-    const config = {
-      fps: 10,
-      qrbox: { width: 250, height: 250 },
-      aspectRatio: 1.0,
-      videoConstraints: {
-        facingMode: "environment",
-        width: { min: 640, ideal: 1280, max: 1920 },
-        height: { min: 480, ideal: 720, max: 1080 }
+    try {
+      // Parse and validate the QR data
+      const qrData = JSON.parse(decodedText);
+      if (qrData && qrData.source === 'trashdrop' && qrData.bagId) {
+        // Valid TrashDrop QR code found
+        console.log('Valid TrashDrop QR code detected:', qrData);
+        
+        // Call success handler
+        onScanSuccess && onScanSuccess(decodedText);
+        
+        // Stop scanning after successful detection
+        if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+          console.log('Stopping scanner after successful scan');
+          html5QrCodeRef.current.stop()
+            .catch(err => console.error('Error stopping scanner after success:', err));
+          setScannerActive(false);
+        }
+      } else {
+        // Not a valid TrashDrop QR code
+        console.error('Invalid QR code format: Not a TrashDrop QR code');
+        onScanError && onScanError('Invalid QR code. Please scan a TrashDrop QR code.');
       }
-    };
+    } catch (err) {
+      // Not a valid JSON
+      console.error('Invalid QR code format (not JSON):', err);
+      onScanError && onScanError('Invalid QR code format. Please scan a TrashDrop QR code.');
+    }
+  };
 
-    html5QrCodeRef.current.start(
-      { facingMode: "environment" }, // Use back camera
-      config,
-      (decodedText) => {
-        // Validate QR code format - check if it's a TrashDrop QR code
-        try {
-          const qrData = JSON.parse(decodedText);
-          if (qrData && qrData.source === 'trashdrop' && qrData.bagId) {
-            // Valid TrashDrop QR code
-            console.log('Valid TrashDrop QR Code detected:', qrData);
-            onScanSuccess(decodedText);
-            
-            // Stop scanning after successful detection
-            if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-              html5QrCodeRef.current.stop()
-                .catch(err => console.error('Error stopping scanner after success:', err));
-              setScannerActive(false);
-            }
-          } else {
-            // Not a TrashDrop QR code
-            console.error('Invalid QR code format: Not a TrashDrop QR code');
-            onScanError && onScanError('Invalid QR code. Please scan a TrashDrop QR code.');
-          }
-        } catch (e) {
-          // Not a valid JSON
-          console.error('Invalid QR code format:', e);
-          onScanError && onScanError('Invalid QR code format. Please scan a TrashDrop QR code.');
-        }
-      },
-      
-      (errorMessage) => {
-        // Errors are common during scanning, only log critical ones
-        if (errorMessage.includes('Camera access denied') || 
-            errorMessage.includes('No camera')) {
-          console.error('QR Code scan error:', errorMessage);
-          onScanError && onScanError(errorMessage);
-        }
+  // Start the QR scanner
+  const startScanner = async () => {
+    console.log('Starting QR scanner...');
+    
+    if (!html5QrCodeRef.current) {
+      console.error('QR scanner not initialized');
+      setCameraError('QR scanner not initialized');
+      return;
+    }
+    
+    if (!isWithinRange) {
+      console.log('Not within range, cannot start scanner');
+      onScanError && onScanError('You must be within range of the pickup location to scan.');
+      return;
+    }
+    
+    if (html5QrCodeRef.current.isScanning) {
+      console.log('Scanner already running');
+      return;
+    }
+
+    // Request camera permissions first
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach(track => track.stop()); // Release camera immediately
+      console.log('Camera permission granted');
+    } catch (err) {
+      console.error('Camera permission denied:', err);
+      setCameraError('Camera access denied. Please grant camera permissions.');
+      return;
+    }
+
+    // Reset error state and set scanner active
+    setCameraError('');
+    setScannerActive(true);
+
+    try {
+      // Explicitly request camera permission first
+      console.log('Requesting camera permissions...');
+      try {
+        await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: "environment" } 
+        });
+        console.log('Camera permission granted');
+      } catch (permissionErr) {
+        console.error('Camera permission denied:', permissionErr);
+        setCameraError(`Camera permission denied: ${permissionErr.message}`);
+        setScannerActive(false);
+        return;
       }
-    ).then(() => {
-      console.log('Camera started successfully');
+      
+      // Configure scanner
+      const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0,
+        videoConstraints: {
+          facingMode: "environment", // Use back camera
+          width: { min: 640, ideal: 1280, max: 1920 },
+          height: { min: 480, ideal: 720, max: 1080 }
+        }
+      };
+
+      console.log('Starting scanner with config:', config);
+      
+      // Start the scanner
+      await html5QrCodeRef.current.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => handleScanSuccess(decodedText),
+        (errorMessage) => {
+          // Only show errors when scanner is active (not during initialization)
+          if (scannerActive) {
+            console.error('QR Scanner Error:', errorMessage);
+          }
+        }
+      );
+
+      console.log('QR scanner started successfully');
       setCameraInitialized(true);
-    }).catch(err => {
-      console.error('Error starting scanner:', err);
-      setCameraError('Failed to start camera: ' + err.message);
+    } catch (err) {
+      console.error('Failed to start scanner:', err);
+      setCameraError(`Camera error: ${err.message || 'Could not access camera'}`);
       setScannerActive(false);
-      onScanError && onScanError('Failed to start camera: ' + err.message);
-    });
+    }
   };
 
   // Manual scan button handler
@@ -106,16 +210,16 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
     
     if (!scannerActive) {
       startScanner();
-    } else {
-      // For demo purposes, simulate a successful scan when button is clicked
-      // In a real app, this would just activate the scanner if it's not already active
+    } else if (process.env.NODE_ENV === 'development') {
+      // For development testing only: simulate a successful scan
       const demoQrData = {
         source: 'trashdrop',
-        bagId: `bag-${Date.now()}`,
-        type: 'organic',
+        bagId: `bag-${Date.now().toString().slice(-6)}`,
+        type: 'plastic',
         timestamp: new Date().toISOString()
       };
-      onScanSuccess(JSON.stringify(demoQrData));
+      console.log('DEV MODE: Simulating QR code scan:', demoQrData);
+      onScanSuccess && onScanSuccess(JSON.stringify(demoQrData));
     }
   };
 
@@ -138,6 +242,7 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
             </div>
           </div>
         )}
+        
         {cameraError && (
           <div className="absolute inset-0 flex items-center justify-center bg-red-100">
             <div className="text-center text-red-600 p-4">
@@ -150,6 +255,7 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
           </div>
         )}
       </div>
+      
       <p className="text-center text-sm text-gray-500 mt-2">
         Position QR code within the frame to scan
       </p>

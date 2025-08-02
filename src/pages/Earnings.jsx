@@ -1,12 +1,8 @@
 import { useState, useEffect } from 'react';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
-import { createClient } from '@supabase/supabase-js';
-
-// Initialize Supabase client
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { useAuth } from '../context/AuthContext';
+import { createEarningsService } from '../services/earningsService';
 
 // Cash Out Modal Component
 const CashOutModal = ({ isOpen, onClose, totalEarnings, onWithdrawalSuccess }) => {
@@ -311,16 +307,13 @@ const TransactionItem = ({ transaction }) => {
 };
 
 const EarningsPage = () => {
-  const [period, setPeriod] = useState('week');
+  const { auth } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('summary');
-  const [isCashOutModalOpen, setIsCashOutModalOpen] = useState(false);
-  const [currentEarnings, setCurrentEarnings] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  
-  // Real data states
-  const [earningsData, setEarningsData] = useState({ week: [], month: [], year: [] });
-  const [transactions, setTransactions] = useState([]);
+  const [period, setPeriod] = useState('week');
+  const [totalEarnings, setTotalEarnings] = useState(0);
+  const [weeklyEarnings, setWeeklyEarnings] = useState(0);
+  const [monthlyEarnings, setMonthlyEarnings] = useState(0);
   const [stats, setStats] = useState({
     totalEarnings: 0,
     completedJobs: 0,
@@ -328,216 +321,72 @@ const EarningsPage = () => {
     rating: 0,
     completionRate: 0
   });
+  const [earningsData, setEarningsData] = useState({});
+  const [transactions, setTransactions] = useState([]);
+  const [showCashOutModal, setShowCashOutModal] = useState(false);
 
-  // Fetch earnings and stats from Supabase
+  // Fetch earnings and stats
   const fetchEarningsData = async () => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      console.log('📊 Fetching real earnings data from Supabase...');
-      
-      // Fetch completed assignments and requests
-      const [assignmentsResult, requestsResult] = await Promise.all([
-        supabase
-          .from('authority_assignments')
-          .select('*')
-          .eq('status', 'completed')
-          .order('updated_at', { ascending: false }),
-        supabase
-          .from('pickup_requests')
-          .select('*')
-          .eq('status', 'completed')
-          .order('updated_at', { ascending: false })
-      ]);
-      
-      if (assignmentsResult.error) {
-        console.error('Error fetching assignments:', assignmentsResult.error);
-        throw assignmentsResult.error;
+      setIsLoading(true);
+      const { data: userData } = await auth.getUser();
+      if (!userData?.user?.id) {
+        throw new Error('User not authenticated');
       }
-      
-      if (requestsResult.error) {
-        console.error('Error fetching requests:', requestsResult.error);
-        throw requestsResult.error;
+
+      const earningsService = createEarningsService(userData.user.id);
+      const { success, data, error } = await earningsService.getEarningsData();
+
+      if (!success || error) {
+        throw new Error(error || 'Failed to fetch earnings data');
       }
-      
-      const completedAssignments = assignmentsResult.data || [];
-      const completedRequests = requestsResult.data || [];
-      
-      console.log(`✅ Found ${completedAssignments.length} completed assignments and ${completedRequests.length} completed requests`);
-      
-      // Calculate earnings and stats
-      const allCompletedJobs = [...completedAssignments, ...completedRequests];
-      const totalEarnings = allCompletedJobs.reduce((sum, job) => {
-        const payment = parseFloat((job.payment || job.fee || '0').toString().replace(/[\$₵,]/g, '')) || 0;
-        return sum + payment;
-      }, 0);
-      
-      const completedJobsCount = allCompletedJobs.length;
-      const avgPerJob = completedJobsCount > 0 ? totalEarnings / completedJobsCount : 0;
-      
-      // Calculate stats
-      const newStats = {
-        totalEarnings,
-        completedJobs: completedJobsCount,
-        avgPerJob,
-        rating: 4.8, // This could be calculated from user feedback in the future
-        completionRate: 98 // This could be calculated from total vs completed jobs
-      };
-      
-      setStats(newStats);
-      setCurrentEarnings(totalEarnings);
-      
-      // Generate earnings chart data
-      const chartData = generateEarningsChartData(allCompletedJobs);
-      setEarningsData(chartData);
-      
-      // Generate transactions list
-      const transactionsList = generateTransactionsList(completedAssignments, completedRequests);
-      setTransactions(transactionsList);
-      
-      console.log('💰 Earnings calculated:', {
-        totalEarnings: totalEarnings.toFixed(2),
-        completedJobs: completedJobsCount,
-        avgPerJob: avgPerJob.toFixed(2)
-      });
-      
+
+      setEarningsData(data.chartData);
+      setStats(data.stats);
+      setTransactions(data.transactions);
+      setTotalEarnings(data.stats.totalEarnings);
+      setIsLoading(false);
     } catch (error) {
       console.error('Error fetching earnings data:', error);
-      setError('Failed to load earnings data. Please try again.');
-      
-      // Fallback to empty data
-      setStats({ totalEarnings: 0, completedJobs: 0, avgPerJob: 0, rating: 0, completionRate: 0 });
-      setCurrentEarnings(0);
-      setEarningsData({ week: [], month: [], year: [] });
-      setTransactions([]);
-    } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
-  
-  // Generate chart data based on completed jobs
-  const generateEarningsChartData = (jobs) => {
-    const now = new Date();
-    
-    // Week data (last 7 days)
-    const weekData = [];
-    const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
-      const dayName = weekDays[date.getDay()];
-      
-      const dayEarnings = jobs
-        .filter(job => {
-          const jobDate = new Date(job.completed_at || job.created_at);
-          return jobDate.toDateString() === date.toDateString();
-        })
-        .reduce((sum, job) => {
-          const payment = parseFloat((job.payment || job.fee || '0').toString().replace(/[\$₵,]/g, '')) || 0;
-          return sum + payment;
-        }, 0);
-      
-      weekData.push({ label: dayName, amount: dayEarnings });
-    }
-    
-    // Month data (last 4 weeks)
-    const monthData = [];
-    for (let i = 3; i >= 0; i--) {
-      const weekStart = new Date(now);
-      weekStart.setDate(weekStart.getDate() - (i * 7) - 6);
-      const weekEnd = new Date(now);
-      weekEnd.setDate(weekEnd.getDate() - (i * 7));
-      
-      const weekEarnings = jobs
-        .filter(job => {
-          const jobDate = new Date(job.completed_at || job.created_at);
-          return jobDate >= weekStart && jobDate <= weekEnd;
-        })
-        .reduce((sum, job) => {
-          const payment = parseFloat((job.payment || job.fee || '0').toString().replace(/[\$₵,]/g, '')) || 0;
-          return sum + payment;
-        }, 0);
-      
-      monthData.push({ label: `W${4-i}`, amount: weekEarnings });
-    }
-    
-    // Year data (last 12 months)
-    const yearData = [];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    
-    for (let i = 11; i >= 0; i--) {
-      const monthDate = new Date(now);
-      monthDate.setMonth(monthDate.getMonth() - i);
-      const monthName = months[monthDate.getMonth()];
-      
-      const monthEarnings = jobs
-        .filter(job => {
-          const jobDate = new Date(job.completed_at || job.created_at);
-          return jobDate.getMonth() === monthDate.getMonth() && jobDate.getFullYear() === monthDate.getFullYear();
-        })
-        .reduce((sum, job) => {
-          const payment = parseFloat((job.payment || job.fee || '0').toString().replace(/[\$₵,]/g, '')) || 0;
-          return sum + payment;
-        }, 0);
-      
-      yearData.push({ label: monthName, amount: monthEarnings });
-    }
-    
-    return { week: weekData, month: monthData, year: yearData };
-  };
-  
-  // Generate transactions list from completed jobs
-  const generateTransactionsList = (assignments, requests) => {
-    const allTransactions = [];
-    
-    // Add assignments as transactions
-    assignments.forEach(assignment => {
-      const payment = parseFloat((assignment.payment || '0').toString().replace(/[\$₵,]/g, '')) || 0;
-      if (payment > 0) {
-        allTransactions.push({
-          id: `ASSIGN-${assignment.id}`,
-          type: 'authority_assignment',
-          amount: payment,
-          date: assignment.completed_at || assignment.created_at,
-          note: `${assignment.type || 'Assignment'} - ${assignment.location || 'Location not specified'}`
-        });
+
+  const handleWithdrawalSuccess = async (amount) => {
+    try {
+      const { data: userData } = await auth.getUser();
+      if (!userData?.user?.id) {
+        throw new Error('User not authenticated');
       }
-    });
-    
-    // Add requests as transactions
-    requests.forEach(request => {
-      const fee = parseFloat((request.fee || '0').toString().replace(/[\$₵,]/g, '')) || 0;
-      if (fee > 0) {
-        allTransactions.push({
-          id: `REQ-${request.id}`,
-          type: 'pickup_request',
-          amount: fee,
-          date: request.completed_at || request.created_at,
-          note: `${request.waste_type || 'Waste'} collection - ${request.location || 'Location not specified'}`
-        });
+
+      const earningsService = createEarningsService(userData.user.id);
+      const { success, error } = await earningsService.processWithdrawal(amount, {
+        method: 'momo', // Default to mobile money for now
+        timestamp: new Date().toISOString()
+      });
+
+      if (!success || error) {
+        throw new Error(error || 'Failed to process withdrawal');
       }
-    });
-    
-    // Sort by date (newest first) and limit to recent 20
-    return allTransactions
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 20);
+
+      // Update total earnings
+      setTotalEarnings(prev => prev - amount);
+      
+      // Refresh data to reflect the withdrawal
+      await fetchEarningsData();
+    } catch (error) {
+      console.error('Error processing withdrawal:', error);
+      // You might want to show an error toast here
+    }
   };
-  
+
   // Load data when component mounts
   useEffect(() => {
     fetchEarningsData();
   }, []);
-  
-  // Use the current earnings state
-  const totalEarnings = currentEarnings; // This will be updated after withdrawal
-  const weeklyEarnings = earningsData.week.reduce((sum, d) => sum + d.amount, 0);
-  const monthlyEarnings = earningsData.month.reduce((sum, d) => sum + d.amount, 0);
-  
+
   // Show loading state
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
         <TopNavBar user={{ first_name: 'Driver' }} />
@@ -545,28 +394,6 @@ const EarningsPage = () => {
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             <p className="mt-2 text-gray-600">Loading earnings data...</p>
-          </div>
-        </div>
-        <BottomNavBar />
-      </div>
-    );
-  }
-  
-  // Show error state
-  if (error) {
-    return (
-      <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
-        <TopNavBar user={{ first_name: 'Driver' }} />
-        <div className="flex-grow mt-14 mb-16 flex items-center justify-center">
-          <div className="text-center px-4">
-            <div className="text-red-500 text-xl mb-2">⚠️</div>
-            <p className="text-gray-600 mb-4">{error}</p>
-            <button 
-              onClick={fetchEarningsData}
-              className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
-            >
-              Try Again
-            </button>
           </div>
         </div>
         <BottomNavBar />
@@ -609,7 +436,7 @@ const EarningsPage = () => {
         
         {/* Cash Out Button */}
         <button 
-          onClick={() => setIsCashOutModalOpen(true)}
+          onClick={() => setShowCashOutModal(true)}
           className="w-full bg-primary text-white py-3 rounded-lg flex items-center justify-center mb-6 shadow-md hover:bg-green-600 transition-colors"
         >
           <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -624,16 +451,10 @@ const EarningsPage = () => {
         
         {/* Cash Out Modal */}
         <CashOutModal 
-          isOpen={isCashOutModalOpen} 
-          onClose={() => setIsCashOutModalOpen(false)} 
+          isOpen={showCashOutModal} 
+          onClose={() => setShowCashOutModal(false)} 
           totalEarnings={totalEarnings}
-          onWithdrawalSuccess={(amount) => {
-            // Update the current earnings by subtracting the withdrawn amount
-            setCurrentEarnings(prevEarnings => {
-              const newEarnings = prevEarnings - amount;
-              return Math.max(0, parseFloat(newEarnings.toFixed(2))); // Ensure we don't go below 0 and format to 2 decimal places
-            });
-          }}
+          onWithdrawalSuccess={handleWithdrawalSuccess}
         />
         
         {/* Summary Cards */}

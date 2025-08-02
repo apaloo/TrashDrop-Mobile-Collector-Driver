@@ -32,7 +32,7 @@ const LoginPage = () => {
         try {
           // Create mock user for dev mode
           const mockUser = {
-            id: 'test-user-id',
+            id: '00000000-0000-4000-a000-000000000000', // Valid UUID format for DEV_MODE
             email: 'test@example.com',
             phone: phoneNumber,
             user_metadata: {
@@ -124,7 +124,7 @@ const LoginPage = () => {
       
       // Create mock user for dev mode
       const mockUser = {
-        id: 'test-user-id',
+        id: '00000000-0000-4000-a000-000000000000', // Valid UUID format for DEV_MODE
         email: 'test@example.com',
         phone: formattedPhone,
         user_metadata: {

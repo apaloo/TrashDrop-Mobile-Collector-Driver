@@ -1,7 +1,8 @@
 import React, { Component } from 'react';
+import Toast from './Toast';
 
 /**
- * Error boundary component to catch and display errors gracefully
+ * Enhanced error boundary component with analytics and detailed error reporting
  */
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -19,15 +20,36 @@ class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    // Log the error to an error reporting service
-    console.error('Error caught by ErrorBoundary:', error, errorInfo);
+    // Enhanced error logging with more details
+    console.error('Component Error:', error.message);
+    console.error('Component Stack:', errorInfo.componentStack);
+    console.error('Error Stack:', error.stack);
+    
     this.setState({
       error: error,
       errorInfo: errorInfo
     });
     
-    // You could also log to a remote error logging service here
+    // Send to analytics/error reporting service (future implementation)
+    this.reportError(error, errorInfo);
   }
+  
+  reportError = (error, errorInfo) => {
+    // Future: Send to error monitoring service like Sentry
+    const errorReport = {
+      message: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack,
+      timestamp: new Date().toISOString(),
+      userAgent: navigator.userAgent,
+      url: window.location.href
+    };
+    
+    // For now, just log to console with structured data
+    console.groupCollapsed('🚨 Error Report');
+    console.table(errorReport);
+    console.groupEnd();
+  };
 
   render() {
     const { hasError, error } = this.state;
@@ -40,29 +62,71 @@ class ErrorBoundary extends Component {
       }
       
       return (
-        <div className="p-4 bg-red-50 rounded-md">
-          <div className="flex items-start">
-            <div className="flex-shrink-0">
-              <svg className="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="p-4 flex flex-col items-center justify-center min-h-[400px]" role="alert" aria-live="assertive">
+          <div className="text-center max-w-md">
+            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-6">
+              <svg className="h-8 w-8 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Something went wrong</h3>
-              <div className="mt-2 text-sm text-red-700">
-                <p>We're sorry, but there was an error. Please try refreshing the page.</p>
-              </div>
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={() => window.location.reload()}
-                  className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                >
-                  Refresh Page
-                </button>
-              </div>
-            </div>
+            
+            <h2 className="text-xl font-semibold text-red-600 mb-4">
+              Something went wrong
+            </h2>
+            
+            {this.props.fallbackUI || (
+              <>
+                <p className="mb-6 text-gray-700">
+                  We encountered an error while processing your request. Please try again.
+                </p>
+                
+                <div className="flex flex-col space-y-3">
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                    aria-label="Reload page"
+                  >
+                    Reload Page
+                  </button>
+                  
+                  <button
+                    onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
+                    className="px-6 py-3 text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                  >
+                    Try Again
+                  </button>
+                </div>
+                
+                {error && process.env.NODE_ENV === 'development' && (
+                  <details className="mt-6 p-4 border border-gray-300 rounded-lg text-left">
+                    <summary className="text-sm text-gray-600 cursor-pointer hover:text-gray-800">
+                      Technical Details (Development)
+                    </summary>
+                    <div className="mt-3 space-y-2">
+                      <div>
+                        <strong className="text-xs text-gray-500">Error Message:</strong>
+                        <pre className="mt-1 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-32">
+                          {error.message}
+                        </pre>
+                      </div>
+                      <div>
+                        <strong className="text-xs text-gray-500">Stack Trace:</strong>
+                        <pre className="mt-1 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-32">
+                          {error.stack}
+                        </pre>
+                      </div>
+                    </div>
+                  </details>
+                )}
+              </>
+            )}
           </div>
+          
+          <Toast
+            message="An error occurred. Please try again."
+            type="error"
+            onClose={() => this.setState({ hasError: false })}
+          />
         </div>
       );
     }

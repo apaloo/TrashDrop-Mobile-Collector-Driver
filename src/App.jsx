@@ -8,6 +8,67 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useEffect } from 'react';
 import ImageManager from './utils/imageManager';
+import { CACHE_KEYS, clearCache, getFromCache, saveToCache, validateCacheData } from './utils/cacheUtils';
+
+// Clear stale test-user-id session data
+const clearStaleSession = () => {
+  try {
+    const devModeSession = localStorage.getItem('dev_mode_session');
+    if (devModeSession) {
+      const session = JSON.parse(devModeSession);
+      if (session?.user?.id === 'test-user-id') {
+        console.log('Clearing stale test-user-id session data');
+        localStorage.removeItem('dev_mode_session');
+      }
+    }
+  } catch (err) {
+    console.error('Error clearing stale session:', err);
+  }
+};
+
+// Clean cached request data that might contain temporary IDs
+const cleanCachedRequestData = () => {
+  try {
+    console.log('🧹 Checking and cleaning cached request data...');
+    
+    // Check for and clean ALL_REQUESTS cache
+    const allRequests = getFromCache(CACHE_KEYS.ALL_REQUESTS);
+    if (allRequests) {
+      const sanitizedData = validateCacheData(allRequests);
+      if (JSON.stringify(sanitizedData) !== JSON.stringify(allRequests)) {
+        console.log('🧹 Cleaned ALL_REQUESTS cache by removing temp IDs');
+        saveToCache(CACHE_KEYS.ALL_REQUESTS, sanitizedData);
+      }
+    }
+    
+    // Check for and clean PICKUP_REQUESTS cache
+    const pickupRequests = getFromCache(CACHE_KEYS.PICKUP_REQUESTS);
+    if (pickupRequests) {
+      const sanitizedData = validateCacheData(pickupRequests);
+      if (JSON.stringify(sanitizedData) !== JSON.stringify(pickupRequests)) {
+        console.log('🧹 Cleaned PICKUP_REQUESTS cache by removing temp IDs');
+        saveToCache(CACHE_KEYS.PICKUP_REQUESTS, sanitizedData);
+      }
+    }
+    
+    // If we had a bad problem with temp IDs, consider a full cache reset
+    const forceReset = localStorage.getItem('force_cache_reset');
+    if (forceReset === 'true') {
+      console.log('🧹 Performing force cache reset for request data');
+      clearCache(CACHE_KEYS.ALL_REQUESTS);
+      clearCache(CACHE_KEYS.PICKUP_REQUESTS);
+      localStorage.removeItem('force_cache_reset');
+    }
+  } catch (err) {
+    console.error('Error cleaning cached request data:', err);
+  }
+};
+
+// Execute cleanup on app startup
+if (process.env.NODE_ENV === 'development') {
+  clearStaleSession();
+  cleanCachedRequestData();
+}
 
 // Pages
 import LoginPage from './pages/Login';
@@ -119,6 +180,7 @@ function App() {
                   <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
                   <Route path="/signup" element={<PublicRoute><SignupPage /></PublicRoute>} />
                   <Route path="/map" element={<ProtectedRoute><MapPage /></ProtectedRoute>} />
+                  <Route path="/request" element={<ProtectedRoute><RequestPage /></ProtectedRoute>} />
                   <Route path="/request/:id" element={<ProtectedRoute><RequestPage /></ProtectedRoute>} />
                   <Route path="/assign" element={<ProtectedRoute><AssignPage /></ProtectedRoute>} />
                   <Route path="/earnings" element={<ProtectedRoute><EarningsPage /></ProtectedRoute>} />

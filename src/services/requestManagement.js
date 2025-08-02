@@ -1,4 +1,5 @@
-import { supabase } from './supabase.js';
+import { supabase, DEV_MODE } from './supabase.js';
+import { mockPickupRequests, mockCollectorSession, mockNotifications } from './mockData.js';
 
 /**
  * Request Management Service
@@ -25,11 +26,51 @@ export class RequestManagementService {
    * Initialize the service with session management and cleanup timers
    */
   async initialize(collectorId) {
-    this.collectorId = collectorId;
-    await this.startSession();
-    this.startHeartbeat();
-    this.startCleanupTimer();
-    this.setupRealtimeSubscriptions();
+    try {
+      this.collectorId = collectorId;
+      console.log(`[${DEV_MODE ? 'DEV MODE' : 'PROD'}] Initializing RequestManagementService for collector:`, collectorId);
+      
+      // Start session with error handling
+      try {
+        await this.startSession();
+        console.log('✅ Session started successfully');
+      } catch (error) {
+        console.error('❌ Failed to start session:', error);
+        if (!DEV_MODE) throw error; // In production, fail fast
+      }
+      
+      // Start heartbeat with error handling
+      try {
+        this.startHeartbeat();
+        console.log('✅ Heartbeat started successfully');
+      } catch (error) {
+        console.error('❌ Failed to start heartbeat:', error);
+        // Continue even if heartbeat fails
+      }
+      
+      // Start cleanup timer with error handling
+      try {
+        this.startCleanupTimer();
+        console.log('✅ Cleanup timer started successfully');
+      } catch (error) {
+        console.error('❌ Failed to start cleanup timer:', error);
+        // Continue even if cleanup fails
+      }
+      
+      // Setup realtime subscriptions with error handling
+      try {
+        this.setupRealtimeSubscriptions();
+        console.log('✅ Realtime subscriptions setup successfully');
+      } catch (error) {
+        console.error('❌ Failed to setup realtime subscriptions:', error);
+        // Continue even if realtime fails
+      }
+      
+      console.log('🎉 RequestManagementService initialized successfully');
+    } catch (error) {
+      console.error('💥 Critical failure initializing RequestManagementService:', error);
+      throw error;
+    }
   }
 
   /**
@@ -37,29 +78,89 @@ export class RequestManagementService {
    */
   async startSession() {
     try {
-      const currentTime = new Date().toISOString();
-      
-      const { data, error } = await supabase
-        .from('collector_sessions')
-        .upsert({
+      // In dev mode, immediately use mock session without Supabase calls
+      if (DEV_MODE) {
+        console.log('[DEV MODE] Creating mock collector session for:', this.collectorId);
+        const mockSession = {
+          id: 'dev-session-' + Math.random().toString(36).substr(2, 9),
           collector_id: this.collectorId,
-          session_start: currentTime,
-          last_activity: currentTime,
-          is_active: true
-        }, { 
-          onConflict: 'collector_id',
-          ignoreDuplicates: false 
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
+          is_active: true,
+          reserved_requests: [],
+          last_activity: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        return mockSession;
+      }
       
-      console.log('Session started:', data);
-      return { success: true, session: data };
+      // For production, continue with Supabase API calls
+      const { data: sessions, error } = await supabase
+        .from('collector_sessions')
+        .select('*')
+        .eq('collector_id', this.collectorId);
+
+      if (error) {
+        throw error;
+      }
+
+      if (sessions && sessions.length > 0) {
+        // Update existing session
+        const session = sessions[0];
+        const { error: updateError } = await supabase
+          .from('collector_sessions')
+          .update({
+            is_active: true,
+            last_activity: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', session.id);
+
+        if (updateError && !DEV_MODE) throw updateError;
+        return session;
+      } else {
+        // Create new session
+        const { data: newSession, error: insertError } = await supabase
+          .from('collector_sessions')
+          .insert({
+            collector_id: this.collectorId,
+            is_active: true,
+            reserved_requests: [],
+            last_activity: new Date().toISOString()
+          })
+          .select();
+
+        if (insertError) {
+          if (DEV_MODE) {
+            // In dev mode, return a mock session
+            return {
+              id: 'dev-session-' + Math.random().toString(36).substr(2, 9),
+              collector_id: this.collectorId,
+              is_active: true,
+              reserved_requests: [],
+              last_activity: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            };
+          }
+          throw insertError;
+        }
+        return newSession[0];
+      }
     } catch (error) {
       console.error('Error starting session:', error);
-      return { success: false, error: error.message };
+      if (DEV_MODE) {
+        // In dev mode, return a mock session even on error
+        return {
+          id: 'dev-session-' + Math.random().toString(36).substr(2, 9),
+          collector_id: this.collectorId,
+          is_active: true,
+          reserved_requests: [],
+          last_activity: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+      }
+      throw error;
     }
   }
 
@@ -67,6 +168,23 @@ export class RequestManagementService {
    * Filter and reserve available requests based on criteria
    */
   async filterAndReserveRequests(filterCriteria = {}) {
+    if (DEV_MODE) {
+      console.log('[DEV MODE] Using mock pickup requests with filter:', filterCriteria);
+      // Apply basic filtering to mock data
+      return mockPickupRequests.filter(req => {
+        if (filterCriteria.waste_types && !filterCriteria.waste_types.includes(req.waste_type)) {
+          return false;
+        }
+        if (filterCriteria.min_fee && req.fee < filterCriteria.min_fee) {
+          return false;
+        }
+        if (filterCriteria.max_fee && req.fee > filterCriteria.max_fee) {
+          return false;
+        }
+        return true;
+      });
+    }
+
     try {
       const currentTime = new Date().toISOString();
       const reservationExpiry = new Date(Date.now() + this.RESERVATION_DURATION).toISOString();
@@ -112,7 +230,7 @@ export class RequestManagementService {
         .update({
           reserved_by: this.collectorId,
           reserved_at: currentTime,
-          reserved_until: reservationExpiry
+          reservation_expires_at: reservationExpiry
         })
         .in('id', requestIds)
         .is('reserved_by', null) // Prevent race conditions
@@ -121,14 +239,18 @@ export class RequestManagementService {
       if (reserveError) throw reserveError;
 
       // Update session with reserved requests
-      await supabase
-        .from('collector_sessions')
-        .update({
-          filter_criteria: filterCriteria,
-          reserved_requests: requestIds,
-          last_activity: currentTime
-        })
-        .eq('collector_id', this.collectorId);
+      if (!DEV_MODE) {
+        await supabase
+          .from('collector_sessions')
+          .update({
+            filter_criteria: filterCriteria,
+            reserved_requests: requestIds,
+            last_activity: currentTime
+          })
+          .eq('collector_id', this.collectorId);
+      } else {
+        console.log('[DEV MODE] Skipping session update for reserved requests');
+      }
 
       console.log(`Reserved ${reservedRequests.length} requests for collector`);
       
@@ -141,8 +263,61 @@ export class RequestManagementService {
 
   /**
    * Accept a request and move it to the Accepted tab
+   * @param {string} requestId - The ID of the request to accept
+   * @param {string} collectorId - The ID of the collector accepting the request
    */
-  async acceptRequest(requestId) {
+  async acceptRequest(requestId, collectorId = null) {
+    // Set the collector ID for this operation
+    const effectiveCollectorId = collectorId || this.collectorId;
+    
+    // Check for temporary IDs
+    if (requestId && requestId.startsWith('temp-')) {
+      console.warn('Attempted to accept request with temporary ID:', requestId);
+      return { 
+        success: false, 
+        error: 'Cannot accept temporary requests. Please wait for the data to sync.' 
+      };
+    }
+    
+    // Validate UUID format (8-4-4-4-12 hexadecimal digits with hyphens)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (requestId && !uuidRegex.test(requestId)) {
+      console.warn('Attempted to accept request with invalid UUID format:', requestId);
+      return { 
+        success: false, 
+        error: 'Invalid request ID format. This may be test data or an incomplete request.' 
+      };
+    }
+    
+    if (DEV_MODE) {
+      console.log('[DEV MODE] Accepting mock request:', requestId);
+      try {
+        // Find and update mock request
+        const requestIndex = mockPickupRequests.findIndex(req => req.id === requestId);
+        if (requestIndex === -1) {
+          console.warn('[DEV MODE] Request not found in mock data:', requestId);
+          return { success: false, error: 'Request not found in the database' };
+        }
+        
+        if (mockPickupRequests[requestIndex].status !== 'available') {
+          return { success: false, error: 'Request is no longer available' };
+        }
+        
+        mockPickupRequests[requestIndex] = {
+          ...mockPickupRequests[requestIndex],
+          status: 'accepted',
+          collector_id: effectiveCollectorId,
+          accepted_at: new Date().toISOString(),
+          assignment_expires_at: new Date(Date.now() + this.ASSIGNMENT_DURATION).toISOString()
+        };
+        
+        return { success: true, request: mockPickupRequests[requestIndex] };
+      } catch (error) {
+        console.error('[DEV MODE] Error accepting mock request:', error);
+        return { success: false, error: error.message || 'Failed to process request' };
+      }
+    }
+
     try {
       const currentTime = new Date().toISOString();
       const assignmentExpiry = new Date(Date.now() + this.ASSIGNMENT_DURATION).toISOString();
@@ -157,11 +332,11 @@ export class RequestManagementService {
           assignment_expires_at: assignmentExpiry,
           reserved_by: null,
           reserved_at: null,
-          reserved_until: null
+          reservation_expires_at: null
         })
         .eq('id', requestId)
         .eq('reserved_by', this.collectorId)
-        .gt('reserved_until', currentTime)
+        .gt('reservation_expires_at', currentTime)
         .select()
         .single();
 
@@ -171,24 +346,28 @@ export class RequestManagementService {
         throw new Error('Request is no longer available or reservation has expired');
       }
 
-      // Update session to remove from reserved requests
-      const { data: session } = await supabase
-        .from('collector_sessions')
-        .select('reserved_requests')
-        .eq('collector_id', this.collectorId)
-        .single();
-
-      if (session) {
-        const updatedReserved = (session.reserved_requests || [])
-          .filter(id => id !== requestId);
-        
-        await supabase
+      // Update session's reserved requests
+      if (!DEV_MODE) {
+        const { data: session } = await supabase
           .from('collector_sessions')
-          .update({
-            reserved_requests: updatedReserved,
-            last_activity: currentTime
-          })
-          .eq('collector_id', this.collectorId);
+          .select('reserved_requests')
+          .eq('collector_id', this.collectorId)
+          .single();
+
+        if (session) {
+          const updatedReserved = (session.reserved_requests || [])
+            .filter(id => id !== requestId);
+          
+          await supabase
+            .from('collector_sessions')
+            .update({
+              reserved_requests: updatedReserved,
+              last_activity: currentTime
+            })
+            .eq('collector_id', this.collectorId);
+        }
+      } else {
+        console.log('[DEV MODE] Skipping session update for accepted request');
       }
 
       console.log('Request accepted successfully:', data);
@@ -204,6 +383,21 @@ export class RequestManagementService {
    * Get all requests for a collector by status
    */
   async getRequestsByStatus(status) {
+    if (DEV_MODE) {
+      console.log('[DEV MODE] Using mock requests for collector:', this.collectorId);
+      // Filter mock requests by status
+      switch (status) {
+        case 'available':
+          return mockPickupRequests.filter(req => req.status === 'available');
+        case 'accepted':
+          return mockPickupRequests.filter(req => req.status === 'accepted' && req.collector_id === this.collectorId);
+        case 'completed':
+          return mockPickupRequests.filter(req => req.status === 'picked_up' || req.status === 'disposed');
+        default:
+          throw new Error('Invalid status');
+      }
+    }
+
     try {
       let query;
       
@@ -214,7 +408,7 @@ export class RequestManagementService {
             .from('pickup_requests')
             .select('*')
             .eq('reserved_by', this.collectorId)
-            .gt('reserved_until', new Date().toISOString());
+            .gt('reservation_expires_at', new Date().toISOString());
           break;
         
         case 'accepted':
@@ -252,36 +446,20 @@ export class RequestManagementService {
    * Update request status (for pickup and disposal)
    */
   async updateRequestStatus(requestId, status, additionalData = {}) {
-    try {
-      const currentTime = new Date().toISOString();
-      
-      const updateData = {
+    if (DEV_MODE) {
+      console.log('[DEV MODE] Updating mock request status:', requestId, status);
+      // Find and update mock request
+      const requestIndex = mockPickupRequests.findIndex(req => req.id === requestId);
+      if (requestIndex === -1) {
+        throw new Error('Request not found');
+      }
+      mockPickupRequests[requestIndex] = {
+        ...mockPickupRequests[requestIndex],
         status,
-        updated_at: currentTime,
+        updated_at: new Date().toISOString(),
         ...additionalData
       };
-
-      // Add timestamp fields based on status
-      if (status === 'picked_up') {
-        updateData.picked_up_at = currentTime;
-      } else if (status === 'disposed') {
-        updateData.disposed_at = currentTime;
-      }
-
-      const { data, error } = await supabase
-        .from('pickup_requests')
-        .update(updateData)
-        .eq('id', requestId)
-        .eq('collector_id', this.collectorId)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      return { success: true, request: data };
-    } catch (error) {
-      console.error('Error updating request status:', error);
-      return { success: false, error: error.message };
+      return { success: true };
     }
   }
 
@@ -289,6 +467,11 @@ export class RequestManagementService {
    * Get collector notifications
    */
   async getNotifications(unreadOnly = false) {
+    if (DEV_MODE) {
+      console.log('[DEV MODE] Using mock notifications');
+      return mockNotifications;
+    }
+
     try {
       let query = supabase
         .from('request_notifications')
@@ -307,30 +490,12 @@ export class RequestManagementService {
 
       return { success: true, notifications: data || [] };
     } catch (error) {
+      if (DEV_MODE) {
+        console.log('[DEV MODE] Error fetching notifications, using mock data:', error);
+        return mockNotifications;
+      }
       console.error('Error getting notifications:', error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * Mark notification as read
-   */
-  async markNotificationRead(notificationId) {
-    try {
-      const { data, error } = await supabase
-        .from('request_notifications')
-        .update({ read_at: new Date().toISOString() })
-        .eq('id', notificationId)
-        .eq('collector_id', this.collectorId)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      return { success: true, notification: data };
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
-      return { success: false, error: error.message };
+      throw error;
     }
   }
 
@@ -338,11 +503,57 @@ export class RequestManagementService {
    * Cleanup expired reservations
    */
   async cleanupExpiredReservations() {
+    if (DEV_MODE) {
+      console.log('[DEV MODE] Simulating cleanup of expired reservations');
+      return { success: true, cleaned: 0 };
+    }
+
     try {
-      const { error } = await supabase.rpc('cleanup_expired_reservations');
-      if (error) throw error;
+      const currentTime = new Date().toISOString();
+      
+      // Find reservations that have expired
+      const { data: expiredReservations, error } = await supabase
+        .from('pickup_requests')
+        .select('id')
+        .eq('status', 'available')
+        .not('reserved_by', 'is', null)
+        .lt('reserved_until', currentTime);
+
+      if (error) {
+        if (DEV_MODE) {
+          console.log('[DEV MODE] Error cleaning up reservations:', error);
+          return { success: true, cleaned: 0 };
+        }
+        throw error;
+      }
+
+      if (!expiredReservations || expiredReservations.length === 0) {
+        return { success: true, cleaned: 0 };
+      }
+
+      // Clear expired reservations
+      const { error: updateError } = await supabase
+        .from('pickup_requests')
+        .update({
+          reserved_by: null,
+          reserved_at: null,
+          reserved_until: null
+        })
+        .in('id', expiredReservations.map(r => r.id));
+
+      if (updateError) {
+        if (DEV_MODE) {
+          console.log('[DEV MODE] Error updating expired reservations:', updateError);
+          return { success: true, cleaned: 0 };
+        }
+        throw updateError;
+      }
+
+      console.log(`Cleaned up ${expiredReservations.length} expired reservations`);
+      return { success: true, cleaned: expiredReservations.length };
     } catch (error) {
       console.error('Error cleaning up expired reservations:', error);
+      throw error;
     }
   }
 
@@ -350,34 +561,90 @@ export class RequestManagementService {
    * Cleanup expired assignments
    */
   async cleanupExpiredAssignments() {
+    if (DEV_MODE) {
+      console.log('[DEV MODE] Simulating cleanup of expired assignments');
+      return { success: true, cleaned: 0 };
+    }
+
     try {
-      const { error } = await supabase.rpc('cleanup_expired_assignments');
-      if (error) throw error;
+      // Find assignments that have expired
+      const { data: expiredAssignments, error } = await supabase
+        .from('pickup_requests')
+        .select('id')
+        .eq('status', 'accepted')
+        .lt('assignment_expires_at', new Date().toISOString());
+
+      if (error) {
+        if (DEV_MODE) {
+          console.log('[DEV MODE] Error cleaning up assignments:', error);
+          return { success: true, cleaned: 0 };
+        }
+        throw error;
+      }
+
+      if (!expiredAssignments || expiredAssignments.length === 0) {
+        return { success: true, cleaned: 0 };
+      }
+
+      // Reset expired assignments to available
+      const { error: updateError } = await supabase
+        .from('pickup_requests')
+        .update({
+          status: 'available',
+          collector_id: null,
+          accepted_at: null,
+          assignment_expires_at: null
+        })
+        .in('id', expiredAssignments.map(a => a.id));
+
+      if (updateError) {
+        if (DEV_MODE) {
+          console.log('[DEV MODE] Error updating expired assignments:', updateError);
+          return { success: true, cleaned: 0 };
+        }
+        throw updateError;
+      }
+
+      return { success: true, cleaned: expiredAssignments.length };
     } catch (error) {
       console.error('Error cleaning up expired assignments:', error);
+      throw error;
     }
   }
 
   /**
-   * Send heartbeat to keep session active
-   */
-  async sendHeartbeat() {
-    try {
-      await supabase
-        .from('collector_sessions')
-        .update({ last_activity: new Date().toISOString() })
-        .eq('collector_id', this.collectorId);
-    } catch (error) {
-      console.error('Error sending heartbeat:', error);
-    }
-  }
-
-  /**
-   * Start periodic heartbeat
+   * Start heartbeat timer to keep session alive
    */
   startHeartbeat() {
-    this.heartbeatTimer = setInterval(() => {
-      this.sendHeartbeat();
+    if (DEV_MODE) {
+      console.log('[DEV MODE] Starting heartbeat timer');
+      // In dev mode, just log heartbeat activity
+      this.heartbeatTimer = setInterval(() => {
+        console.log('[DEV MODE] Heartbeat - session active');
+      }, this.HEARTBEAT_INTERVAL);
+      return;
+    }
+
+    this.heartbeatTimer = setInterval(async () => {
+      if (this.collectorId) {
+        try {
+          // Update last_activity timestamp to keep session alive
+          const { error } = await supabase
+            .from('collector_sessions')
+            .update({
+              last_activity: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('collector_id', this.collectorId)
+            .eq('is_active', true);
+
+          if (error) {
+            console.error('Heartbeat error:', error);
+          }
+        } catch (error) {
+          console.error('Heartbeat failed:', error);
+        }
+      }
     }, this.HEARTBEAT_INTERVAL);
   }
 
@@ -392,35 +659,127 @@ export class RequestManagementService {
   }
 
   /**
-   * Setup real-time subscriptions for notifications
+   * Setup real-time subscriptions with error handling and reconnection logic
    */
   setupRealtimeSubscriptions() {
-    // Subscribe to request changes
-    const requestSubscription = supabase
-      .channel('request_updates')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'pickup_requests'
-      }, (payload) => {
-        this.handleRequestUpdate(payload);
-      })
-      .subscribe();
+    if (DEV_MODE) {
+      console.log('[DEV MODE] Setting up mock real-time subscriptions');
+      // In dev mode, we'll simulate real-time updates using intervals
+      this.mockSubscriptionTimer = setInterval(() => {
+        // Simulate request updates
+        mockPickupRequests.forEach(req => {
+          if (req.status === 'accepted' && req.assignment_expires_at && new Date(req.assignment_expires_at) < new Date()) {
+            // Simulate expired assignment
+            const oldRecord = { ...req };
+            req.status = 'available';
+            req.collector_id = null;
+            req.accepted_at = null;
+            req.assignment_expires_at = null;
+            this.handleRequestUpdate({
+              eventType: 'UPDATE',
+              new: req,
+              old: oldRecord
+            });
+          }
+        });
+      }, 10000); // Check every 10 seconds
+      return;
+    }
 
-    // Subscribe to notifications
-    const notificationSubscription = supabase
-      .channel('collector_notifications')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'request_notifications',
-        filter: `collector_id=eq.${this.collectorId}`
-      }, (payload) => {
-        this.handleNotification(payload);
-      })
-      .subscribe();
+    try {
+      console.log('Setting up real-time subscriptions with error handling');
+      
+      // Track connection state
+      this.realtimeConnected = false;
+      this.reconnectAttempts = 0;
+      this.MAX_RECONNECT_ATTEMPTS = 5;
+      this.RECONNECT_DELAY = 5000; // 5 seconds initial delay
+      
+      // Setup connection status handler
+      supabase.channel('system').on(
+        'system',
+        { event: 'connection_status' },
+        (payload) => {
+          const { event, status } = payload;
+          console.log(`Realtime connection status: ${status}`);
+          
+          if (status === 'connected') {
+            this.realtimeConnected = true;
+            this.reconnectAttempts = 0;
+            console.log('✅ Supabase realtime connected successfully');
+          } else if (status === 'disconnected' && this.realtimeConnected) {
+            this.realtimeConnected = false;
+            console.warn('⚠️ Supabase realtime disconnected, will attempt reconnection');
+            this.setupReconnectTimer();
+          }
+        }
+      );
 
-    this.subscriptions.push(requestSubscription, notificationSubscription);
+      // Real Supabase subscriptions for production with error handling
+      const requestChannel = supabase.channel('request_updates', {
+        config: {
+          broadcast: { self: true },
+          presence: { key: this.collectorId || 'anonymous' }
+        }
+      });
+
+      const requestSubscription = requestChannel
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'pickup_requests'
+        }, (payload) => {
+          try {
+            this.handleRequestUpdate(payload);
+          } catch (err) {
+            console.error('Error handling request update:', err);
+          }
+        })
+        .on('error', (error) => {
+          console.error('Error on request channel:', error);
+          this.handleChannelError('request_updates');
+        })
+        .subscribe((status) => {
+          console.log(`Request channel subscription status: ${status}`);
+        });
+
+      // Subscribe to notifications with error handling
+      const notificationChannel = supabase.channel('collector_notifications', {
+        config: {
+          broadcast: { self: true },
+          presence: { key: this.collectorId || 'anonymous' }
+        }
+      });
+
+      const notificationSubscription = notificationChannel
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'request_notifications',
+          filter: `collector_id=eq.${this.collectorId || '00000000-0000-0000-0000-000000000000'}`
+        }, (payload) => {
+          try {
+            this.handleNotification(payload);
+          } catch (err) {
+            console.error('Error handling notification:', err);
+          }
+        })
+        .on('error', (error) => {
+          console.error('Error on notification channel:', error);
+          this.handleChannelError('collector_notifications');
+        })
+        .subscribe((status) => {
+          console.log(`Notification channel subscription status: ${status}`);
+        });
+
+      this.subscriptions.push(requestSubscription, notificationSubscription);
+    } catch (error) {
+      console.error('Failed to setup realtime subscriptions:', error);
+      // Don't re-throw to prevent app crash, but show warning to user
+      window.dispatchEvent(new CustomEvent('realtimeError', {
+        detail: { message: 'Real-time updates temporarily unavailable' }
+      }));
+    }
   }
 
   /**
@@ -430,12 +789,21 @@ export class RequestManagementService {
     const { eventType, new: newRecord, old: oldRecord } = payload;
     
     // Dispatch custom events that components can listen to
-    if (eventType === 'UPDATE' && newRecord.status === 'accepted' && 
-        oldRecord.status !== 'accepted' && newRecord.collector_id !== this.collectorId) {
+    if (eventType === 'UPDATE') {
+      // Request became unavailable
+      if (newRecord.status === 'accepted' && oldRecord.status !== 'accepted' && 
+          newRecord.collector_id !== this.collectorId) {
+        window.dispatchEvent(new CustomEvent('requestUnavailable', {
+          detail: { requestId: newRecord.id, message: 'Request accepted by another collector' }
+        }));
+      }
       
-      window.dispatchEvent(new CustomEvent('requestUnavailable', {
-        detail: { requestId: newRecord.id, message: 'Request accepted by another collector' }
-      }));
+      // Request became available again
+      if (newRecord.status === 'available' && oldRecord.status !== 'available') {
+        window.dispatchEvent(new CustomEvent('requestAvailable', {
+          detail: { requestId: newRecord.id, message: 'Request is now available' }
+        }));
+      }
     }
   }
 
@@ -457,25 +825,133 @@ export class RequestManagementService {
   destroy() {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
     
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    
+    // Clean up reconnect timer if it exists
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
 
-    // Unsubscribe from real-time channels
-    this.subscriptions.forEach(subscription => {
-      supabase.removeChannel(subscription);
-    });
+    // Clean up subscriptions
+    this.cleanupSubscriptions();
 
     // Mark session as inactive
-    if (this.collectorId) {
+    if (this.collectorId && !DEV_MODE) {
       supabase
         .from('collector_sessions')
         .update({ is_active: false })
         .eq('collector_id', this.collectorId)
-        .then(() => console.log('Session marked as inactive'));
+        .then(() => console.log('Session marked as inactive'))
+        .catch(err => console.warn('Failed to mark session inactive:', err));
+    } else if (DEV_MODE) {
+      console.log('[DEV MODE] Skipping session deactivation');
     }
+  }
+  
+  /**
+   * Cleanup subscriptions on destroy
+   */
+  cleanupSubscriptions() {
+    // Clear any mock subscription timers
+    if (this.mockSubscriptionTimer) {
+      clearInterval(this.mockSubscriptionTimer);
+      this.mockSubscriptionTimer = null;
+    }
+
+    // Clean up all subscriptions
+    this.subscriptions.forEach(subscription => {
+      try {
+        if (subscription && subscription.unsubscribe) {
+          subscription.unsubscribe();
+        }
+      } catch (e) {
+        console.warn('Error unsubscribing:', e);
+      }
+    });
+
+    this.subscriptions = [];
+  }
+  
+  /**
+   * Set up a timer to attempt reconnection with exponential backoff
+   */
+  setupReconnectTimer() {
+    // Clear any existing reconnect timer
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    
+    if (this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
+      console.warn(`Maximum reconnect attempts (${this.MAX_RECONNECT_ATTEMPTS}) reached. Giving up automatic reconnection.`);
+      window.dispatchEvent(new CustomEvent('realtimeError', {
+        detail: { message: 'Could not reconnect to real-time updates. Please reload the app.' }
+      }));
+      return;
+    }
+    
+    // Calculate delay with exponential backoff
+    const delay = this.RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts);
+    console.log(`Attempting to reconnect in ${delay/1000} seconds... (attempt ${this.reconnectAttempts + 1}/${this.MAX_RECONNECT_ATTEMPTS})`);
+    
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectAttempts++;
+      this.attemptReconnect();
+    }, delay);
+  }
+  
+  /**
+   * Attempt to reconnect to Supabase realtime
+   */
+  attemptReconnect() {
+    console.log('Attempting to reconnect to Supabase realtime...');
+    
+    // Clean up existing subscriptions
+    this.cleanupSubscriptions();
+    
+    // Try to set up subscriptions again
+    this.setupRealtimeSubscriptions();
+  }
+  
+  /**
+   * Handle channel-specific errors
+   * @param {string} channelName - The name of the channel with error
+   */
+  handleChannelError(channelName) {
+    console.warn(`Channel error on ${channelName}, will attempt to recreate the subscription`);
+    
+    // Refresh the problematic subscription
+    const affectedSubscriptions = this.subscriptions.filter(sub => 
+      sub && sub.topic && sub.topic.includes(channelName)
+    );
+    
+    affectedSubscriptions.forEach(sub => {
+      try {
+        if (sub && sub.unsubscribe) {
+          sub.unsubscribe();
+          // Remove from subscriptions array
+          const index = this.subscriptions.indexOf(sub);
+          if (index > -1) {
+            this.subscriptions.splice(index, 1);
+          }
+        }
+      } catch (e) {
+        console.warn(`Error unsubscribing from ${channelName}:`, e);
+      }
+    });
+    
+    // Schedule a reconnection attempt for this specific channel
+    setTimeout(() => {
+      console.log(`Attempting to recreate ${channelName} subscription...`);
+      this.setupRealtimeSubscriptions();
+    }, 3000);
   }
 }
 

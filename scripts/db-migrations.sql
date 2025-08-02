@@ -1,35 +1,205 @@
 -- TrashDrop Request Management System - Database Migrations
 -- Run these migrations in your Supabase SQL editor
 
--- 1. Add new columns to pickup_requests table for reservation management
-ALTER TABLE public.pickup_requests ADD COLUMN IF NOT EXISTS 
-  reserved_by uuid REFERENCES auth.users(id),
-  reserved_at timestamp with time zone,
-  reserved_until timestamp with time zone,
-  exclusion_until timestamp with time zone,
-  assignment_expires_at timestamp with time zone,
-  filter_criteria jsonb,
-  last_pool_entry timestamp with time zone DEFAULT now();
+-- 1. Drop all dependent constraints first
+DO $$ 
+BEGIN
+  -- Drop dependent foreign keys
+  IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fee_points_request_id_fkey') THEN
+    ALTER TABLE public.fee_points DROP CONSTRAINT fee_points_request_id_fkey;
+  END IF;
+  
+  IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'bags_batch_id_fkey') THEN
+    ALTER TABLE public.bags DROP CONSTRAINT bags_batch_id_fkey;
+  END IF;
+  
+  -- Drop pickup_requests constraints
+  IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'pickup_requests_pkey') THEN
+    ALTER TABLE public.pickup_requests DROP CONSTRAINT pickup_requests_pkey;
+  END IF;
+  
+  IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'pickup_requests_id_fkey') THEN
+    ALTER TABLE public.pickup_requests DROP CONSTRAINT pickup_requests_id_fkey;
+  END IF;
 
--- 2. Create collector_sessions table for session management
-CREATE TABLE IF NOT EXISTS public.collector_sessions (
-  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  collector_id uuid NOT NULL REFERENCES auth.users(id),
-  filter_criteria jsonb,
-  reserved_requests uuid[] DEFAULT ARRAY[]::uuid[],
-  session_start timestamp with time zone DEFAULT now(),
-  last_activity timestamp with time zone DEFAULT now(),
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT collector_sessions_collector_id_key UNIQUE (collector_id)
-);
+  -- Move UUIDs from id.. to id column
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'pickup_requests' AND column_name = 'id..') THEN
+    -- Drop id column if it exists (it's NULL anyway)
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'pickup_requests' AND column_name = 'id') THEN
+      ALTER TABLE public.pickup_requests DROP COLUMN id;
+    END IF;
 
--- 3. Create request_notifications table for real-time updates
+    -- Rename id.. to id
+    ALTER TABLE public.pickup_requests RENAME COLUMN "id.." TO id;
+    RAISE NOTICE 'Moved UUIDs from id.. to id column';
+  END IF;
+END $$;
+
+-- 2. Ensure pickup_requests table exists with correct schema
+DO $$ 
+BEGIN
+  -- Create table if it doesn't exist
+  CREATE TABLE IF NOT EXISTS public.pickup_requests (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    waste_type VARCHAR NOT NULL,
+    coordinates FLOAT[] NOT NULL,
+    location VARCHAR NOT NULL,
+    fee INTEGER NOT NULL,
+    status VARCHAR DEFAULT 'available',
+    priority VARCHAR DEFAULT 'medium',
+    bag_count INTEGER DEFAULT 1,
+    special_instructions TEXT,
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
+  );
+
+  -- Convert existing id column to UUID if needed
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'pickup_requests'
+    AND column_name = 'id'
+    AND data_type != 'uuid'
+  ) THEN
+    -- Fix malformed UUIDs first
+    UPDATE public.pickup_requests
+    SET id = gen_random_uuid()::text
+    WHERE id IS NOT NULL 
+      AND id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+
+    -- Convert to UUID
+    ALTER TABLE public.pickup_requests ALTER COLUMN id TYPE uuid USING id::uuid;
+    ALTER TABLE public.pickup_requests ALTER COLUMN id SET DEFAULT gen_random_uuid();
+  END IF;
+
+  -- Fix NULL ids
+  UPDATE public.pickup_requests SET id = gen_random_uuid() WHERE id IS NULL;
+END $$;
+
+-- 3. Re-add constraints and foreign keys
+DO $$ 
+BEGIN
+  -- Add foreign key to rewards if it doesn't exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'pickup_requests_id_fkey'
+  ) THEN
+    ALTER TABLE public.pickup_requests ADD CONSTRAINT pickup_requests_id_fkey FOREIGN KEY (id) REFERENCES public.rewards(id);
+  END IF;
+  
+  -- Re-add dependent foreign key constraints
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'fee_points_request_id_fkey'
+  ) THEN
+    ALTER TABLE public.fee_points ADD CONSTRAINT fee_points_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.pickup_requests(id);
+  END IF;
+  
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'bags_batch_id_fkey'
+  ) THEN
+    ALTER TABLE public.bags ADD CONSTRAINT bags_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.pickup_requests(id);
+  END IF;
+END $$;
+
+-- 4. Add new columns to pickup_requests table for reservation management
+ALTER TABLE public.pickup_requests 
+  ADD COLUMN IF NOT EXISTS reserved_by uuid REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS reserved_at timestamp with time zone,
+  ADD COLUMN IF NOT EXISTS reserved_until timestamp with time zone,
+  ADD COLUMN IF NOT EXISTS exclusion_until timestamp with time zone,
+  ADD COLUMN IF NOT EXISTS assignment_expires_at timestamp with time zone,
+  ADD COLUMN IF NOT EXISTS filter_criteria jsonb,
+  ADD COLUMN IF NOT EXISTS last_pool_entry timestamp with time zone DEFAULT now();
+
+-- 5. Create collector_sessions table for session management
+DO $$ 
+BEGIN
+  -- Drop existing table if it exists to ensure clean state
+  DROP TABLE IF EXISTS public.collector_sessions;
+
+  -- Create table with proper schema
+  CREATE TABLE public.collector_sessions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    collector_id uuid NOT NULL REFERENCES auth.users(id),
+    filter_criteria jsonb,
+    reserved_requests uuid[] DEFAULT ARRAY[]::uuid[],
+    session_start timestamp with time zone DEFAULT now(),
+    last_activity timestamp with time zone DEFAULT now(),
+    is_active boolean DEFAULT true,
+    expires_at timestamp with time zone DEFAULT (now() + interval '24 hours')
+  );
+
+  -- Add indexes for performance
+  CREATE INDEX IF NOT EXISTS idx_collector_sessions_collector_id ON public.collector_sessions(collector_id);
+  CREATE INDEX IF NOT EXISTS idx_collector_sessions_is_active ON public.collector_sessions(is_active);
+  CREATE INDEX IF NOT EXISTS idx_collector_sessions_expires_at ON public.collector_sessions(expires_at);
+
+  -- Add RLS policies
+  ALTER TABLE public.collector_sessions ENABLE ROW LEVEL SECURITY;
+
+  -- Allow collectors to view and manage their own sessions
+  CREATE POLICY manage_own_sessions ON public.collector_sessions
+    FOR ALL
+    TO authenticated
+    USING (collector_id = auth.uid());
+END $$;
+
+-- 6. Create indexes on pickup_requests for performance
+DO $$ 
+BEGIN
+  -- Indexes for status and reservation management
+  CREATE INDEX IF NOT EXISTS idx_pickup_requests_status ON public.pickup_requests(status);
+  CREATE INDEX IF NOT EXISTS idx_pickup_requests_reserved_by ON public.pickup_requests(reserved_by);
+  CREATE INDEX IF NOT EXISTS idx_pickup_requests_reserved_until ON public.pickup_requests(reserved_until);
+  CREATE INDEX IF NOT EXISTS idx_pickup_requests_exclusion_until ON public.pickup_requests(exclusion_until);
+  CREATE INDEX IF NOT EXISTS idx_pickup_requests_assignment_expires_at ON public.pickup_requests(assignment_expires_at);
+
+  -- Indexes for filtering and sorting
+  CREATE INDEX IF NOT EXISTS idx_pickup_requests_waste_type ON public.pickup_requests(waste_type);
+  CREATE INDEX IF NOT EXISTS idx_pickup_requests_priority ON public.pickup_requests(priority);
+  CREATE INDEX IF NOT EXISTS idx_pickup_requests_fee ON public.pickup_requests(fee);
+  CREATE INDEX IF NOT EXISTS idx_pickup_requests_created_at ON public.pickup_requests(created_at);
+END $$;
+
+-- 7. Add RLS policies for pickup_requests
+DO $$ 
+BEGIN
+  -- Enable RLS
+  ALTER TABLE public.pickup_requests ENABLE ROW LEVEL SECURITY;
+
+  -- View available requests
+  CREATE POLICY view_available_requests ON public.pickup_requests
+    FOR SELECT
+    TO authenticated
+    USING (status = 'available' AND (reserved_until IS NULL OR reserved_until < now()));
+
+  -- View own reserved/accepted requests
+  CREATE POLICY view_own_requests ON public.pickup_requests
+    FOR SELECT
+    TO authenticated
+    USING (reserved_by = auth.uid() OR collector_id = auth.uid());
+
+  -- Reserve available requests
+  CREATE POLICY reserve_available_requests ON public.pickup_requests
+    FOR UPDATE
+    TO authenticated
+    USING (status = 'available' AND (reserved_until IS NULL OR reserved_until < now()))
+    WITH CHECK (reserved_by = auth.uid());
+
+  -- Update own reserved/accepted requests
+  CREATE POLICY update_own_requests ON public.pickup_requests
+    FOR UPDATE
+    TO authenticated
+    USING (reserved_by = auth.uid() OR collector_id = auth.uid())
+    WITH CHECK (reserved_by = auth.uid() OR collector_id = auth.uid());
+END $$;
+
+-- 4. Create request_notifications table for real-time updates
 CREATE TABLE IF NOT EXISTS public.request_notifications (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   collector_id uuid NOT NULL REFERENCES auth.users(id),
-  request_id uuid REFERENCES public.pickup_requests(id),
+  request_id text REFERENCES public.pickup_requests(id),
   notification_type text NOT NULL CHECK (notification_type = ANY (ARRAY['request_unavailable', 'assignment_expired', 'reservation_expired'])),
   message text NOT NULL,
   read_at timestamp with time zone,

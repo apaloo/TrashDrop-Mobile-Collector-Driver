@@ -234,6 +234,94 @@ const CompletionModal = ({
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            // Convert the canvas to blob and handle the photo
+            canvas.toBlob(blob => {
+              const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
+              handlePhotoCapture({ target: { files: [file] } });
+              
+              // Clean up
+              stream.getTracks().forEach(track => track.stop());
+              document.body.removeChild(videoModal);
+            }, 'image/jpeg');
+          });
+          
+          cancelButton.addEventListener('click', () => {
+            // Clean up on cancel
+            stream.getTracks().forEach(track => track.stop());
+            document.body.removeChild(videoModal);
+          });
+        })
+        .catch(err => {
+          console.error('Camera access error:', err);
+          alert('Could not access camera. Please ensure you have given permission to use the camera.');
+        });
+    } else {
+      // Fallback for browsers that don't support mediaDevices
+      if (cameraInputRef.current) {
+        cameraInputRef.current.click();
+      }
+    }
+  };
+  
+  // Handle form submission
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
+    
+    try {
+      setIsSubmitting(true);
+      
+      // Call the onSubmit handler with all collected data
+      await onSubmit({
+        photos,
+        locationVerified: isWithinRange,
+        userCoordinates
+      });
+      
+      // Clear the form after successful submission
+      clearPhotos();
+      setLocationVerified(false);
+    } catch (error) {
+      console.error('Error submitting completion:', error);
+      // Show error notification
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+  return (
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isOpen ? 'visible' : 'invisible'}`}>
+      <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose}></div>
+      
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto z-10 relative">
+        {/* Header */}
+        <div className="p-4 border-b border-gray-200 sticky top-0 bg-white z-20">
+          <h2 className="text-xl font-semibold text-gray-800">Complete Assignment</h2>
+          <p className="text-sm text-gray-500 mt-1">{assignment?.location}</p>
+        </div>
+        
+        {/* Content */}
+        <div className="p-4">
+          <div className="space-y-6">
+            {/* Photo Capture Section */}
+            <div className="mb-6">
+              <h3 className="font-medium text-gray-700 mb-2">Photo Documentation</h3>
+              
+              <div className="grid grid-cols-3 gap-3">
+                {photos.map((photo, index) => (
+                  <div key={index} className="aspect-square relative rounded-md overflow-hidden">
+                    <img src={URL.createObjectURL(photo)} alt={`Photo ${index + 1}`} className="w-full h-full object-cover" />
+                    <button 
+                      onClick={() => removePhoto(index)}
+                      className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full w-6 h-6 flex items-center justify-center"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+                
+                {photos.length < 6 && (
                   <div onClick={openCamera} className="aspect-square bg-gray-100 rounded-md flex flex-col items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors border-2 border-dashed border-gray-300 p-4">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />

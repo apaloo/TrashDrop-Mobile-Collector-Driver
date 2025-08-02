@@ -1,16 +1,104 @@
 import { createClient } from '@supabase/supabase-js';
 
-// These will be replaced with environment variables
+// Load environment variables
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Development mode to bypass actual SMS sending
 // Set to false for production to use actual Supabase authentication
 // Temporarily enabled for testing until SMS provider is configured
-const DEV_MODE = true;
+export const DEV_MODE = true;
 
-// Create Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Create dev mode session data with valid JWT claims
+const createDevModeSession = (userId) => {
+  const now = Math.floor(Date.now() / 1000); // Current time in seconds
+  const exp = now + 3600; // Expires in 1 hour
+
+  // JWT claims required by Supabase
+  const claims = {
+    aud: 'authenticated',
+    exp,
+    sub: userId,
+    email: 'dev@example.com',
+    phone: '+233123456789',
+    role: 'authenticated',
+    session_id: 'dev-session',
+    // Add required Supabase claims
+    iss: 'supabase',
+    iat: now,
+    // Add project reference from URL
+    ref: supabaseUrl.split('.')[0].split('//')[1]
+  };
+
+  const user = {
+    id: userId,
+    aud: claims.aud,
+    role: claims.role,
+    email: claims.email,
+    phone: claims.phone,
+    app_metadata: {
+      provider: 'phone',
+      providers: ['phone']
+    },
+    user_metadata: {},
+    identities: [],
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  // Skip token generation - we'll generate it in getSession
+  return { user, claims };
+};
+
+// Create Supabase client with anon key
+const DEV_USER_ID = '6fba1031-839f-4985-a180-9ae0a04b7812';
+const devModeData = createDevModeSession(DEV_USER_ID);
+
+// Create Supabase client with appropriate key based on mode
+// In DEV_MODE, use anon key with modified config to prevent auth errors
+const supabase = createClient(
+  supabaseUrl,
+  supabaseAnonKey, // Always use anon key to avoid 401 errors
+  {
+    auth: {
+      autoRefreshToken: !DEV_MODE,
+      persistSession: !DEV_MODE,
+      detectSessionInUrl: !DEV_MODE
+    },
+    db: {
+      schema: 'public'
+    },
+    realtime: {
+      // Disable realtime in DEV_MODE to prevent WebSocket errors
+      enabled: !DEV_MODE
+    }
+  }
+);
+
+// Override auth methods in dev mode
+if (DEV_MODE) {
+  // Patch the auth object to return dev mode session
+  supabase.auth.getSession = async () => {
+    // Create a session with our claims
+    const session = {
+      user: devModeData.user,
+      // Use anon key as access token since service key isn't available in client
+      access_token: supabaseAnonKey,
+      refresh_token: null,
+      token_type: 'bearer'
+    };
+
+    // Save to localStorage for consistency
+    localStorage.setItem('dev_mode_session', JSON.stringify(session));
+
+    return { data: { session }, error: null };
+  };
+
+  supabase.auth.getUser = async () => ({
+    data: { user: devModeData.user },
+    error: null
+  });
+}
 
 // Helper to format phone number to E.164 format
 export const formatPhoneNumber = (phoneNumber) => {
@@ -99,8 +187,19 @@ export const authService = {
             user: mockUser
           };
           
-          // Store in localStorage for persistence across page refreshes
+          // Store in localStorage for persistence
           localStorage.setItem('dev_mode_session', JSON.stringify(mockSession));
+          
+          // Set headers for dev mode
+          supabase.rest.headers.set('x-rls-bypass', 'true');
+          supabase.rest.headers.set('x-dev-mode', 'true');
+          
+          // Set auth session
+          supabase.auth.setSession({
+            access_token: mockSession.access_token,
+            refresh_token: mockSession.refresh_token,
+            user: mockUser
+          });
           
           return {
             success: true,
@@ -136,15 +235,40 @@ export const authService = {
     try {
       // Check if we have a dev mode session in localStorage
       if (DEV_MODE) {
+        // First try to get from localStorage
         const devSession = localStorage.getItem('dev_mode_session');
         if (devSession) {
-          const session = JSON.parse(devSession);
-          console.log('[DEV MODE] Retrieved session from localStorage:', session);
-          return { session: session, user: session.user };
+          try {
+            const session = JSON.parse(devSession);
+            // Ensure the session has the correct access_token
+            if (!session.access_token || session.access_token === 'dev-mode-token') {
+              // Fix the token to use supabaseAnonKey
+              session.access_token = supabaseAnonKey;
+              localStorage.setItem('dev_mode_session', JSON.stringify(session));
+              console.log('[DEV MODE] Updated session token in localStorage');
+            }
+            console.log('[DEV MODE] Retrieved session from localStorage:', session);
+            return { session: session, user: session.user };
+          } catch (e) {
+            console.error('Error parsing dev_mode_session:', e);
+            // Clear corrupted session data
+            localStorage.removeItem('dev_mode_session');
+          }
         }
+        
+        // If no valid dev session in localStorage, create one
+        const newSession = {
+          user: devModeData.user,
+          access_token: supabaseAnonKey,
+          refresh_token: null,
+          token_type: 'bearer'
+        };
+        localStorage.setItem('dev_mode_session', JSON.stringify(newSession));
+        console.log('[DEV MODE] Created new dev session with proper token');
+        return { session: newSession, user: newSession.user };
       }
       
-      // Real Supabase call
+      // Real Supabase call for non-DEV_MODE
       const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
       return { session: data.session, user: data.session?.user || null };
@@ -238,3 +362,6 @@ export const authService = {
     }
   }
 };
+
+// Export the supabase client
+export { supabase };

@@ -388,12 +388,12 @@ describe('Filter Synchronization', () => {
         cy.screenshot('no-map-elements-found');
       }
     });
-    
+
     // Try to find the bottom navigation
     cy.get('body').then($body => {
       const navElements = $body.find('nav, [role="navigation"], [class*="nav"], [class*="bottom"]');
       logDebugInfo(`Found ${navElements.length} navigation elements`);
-      
+
       navElements.each((i, el) => {
         const $el = Cypress.$(el);
         logDebugInfo(`Nav Element ${i}:`, {
@@ -413,6 +413,9 @@ describe('Filter Synchronization', () => {
         return $el.is(':visible') && $el.width() > 0 && $el.height() > 0;
       });
       
+      logDebugInfo(`Found ${visibleElements.length} visible elements`);
+    });
+    
     cy.screenshot('test-complete');
   });
 
