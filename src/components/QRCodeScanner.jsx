@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 
 const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => {
@@ -9,47 +9,178 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
   const [cameraInitialized, setCameraInitialized] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [scannerActive, setScannerActive] = useState(false);
+  const [scanStartTime, setScanStartTime] = useState(Date.now());
+
+  // Cleanup function with safer DOM handling
+  const cleanup = useCallback(async () => {
+    console.log('🧹 Cleaning up QR scanner resources...');
+    
+    try {
+      // First, stop any active scanning
+      if (html5QrCodeRef.current?.isScanning) {
+        console.log('🛑 Stopping active scanner');
+        await html5QrCodeRef.current.stop();
+      }
+
+      // Release camera stream if it exists
+      if (scannerRef.current) {
+        const videoElements = scannerRef.current.getElementsByTagName('video');
+        for (const video of Array.from(videoElements)) {
+          if (video.srcObject) {
+            const stream = video.srcObject;
+            if (stream instanceof MediaStream) {
+              stream.getTracks().forEach(track => {
+                track.stop();
+                console.log('📷 Stopped camera track:', track.label);
+              });
+            }
+            video.srcObject = null;
+          }
+        }
+      }
+
+      // Clear the scanner instance
+      if (html5QrCodeRef.current) {
+        console.log('🗑️ Clearing scanner instance');
+        try {
+          await html5QrCodeRef.current.clear();
+        } catch (clearErr) {
+          console.warn('⚠️ Error clearing scanner, continuing cleanup:', clearErr);
+        }
+        html5QrCodeRef.current = null;
+      }
+
+      // Remove any existing scanner elements
+      const existingScanner = document.getElementById('qr-reader');
+      if (existingScanner) {
+        existingScanner.innerHTML = '';
+      }
+
+      // Reset state
+      setScannerActive(false);
+      setCameraInitialized(false);
+      setCameraError('');
+      
+      console.log('✅ Cleanup completed successfully');
+    } catch (err) {
+      console.error('❌ Error during scanner cleanup:', err);
+      setCameraError('Error during cleanup: ' + err.message);
+    }
+  }, [setScanStartTime]);
+
+  // Start the QR scanner
+  const startScanner = useCallback(async () => {
+    if (!scannerRef.current) {
+      console.log('❌ Scanner container ref not ready');
+      return;
+    }
+
+    try {
+      // Clean up any existing scanner instance
+      if (html5QrCodeRef.current?.isScanning) {
+        console.log('🛑 Stopping existing scanner...');
+        await cleanup();
+      }
+
+      // Wait a bit for cleanup to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Initialize new scanner
+      console.log('🎥 Initializing scanner...');
+      html5QrCodeRef.current = new Html5Qrcode('qr-reader', {
+        verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        }
+      });
+
+      // Configure camera with constraints
+      const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1,
+        videoConstraints: {
+          facingMode: 'environment',
+          width: { min: 640, ideal: 1280, max: 1920 },
+          height: { min: 480, ideal: 720, max: 1080 }
+        }
+      };
+
+      // Start scanning
+      console.log('▶️ Starting QR scanner...');
+      await html5QrCodeRef.current.start(
+        { facingMode: 'environment' },
+        config,
+        (decodedText) => {
+          console.log('✅ QR code scanned:', decodedText);
+          onScanSuccess(decodedText);
+        },
+        (errorMessage) => {
+          // Only show errors when scanner is active (not during initialization)
+          if (scannerActive) {
+            console.error('❌ QR Scanner Error:', errorMessage);
+            onScanError(errorMessage);
+          }
+        }
+      );
+
+      setScannerActive(true);
+      setCameraInitialized(true);
+      console.log('✅ Scanner started successfully');
+    } catch (err) {
+      console.error('❌ Error starting scanner:', err);
+      setCameraError(err.message);
+      setScannerActive(false);
+      // Force remount on error
+      setScanStartTime(Date.now());
+    }
+  }, [onScanSuccess, onScanError, cleanup]);
 
   // Initialize scanner when component mounts
   useEffect(() => {
-    console.log('QR Scanner component mounted, isWithinRange:', isWithinRange);
+    let mounted = true;
+    let timeoutId;
+    console.log('🎥 QR Scanner component mounted, isWithinRange:', isWithinRange);
 
     const initializeScanner = async () => {
+      if (!mounted) {
+        console.log('🛑 Component not mounted, skipping initialization');
+        return;
+      }
+
+      // Reset scan start time to force remount of scanner container
+      const newStartTime = Date.now();
+      setScanStartTime(newStartTime);
+      
+      // Always cleanup first
+      console.log('🧹 Running cleanup before initialization...');
+      await cleanup();
+
+      // Wait for scanner container to be ready
       if (!scannerRef.current) {
-        console.error('Scanner ref not ready');
+        console.error('❌ Scanner container ref not ready');
+        setCameraError('Scanner initialization failed: container not ready');
         return;
       }
 
       try {
-        // Generate a unique ID for the scanner element
-        const scannerId = `qr-reader-${Date.now()}`;
-        scannerRef.current.id = scannerId;
-
-        // Create a new instance with the container ID
-        if (html5QrCodeRef.current) {
-          await html5QrCodeRef.current.clear();
-        }
-        html5QrCodeRef.current = new Html5Qrcode(scannerId);
-        console.log('Html5Qrcode instance created');
-
-        // Auto-start if within range
-        if (isWithinRange) {
-          console.log('Within range, auto-starting scanner');
-          // Request camera permission first
+        // Small delay to ensure DOM is ready after cleanup
+        timeoutId = setTimeout(async () => {
           try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            stream.getTracks().forEach(track => track.stop()); // Release camera immediately
-            console.log('Camera permission granted');
-            // Small timeout to ensure DOM is fully ready
-            setTimeout(() => startScanner(), 500);
+            if (!mounted) return;
+            await startScanner();
           } catch (err) {
-            console.error('Camera permission error:', err);
-            setCameraError('Camera access denied. Please grant camera permissions.');
+            if (mounted) {
+              console.error('❌ Scanner initialization error:', err);
+              setCameraError('Failed to initialize scanner');
+            }
           }
-        }
+        }, 1000);
       } catch (err) {
-        console.error('Scanner initialization error:', err);
-        setCameraError('Failed to initialize scanner');
+        if (mounted) {
+          console.error('❌ Scanner initialization error:', err);
+          setCameraError('Failed to initialize scanner');
+        }
       }
     };
 
@@ -57,149 +188,12 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
 
     // Clean up scanner when component unmounts
     return () => {
-      console.log('QR Scanner component unmounting, cleaning up resources');
-      const cleanup = async () => {
-        if (html5QrCodeRef.current) {
-          try {
-            if (html5QrCodeRef.current.isScanning) {
-              console.log('Stopping active scanner');
-              await html5QrCodeRef.current.stop();
-            }
-            console.log('Clearing scanner instance');
-            await html5QrCodeRef.current.clear();
-            html5QrCodeRef.current = null;
-          } catch (err) {
-            console.error('Error during scanner cleanup:', err);
-          }
-        }
-        // Reset all states
-        setCameraInitialized(false);
-        setScannerActive(false);
-        setCameraError('');
-      };
+      mounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+      console.log('📤 QR Scanner component unmounting');
       cleanup();
     };
-  }, [isWithinRange]);
-
-  // Process successful scan
-  const handleScanSuccess = (decodedText) => {
-    console.log('QR scan detected:', decodedText);
-    
-    try {
-      // Parse and validate the QR data
-      const qrData = JSON.parse(decodedText);
-      if (qrData && qrData.source === 'trashdrop' && qrData.bagId) {
-        // Valid TrashDrop QR code found
-        console.log('Valid TrashDrop QR code detected:', qrData);
-        
-        // Call success handler
-        onScanSuccess && onScanSuccess(decodedText);
-        
-        // Stop scanning after successful detection
-        if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-          console.log('Stopping scanner after successful scan');
-          html5QrCodeRef.current.stop()
-            .catch(err => console.error('Error stopping scanner after success:', err));
-          setScannerActive(false);
-        }
-      } else {
-        // Not a valid TrashDrop QR code
-        console.error('Invalid QR code format: Not a TrashDrop QR code');
-        onScanError && onScanError('Invalid QR code. Please scan a TrashDrop QR code.');
-      }
-    } catch (err) {
-      // Not a valid JSON
-      console.error('Invalid QR code format (not JSON):', err);
-      onScanError && onScanError('Invalid QR code format. Please scan a TrashDrop QR code.');
-    }
-  };
-
-  // Start the QR scanner
-  const startScanner = async () => {
-    console.log('Starting QR scanner...');
-    
-    if (!html5QrCodeRef.current) {
-      console.error('QR scanner not initialized');
-      setCameraError('QR scanner not initialized');
-      return;
-    }
-    
-    if (!isWithinRange) {
-      console.log('Not within range, cannot start scanner');
-      onScanError && onScanError('You must be within range of the pickup location to scan.');
-      return;
-    }
-    
-    if (html5QrCodeRef.current.isScanning) {
-      console.log('Scanner already running');
-      return;
-    }
-
-    // Request camera permissions first
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      stream.getTracks().forEach(track => track.stop()); // Release camera immediately
-      console.log('Camera permission granted');
-    } catch (err) {
-      console.error('Camera permission denied:', err);
-      setCameraError('Camera access denied. Please grant camera permissions.');
-      return;
-    }
-
-    // Reset error state and set scanner active
-    setCameraError('');
-    setScannerActive(true);
-
-    try {
-      // Explicitly request camera permission first
-      console.log('Requesting camera permissions...');
-      try {
-        await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: "environment" } 
-        });
-        console.log('Camera permission granted');
-      } catch (permissionErr) {
-        console.error('Camera permission denied:', permissionErr);
-        setCameraError(`Camera permission denied: ${permissionErr.message}`);
-        setScannerActive(false);
-        return;
-      }
-      
-      // Configure scanner
-      const config = {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0,
-        videoConstraints: {
-          facingMode: "environment", // Use back camera
-          width: { min: 640, ideal: 1280, max: 1920 },
-          height: { min: 480, ideal: 720, max: 1080 }
-        }
-      };
-
-      console.log('Starting scanner with config:', config);
-      
-      // Start the scanner
-      await html5QrCodeRef.current.start(
-        { facingMode: "environment" },
-        config,
-        (decodedText) => handleScanSuccess(decodedText),
-        (errorMessage) => {
-          // Only show errors when scanner is active (not during initialization)
-          if (scannerActive) {
-            console.error('QR Scanner Error:', errorMessage);
-          }
-        }
-      );
-
-      console.log('QR scanner started successfully');
-      setCameraInitialized(true);
-    } catch (err) {
-      console.error('Failed to start scanner:', err);
-      setCameraError(`Camera error: ${err.message || 'Could not access camera'}`);
-      setScannerActive(false);
-    }
-  };
+  }, [isWithinRange, cleanup, startScanner]);
 
   // Manual scan button handler
   const handleManualScan = () => {
@@ -224,48 +218,66 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
   };
 
   return (
-    <div className="qr-scanner-container">
-      <div 
-        id="qr-reader" 
-        ref={scannerRef} 
-        className="w-full bg-black rounded-lg overflow-hidden relative"
-        style={{ minHeight: '300px' }}
-      >
-        {!scannerActive && !cameraInitialized && !cameraError && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center text-white">
-              <svg className="animate-spin h-10 w-10 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <p>Initializing camera...</p>
-            </div>
+    <div className="qr-scanner-container relative">
+      {/* Scanner container with key for forced remount */}
+      {!cameraError && (
+        <div
+          key={`scanner-${scanStartTime}`}
+          ref={scannerRef}
+          id="qr-reader"
+          className="w-full max-w-[600px] mx-auto relative bg-black rounded-lg overflow-hidden"
+          style={{ minHeight: '300px' }}
+        />
+      )}
+
+      {/* Loading State */}
+      {!scannerActive && !cameraInitialized && !cameraError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="text-center text-white">
+            <svg className="animate-spin h-10 w-10 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p>Initializing camera...</p>
           </div>
-        )}
-        
-        {cameraError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-red-100">
-            <div className="text-center text-red-600 p-4">
-              <svg className="h-10 w-10 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-              <p>{cameraError}</p>
-              <p className="mt-2 text-sm">Please ensure camera permissions are granted and try again.</p>
-            </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {cameraError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-red-100 rounded-lg">
+          <div className="text-center text-red-600 p-4">
+            <svg className="h-10 w-10 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <p>{cameraError}</p>
+            <p className="mt-2 text-sm">Please ensure camera permissions are granted and try again.</p>
           </div>
-        )}
-      </div>
-      
-      <p className="text-center text-sm text-gray-500 mt-2">
+        </div>
+      )}
+
+      {/* Development Mode Manual Scan */}
+      {process.env.NODE_ENV === 'development' && (
+        <button
+          onClick={handleManualScan}
+          className="mt-4 px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors w-full"
+          disabled={!isWithinRange}
+        >
+          Simulate QR Scan (Dev Mode)
+        </button>
+      )}
+
+      {/* Instructions */}
+      <p className="text-center text-sm text-gray-500 mt-4">
         Position QR code within the frame to scan
       </p>
-      
-      {/* Scan Now Button */}
-      <button 
+
+      {/* Scan Button */}
+      <button
         onClick={handleManualScan}
         disabled={!isWithinRange}
-        className={`w-full py-3 mt-4 rounded-lg flex items-center justify-center text-white ${isWithinRange 
-          ? 'bg-green-500 hover:bg-green-600 transition-colors' 
+        className={`w-full py-3 mt-4 rounded-lg flex items-center justify-center text-white transition-colors ${isWithinRange 
+          ? 'bg-green-500 hover:bg-green-600' 
           : 'bg-gray-400 cursor-not-allowed'}`}
       >
         {cameraError ? 'Retry Camera Access' : isWithinRange ? (scannerActive ? 'Scanning...' : 'Scan Now') : 'Too Far From Pickup Location'}

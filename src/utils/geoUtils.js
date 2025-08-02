@@ -55,34 +55,98 @@ const DEFAULT_LOCATION = {
  */
 export const getCurrentLocation = () => {
   return new Promise((resolve) => {
-    if (!navigator.geolocation) {
-      console.warn('Geolocation is not supported by your browser, using default location');
-      resolve({ ...DEFAULT_LOCATION, isFallback: true });
-      return;
-    }
+    // First try the Google Maps Geolocation API
+    const tryGoogleGeolocation = async () => {
+      try {
+        // Check if Google Maps is loaded and available
+        if (window.google && window.google.maps && window.google.maps.Geolocation) {
+          const geolocation = new window.google.maps.Geolocation();
+          const position = await new Promise((geoResolve, geoReject) => {
+            geolocation.getCurrentPosition(
+              pos => geoResolve(pos),
+              error => geoReject(error),
+              { enableHighAccuracy: true, timeout: 8000 }
+            );
+          });
 
-    const options = {
-      enableHighAccuracy: true,
-      timeout: 8000,  // Reduced from 10s to 8s
-      maximumAge: 30000
+          return {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            isFallback: false,
+            source: 'google'
+          };
+        }
+      } catch (error) {
+        console.warn('🌍 Google Geolocation failed:', error);
+        // Let it fall through to browser geolocation
+      }
+      return null;
     };
 
-    const onSuccess = (position) => {
-      resolve({
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-        accuracy: position.coords.accuracy,
-        isFallback: false
+    // Fallback to browser geolocation
+    const tryBrowserGeolocation = () => {
+      return new Promise((geoResolve) => {
+        if (!navigator.geolocation) {
+          console.warn('📱 Browser geolocation not supported');
+          geoResolve(null);
+          return;
+        }
+
+        const options = {
+          enableHighAccuracy: true,
+          timeout: 8000,
+          maximumAge: 30000
+        };
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            geoResolve({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              isFallback: false,
+              source: 'browser'
+            });
+          },
+          (error) => {
+            console.warn(`📍 Browser location error (${error.code}):`, error.message);
+            geoResolve(null);
+          },
+          options
+        );
       });
     };
 
-    const onError = (error) => {
-      console.warn(`Location error (${error.code}): ${error.message}`);
-      // Fall back to default location
-      resolve({ ...DEFAULT_LOCATION, isFallback: true });
+    // Try both methods in sequence
+    const getLocation = async () => {
+      try {
+        // Try Google Maps first
+        const googleLocation = await tryGoogleGeolocation();
+        if (googleLocation) {
+          console.log('✅ Using Google Maps location');
+          resolve(googleLocation);
+          return;
+        }
+
+        // Fall back to browser geolocation
+        const browserLocation = await tryBrowserGeolocation();
+        if (browserLocation) {
+          console.log('✅ Using browser geolocation');
+          resolve(browserLocation);
+          return;
+        }
+
+        // If both fail, use default location
+        console.warn('⚠️ All geolocation methods failed, using default location');
+        resolve({ ...DEFAULT_LOCATION, isFallback: true, source: 'default' });
+      } catch (error) {
+        console.error('❌ Critical geolocation error:', error);
+        resolve({ ...DEFAULT_LOCATION, isFallback: true, source: 'default' });
+      }
     };
 
-    navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
+    getLocation();
   });
 };
 
@@ -92,23 +156,43 @@ export const getCurrentLocation = () => {
  * @param {number} delay - Delay between retries in ms
  * @returns {Promise<{lat: number, lng: number, isFallback: boolean}>}
  */
-export const getLocationWithRetry = async (maxRetries = 2, delay = 1000) => {
+export const getLocationWithRetry = async (maxRetries = 3, delay = 2000) => {
+  let lastError = null;
+  
   for (let i = 0; i < maxRetries; i++) {
     try {
+      console.log(`🔄 Location attempt ${i + 1}/${maxRetries}`);
       const location = await getCurrentLocation();
+      
+      // If we got a non-fallback location, return it immediately
       if (!location.isFallback) {
+        console.log(`✅ Got location from ${location.source}`);
         return location;
       }
+      
+      // If this isn't the last attempt, wait before trying again
       if (i < maxRetries - 1) {
+        console.log(`⏳ Waiting ${delay}ms before next attempt...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     } catch (error) {
-      console.warn(`Attempt ${i + 1} failed:`, error);
-      if (i === maxRetries - 1) {
-        console.warn('All location attempts failed, using default location');
-        return { ...DEFAULT_LOCATION, isFallback: true };
+      lastError = error;
+      console.warn(`❌ Attempt ${i + 1} failed:`, error);
+      
+      // If this isn't the last attempt, wait before trying again
+      if (i < maxRetries - 1) {
+        console.log(`⏳ Waiting ${delay}ms before next attempt...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
-  return { ...DEFAULT_LOCATION, isFallback: true };
+  
+  // All attempts failed
+  console.warn('⚠️ All location attempts failed, using default location', lastError);
+  return { 
+    ...DEFAULT_LOCATION, 
+    isFallback: true,
+    source: 'default',
+    error: lastError?.message
+  };
 };

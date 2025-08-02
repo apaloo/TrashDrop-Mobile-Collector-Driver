@@ -6,6 +6,7 @@ import { debounce } from 'lodash';
 import { DEV_MODE } from '../services/supabase';
 import './navigation-modal.css'; // Custom CSS for better readability
 import QRCodeScanner from './QRCodeScanner'; // Import our existing QR scanner component
+import ErrorBoundary from './ErrorBoundary'; // Import error boundary
 
 // QR Scan Rate Limiting
 const QR_SCAN_RATE_LIMIT = 10; // per minute
@@ -79,6 +80,33 @@ const NavigationQRModal = ({
   };
 
   // QR Scan handlers
+  // Handle back to navigation mode
+  const handleBackToNavigation = useCallback(async () => {
+    // First set loading state to prevent any new scans
+    setIsLoading(true);
+    
+    try {
+      // Clear any existing errors
+      setError(null);
+      
+      // Switch mode back to navigation
+      setMode('navigation');
+      console.log('✅ Switched back to navigation mode');
+      
+      // Small delay to ensure clean transition
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+    } catch (err) {
+      console.error('❌ Error switching back to navigation:', err);
+      setError({
+        type: 'error',
+        message: 'Error switching modes. Please try again.'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   const handleQRScanSuccess = useCallback((decodedText) => {
     // Handle scan success with rate limiting
     if (isQRScanRateLimited()) {
@@ -614,12 +642,26 @@ const requestCameraPermission = useCallback(async () => {
                 <div className={`w-full ${
                   isCameraPreloading ? 'opacity-75' : 'opacity-100'
                 }`}>
-                  <QRCodeScanner
-                    key={`qr-scanner-${scanStartTime}`}
-                    onScanSuccess={handleQRScanSuccess}
-                    onScanError={handleQRScanError}
-                    isWithinRange={isWithinGeofence}
-                  />
+                  <ErrorBoundary
+                    fallback={error => (
+                      <div className="p-4 text-center">
+                        <p className="text-red-600 mb-4">Camera error: {error?.message}</p>
+                        <button
+                          onClick={handleBackToNavigation}
+                          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                        >
+                          Back to Map
+                        </button>
+                      </div>
+                    )}
+                  >
+                    <QRCodeScanner
+                      key={`qr-scanner-${scanStartTime}`}
+                      onScanSuccess={handleQRScanSuccess}
+                      onScanError={handleQRScanError}
+                      isWithinRange={isWithinGeofence}
+                    />
+                  </ErrorBoundary>
                   <div className="mt-4 text-center">
                     <p className="text-white text-sm mb-2">Position the QR code within the scanner frame</p>
                     {scannedItems.length > 0 && (
