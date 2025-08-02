@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, useContext } from 'react';
 import { useFilters } from '../context/FilterContext';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import { useNavigate } from 'react-router-dom';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
 import { toast } from 'react-toastify';
 import MapControls from '../components/MapControls';
+import GoogleMapComponent from '../components/GoogleMapComponent';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import Toast from '../components/Toast';
@@ -17,85 +15,37 @@ import { CACHE_KEYS, saveToCache, getFromCache, isOnline, registerConnectivityLi
 import { requestMarkerIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
 
-// Fix for default Leaflet marker icons
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
-});
+// Google Maps configuration
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
 
-// Function to create a custom user location marker icon (tricycle)
-const createUserLocationIcon = () => {
-  return L.divIcon({
-    html: `
-    <div style="position: relative; width: 60px; height: 60px; filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.3));">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60" width="60" height="36" style="transform: scale(1.5); transform-origin: center;">
-        <!-- Shadow effect -->
-        <ellipse cx="50" cy="55" rx="30" ry="5" fill="rgba(0,0,0,0.2)" filter="url(#shadow)"/>
-        
-        <!-- Glow effect -->
-        <defs>
-          <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="4" result="blur"/>
-            <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-          </filter>
-          <filter id="shadow">
-            <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
-            <feOffset in="blur" dx="0" dy="2" result="offsetBlur"/>
-            <feComponentTransfer in="offsetBlur" result="shadow">
-              <feFuncA type="linear" slope="0.2"/>
-            </feComponentTransfer>
-            <feComposite in="SourceGraphic" in2="shadow" operator="over"/>
-          </filter>
-        </defs>
-        
-        <!-- Main tricycle -->
-        <g filter="url(#glow)">
-          <!-- Cargo area with 3D effect -->
-          <path d="M65,40 L90,40 Q95,40 95,35 L95,30 Q95,25 90,25 L65,25 Q60,25 60,30 L60,35 Q60,40 65,40 Z" 
-                fill="#1d4ed8" stroke="#1e40af" stroke-width="1.5" stroke-linejoin="round"/>
-          <!-- Side panel for 3D effect -->
-          <path d="M90,40 L95,35 L95,30 L90,25 L90,40 Z" fill="#1e40af" stroke="#1e40af" stroke-width="1"/>
-          
-          <!-- Wheels with highlights -->
-          <!-- Front wheel -->
-          <circle cx="20" cy="45" r="12" fill="#1f2937" stroke="#111827" stroke-width="2.5"/>
-          <circle cx="20" cy="45" r="10" fill="none" stroke="#4b5563" stroke-width="1" stroke-dasharray="1,3"/>
-          
-          <!-- Back wheel -->
-          <circle cx="80" cy="45" r="10" fill="#1f2937" stroke="#111827" stroke-width="2.5"/>
-          <circle cx="80" cy="45" r="8" fill="none" stroke="#4b5563" stroke-width="1" stroke-dasharray="1,3"/>
-          
-          <!-- Frame -->
-          <path d="M30,25 L40,40 L60,40" stroke="#1f2937" stroke-width="4" fill="none" stroke-linecap="round"/>
-          
-          <!-- Handlebar -->
-          <path d="M20,25 L20,35 Q20,20 30,25 L35,25" stroke="#1f2937" stroke-width="4" fill="none" stroke-linecap="round"/>
-          
-          <!-- Seat -->
-          <rect x="40" y="25" width="10" height="5" rx="1" fill="#1f2937" stroke="#111827" stroke-width="1"/>
-          
-          <!-- Driver indicator with pulse effect -->
-          <g style="animation: pulse 2s infinite;">
-            <circle cx="45" cy="20" r="6" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>
-            <circle cx="45" cy="20" r="3" fill="#fff"/>
-          </g>
-        </g>
-        
-        <style>
-          @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.1); opacity: 0.8; }
-            100% { transform: scale(1); opacity: 1; }
-          }
-        </style>
-      </svg>
-    </div>`,
-    className: 'user-location-marker z-[1000]',
-    iconSize: [60, 60],
-    iconAnchor: [30, 30],
-    popupAnchor: [0, -30]
+// Load Google Maps API
+const loadGoogleMapsAPI = () => {
+  return new Promise((resolve, reject) => {
+    if (window.google && window.google.maps) {
+      resolve(window.google.maps);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=geometry`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      if (window.google && window.google.maps) {
+        resolve(window.google.maps);
+      } else {
+        reject(new Error('Google Maps API failed to load'));
+      }
+    };
+    script.onerror = () => reject(new Error('Failed to load Google Maps API'));
+    
+    // Check if script already exists
+    const existingScript = document.querySelector(`script[src*="maps.googleapis.com"]`);
+    if (!existingScript) {
+      document.head.appendChild(script);
+    } else {
+      resolve(window.google.maps);
+    }
   });
 };
 
@@ -116,194 +66,7 @@ const getWasteTypeColor = (type) => {
   return colors[type?.toLowerCase()] || '#6b7280'; // default to gray-500
 };
 
-// Function to create a custom marker icon based on waste type
-const createWasteTypeIcon = (type) => {
-  const color = getWasteTypeColor(type);
-  return createCustomIcon(color);
-};
 
-// Custom marker icons
-const createCustomIcon = (color) => {
-  return L.divIcon({
-    html: `<div class="w-4 h-4 rounded-full bg-${color} border-2 border-white flex items-center justify-center shadow-lg"></div>`,
-    className: 'custom-marker-icon',
-    iconSize: [20, 20],
-  });
-};
-
-// Dustbin icon SVG (base64 encoded)
-const dustbinIcon = new L.Icon({
-  iconUrl: `data:image/svg+xml;base64,${btoa(`
-    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-      <path d="M24 7h-4V5c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H8v2h1v16c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V9h1V7zm-10-2h4v2h-4V5zm7 20H11V9h10v14z" fill="#3b82f6"/>
-      <path d="M13 11h2v12h-2zM17 11h2v12h-2z" fill="#fff"/>
-    </svg>
-  `)}`,
-  iconSize: [32, 32],
-  iconAnchor: [16, 32],
-  popupAnchor: [0, -32]
-});
-
-/**
- * LocationUpdater component - Updates map with device location
- * Uses useMap hook from react-leaflet to access map instance
- */
-const LocationUpdater = ({ position, setPosition, shouldCenter, setShouldCenter, onLocationError }) => {
-  // Use the useMap hook to safely access the Leaflet map instance
-  const map = useMap();
-  const watchId = useRef(null);
-  const defaultPosition = [5.6037, -0.1870]; // Default to Accra, Ghana
-  const positionRef = useRef(position || defaultPosition);
-  const errorCount = useRef(0);
-  const MAX_RETRIES = 3;
-  const isMounted = useRef(true);
-  const hasTriedGeolocation = useRef(false);
-
-  // Update position ref when position changes
-  useEffect(() => {
-    if (position) {
-      positionRef.current = position;
-    }
-  }, [position]);
-
-  // Set default position if no position is set
-  useEffect(() => {
-    if (!position && map) {
-      setPosition(defaultPosition);
-      map.setView(defaultPosition, 13);
-    }
-  }, [map, position, setPosition, defaultPosition]);
-
-  // Handle successful geolocation
-  const handleSuccess = useCallback((pos) => {
-    if (!isMounted.current) return;
-    
-    errorCount.current = 0; // Reset error count on success
-    const { latitude, longitude, accuracy } = pos.coords;
-    
-    console.log('Geolocation success:', { latitude, longitude, accuracy });
-    
-    // Accept positions with accuracy up to 2000m
-    if (accuracy > 2000) {
-      console.warn('Low accuracy position received, but using it as fallback', { accuracy });
-    }
-
-    const newPosition = [latitude, longitude];
-    positionRef.current = newPosition;
-    setPosition(newPosition);
-    
-    if (shouldCenter && map) {
-      map.setView(newPosition, 15);
-      setShouldCenter(false);
-    }
-  }, [map, setPosition, setShouldCenter, shouldCenter]);
-
-  // Handle geolocation errors
-  const handleError = useCallback((error) => {
-    if (!isMounted.current) return;
-    
-    console.warn('Geolocation error:', {
-      code: error.code,
-      message: error.message,
-      errorCount: errorCount.current
-    });
-    
-    errorCount.current++;
-    
-    // Only trigger error callback on first error or if we've given up
-    if (errorCount.current === 1 || errorCount.current >= MAX_RETRIES) {
-      if (onLocationError) {
-        onLocationError(error);
-      }
-    }
-    
-    // Fallback to default position if we keep getting errors
-    if (errorCount.current >= MAX_RETRIES && map) {
-      console.log('Falling back to default position after', MAX_RETRIES, 'errors');
-      positionRef.current = defaultPosition;
-      setPosition(defaultPosition);
-      if (shouldCenter) {
-        map.setView(defaultPosition, 13);
-        setShouldCenter(false);
-      }
-    }
-  }, [defaultPosition, map, onLocationError, setPosition, setShouldCenter, shouldCenter]);
-
-  // Set up geolocation watcher
-  useEffect(() => {
-    isMounted.current = true;
-    
-    const initGeolocation = () => {
-      // Prevent multiple geolocation attempts
-      if (hasTriedGeolocation.current) {
-        return;
-      }
-      
-      hasTriedGeolocation.current = true;
-      
-      if (!navigator.geolocation) {
-        console.warn('Geolocation is not supported by this browser');
-        handleError({ code: 0, message: 'Geolocation is not supported' });
-        return;
-      }
-
-      // Single attempt with reasonable timeout
-      navigator.geolocation.getCurrentPosition(
-        handleSuccess,
-        (error) => {
-          console.warn('Geolocation failed, using default location:', error);
-          handleError(error);
-        },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 2 * 60 * 1000, // Accept 2-minute old position
-          timeout: 8000 // 8 seconds timeout
-        }
-      );
-
-      // Only set up watch position if we haven't exceeded retries
-      if (errorCount.current < MAX_RETRIES) {
-        watchId.current = navigator.geolocation.watchPosition(
-          handleSuccess,
-          (error) => {
-            // Don't spam errors from watch position
-            if (errorCount.current < MAX_RETRIES) {
-              handleError(error);
-            }
-          },
-          {
-            enableHighAccuracy: false,
-            maximumAge: 5 * 60 * 1000, // 5 minutes
-            timeout: 8000, // 8 seconds
-          }
-        );
-      }
-    };
-
-    // Initial setup with a small delay to avoid blocking the UI
-    const timeoutId = setTimeout(initGeolocation, 100);
-
-    // Cleanup function
-    return () => {
-      isMounted.current = false;
-      clearTimeout(timeoutId);
-      if (watchId.current !== null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchId.current);
-      }
-    };
-  }, [handleSuccess, handleError]);
-
-  // Handle map centering when position or shouldCenter changes
-  useEffect(() => {
-    if (position && shouldCenter && map) {
-      map.setView(position, map.getZoom());
-      setShouldCenter(false);
-    }
-  }, [position, shouldCenter, map, setShouldCenter]);
-
-  // No rendering, this is a controller component
-  return null;
-};
 
 // Recenter map button component
 const RecenterButton = ({ onClick }) => {
@@ -1502,132 +1265,57 @@ const MapPage = () => {
             </div>
             
             <div className="relative h-full">
-              <MapContainer
-                center={position}
+              <GoogleMapComponent
+                center={position ? { lat: position[0], lng: position[1] } : { lat: 5.6037, lng: -0.1870 }}
                 zoom={13}
-                style={{ height: '100%', width: '100%' }}
-                zoomControl={false}
-                ref={setMap}
-              >
-                {/* Direct children without function wrapper - modern react-leaflet approach */}
-                <LocationUpdater 
-                  position={position}
-                  setPosition={setPosition}
-                  shouldCenter={shouldCenter}
-                  setShouldCenter={setShouldCenter}
-                  onLocationError={handleLocationError}
-                />
-            
-                {/* OpenStreetMap TileLayer */}
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                
-                {/* User location marker */}
-                <Marker 
-                  position={position} 
-                  icon={createUserLocationIcon()}
-                >
-                  <Popup>
-                    <div>
-                      <p className="font-medium">Your location</p>
-                    </div>
-                  </Popup>
-                </Marker>
-                
-                {/* Collection radius circle - uses searchRadius from filters */}
-                {position && position[0] && position[1] && (filters.searchRadius || filters.maxDistance) && (
-                  <Circle 
-                    center={position} 
-                    radius={(filters.searchRadius || filters.maxDistance || 5) * 1000} // Convert km to meters
-                    pathOptions={{ 
-                      color: '#3b82f6', 
-                      fillColor: '#3b82f6', 
-                      fillOpacity: 0.1, 
-                      weight: 2, 
-                      zIndex: 400 
-                    }}
-                    eventHandlers={{
-                      add: () => {
-                        console.log('Circle rendered with radius:', (filters.searchRadius || filters.maxDistance || 5) * 1000, 'meters');
-                      }
-                    }}
-                  />
-                )}
-                
-                {/* Request markers */}
-                {requests
-                  .filter(request => {
-                    // Filter out requests with invalid coordinates
-                    const isValid = request && 
-                                request.id && 
-                                request.coordinates && 
-                                Array.isArray(request.coordinates) && 
-                                request.coordinates.length === 2 &&
-                                typeof request.coordinates[0] === 'number' &&
-                                typeof request.coordinates[1] === 'number' &&
-                                !isNaN(request.coordinates[0]) && 
-                                !isNaN(request.coordinates[1]);
-                    
-                    if (!isValid) {
-                      console.warn('Skipping invalid request:', request?.id, 'with coordinates:', request?.coordinates);
-                      return false;
-                    }
-                    return true;
-                  })
-                  .slice(0, 50) // Limit to 50 markers for performance
-                  .map(request => (
-                    <Marker 
-                      key={`marker-${request.id}-${request.coordinates[0]}-${request.coordinates[1]}`}
-                      position={request.coordinates}
-                      icon={dustbinIcon}
-                    >
-                      <Popup>
-                        <div className="popup-content p-2">
-                          <h3 className="font-medium text-sm">{request.type?.toUpperCase() || 'PICKUP'}</h3>
-                          <p className="text-xs">{request.location || 'Location not specified'}</p>
-                          <div className="flex justify-between text-xs text-gray-500 mt-1">
-                            <span>{request.distance ? `${request.distance} km` : 'Distance unknown'}</span>
-                            <span>{request.estimated_time || ''}</span>
-                          </div>
-                          <p className="text-green-600 font-medium mt-1">₵{request.fee || '0'}</p>
-                          <button 
-                            onClick={() => navigate('/request', { state: { scrollToRequest: request.id } })}
-                            className="w-full mt-2 bg-green-500 hover:bg-green-600 text-white font-medium py-1 px-3 rounded-md text-sm transition-colors"
-                          >
-                            Get
-                          </button>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  ))
-                }
-                
-                {/* MapControls component for overlay UI */}
+                requests={requests}
+                userPosition={position}
+                searchRadius={filters.searchRadius || filters.maxDistance || 5}
+                navigate={navigate}
+                onMapLoad={(map) => {
+                  console.log('Google Maps loaded successfully');
+                  setMap(map);
+                }}
+              />
+              
+              {/* MapControls overlay */}
+              <div className="absolute top-4 right-4 z-10">
                 <MapControls 
                   lastUpdated={lastUpdated}
                   isRefreshing={isRefreshing}
                   refreshData={refreshData}
                   requestCount={allRequests?.length || 0}
                 />
-              </MapContainer>
-
-              {/* Filter panel */}
-              <FilterPanel 
-                isOpen={showFilters} 
-                onClose={() => setShowFilters(false)} 
-                filters={filters} 
-                updateFilters={updateFilters} 
-                applyFilters={applyFilters}
-              />
+              </div>
               
-              {/* Loading overlay for refresh operations */}
-              <LoadingOverlay 
-                show={isRefreshing && requests.length > 0} 
-                message="Refreshing requests..."
-              />
+              {/* Recenter button */}
+              {position && (
+                <button
+                  onClick={() => window.centerMapOnUser && window.centerMapOnUser()}
+                  className="absolute bottom-20 right-4 z-10 bg-white rounded-full p-3 shadow-lg hover:shadow-xl transition-shadow"
+                  title="Center map on your location"
+                >
+                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              )}
             </div>
+            
+            {/* Filter panel */}
+            <FilterPanel 
+              isOpen={showFilters} 
+              onClose={() => setShowFilters(false)} 
+              filters={filters} 
+              updateFilters={updateFilters} 
+              applyFilters={applyFilters}
+            />
+            
+            {/* Loading overlay for refresh operations */}
+            <LoadingOverlay 
+              show={isRefreshing && requests.length > 0} 
+              message="Refreshing requests..."
+            />
           </>
         )}
       </div>

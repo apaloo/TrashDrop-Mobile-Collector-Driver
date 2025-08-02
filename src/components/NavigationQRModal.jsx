@@ -1,8 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet-routing-machine';
-import 'leaflet-routing-machine/dist/leaflet-routing-machine.css';
+import GoogleMapModalComponent from './GoogleMapModalComponent';
 import { getCurrentLocation, isWithinRadius, calculateDistance } from '../utils/geoUtils';
 import Toast from './Toast';
 import { debounce } from 'lodash';
@@ -16,120 +13,6 @@ const LOCATION_RETRY_MAX_ATTEMPTS = 3;
 const CAMERA_INIT_TIMEOUT = 2000;
 const GEOFENCE_RADIUS = 50; // 50 meters radius for geofence
 
-// Map Component with proper ref handling and routing
-const MapComponent = ({ userLocation, destination, onMapReady }) => {
-  const map = useMap();
-  const routingControlRef = useRef(null);
-  const isInitialized = useRef(false);
-  
-  // Call onMapReady once when the map instance is available and handle cleanup
-  useEffect(() => {
-    if (map && !isInitialized.current) {
-      console.log('Map instance ready');
-      onMapReady(map);
-      isInitialized.current = true;
-    }
-
-    // Clean up on unmount
-    return () => {
-      if (map) {
-        // Remove all event listeners
-        map.off();
-        // Remove all layers
-        map.eachLayer((layer) => {
-          map.removeLayer(layer);
-        });
-      }
-    };
-  }, [map, onMapReady]);
-  
-  // Set up routing when both locations are available
-  useEffect(() => {
-    if (!map || !userLocation || !destination) return;
-    
-    console.log('Setting up route between:', userLocation, destination);
-    
-    try {
-      // Clean up existing routing control
-      if (routingControlRef.current) {
-        map.removeControl(routingControlRef.current);
-        routingControlRef.current = null;
-      }
-      
-      // Create new routing control
-      routingControlRef.current = L.Routing.control({
-        waypoints: [
-          L.latLng(userLocation[0], userLocation[1]),
-          L.latLng(destination[0], destination[1])
-        ],
-        routeWhileDragging: false,
-        showAlternatives: false,
-        addWaypoints: false,
-        lineOptions: {
-          styles: [{ color: '#6366F1', weight: 6 }]
-        },
-        createMarker: () => null // Don't create default markers
-      }).addTo(map);
-      
-      // Fit bounds with padding
-      const bounds = L.latLngBounds([userLocation, destination]);
-      map.fitBounds(bounds, { padding: [50, 50] });
-    } catch (error) {
-      console.error('Error setting up route:', error);
-    }
-  }, [map, userLocation, destination]);
-
-  // Clean up routing control and map instance on unmount
-  useEffect(() => {
-    return () => {
-      if (routingControlRef.current && map) {
-        try {
-          map.removeControl(routingControlRef.current);
-          routingControlRef.current = null;
-          console.log('Routing control cleaned up');
-        } catch (err) {
-          console.warn('Error cleaning up routing control:', err);
-        }
-      }
-      // Reset initialization flag
-      isInitialized.current = false;
-      // Remove map container if it exists
-      const container = map.getContainer();
-      if (container && container.parentNode) {
-        container.parentNode.removeChild(container);
-      }
-    };
-  }, [map]);
-
-  return (
-    <div className="map-container">
-      <TileLayer
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        aria-label="Map tiles from OpenStreetMap"
-      />
-      {userLocation && (
-        <Marker position={userLocation}>
-          <Popup>Your Location</Popup>
-        </Marker>
-      )}
-      {destination && (
-        <Marker position={destination}>
-          <Popup>Pickup Location</Popup>
-        </Marker>
-      )}
-      {userLocation && destination && (
-        <div className="absolute bottom-16 left-4 bg-white p-2 rounded-lg shadow-md z-50">
-          <div className="text-sm font-medium">ETA: Calculating...</div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Export MapComponent to ensure it's recognized as a valid component
-export { MapComponent };
-
 const NavigationQRModal = ({
   isOpen,
   onClose,
@@ -139,7 +22,6 @@ const NavigationQRModal = ({
   expectedQRValue
 }) => {
   const [mode, setMode] = useState('navigation'); // 'navigation' or 'qr'
-  const [isTransitioning, setIsTransitioning] = useState(false);
   const [error, setError] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [navigationStarted, setNavigationStarted] = useState(false);
@@ -301,6 +183,44 @@ const NavigationQRModal = ({
       setIsTransitioning(false);
     }, 300);
   }, []);
+
+  // Handle switching to QR mode when already within geofence
+  const handleSwitchToQR = useCallback(async () => {
+    // If not within geofence, show error
+    if (!isWithinGeofence) {
+      setError({
+        type: 'error',
+        message: 'You must be within 50 meters of the pickup location to scan QR codes.'
+      });
+      return;
+    }
+    
+    // Preload camera
+    setIsCameraPreloading(true);
+    
+    try {
+      // Request camera permission first
+      console.log('🎥 Requesting camera permission for QR scanning...');
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach(track => track.stop()); // Release immediately after permission check
+      
+      // Permission granted - switch to QR mode
+      setHasCameraPermission(true);
+      setMode('qr');
+      setError(null);
+      console.log('✅ Successfully switched to QR scanning mode');
+      
+    } catch (err) {
+      console.error('❌ Camera permission error:', err);
+      setError({ 
+        type: 'error', 
+        message: 'Camera access denied. Please grant camera permissions to scan QR codes.' 
+      });
+      setHasCameraPermission(false);
+    } finally {
+      setIsCameraPreloading(false);
+    }
+  }, [isWithinGeofence]);
 
   // Retry mechanism for location updates
   const retryLocationUpdate = useCallback(async (maxRetries = LOCATION_RETRY_MAX_ATTEMPTS) => {
@@ -481,33 +401,34 @@ const requestCameraPermission = useCallback(async () => {
       // Enhanced error messages with specific guidance
       switch(err.name || err.message) {
         case 'BROWSER_NOT_SUPPORTED':
-          setError('Your browser does not support camera access. Please try using Chrome, Firefox, or Safari.');
+          setError({ type: 'error', message: 'Your browser does not support camera access. Please try using Chrome, Firefox, or Safari.' });
           break;
         case 'CAMERA_TIMEOUT':
-          setError('Camera initialization timed out. Please ensure no other apps are using your camera and try again.');
+          setError({ type: 'error', message: 'Camera initialization timed out. Please ensure no other apps are using your camera and try again.' });
           break;
         case 'NotAllowedError':
         case 'PermissionDeniedError':
-          setError(
-            'Camera access denied. To scan QR codes:\n' +
+          setError({
+            type: 'error',
+            message: 'Camera access denied. To scan QR codes:\n' +
             '1. Click the camera icon in your address bar\n' +
             '2. Select "Allow" for camera access\n' +
             '3. Refresh the page'
-          );
+          });
           break;
         case 'NotFoundError':
         case 'DevicesNotFoundError':
-          setError('No camera detected. Please ensure your device has a working camera and try again.');
+          setError({ type: 'error', message: 'No camera detected. Please ensure your device has a working camera and try again.' });
           break;
         case 'NotReadableError':
         case 'TrackStartError':
-          setError('Cannot access camera. Please close other apps that might be using your camera.');
+          setError({ type: 'error', message: 'Cannot access camera. Please close other apps that might be using your camera.' });
           break;
         case 'OverconstrainedError':
-          setError('Your camera does not support the required features. Try using your device\'s main camera.');
+          setError({ type: 'error', message: 'Your camera does not support the required features. Try using your device\'s main camera.' });
           break;
         default:
-          setError('Camera access failed. Please check your device settings and permissions.');
+          setError({ type: 'error', message: 'Camera access failed. Please check your device settings and permissions.' });
       }
     } finally {
       setIsLoading(false);
@@ -527,11 +448,19 @@ const requestCameraPermission = useCallback(async () => {
         setUserLocation(position);
         
         if (destination && position) {
-          const distance = calculateDistance(position, destination);
+          console.log('DEBUG - Position:', position);
+          console.log('DEBUG - Destination:', destination);
+          
+          // Convert destination array [lat, lng] to object {lat, lng} format
+          const destinationObj = Array.isArray(destination) 
+            ? { lat: destination[0], lng: destination[1] }
+            : destination;
+          
+          const distance = calculateDistance(position, destinationObj);
           console.log('Distance to destination:', distance);
           setDistanceToDestination(distance);
           
-          const withinGeofence = isWithinRadius(position, destination, GEOFENCE_RADIUS);
+          const withinGeofence = isWithinRadius(position, destinationObj, GEOFENCE_RADIUS);
           console.log('Within geofence:', withinGeofence);
           setIsWithinGeofence(withinGeofence);
         }
@@ -619,9 +548,10 @@ const requestCameraPermission = useCallback(async () => {
 
   useEffect(() => {
     return () => {
-      // Clean up map and routing control
+      // Clean up Google Maps instance (Google Maps cleanup is automatic)
       if (mapRef.current) {
-        mapRef.current.remove();
+        // Google Maps automatically cleans up when the DOM element is removed
+        // No need to call remove() - just clear the reference
         mapRef.current = null;
       }
 
@@ -659,42 +589,31 @@ const requestCameraPermission = useCallback(async () => {
           {/* Map or QR Scanner based on mode */}
           {mode === 'navigation' ? (
             <div className="relative w-full h-[60vh] bg-gray-100 rounded-lg overflow-hidden">
-              {userLocation && destination && (
-                <MapContainer
-                  key={mapContainerKey}
-                  center={destination}
-                  zoom={13}
-                  className="w-full h-full z-10"
-                  ref={mapRef}
-                >
-                  <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                  />
-                  {userLocation && (
-                    <Marker position={userLocation}>
-                      <Popup>Your Location</Popup>
-                    </Marker>
-                  )}
-                  {destination && (
-                    <Marker position={destination}>
-                      <Popup>Pickup Location</Popup>
-                    </Marker>
-                  )}
-                  <MapComponent
-                    userLocation={userLocation}
-                    destination={destination}
-                    onMapReady={(map) => {
-                      mapRef.current = map;
-                    }}
-                  />
-                </MapContainer>
+              {userLocation && destination ? (
+                <GoogleMapModalComponent
+                  userLocation={userLocation}
+                  destination={destination}
+                  onMapReady={(map) => {
+                    console.log('Google Maps loaded in modal');
+                    mapRef.current = map;
+                  }}
+                  className="w-full h-full"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-2 text-gray-600 text-sm">Getting your location...</p>
+                  </div>
+                </div>
               )}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full rounded-lg overflow-hidden">
               {mode === 'qr' && (
-                <>
+                <div className={`w-full ${
+                  isCameraPreloading ? 'opacity-75' : 'opacity-100'
+                }`}>
                   <QRCodeScanner
                     key={`qr-scanner-${scanStartTime}`}
                     onScanSuccess={handleQRScanSuccess}
@@ -709,7 +628,7 @@ const requestCameraPermission = useCallback(async () => {
                       </p>
                     )}
                   </div>
-                </>
+                </div>
               )}
             </div>
           )}
@@ -767,11 +686,11 @@ const requestCameraPermission = useCallback(async () => {
                   )}
                   <button
                     onClick={isWithinGeofence ? handleSwitchToQR : handleStartNavigation}
-                    className={`px-6 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm ${
+                    className={`px-6 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm transform hover:scale-105 ${
                       isWithinGeofence
                         ? isCameraPreloading
                           ? 'bg-green-500 opacity-75'
-                          : 'bg-green-600 hover:bg-green-700'
+                          : 'bg-green-600 hover:bg-green-700 hover:shadow-lg'
                         : navigationStarted
                           ? 'bg-blue-700 hover:bg-blue-800'
                           : 'bg-blue-600 hover:bg-blue-700'
@@ -779,13 +698,27 @@ const requestCameraPermission = useCallback(async () => {
                     aria-label={isWithinGeofence ? 'Switch to QR code scanning' : 'Start navigation'}
                     disabled={isLoading || (isWithinGeofence && (hasCameraPermission === false || isCameraPreloading))}
                   >
-                    {isWithinGeofence
-                      ? isCameraPreloading 
-                        ? 'Preparing Camera...'
-                        : 'Scan Now'
-                      : navigationStarted 
-                        ? 'Navigating...' 
-                        : 'Start'}
+                    <div className="flex items-center justify-center">
+                      {isWithinGeofence
+                        ? isCameraPreloading
+                          ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                              Preparing Camera...
+                            </>
+                          )
+                          : (
+                            <>
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m0 14v1m8-8h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" />
+                              </svg>
+                              Scan Now
+                            </>
+                          )
+                        : navigationStarted 
+                          ? 'Navigating...' 
+                          : 'Start'}
+                    </div>
                   </button>
                 </>
               )}
