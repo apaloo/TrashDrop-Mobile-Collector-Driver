@@ -1,0 +1,31 @@
+/* Map Skeleton Shimmer Animation */
+@keyframes shimmer {
+  0% { 
+    transform: translateX(-100%); 
+  }
+  100% { 
+    transform: translateX(100%); 
+  }
+}
+
+.shimmer-effect {
+  animation: shimmer 2s infinite linear;
+}
+
+/* Additional skeleton styles */
+.skeleton-marker {
+  position: relative;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.skeleton-marker::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 8px;
+  height: 8px;
+  border-radius: 0 0 50% 50%;
+}

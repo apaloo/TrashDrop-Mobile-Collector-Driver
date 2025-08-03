@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, useContext } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { useFilters } from '../context/FilterContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import MapControls from '../components/MapControls';
-import GoogleMapComponent from '../components/GoogleMapComponent';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import Toast from '../components/Toast';
@@ -12,41 +14,75 @@ import { useAuth } from '../context/AuthContext';
 import { supabase, DEV_MODE } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
 import { CACHE_KEYS, saveToCache, getFromCache, isOnline, registerConnectivityListeners } from '../utils/cacheUtils';
-import { requestMarkerIcon } from '../utils/markerIcons';
+import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, getStopIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
 
-// Google Maps configuration
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
+// Fix default marker icon issues with webpack
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 
-// Load Google Maps API
-const loadGoogleMapsAPI = () => {
-  return new Promise((resolve, reject) => {
-    if (window.google && window.google.maps) {
-      resolve(window.google.maps);
-      return;
-    }
+// Create waste type icon using imported marker icons
+const createWasteTypeIcon = (type) => {
+  // Map waste types to appropriate dustbin icon colors
+  const typeColorMap = {
+    recyclable: 'request',    // Red dustbin for recyclables  
+    organic: 'assignment',    // Blue dustbin for organic
+    hazardous: 'request',     // Red dustbin for hazardous
+    electronic: 'assignment', // Blue dustbin for electronic
+    general: 'assignment',    // Blue dustbin for general
+    plastic: 'request',       // Red dustbin for plastic
+    paper: 'assignment',      // Blue dustbin for paper
+    metal: 'request',         // Red dustbin for metal
+    glass: 'assignment'       // Blue dustbin for glass
+  };
+  
+  const iconType = typeColorMap[type?.toLowerCase()] || 'assignment';
+  return iconType === 'request' ? requestMarkerIcon : assignmentMarkerIcon;
+};
 
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=geometry`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      if (window.google && window.google.maps) {
-        resolve(window.google.maps);
-      } else {
-        reject(new Error('Google Maps API failed to load'));
-      }
-    };
-    script.onerror = () => reject(new Error('Failed to load Google Maps API'));
-    
-    // Check if script already exists
-    const existingScript = document.querySelector(`script[src*="maps.googleapis.com"]`);
-    if (!existingScript) {
-      document.head.appendChild(script);
-    } else {
-      resolve(window.google.maps);
+// Map component for location updates
+const LocationUpdater = ({ position, setMap }) => {
+  const map = useMap();
+  
+  useEffect(() => {
+    setMap(map);
+  }, [map, setMap]);
+  
+  useEffect(() => {
+    if (position && map) {
+      map.setView(position, map.getZoom());
     }
-  });
+  }, [position, map]);
+  
+  return null;
+};
+
+// Distance calculation
+const calculateDistance = (pos1, pos2) => {
+  if (!pos1 || !pos2 || pos1.length < 2 || pos2.length < 2) return 999;
+  
+  const [lat1, lon1] = pos1;
+  const [lat2, lon2] = pos2;
+  
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
+
+const formatDistance = (distance) => {
+  if (distance < 1) {
+    return `${Math.round(distance * 1000)}m`;
+  }
+  return `${distance.toFixed(1)}km`;
 };
 
 // Function to get color based on waste type
@@ -1265,18 +1301,90 @@ const MapPage = () => {
             </div>
             
             <div className="relative h-full">
-              <GoogleMapComponent
-                center={position ? { lat: position[0], lng: position[1] } : { lat: 5.6037, lng: -0.1870 }}
-                zoom={13}
-                requests={requests}
-                userPosition={position}
-                searchRadius={filters.searchRadius || filters.maxDistance || 5}
-                navigate={navigate}
-                onMapLoad={(map) => {
-                  console.log('Google Maps loaded successfully');
-                  setMap(map);
-                }}
-              />
+              {/* Leaflet Map Container */}
+              {position ? (
+                <MapContainer
+                  center={position}
+                  zoom={13}
+                  style={{ height: '100%', width: '100%' }}
+                  className="z-0"
+                >
+                  <LocationUpdater position={position} setMap={setMap} />
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  
+                  {/* User location marker */}
+                  <Marker position={position} icon={tricycleIcon}>
+                    <Popup>
+                      <div className="text-center">
+                        <p className="font-medium text-blue-600">Your Location</p>
+                        <p className="text-sm text-gray-600">Collector Position</p>
+                      </div>
+                    </Popup>
+                  </Marker>
+                  
+                  {/* Radius circle */}
+                  {(filters.searchRadius || filters.maxDistance) && (
+                    <Circle
+                      center={position}
+                      radius={(filters.searchRadius || filters.maxDistance) * 1000}
+                      pathOptions={{
+                        fillColor: '#22c55e',
+                        fillOpacity: 0.1,
+                        color: '#22c55e',
+                        weight: 2,
+                        opacity: 0.8
+                      }}
+                    />
+                  )}
+                  
+                  {/* Request markers */}
+                  {requests && requests.map((request) => {
+                    if (!request.coordinates || !Array.isArray(request.coordinates)) return null;
+                    
+                    return (
+                      <Marker
+                        key={request.id}
+                        position={request.coordinates}
+                        icon={createWasteTypeIcon(request.waste_type)}
+                        eventHandlers={{
+                          click: () => {
+                            navigate('/request', { state: { scrollToRequest: request.id } });
+                          }
+                        }}
+                      >
+                        <Popup>
+                          <div className="text-center max-w-xs">
+                            <h3 className="font-medium text-gray-900 mb-1">
+                              {request.waste_type?.charAt(0).toUpperCase() + request.waste_type?.slice(1)} Waste
+                            </h3>
+                            <p className="text-sm text-gray-600 mb-2">{request.location}</p>
+                            <p className="text-sm text-gray-600 mb-2">
+                              Distance: {formatDistance(calculateDistance(position, request.coordinates))}
+                            </p>
+                            <p className="text-lg font-bold text-green-600 mb-2">₵{request.fee}</p>
+                            <button
+                              onClick={() => navigate('/request', { state: { scrollToRequest: request.id } })}
+                              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                            >
+                              Get
+                            </button>
+                          </div>
+                        </Popup>
+                      </Marker>
+                    );
+                  })}
+                </MapContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center bg-gray-100">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-2"></div>
+                    <p className="text-gray-600">Getting your location...</p>
+                  </div>
+                </div>
+              )}
               
               {/* MapControls overlay */}
               <div className="absolute top-4 right-4 z-10">
@@ -1291,7 +1399,11 @@ const MapPage = () => {
               {/* Recenter button */}
               {position && (
                 <button
-                  onClick={() => window.centerMapOnUser && window.centerMapOnUser()}
+                  onClick={() => {
+                    if (map && position) {
+                      map.setView(position, map.getZoom());
+                    }
+                  }}
                   className="absolute bottom-20 right-4 z-10 bg-white rounded-full p-3 shadow-lg hover:shadow-xl transition-shadow"
                   title="Center map on your location"
                 >
