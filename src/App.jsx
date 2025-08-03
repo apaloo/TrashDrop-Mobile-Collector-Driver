@@ -95,7 +95,7 @@ const RouteCleanup = () => {
         console.log('🚀 Navigating away from request page, cleaning up images');
       }
       // Don't clear all images, just revoke blob URLs to free memory
-      const photos = ImageManager.getCapturedPhotos();
+      const photos = ImageManager.getAllCapturedPhotos();
       ImageManager.revokeBlobURLs(photos);
     }
   }, [location.pathname]);

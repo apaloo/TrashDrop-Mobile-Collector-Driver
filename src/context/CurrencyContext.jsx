@@ -56,7 +56,11 @@ export const CurrencyProvider = ({ children }) => {
               }
             },
             (error) => {
-              console.warn('Error getting location:', error.message);
+              // Only log geolocation errors once to reduce console spam
+              if (!window.currencyGeoErrorLogged) {
+                console.warn('[Currency] Location detection failed, using stored/default currency:', error.code);
+                window.currencyGeoErrorLogged = true;
+              }
               // If we have a stored currency, use it, otherwise use default
               if (!storedCurrency) {
                 setCurrency(CURRENCY_MAP.GH); // Default to Ghana Cedi

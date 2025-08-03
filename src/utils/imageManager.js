@@ -134,6 +134,34 @@ class ImageManager {
   }
 
   /**
+   * Gets all captured photos from all requests (for cleanup purposes)
+   * @returns {Array} Array of all photo objects across all requests
+   */
+  static getAllCapturedPhotos() {
+    const allPhotos = [];
+    
+    // Iterate through all sessionStorage keys to find photo data
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && key.startsWith(STORAGE_PREFIX)) {
+        try {
+          const data = sessionStorage.getItem(key);
+          if (data) {
+            const parsed = JSON.parse(data);
+            if (parsed.photos && Array.isArray(parsed.photos)) {
+              allPhotos.push(...parsed.photos);
+            }
+          }
+        } catch (error) {
+          console.warn(`Error parsing photo data for key ${key}:`, error);
+        }
+      }
+    }
+    
+    return allPhotos;
+  }
+
+  /**
    * Saves captured photos to session storage for a specific request
    * @param {string} requestId - The ID of the request these photos belong to
    * @param {Array} photos - Array of photo objects to save
@@ -196,7 +224,7 @@ class ImageManager {
       return;
     }
     
-    const photos = this.getCapturedPhotos();
+    const photos = this.getCapturedPhotos(currentAssignment);
     photos.push({
       id: photoData.id || Date.now().toString(),
       url: photoData.url,
@@ -212,20 +240,23 @@ class ImageManager {
    * @param {string} photoId - ID of the photo to remove
    */
   static removePhoto(photoId) {
-    const photos = this.getCapturedPhotos();
+    const currentAssignment = sessionStorage.getItem(IMAGE_KEYS.ASSIGNMENT_ID);
+    if (!currentAssignment) {
+      console.warn('No current assignment set. Call setCurrentAssignment first.');
+      return;
+    }
+    
+    const photos = this.getCapturedPhotos(currentAssignment);
     const photoIndex = photos.findIndex(p => p.id === photoId);
     
     if (photoIndex !== -1) {
       const [removedPhoto] = photos.splice(photoIndex, 1);
       this.revokeBlobURLs([removedPhoto]);
       
-      try {
-        sessionStorage.setItem(IMAGE_KEYS.CAPTURED_PHOTOS, JSON.stringify(photos));
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`🗑️ Removed photo ${photoId}`);
-        }
-      } catch (error) {
-        console.error('Failed to update photos after removal:', error);
+      // Update the photos in storage
+      this.saveCapturedPhotos(currentAssignment, photos);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🗑️ Removed photo ${photoId}`);
       }
     }
   }

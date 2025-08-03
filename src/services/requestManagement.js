@@ -504,7 +504,11 @@ export class RequestManagementService {
    */
   async cleanupExpiredReservations() {
     if (DEV_MODE) {
-      console.log('[DEV MODE] Simulating cleanup of expired reservations');
+      // Reduce logging frequency - only log every 10th cleanup
+      this.reservationCleanupCount = (this.reservationCleanupCount || 0) + 1;
+      if (this.reservationCleanupCount % 10 === 0) {
+        console.log(`[DEV MODE] Simulating cleanup of expired reservations (${this.reservationCleanupCount})`);
+      }
       return { success: true, cleaned: 0 };
     }
 
@@ -562,7 +566,11 @@ export class RequestManagementService {
    */
   async cleanupExpiredAssignments() {
     if (DEV_MODE) {
-      console.log('[DEV MODE] Simulating cleanup of expired assignments');
+      // Reduce logging frequency - only log every 10th cleanup
+      this.assignmentCleanupCount = (this.assignmentCleanupCount || 0) + 1;
+      if (this.assignmentCleanupCount % 10 === 0) {
+        console.log(`[DEV MODE] Simulating cleanup of expired assignments (${this.assignmentCleanupCount})`);
+      }
       return { success: true, cleaned: 0 };
     }
 
@@ -618,9 +626,14 @@ export class RequestManagementService {
   startHeartbeat() {
     if (DEV_MODE) {
       console.log('[DEV MODE] Starting heartbeat timer');
-      // In dev mode, just log heartbeat activity
+      // In dev mode, just log heartbeat activity occasionally
+      let heartbeatCount = 0;
       this.heartbeatTimer = setInterval(() => {
-        console.log('[DEV MODE] Heartbeat - session active');
+        heartbeatCount++;
+        // Only log every 5th heartbeat to reduce console spam
+        if (heartbeatCount % 5 === 0) {
+          console.log(`[DEV MODE] Heartbeat - session active (${heartbeatCount})`);
+        }
       }, this.HEARTBEAT_INTERVAL);
       return;
     }

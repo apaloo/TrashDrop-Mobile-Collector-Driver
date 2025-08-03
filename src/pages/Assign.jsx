@@ -6,12 +6,7 @@ import AssignmentDetailsModal from '../components/AssignmentDetailsModal';
 import CompletionModal from '../components/CompletionModal';
 import DisposalModal from '../components/DisposalModal';
 import ReportModal from '../components/ReportModal';
-import { createClient } from '@supabase/supabase-js';
-
-// Initialize Supabase client
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { supabase } from '../services/supabase';
 
 const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onDumpingSite, onDispose, onViewReport }) => {
   const [expanded, setExpanded] = useState(false);

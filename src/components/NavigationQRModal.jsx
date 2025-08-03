@@ -465,19 +465,39 @@ const requestCameraPermission = useCallback(async () => {
 
   // Initialize map and location tracking
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || mode !== 'navigation') return;
 
     let locationInterval;
+    let consecutiveFallbackUpdates = 0;
+    
     const updateLocation = async () => {
-      console.log('Updating location...');
+      // Only log location updates occasionally to reduce console spam
+      if (consecutiveFallbackUpdates < 3 || consecutiveFallbackUpdates % 5 === 0) {
+        console.log('Updating location...');
+      }
       try {
         const position = await getCurrentLocation();
-        console.log('Current position:', position);
+        
+        // Only log position details occasionally
+        if (consecutiveFallbackUpdates < 2) {
+          console.log('Current position:', position);
+        }
+        
         setUserLocation(position);
         
+        // Track if we're getting fallback locations
+        if (position.isFallback) {
+          consecutiveFallbackUpdates++;
+        } else {
+          consecutiveFallbackUpdates = 0;
+        }
+        
         if (destination && position) {
-          console.log('DEBUG - Position:', position);
-          console.log('DEBUG - Destination:', destination);
+          // Only log debug info occasionally
+          if (consecutiveFallbackUpdates < 2) {
+            console.log('DEBUG - Position:', position);
+            console.log('DEBUG - Destination:', destination);
+          }
           
           // Convert destination array [lat, lng] to object {lat, lng} format
           const destinationObj = Array.isArray(destination) 
@@ -485,11 +505,21 @@ const requestCameraPermission = useCallback(async () => {
             : destination;
           
           const distance = calculateDistance(position, destinationObj);
-          console.log('Distance to destination:', distance);
+          
+          // Only log distance occasionally  
+          if (consecutiveFallbackUpdates < 2) {
+            console.log('Distance to destination:', distance);
+          }
+          
           setDistanceToDestination(distance);
           
           const withinGeofence = isWithinRadius(position, destinationObj, GEOFENCE_RADIUS);
-          console.log('Within geofence:', withinGeofence);
+          
+          // Only log geofence status occasionally
+          if (consecutiveFallbackUpdates < 2) {
+            console.log('Within geofence:', withinGeofence);
+          }
+          
           setIsWithinGeofence(withinGeofence);
         }
       } catch (err) {
@@ -500,11 +530,21 @@ const requestCameraPermission = useCallback(async () => {
     // Initial location update
     updateLocation();
 
-    // Set up periodic location updates
-    locationInterval = setInterval(updateLocation, 10000); // Update every 10 seconds
+    // Set up adaptive periodic location updates
+    const scheduleNextUpdate = () => {
+      // Use longer interval when consistently getting fallback locations
+      const interval = consecutiveFallbackUpdates >= 3 ? 30000 : 10000; // 30s vs 10s
+      locationInterval = setTimeout(() => {
+        updateLocation().then(() => {
+          scheduleNextUpdate();
+        });
+      }, interval);
+    };
+    
+    scheduleNextUpdate();
 
     return () => {
-      clearInterval(locationInterval);
+      clearTimeout(locationInterval);
       // Clean up routing control if it exists
       if (routingControlRef.current && mapRef.current) {
         try {
@@ -617,6 +657,8 @@ const requestCameraPermission = useCallback(async () => {
           {/* Map or QR Scanner based on mode */}
           {mode === 'navigation' ? (
             <div className="relative w-full h-[60vh] bg-gray-100 rounded-lg overflow-hidden">
+              {/* Debug logging for navigation conditions - reduced frequency */}
+              {Math.random() < 0.05 && console.log('Navigation render check:', { userLocation: !!userLocation, destination: !!destination, userLocationData: userLocation, destinationData: destination })}
               {userLocation && destination ? (
                 <GoogleMapModalComponent
                   userLocation={userLocation}
@@ -626,6 +668,7 @@ const requestCameraPermission = useCallback(async () => {
                     mapRef.current = map;
                   }}
                   className="w-full h-full"
+                  shouldInitialize={true}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">

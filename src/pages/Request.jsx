@@ -125,7 +125,10 @@ const RequestPage = () => {
     try {
       // SUPER-FAST: Show cached data immediately, then update in background
       if (requestCache.available.data.length > 0) {
-        console.log('⚡ INSTANT: Showing cached data immediately');
+        // Only log instant cache occasionally to reduce console spam
+        if (Math.random() < 0.05) { // 5% chance of logging
+          console.log('⚡ INSTANT: Showing cached data immediately');
+        }
         setRequests(prev => ({
           ...prev,
           available: requestCache.available.data
@@ -143,7 +146,10 @@ const RequestPage = () => {
       const CACHE_DURATION = 120000; // 2 minutes for super-fast experience
       
       if (cacheAge < CACHE_DURATION && requestCache.available.data.length > 0) {
-        console.log('⚡ CACHE HIT: Using extended cache, skipping API call');
+        // Only log cache hits occasionally to reduce console spam
+        if (Math.random() < 0.1) { // 10% chance of logging
+          console.log('⚡ CACHE HIT: Using extended cache, skipping API call');
+        }
         setIsLoading(false);
         return;
       }
@@ -158,8 +164,10 @@ const RequestPage = () => {
           isFallback: location.isFallback
         });
         
-        if (location.isFallback) {
-          console.warn('Using fallback location');
+        // Only log fallback location usage occasionally to reduce console spam
+        if (location.isFallback && (!window.lastFallbackLog || Date.now() - window.lastFallbackLog > 300000)) {
+          console.warn('[Location] Using fallback location due to GPS unavailability');
+          window.lastFallbackLog = Date.now();
         }
       } catch (error) {
         console.error('Error getting location:', error);

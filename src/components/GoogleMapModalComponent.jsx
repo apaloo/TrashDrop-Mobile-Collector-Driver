@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 // Google Maps configuration
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
 
-// Load Google Maps API
+// Load Google Maps API with improved error handling
 const loadGoogleMapsAPI = () => {
   return new Promise((resolve, reject) => {
     // Check if Google Maps is already loaded
@@ -17,15 +17,25 @@ const loadGoogleMapsAPI = () => {
     const existingScript = document.querySelector(`script[src*="maps.googleapis.com"]`);
     if (existingScript) {
       console.log('⏳ Google Maps script already exists, waiting for load... (Modal)');
-      // Wait for the existing script to load
+      // Wait for the existing script to load with timeout
+      let attempts = 0;
+      const maxAttempts = 50; // 5 seconds timeout
       const checkLoaded = () => {
         if (window.google && window.google.maps) {
           resolve(window.google.maps);
-        } else {
+        } else if (attempts++ < maxAttempts) {
           setTimeout(checkLoaded, 100);
+        } else {
+          reject(new Error('Timeout waiting for existing Google Maps script to load'));
         }
       };
       checkLoaded();
+      return;
+    }
+
+    // Validate API key exists
+    if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === 'your-api-key-here') {
+      reject(new Error('Google Maps API key is not configured'));
       return;
     }
 
@@ -46,12 +56,12 @@ const loadGoogleMapsAPI = () => {
           console.error('❌ Google Maps API loaded but not available (Modal)');
           reject(new Error('Google Maps API failed to initialize'));
         }
-      }, 100);
+      }, 200);
     };
     
     script.onerror = (error) => {
       console.error('❌ Failed to load Google Maps script (Modal):', error);
-      reject(new Error('Failed to load Google Maps API script'));
+      reject(new Error('Failed to load Google Maps API script - check API key and network'));
     };
     
     document.head.appendChild(script);
@@ -126,7 +136,8 @@ const GoogleMapModalComponent = ({
   userLocation, 
   destination, 
   onMapReady,
-  className = "w-full h-full" 
+  className = "w-full h-full",
+  shouldInitialize = true // Add control prop
 }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -136,77 +147,138 @@ const GoogleMapModalComponent = ({
   const directionsRendererRef = useRef(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const initializationAttemptedRef = useRef(false);
 
-  useEffect(() => {
-    const initMap = async () => {
-      try {
-        console.log('🗺️ Initializing Google Maps for modal...');
-        setIsLoading(true);
-        setHasError(false);
-        
-        await loadGoogleMapsAPI();
-        console.log('✅ Google Maps API loaded for modal');
-        
-        // Wait a bit for the DOM element to be ready
-        await new Promise(resolve => setTimeout(resolve, 50));
-        
-        if (!mapRef.current) {
-          console.log('⚠️ Modal map ref not ready');
-          setIsLoading(false);
-          return;
-        }
-        
-        if (mapInstanceRef.current) {
-          console.log('⚠️ Modal map already initialized');
-          setIsLoading(false);
-          return;
-        }
+  // Initialize map with retry mechanism
+  const initMap = async () => {
+    // Prevent multiple initialization attempts
+    if (initializationAttemptedRef.current) {
+      return;
+    }
+    initializationAttemptedRef.current = true;
 
-        console.log('🎯 Creating modal map instance...');
-        const map = new window.google.maps.Map(mapRef.current, {
-          center: destination ? { lat: destination[0], lng: destination[1] } : { lat: 5.6037, lng: -0.1870 },
-          zoom: 15,
-          styles: [
-            {
-              featureType: 'poi',
-              elementType: 'labels',
-              stylers: [{ visibility: 'off' }]
-            }
-          ],
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-          zoomControl: true
-        });
+    try {
+      setIsLoading(true);
+      setHasError(false);
+      console.log('📍 Initializing Google Maps modal...');
+      
+      const maps = await loadGoogleMapsAPI();
+      
+      // At this point mapRef should be available (already checked above)
+      if (!mapRef.current) {
+        throw new Error('Map container not available');
+      }
 
-        mapInstanceRef.current = map;
-        
-        // Initialize directions service and renderer
-        directionsServiceRef.current = new window.google.maps.DirectionsService();
-        directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
-          suppressMarkers: true, // We'll add custom markers
-          polylineOptions: {
-            strokeColor: '#6366F1',
-            strokeWeight: 6,
-            strokeOpacity: 0.8
+      // Create the map with optimized settings
+      const map = new maps.Map(mapRef.current, {
+        zoom: 15,
+        center: { lat: 5.6037, lng: -0.1870 }, // Default to Accra
+        mapTypeId: maps.MapTypeId.ROADMAP,
+        zoomControl: true,
+        mapTypeControl: false,
+        scaleControl: false,
+        streetViewControl: false,
+        rotateControl: false,
+        fullscreenControl: false,
+        disableDefaultUI: false,
+        gestureHandling: 'greedy',
+        styles: [
+          {
+            featureType: "poi",
+            elementType: "labels",
+            stylers: [{ visibility: "off" }]
+          },
+          {
+            featureType: "transit",
+            elementType: "labels",
+            stylers: [{ visibility: "off" }]
           }
-        });
-        directionsRendererRef.current.setMap(map);
+        ]
+      });
 
-        console.log('🎉 Modal map instance created successfully!');
-        
-        setIsLoading(false);
-        onMapReady && onMapReady(map);
+      console.log('✅ Google Maps modal created successfully');
+      
+      // Store references
+      mapInstanceRef.current = map;
+      directionsServiceRef.current = new maps.DirectionsService();
+      directionsRendererRef.current = new maps.DirectionsRenderer({
+        suppressMarkers: true, // We'll add custom markers
+        polylineOptions: {
+          strokeColor: '#1d4ed8',
+          strokeOpacity: 0.8,
+          strokeWeight: 4
+        }
+      });
+      
+      directionsRendererRef.current.setMap(map);
+      
+      // Notify parent that map is ready
+      if (onMapReady) {
+        onMapReady(map);
+      }
+      
+      setIsLoading(false);
+    } catch (error) {
+      console.error('❌ Failed to initialize Google Maps modal:', error);
+      setHasError(true);
+      setErrorMessage(error.message || 'Failed to load navigation map');
+      setIsLoading(false);
+      initializationAttemptedRef.current = false; // Allow retry
+    }
+  };
 
-      } catch (error) {
-        console.error('❌ Failed to initialize Google Maps for modal:', error);
+  // Initialize map after component mounts and DOM is ready
+  useEffect(() => {
+
+    // Don't initialize if not supposed to or if we've already attempted initialization (unless there was an error)
+    if (!shouldInitialize) {
+
+      return;
+    }
+
+    const initMapWhenReady = async () => {
+      // Only initialize if not already attempted or if we have an error to retry
+      if (initializationAttemptedRef.current && !hasError) {
+        return;
+      }
+      
+
+      
+      // Wait until the DOM element is actually available
+      let attempts = 0;
+      const maxWaitAttempts = 50; // 5 seconds max wait
+      while (!mapRef.current && attempts < maxWaitAttempts) {
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+      
+      if (!mapRef.current) {
+        console.error('❌ Map container still not found after waiting');
         setHasError(true);
+        setErrorMessage('Map container not available');
+        setIsLoading(false);
+        return;
+      }
+      
+      try {
+        await initMap();
+      } catch (error) {
+        console.error('❌ Failed to initialize Google Maps modal:', error);
+        setHasError(true);
+        setErrorMessage(error.message || 'Failed to load navigation map');
         setIsLoading(false);
       }
     };
 
-    initMap();
-  }, [destination, onMapReady]);
+    // Start initialization after a small delay to ensure DOM is rendered
+    const timeoutId = setTimeout(initMapWhenReady, 250);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [shouldInitialize]); // Re-run when shouldInitialize changes
 
   // Update markers and routing when locations change
   useEffect(() => {
@@ -221,7 +293,10 @@ const GoogleMapModalComponent = ({
       return;
     }
 
-    console.log('🧭 Setting up navigation route from', normalizedUserLocation, 'to', normalizedDestination);
+    // Only log route setup occasionally to reduce console spam
+    if (Math.random() < 0.1) { // 10% chance
+      console.log('🧭 Setting up navigation route from', normalizedUserLocation, 'to', normalizedDestination);
+    }
 
     // Clear existing markers
     if (userMarkerRef.current) {
@@ -260,14 +335,21 @@ const GoogleMapModalComponent = ({
       directionsServiceRef.current.route(request, (result, status) => {
         if (status === 'OK') {
           directionsRendererRef.current.setDirections(result);
-          console.log('✅ Route calculated successfully');
+          // Only log successful route calculation occasionally to reduce console spam
+          if (Math.random() < 0.05) { // 5% chance
+            console.log('✅ Route calculated successfully');
+          }
         } else {
-          console.error('❌ Directions request failed due to', status);
+          console.warn('⚠️ Directions request failed due to', status, '- showing markers only');
+          // Clear any existing route
+          if (directionsRendererRef.current) {
+            directionsRendererRef.current.setDirections({ routes: [] });
+          }
           // Fallback to showing markers and fitting bounds
           const bounds = new window.google.maps.LatLngBounds();
           bounds.extend({ lat: normalizedUserLocation[0], lng: normalizedUserLocation[1] });
           bounds.extend({ lat: normalizedDestination[0], lng: normalizedDestination[1] });
-          mapInstanceRef.current.fitBounds(bounds, { padding: 50 });
+          mapInstanceRef.current.fitBounds(bounds, { padding: 80 });
         }
       });
     }
@@ -288,41 +370,59 @@ const GoogleMapModalComponent = ({
     };
   }, []);
 
-  // Show loading state while Google Maps is loading
-  if (isLoading) {
-    return (
-      <div className={`${className} rounded-lg bg-gray-100 flex items-center justify-center`}>
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-gray-600 text-sm">Loading Navigation...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Show error state if Google Maps failed to load
-  if (hasError) {
-    return (
-      <div className={`${className} rounded-lg bg-red-50 flex items-center justify-center`}>
-        <div className="text-center">
-          <div className="text-red-500 text-2xl mb-2">⚠️</div>
-          <p className="text-red-600 text-sm">Failed to load navigation</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="mt-2 px-4 py-2 bg-red-600 text-white rounded text-xs hover:bg-red-700"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const handleRetry = () => {
+    initializationAttemptedRef.current = false;
+    setHasError(false);
+    setErrorMessage('');
+    initMap();
+  };
 
   return (
-    <div 
-      ref={mapRef} 
-      className={`${className} rounded-lg`}
-    />
+    <div className={`${className} rounded-lg relative`}>
+      {/* Always render the map div so ref is available */}
+      <div 
+        ref={mapRef} 
+        className="w-full h-full rounded-lg"
+        style={{ minHeight: '200px' }}
+      />
+      
+      {/* Loading overlay */}
+      {(!shouldInitialize || isLoading) && (
+        <div className="absolute inset-0 rounded-lg bg-gray-100 flex items-center justify-center z-10">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-2 text-gray-600 text-sm">
+              {!shouldInitialize ? 'Waiting for location...' : 'Loading Navigation...'}
+            </p>
+          </div>
+        </div>
+      )}
+      
+      {/* Error overlay */}
+      {hasError && (
+        <div className="absolute inset-0 rounded-lg bg-red-50 flex items-center justify-center border border-red-200 z-10">
+          <div className="text-center p-4">
+            <div className="text-red-500 text-3xl mb-2">📍</div>
+            <p className="text-red-700 text-sm font-medium mb-1">Navigation Unavailable</p>
+            <p className="text-red-600 text-xs mb-3">{errorMessage}</p>
+            <div className="space-x-2">
+              <button 
+                onClick={handleRetry} 
+                className="px-3 py-2 bg-red-600 text-white rounded text-xs hover:bg-red-700 transition-colors"
+              >
+                Try Again
+              </button>
+              <button 
+                onClick={() => window.open(`https://www.openstreetmap.org/directions?from=${userLocation?.[0]},${userLocation?.[1]}&to=${destination?.[0]},${destination?.[1]}`, '_blank')} 
+                className="px-3 py-2 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors"
+              >
+                Open in Maps
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
