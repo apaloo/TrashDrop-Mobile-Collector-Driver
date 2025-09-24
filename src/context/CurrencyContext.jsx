@@ -58,7 +58,12 @@ export const CurrencyProvider = ({ children }) => {
             (error) => {
               // Only log geolocation errors once to reduce console spam
               if (!window.currencyGeoErrorLogged) {
-                console.warn('[Currency] Location detection failed, using stored/default currency:', error.code);
+                const errorMessages = {
+                  1: 'Permission denied',
+                  2: 'Position unavailable', 
+                  3: 'Timeout'
+                };
+                console.warn(`[Currency] Location detection failed (${errorMessages[error.code] || 'Unknown'}), using stored/default currency`);
                 window.currencyGeoErrorLogged = true;
               }
               // If we have a stored currency, use it, otherwise use default

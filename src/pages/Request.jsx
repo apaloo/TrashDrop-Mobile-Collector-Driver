@@ -20,17 +20,7 @@ import { supabase, DEV_MODE } from '../services/supabase';
 import usePhotoCapture from '../hooks/usePhotoCapture';
 
 // OPTIMIZATION: Memoize RequestCard for better performance
-const MemoizedRequestCard = memo(RequestCard);
-
 import { requestManager } from '../services/requestManagement';
-import { 
-  saveToCache, 
-  getFromCache, 
-  clearCache, 
-  CACHE_KEYS, 
-  isOnline, 
-  registerConnectivityListeners 
-} from '../utils/cacheUtils';
 
 // Fix Leaflet default marker icon issue
 delete L.Icon.Default.prototype._getIconUrl;
@@ -180,7 +170,7 @@ const RequestPage = () => {
       }
       
       // Check if we're online
-      const online = await isOnline();
+      const online = navigator.onLine;
       setIsOnlineStatus(online);
       
       if (online || DEV_MODE) {
@@ -351,33 +341,17 @@ const RequestPage = () => {
           console.log('⚡ INSTANT: Request page data loaded');
         });
         
-        // Save to cache
-        saveToCache(CACHE_KEYS.ALL_REQUESTS, {
-          available: availableRequests || [],
-          accepted: acceptedRequests || [],
-          picked_up: pickedUpRequests || []
-        });
+        // Cache removed - using direct database only
         // Update timestamp
         setLastUpdated(new Date());
       } else {
-        // Offline: try to get from cache
-        const cachedRequests = await getFromCache(CACHE_KEYS.ALL_REQUESTS);
-        if (cachedRequests) {
-          setRequests(cachedRequests);
-          console.log('📱 OFFLINE: Using cached requests');
-        } else {
-          setError('You are offline and no cached data is available');
-        }
+        // Offline: show error message
+        setError('No internet connection. Please connect to the internet.');
       }
     } catch (error) {
       console.error('Error fetching requests:', error);
       setError('Failed to fetch requests. Please try again.');
-      // Try to load from cache as fallback
-      const cachedRequests = await getFromCache(CACHE_KEYS.ALL_REQUESTS);
-      if (cachedRequests) {
-        setRequests(cachedRequests);
-        console.log('⚠️ ERROR RECOVERY: Using cached requests');
-      }
+      // Cache removed - no fallback available
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);

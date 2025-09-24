@@ -1,5 +1,4 @@
-import { supabase, DEV_MODE } from './supabase.js';
-import { mockPickupRequests, mockCollectorSession, mockNotifications } from './mockData.js';
+import { supabase } from './supabase.js';
 
 /**
  * Request Management Service
@@ -168,23 +167,6 @@ export class RequestManagementService {
    * Filter and reserve available requests based on criteria
    */
   async filterAndReserveRequests(filterCriteria = {}) {
-    if (DEV_MODE) {
-      console.log('[DEV MODE] Using mock pickup requests with filter:', filterCriteria);
-      // Apply basic filtering to mock data
-      return mockPickupRequests.filter(req => {
-        if (filterCriteria.waste_types && !filterCriteria.waste_types.includes(req.waste_type)) {
-          return false;
-        }
-        if (filterCriteria.min_fee && req.fee < filterCriteria.min_fee) {
-          return false;
-        }
-        if (filterCriteria.max_fee && req.fee > filterCriteria.max_fee) {
-          return false;
-        }
-        return true;
-      });
-    }
-
     try {
       const currentTime = new Date().toISOString();
       const reservationExpiry = new Date(Date.now() + this.RESERVATION_DURATION).toISOString();

@@ -6,8 +6,8 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Development mode to bypass actual SMS sending
 // Set to false for production to use actual Supabase authentication
-// Temporarily enabled for testing until SMS provider is configured
-export const DEV_MODE = true;
+// Disabled to use real database data instead of mock data
+export const DEV_MODE = false;
 
 // Create dev mode session data with valid JWT claims
 const createDevModeSession = (userId) => {

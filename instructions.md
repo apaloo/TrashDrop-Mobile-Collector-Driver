@@ -250,20 +250,21 @@ supabase schema
 -- Table order and constraints may not be valid for execution.
 
 CREATE TABLE public.alerts (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
   title text NOT NULL,
-  description text NOT NULL,
-  status text NOT NULL DEFAULT 'open'::text CHECK (status = ANY (ARRAY['open'::text, 'in_progress'::text, 'resolved'::text, 'closed'::text])),
-  priority text NOT NULL DEFAULT 'medium'::text CHECK (priority = ANY (ARRAY['low'::text, 'medium'::text, 'high'::text, 'critical'::text])),
-  related_to jsonb,
-  user_id uuid,
-  assigned_to uuid,
+  description text,
+  type text DEFAULT 'info'::text,
+  severity text DEFAULT 'medium'::text,
+  entity_type text,
+  entity_id uuid,
+  created_by uuid,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
-  comments ARRAY,
+  creator uuid,
   CONSTRAINT alerts_pkey PRIMARY KEY (id),
-  CONSTRAINT alerts_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
-  CONSTRAINT alerts_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES auth.users(id)
+  CONSTRAINT alerts_creator_fkey FOREIGN KEY (creator) REFERENCES auth.users(id),
+  CONSTRAINT alerts_created_by_profiles_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id),
+  CONSTRAINT alerts_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id)
 );
 CREATE TABLE public.assignment_photos (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -293,6 +294,9 @@ CREATE TABLE public.authority_assignments (
   CONSTRAINT authority_assignments_pkey PRIMARY KEY (id),
   CONSTRAINT authority_assignments_collector_id_fkey FOREIGN KEY (collector_id) REFERENCES auth.users(id)
 );
+CREATE TABLE public.bag_count (
+  count bigint
+);
 CREATE TABLE public.bag_inventory (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   user_id uuid NOT NULL,
@@ -320,22 +324,28 @@ CREATE TABLE public.bag_orders (
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   batch_qr_code text NOT NULL UNIQUE,
   CONSTRAINT bag_orders_pkey PRIMARY KEY (id),
-  CONSTRAINT bag_orders_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
-  CONSTRAINT bag_orders_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.locations(id)
+  CONSTRAINT bag_orders_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.locations(id),
+  CONSTRAINT bag_orders_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.bag_types (
+  plastic bigint,
+  paper bigint,
+  metal bigint,
+  glass bigint,
+  organic bigint,
+  general bigint,
+  recycling bigint
 );
 CREATE TABLE public.bags (
-  bag_id text NOT NULL,
-  batch_id text,
-  type text NOT NULL CHECK (type = ANY (ARRAY['plastic'::text, 'paper'::text, 'metal'::text, 'glass'::text, 'organic'::text, 'general'::text, 'recycling'::text])),
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  batch_id uuid,
+  qr_code text NOT NULL,
+  status text DEFAULT 'active'::text,
   scanned boolean DEFAULT false,
-  picked_up_at timestamp with time zone,
-  requested_at timestamp with time zone DEFAULT now(),
-  qr_code text UNIQUE,
-  status text,
-  created_at timestamp with time zone,
-  picked_up_by uuid,
-  CONSTRAINT bags_pkey PRIMARY KEY (bag_id),
-  CONSTRAINT bags_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.pickup_requests(id..)
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT bags_pkey PRIMARY KEY (id),
+  CONSTRAINT bags_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.batches(id)
 );
 CREATE TABLE public.bags_mobile (
   bag_id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -344,32 +354,48 @@ CREATE TABLE public.bags_mobile (
   status text,
   picked_up_at timestamp without time zone,
   picked_up_by uuid,
-  CONSTRAINT bags_mobile_pkey PRIMARY KEY (bag_id),
-  CONSTRAINT bags_mobile_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.batches(batch_id)
+  CONSTRAINT bags_mobile_pkey PRIMARY KEY (bag_id)
+);
+CREATE TABLE public.batch_count (
+  count bigint
 );
 CREATE TABLE public.batches (
-  batch_id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  user_id uuid NOT NULL,
-  number_of_bags integer NOT NULL,
-  trash_type text NOT NULL,
-  bag_size text,
-  batch_status text NOT NULL DEFAULT 'Active'::text,
-  distributed integer DEFAULT 0,
-  scanned integer DEFAULT 0,
-  qr_prefix text,
-  generation_date timestamp with time zone DEFAULT now(),
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  batch_number text,
+  bag_count integer NOT NULL DEFAULT 0,
+  status text DEFAULT 'active'::text,
+  notes text,
+  created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT batches_pkey PRIMARY KEY (batch_id),
-  CONSTRAINT batches_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  created_by uuid,
+  batch_name text,
+  CONSTRAINT batches_pkey PRIMARY KEY (id),
+  CONSTRAINT batches_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id)
+);
+CREATE TABLE public.bin_locations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  location_name text NOT NULL,
+  address text NOT NULL,
+  coordinates USER-DEFINED NOT NULL,
+  is_default boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT bin_locations_pkey PRIMARY KEY (id),
+  CONSTRAINT bin_locations_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.collector_count (
+  count bigint
 );
 CREATE TABLE public.collector_sessions (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  collector_id uuid NOT NULL UNIQUE,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  collector_id uuid NOT NULL,
   filter_criteria jsonb,
   reserved_requests ARRAY DEFAULT ARRAY[]::uuid[],
   session_start timestamp with time zone DEFAULT now(),
   last_activity timestamp with time zone DEFAULT now(),
   is_active boolean DEFAULT true,
+  expires_at timestamp with time zone DEFAULT (now() + '24:00:00'::interval),
   CONSTRAINT collector_sessions_pkey PRIMARY KEY (id),
   CONSTRAINT collector_sessions_collector_id_fkey FOREIGN KEY (collector_id) REFERENCES auth.users(id)
 );
@@ -387,8 +413,49 @@ CREATE TABLE public.collectors (
   last_active timestamp with time zone,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  name text DEFAULT 
+CASE
+    WHEN ((first_name IS NOT NULL) AND (last_name IS NOT NULL)) THEN ((first_name || ' '::text) || last_name)
+    ELSE email
+END,
+  vehicle_type text DEFAULT 'car'::text,
+  vehicle_plate text,
+  vehicle_capacity integer DEFAULT 100,
+  current_location jsonb,
+  profile_image_url text,
   CONSTRAINT collectors_pkey PRIMARY KEY (id),
   CONSTRAINT collectors_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.contacts (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid,
+  name text NOT NULL,
+  email text,
+  phone text,
+  contact_type text DEFAULT 'personal'::text,
+  relationship text,
+  primary_contact boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT contacts_pkey PRIMARY KEY (id),
+  CONSTRAINT contacts_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.digital_bins (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  location_id uuid NOT NULL,
+  qr_code_url text NOT NULL,
+  frequency character varying NOT NULL DEFAULT 'weekly'::character varying CHECK (frequency::text = ANY (ARRAY['weekly'::character varying, 'biweekly'::character varying, 'monthly'::character varying]::text[])),
+  waste_type character varying NOT NULL DEFAULT 'general'::character varying CHECK (waste_type::text = ANY (ARRAY['general'::character varying, 'recycling'::character varying, 'organic'::character varying]::text[])),
+  bag_count integer NOT NULL DEFAULT 1 CHECK (bag_count >= 1 AND bag_count <= 10),
+  details text,
+  is_active boolean DEFAULT true,
+  expires_at timestamp with time zone NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT digital_bins_pkey PRIMARY KEY (id),
+  CONSTRAINT digital_bins_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT digital_bins_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.bin_locations(id)
 );
 CREATE TABLE public.disposal_centers (
   id text NOT NULL,
@@ -397,7 +464,14 @@ CREATE TABLE public.disposal_centers (
   address text,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  waste_type text,
+  latitude USER-DEFINED,
+  longitude USER-DEFINED,
+  center_type text,
   CONSTRAINT disposal_centers_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.dumping_count (
+  count bigint
 );
 CREATE TABLE public.dumping_reports (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -413,8 +487,19 @@ CREATE TABLE public.dumping_reports (
   points_earned integer DEFAULT 0,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  location_address text,
   CONSTRAINT dumping_reports_pkey PRIMARY KEY (id),
   CONSTRAINT dumping_reports_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.dumping_reports_mobile (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  dumping_id uuid NOT NULL,
+  estimated_volume text,
+  hazardous_materials boolean DEFAULT false,
+  accessibility_notes text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT dumping_reports_mobile_pkey PRIMARY KEY (id),
+  CONSTRAINT dumping_reports_mobile_dumping_id_fkey FOREIGN KEY (dumping_id) REFERENCES public.illegal_dumping_mobile(id)
 );
 CREATE TABLE public.fee_points (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -423,44 +508,65 @@ CREATE TABLE public.fee_points (
   request_id text,
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT fee_points_pkey PRIMARY KEY (id),
-  CONSTRAINT fee_points_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
-  CONSTRAINT fee_points_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.pickup_requests(id..)
+  CONSTRAINT fee_points_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.illegal_dumping (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  reported_by uuid,
+  assigned_to uuid,
+  location USER-DEFINED,
+  address text,
+  description text,
+  waste_type text,
+  severity text DEFAULT 'medium'::text,
+  status text DEFAULT 'Reported'::text,
+  images ARRAY,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  estimated_volume numeric,
+  latitude numeric,
+  longitude numeric,
+  location_address text,
+  CONSTRAINT illegal_dumping_pkey PRIMARY KEY (id),
+  CONSTRAINT illegal_dumping_assigned_to_profiles_fkey FOREIGN KEY (assigned_to) REFERENCES public.profiles(id),
+  CONSTRAINT illegal_dumping_reported_by_profiles_fkey FOREIGN KEY (reported_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.illegal_dumping_history (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  report_id uuid,
+  previous_status text,
+  new_status text,
+  changed_by uuid,
+  notes text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT illegal_dumping_history_pkey PRIMARY KEY (id),
+  CONSTRAINT illegal_dumping_history_report_id_fkey FOREIGN KEY (report_id) REFERENCES public.illegal_dumping(id),
+  CONSTRAINT illegal_dumping_history_changed_by_fkey FOREIGN KEY (changed_by) REFERENCES auth.users(id)
+);
+CREATE TABLE public.illegal_dumping_history_mobile (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  dumping_id uuid NOT NULL,
+  status text NOT NULL,
+  notes text,
+  updated_by uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT illegal_dumping_history_mobile_pkey PRIMARY KEY (id),
+  CONSTRAINT illegal_dumping_history_mobile_dumping_id_fkey FOREIGN KEY (dumping_id) REFERENCES public.illegal_dumping_mobile(id),
+  CONSTRAINT illegal_dumping_history_mobile_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES auth.users(id)
+);
+CREATE TABLE public.illegal_dumping_mobile (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   reported_by uuid NOT NULL,
   location text NOT NULL,
   coordinates USER-DEFINED NOT NULL,
-  waste_type text NOT NULL,
-  size text NOT NULL,
-  images ARRAY,
-  status text NOT NULL DEFAULT 'Reported'::text CHECK (status = ANY (ARRAY['Reported'::text, 'Verified'::text, 'Cleanup Scheduled'::text, 'In Progress'::text, 'Cleaned Up'::text, 'Closed'::text])),
-  reported_at timestamp with time zone DEFAULT now(),
-  assigned_to uuid,
-  cleanup_team text,
-  cleanup_assigned boolean DEFAULT false,
-  estimated_cleanup_date timestamp with time zone,
-  cleaned_at timestamp with time zone,
+  waste_type text NOT NULL DEFAULT 'mixed'::text,
+  severity text NOT NULL DEFAULT 'medium'::text CHECK (severity = ANY (ARRAY['low'::text, 'medium'::text, 'high'::text])),
+  size text NOT NULL DEFAULT 'medium'::text CHECK (size = ANY (ARRAY['small'::text, 'medium'::text, 'large'::text])),
+  photos ARRAY DEFAULT ARRAY[]::text[],
+  status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'verified'::text, 'in_progress'::text, 'completed'::text])),
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
-  report_id uuid,
-  original_report_id uuid,
-  CONSTRAINT illegal_dumping_pkey PRIMARY KEY (id),
-  CONSTRAINT illegal_dumping_original_report_id_fkey FOREIGN KEY (original_report_id) REFERENCES public.dumping_reports(id),
-  CONSTRAINT illegal_dumping_report_id_fkey FOREIGN KEY (report_id) REFERENCES public.dumping_reports(id),
-  CONSTRAINT illegal_dumping_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES auth.users(id),
-  CONSTRAINT illegal_dumping_reported_by_fkey FOREIGN KEY (reported_by) REFERENCES auth.users(id)
-);
-CREATE TABLE public.illegal_dumping_history (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  report_id uuid NOT NULL,
-  status text NOT NULL,
-  changed_by uuid,
-  changed_at timestamp with time zone DEFAULT now(),
-  notes text,
-  CONSTRAINT illegal_dumping_history_pkey PRIMARY KEY (id),
-  CONSTRAINT illegal_dumping_history_changed_by_fkey FOREIGN KEY (changed_by) REFERENCES auth.users(id),
-  CONSTRAINT illegal_dumping_history_report_id_fkey FOREIGN KEY (report_id) REFERENCES public.illegal_dumping(id)
+  CONSTRAINT illegal_dumping_mobile_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.locations (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -476,6 +582,59 @@ CREATE TABLE public.locations (
   CONSTRAINT locations_pkey PRIMARY KEY (id),
   CONSTRAINT locations_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
+CREATE TABLE public.log_count (
+  count bigint
+);
+CREATE TABLE public.logs (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  level character varying NOT NULL DEFAULT 'info'::character varying CHECK (level::text = ANY (ARRAY['debug'::character varying, 'info'::character varying, 'warn'::character varying, 'error'::character varying, 'critical'::character varying]::text[])),
+  source character varying,
+  message text NOT NULL,
+  data jsonb,
+  user_id uuid,
+  session_id character varying,
+  ip_address inet,
+  user_agent text,
+  request_id character varying,
+  module character varying,
+  function_name character varying,
+  line_number integer,
+  stack_trace text,
+  execution_time numeric,
+  memory_usage bigint,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT logs_pkey PRIMARY KEY (id),
+  CONSTRAINT logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.message_count (
+  count bigint
+);
+CREATE TABLE public.messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  sender_id uuid,
+  recipient_id uuid,
+  subject text,
+  content text NOT NULL,
+  read boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT messages_pkey PRIMARY KEY (id),
+  CONSTRAINT messages_sender_id_fkey FOREIGN KEY (sender_id) REFERENCES auth.users(id),
+  CONSTRAINT messages_recipient_id_fkey FOREIGN KEY (recipient_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.notification_count (
+  count bigint
+);
+CREATE TABLE public.notifications (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid,
+  title text NOT NULL,
+  message text,
+  type text DEFAULT 'info'::text,
+  read boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT notifications_pkey PRIMARY KEY (id),
+  CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
 CREATE TABLE public.payment_methods (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   user_id uuid NOT NULL,
@@ -489,7 +648,7 @@ CREATE TABLE public.payment_methods (
   CONSTRAINT payment_methods_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.pickup_requests (
-  id.. text NOT NULL,
+  id text NOT NULL,
   location text NOT NULL,
   coordinates USER-DEFINED NOT NULL,
   fee integer NOT NULL,
@@ -506,14 +665,27 @@ CREATE TABLE public.pickup_requests (
   scheduled_date timestamp with time zone,
   preferred_time text,
   points_earned integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  id uuid,
   payment_method_id uuid,
   payment_type text CHECK (payment_type = ANY (ARRAY['prepaid'::text, 'postpaid'::text])),
   priority text,
-  CONSTRAINT pickup_requests_pkey PRIMARY KEY (id..),
-  CONSTRAINT pickup_requests_id_fkey FOREIGN KEY (id) REFERENCES public.rewards(id),
+  reserved_by uuid,
+  reserved_at timestamp with time zone,
+  reserved_until timestamp with time zone,
+  exclusion_until timestamp with time zone,
+  assignment_expires_at timestamp with time zone,
+  filter_criteria jsonb,
+  last_pool_entry timestamp with time zone DEFAULT now(),
+  reservation_expires_at timestamp with time zone,
+  estimated_volume numeric,
+  assigned_to uuid,
+  service_area_id uuid,
+  user_id uuid,
+  CONSTRAINT pickup_requests_pkey PRIMARY KEY (id),
   CONSTRAINT pickup_requests_collector_id_fkey FOREIGN KEY (collector_id) REFERENCES auth.users(id),
-  CONSTRAINT pickup_requests_payment_method_fkey FOREIGN KEY (payment_method_id) REFERENCES public.payment_methods(id)
+  CONSTRAINT pickup_requests_payment_method_fkey FOREIGN KEY (payment_method_id) REFERENCES public.payment_methods(id),
+  CONSTRAINT pickup_requests_reserved_by_fkey FOREIGN KEY (reserved_by) REFERENCES auth.users(id),
+  CONSTRAINT pickup_requests_assigned_to_profiles_fkey FOREIGN KEY (assigned_to) REFERENCES public.profiles(id),
+  CONSTRAINT pickup_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
 );
 CREATE TABLE public.profiles (
   id uuid NOT NULL,
@@ -544,8 +716,8 @@ CREATE TABLE public.reward_redemptions (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT reward_redemptions_pkey PRIMARY KEY (id),
-  CONSTRAINT reward_redemptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
-  CONSTRAINT reward_redemptions_reward_id_fkey FOREIGN KEY (reward_id) REFERENCES public.rewards(id)
+  CONSTRAINT reward_redemptions_reward_id_fkey FOREIGN KEY (reward_id) REFERENCES public.rewards(id),
+  CONSTRAINT reward_redemptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.rewards (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -569,22 +741,22 @@ CREATE TABLE public.rewards_redemption (
   updated_at timestamp with time zone DEFAULT now(),
   fulfilled_at timestamp with time zone,
   CONSTRAINT rewards_redemption_pkey PRIMARY KEY (id),
-  CONSTRAINT rewards_redemption_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
-  CONSTRAINT rewards_redemption_reward_id_fkey FOREIGN KEY (reward_id) REFERENCES public.rewards(id)
+  CONSTRAINT rewards_redemption_reward_id_fkey FOREIGN KEY (reward_id) REFERENCES public.rewards(id),
+  CONSTRAINT rewards_redemption_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.scan_count (
+  count bigint
 );
 CREATE TABLE public.scans (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  bag_id text NOT NULL,
-  scanned_by uuid NOT NULL,
-  scanned_at timestamp with time zone DEFAULT now(),
-  location text,
-  coordinates USER-DEFINED,
-  status text NOT NULL,
-  notes text,
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  bag_id uuid,
+  collector_id uuid,
+  location USER-DEFINED,
   created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT scans_pkey PRIMARY KEY (id),
-  CONSTRAINT scans_bag_id_fkey FOREIGN KEY (bag_id) REFERENCES public.bags(bag_id),
-  CONSTRAINT scans_scanned_by_fkey FOREIGN KEY (scanned_by) REFERENCES auth.users(id)
+  CONSTRAINT scans_bag_id_fkey FOREIGN KEY (bag_id) REFERENCES public.bags(id),
+  CONSTRAINT scans_collector_id_fkey FOREIGN KEY (collector_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.scheduled_pickups (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -604,6 +776,30 @@ CREATE TABLE public.scheduled_pickups (
   CONSTRAINT scheduled_pickups_pkey PRIMARY KEY (id),
   CONSTRAINT scheduled_pickups_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.locations(id),
   CONSTRAINT scheduled_pickups_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.service_area_count (
+  count bigint
+);
+CREATE TABLE public.service_areas (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL UNIQUE,
+  description text,
+  color character varying DEFAULT '#3B82F6'::character varying,
+  coordinates jsonb,
+  bounds jsonb,
+  active_collectors integer DEFAULT 0,
+  total_collectors integer DEFAULT 0,
+  total_requests integer DEFAULT 0,
+  pending_requests integer DEFAULT 0,
+  completion_rate numeric DEFAULT 0.00,
+  coverage_area numeric,
+  population integer,
+  region character varying,
+  district character varying,
+  is_active boolean DEFAULT true,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT service_areas_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.spatial_ref_sys (
   srid integer NOT NULL CHECK (srid > 0 AND srid <= 998999),
@@ -634,8 +830,35 @@ CREATE TABLE public.user_levels (
 );
 CREATE TABLE public.user_stats (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  user_id uuid NOT NULL,
+  user_id uuid NOT NULL UNIQUE,
   created_at timestamp with time zone DEFAULT now(),
+  total_bags integer CHECK (total_bags >= 0),
+  total_bags_scanned integer DEFAULT 0,
+  available_bags integer DEFAULT 0,
+  total_batches integer,
   CONSTRAINT user_stats_pkey PRIMARY KEY (id),
   CONSTRAINT user_stats_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.waste_item_count (
+  count bigint
+);
+CREATE TABLE public.waste_items (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  type character varying NOT NULL CHECK (type::text = ANY (ARRAY['plastic'::character varying, 'paper'::character varying, 'glass'::character varying, 'metal'::character varying, 'organic'::character varying, 'electronic'::character varying, 'hazardous'::character varying, 'mixed'::character varying, 'recyclable'::character varying, 'general'::character varying]::text[])),
+  weight numeric,
+  volume numeric,
+  unit character varying DEFAULT 'kg'::character varying CHECK (unit::text = ANY (ARRAY['kg'::character varying, 'lbs'::character varying, 'tons'::character varying, 'liters'::character varying, 'm3'::character varying]::text[])),
+  pickup_request_id text,
+  batch_id uuid,
+  collector_id uuid,
+  location text,
+  coordinates jsonb,
+  status character varying DEFAULT 'collected'::character varying CHECK (status::text = ANY (ARRAY['collected'::character varying, 'sorted'::character varying, 'disposed'::character varying, 'recycled'::character varying, 'processed'::character varying]::text[])),
+  notes text,
+  photos jsonb,
+  environmental_impact_score integer CHECK (environmental_impact_score >= 0 AND environmental_impact_score <= 100),
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT waste_items_pkey PRIMARY KEY (id),
+  CONSTRAINT waste_items_collector_id_fkey FOREIGN KEY (collector_id) REFERENCES public.collectors(id)
 );

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { isOnline } from '../utils/cacheUtils';
+// Simple online check since cacheUtils was removed
+const isOnline = () => navigator.onLine;
 
 /**
  * Enhanced offline support hook with intelligent caching and sync management

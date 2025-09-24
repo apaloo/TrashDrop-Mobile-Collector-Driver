@@ -13,9 +13,25 @@ import StatusButton from '../components/StatusButton';
 import { useAuth } from '../context/AuthContext';
 import { supabase, DEV_MODE } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
-import { CACHE_KEYS, saveToCache, getFromCache, isOnline, registerConnectivityListeners } from '../utils/cacheUtils';
 import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, getStopIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
+
+// Simple online status check
+const isOnline = () => navigator.onLine;
+
+// Simple connectivity listeners
+const registerConnectivityListeners = (onOnline, onOffline) => {
+  const handleOnline = () => onOnline();
+  const handleOffline = () => onOffline();
+  
+  window.addEventListener('online', handleOnline);
+  window.addEventListener('offline', handleOffline);
+  
+  return () => {
+    window.removeEventListener('online', handleOnline);
+    window.removeEventListener('offline', handleOffline);
+  };
+};
 
 // Fix default marker icon issues with webpack
 delete L.Icon.Default.prototype._getIconUrl;
@@ -121,6 +137,8 @@ const RecenterButton = ({ onClick }) => {
 
 // New Filter Card component that appears at the bottom of the map
 const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  
   // Ensure filters has all required properties with defaults
   const safeFilters = {
     searchRadius: typeof filters.searchRadius === 'number' ? filters.searchRadius : 5,
@@ -167,11 +185,28 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
   };
   
   return (
-    <div className="absolute bottom-24 left-4 right-4 bg-white rounded-lg shadow-lg p-4 z-[2000] pointer-events-auto overflow-hidden" style={{ position: 'fixed', touchAction: 'none' }}>
-      <div className="mb-4">
+    <div className="absolute bottom-24 left-4 right-4 bg-white rounded-lg shadow-lg z-[2000] pointer-events-auto overflow-hidden" style={{ position: 'fixed', touchAction: 'none' }}>
+      {/* Header Section - Always Visible */}
+      <div className="p-4 pb-2">
         <div className="flex justify-between items-center mb-2">
           <span className="font-medium" style={{ color: '#0a0a0a' }}>Radius: {safeFilters.searchRadius} km</span>
+          <button
+            onClick={() => setFiltersExpanded(!filtersExpanded)}
+            className="p-1 hover:bg-gray-100 rounded-full transition-colors duration-200"
+            aria-label={filtersExpanded ? 'Collapse filters' : 'Expand filters'}
+          >
+            <svg 
+              className={`w-5 h-5 text-gray-600 transition-transform duration-300 ${filtersExpanded ? 'rotate-180' : ''}`}
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
         </div>
+        
+        {/* Radius Slider - Always Visible */}
         <input 
           type="range" 
           min="1" 
@@ -186,16 +221,31 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
         />
       </div>
       
-      <div className="grid grid-cols-2 gap-2">
-        {Object.entries(wasteTypeCategories).map(([category, label]) => (
-          <button
-            key={category}
-            onClick={() => handleCategorySelect(category)}
-            className={`py-2 px-4 rounded-md text-center ${safeFilters.activeFilter === category ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700'}`}
-          >
-            {label}
-          </button>
-        ))}
+      {/* Collapsible Filter Options */}
+      <div 
+        className={`transition-all duration-300 ease-in-out overflow-hidden ${
+          filtersExpanded 
+            ? 'max-h-32 opacity-100' 
+            : 'max-h-0 opacity-0'
+        }`}
+      >
+        <div className="px-4 pb-4">
+          <div className="grid grid-cols-2 gap-2">
+            {Object.entries(wasteTypeCategories).map(([category, label]) => (
+              <button
+                key={category}
+                onClick={() => handleCategorySelect(category)}
+                className={`py-2 px-4 rounded-md text-center transition-colors duration-200 ${
+                  safeFilters.activeFilter === category 
+                    ? 'bg-green-500 text-white' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -520,21 +570,9 @@ const MapPage = () => {
         
         data = supabaseData || [];
       } else {
-        // Try to load from cache if offline
-        const cachedData = await getFromCache(CACHE_KEYS.PICKUP_REQUESTS);
-        if (cachedData) {
-          setAllRequests(cachedData);
-          // Don't set requests here - let applyFilters handle the filtered data
-          setLastUpdated(new Date());
-          showToast('Showing cached data', 'info');
-          
-          // Apply filters to populate the requests state with filtered data
-          setTimeout(() => applyFilters(), 0);
-          return; // Early return for cache case
-        } else {
-          showToast('No cached data available', 'warning');
-          return; // Early return for no cache case
-        }
+        // Offline - no cache available
+        showToast('No internet connection. Please connect to view pickup requests.', 'error');
+        return;
       }
       
       // Transform the data to match our expected format (for DEV_MODE and online cases)
@@ -594,7 +632,7 @@ const MapPage = () => {
         setAllRequests(transformedData);
         // Don't set requests here - let applyFilters handle the filtered data
         setLastUpdated(new Date());
-        saveToCache(CACHE_KEYS.PICKUP_REQUESTS, transformedData);
+        // Data loaded successfully
         
         if (transformedData.length > 0) {
           showToast(`${transformedData.length} pickup requests found`, 'success');
@@ -608,16 +646,9 @@ const MapPage = () => {
       console.error('Error fetching pickup requests:', error);
       showToast('Failed to load pickup requests', 'error');
       
-      // Try to load from cache on error
-      const cachedData = await getFromCache(CACHE_KEYS.PICKUP_REQUESTS);
-      if (cachedData) {
-        setAllRequests(cachedData);
-        // Don't set requests here - let applyFilters handle the filtered data
-        showToast('Showing cached data', 'info');
-        
-        // Apply filters to populate the requests state with filtered data
-        setTimeout(() => applyFilters(), 0);
-      }
+      // No cache available - show error
+      // Apply filters to populate the requests state with filtered data
+      setTimeout(() => applyFilters(), 0);
     } finally {
       setIsLoading(false);
     }
@@ -902,8 +933,7 @@ const MapPage = () => {
                   // Add to the current requests
                   setAllRequests(prev => {
                     const updated = [...prev, transformedRequest];
-                    // Update cache
-                    saveToCache(CACHE_KEYS.PICKUP_REQUESTS, updated);
+                    // Data updated
                     return updated;
                   });
                   
@@ -919,8 +949,7 @@ const MapPage = () => {
                   // Request was assigned or cancelled
                   setAllRequests(prev => {
                     const updated = prev.filter(r => r.id !== newRecord.id);
-                    // Update cache
-                    saveToCache(CACHE_KEYS.PICKUP_REQUESTS, updated);
+                    // Data updated
                     return updated;
                   });
                   
@@ -953,7 +982,7 @@ const MapPage = () => {
                     if (exists) return prev;
                     
                     const updated = [...prev, transformedRequest];
-                    saveToCache(CACHE_KEYS.PICKUP_REQUESTS, updated);
+                    // Data updated
                     return updated;
                   });
                 }
@@ -1041,7 +1070,7 @@ const MapPage = () => {
       // Remove the accepted request from the available requests
       setAllRequests(prev => {
         const updated = prev.filter(r => r.id !== requestId);
-        saveToCache(CACHE_KEYS.PICKUP_REQUESTS, updated);
+        // Data updated
         return updated;
       });
       

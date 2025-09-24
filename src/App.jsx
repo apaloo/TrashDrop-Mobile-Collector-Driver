@@ -8,7 +8,7 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useEffect } from 'react';
 import ImageManager from './utils/imageManager';
-import { CACHE_KEYS, clearCache, getFromCache, saveToCache, validateCacheData } from './utils/cacheUtils';
+// Removed cacheUtils import - no longer using caching
 
 // Clear stale test-user-id session data
 const clearStaleSession = () => {
@@ -26,48 +26,11 @@ const clearStaleSession = () => {
   }
 };
 
-// Clean cached request data that might contain temporary IDs
-const cleanCachedRequestData = () => {
-  try {
-    console.log('🧹 Checking and cleaning cached request data...');
-    
-    // Check for and clean ALL_REQUESTS cache
-    const allRequests = getFromCache(CACHE_KEYS.ALL_REQUESTS);
-    if (allRequests) {
-      const sanitizedData = validateCacheData(allRequests);
-      if (JSON.stringify(sanitizedData) !== JSON.stringify(allRequests)) {
-        console.log('🧹 Cleaned ALL_REQUESTS cache by removing temp IDs');
-        saveToCache(CACHE_KEYS.ALL_REQUESTS, sanitizedData);
-      }
-    }
-    
-    // Check for and clean PICKUP_REQUESTS cache
-    const pickupRequests = getFromCache(CACHE_KEYS.PICKUP_REQUESTS);
-    if (pickupRequests) {
-      const sanitizedData = validateCacheData(pickupRequests);
-      if (JSON.stringify(sanitizedData) !== JSON.stringify(pickupRequests)) {
-        console.log('🧹 Cleaned PICKUP_REQUESTS cache by removing temp IDs');
-        saveToCache(CACHE_KEYS.PICKUP_REQUESTS, sanitizedData);
-      }
-    }
-    
-    // If we had a bad problem with temp IDs, consider a full cache reset
-    const forceReset = localStorage.getItem('force_cache_reset');
-    if (forceReset === 'true') {
-      console.log('🧹 Performing force cache reset for request data');
-      clearCache(CACHE_KEYS.ALL_REQUESTS);
-      clearCache(CACHE_KEYS.PICKUP_REQUESTS);
-      localStorage.removeItem('force_cache_reset');
-    }
-  } catch (err) {
-    console.error('Error cleaning cached request data:', err);
-  }
-};
+// Removed cache cleanup - no longer using caching
 
 // Execute cleanup on app startup
 if (process.env.NODE_ENV === 'development') {
   clearStaleSession();
-  cleanCachedRequestData();
 }
 
 // Pages
