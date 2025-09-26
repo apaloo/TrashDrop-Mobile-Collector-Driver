@@ -7,13 +7,21 @@ import React from 'react';
 const MapControls = ({ lastUpdated, isRefreshing, refreshData, requestCount }) => {
   if (!lastUpdated) return null;
 
+  // Format time as HH:MM:SS
+  const formatTime = (date) => {
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
+  };
+
   return (
-    <div className="absolute z-10 top-2 left-2 bg-white bg-opacity-80 px-2 py-1 text-xs rounded-md" style={{ color: '#0a0a0a' }}>
+    <div className="absolute z-10 top-2 left-2 bg-white bg-opacity-80 px-2 py-1 text-xs rounded-md" style={{ color: 'rgb(10, 10, 10)' }}>
       <div className="flex items-center">
-        <span className="mr-2">Last updated: {lastUpdated.toLocaleTimeString()}</span>
-        <button 
+        <span className="mr-2">Last updated: {formatTime(lastUpdated)}</span>
+        <button
           onClick={refreshData}
-          className="text-blue-600 flex items-center" 
+          className="text-blue-600 flex items-center"
           disabled={isRefreshing}
         >
           {isRefreshing ? (

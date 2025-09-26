@@ -1266,16 +1266,6 @@ const MapPage = () => {
           <>
             {/* Error notification removed as requested */}
             
-            {/* Custom zoom controls - moved outside map container */}
-            <div className="absolute bottom-24 right-4 z-[1000] flex flex-col space-y-2">
-              <button onClick={() => map?.zoomIn()} className="bg-white w-8 h-8 flex items-center justify-center rounded-md shadow text-xl">
-                +
-              </button>
-              <button onClick={() => map?.zoomOut()} className="bg-white w-8 h-8 flex items-center justify-center rounded-md shadow text-xl">
-                -
-              </button>
-            </div>
-            
             {/* Filter card - moved outside map container */}
             <FilterCard 
               filters={filters} 
@@ -1337,6 +1327,7 @@ const MapPage = () => {
                   zoom={13}
                   style={{ height: '100%', width: '100%' }}
                   className="z-0"
+                  zoomControl={false}
                 >
                   <LocationUpdater position={position} setMap={setMap} />
                   <TileLayer
@@ -1415,32 +1406,13 @@ const MapPage = () => {
                 </div>
               )}
               
-              {/* MapControls overlay */}
-              <div className="absolute top-4 right-4 z-10">
-                <MapControls 
-                  lastUpdated={lastUpdated}
-                  isRefreshing={isRefreshing}
-                  refreshData={refreshData}
-                  requestCount={allRequests?.length || 0}
-                />
-              </div>
-              
-              {/* Recenter button */}
-              {position && (
-                <button
-                  onClick={() => {
-                    if (map && position) {
-                      map.setView(position, map.getZoom());
-                    }
-                  }}
-                  className="absolute bottom-20 right-4 z-10 bg-white rounded-full p-3 shadow-lg hover:shadow-xl transition-shadow"
-                  title="Center map on your location"
-                >
-                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                </button>
-              )}
+              {/* MapControls overlay - positioned relative to the map container */}
+              <MapControls 
+                lastUpdated={lastUpdated}
+                isRefreshing={isRefreshing}
+                refreshData={refreshData}
+                requestCount={allRequests?.length || 0}
+              />
             </div>
             
             {/* Filter panel */}
