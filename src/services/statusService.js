@@ -18,13 +18,13 @@ export const STATUS_CONFIG = {
   [COLLECTOR_STATUS.ONLINE]: {
     color: 'bg-green-500',
     textColor: 'text-green-600',
-    label: 'Online',
+    label: 'On-Duty',
     description: 'Available for new requests'
   },
   [COLLECTOR_STATUS.OFFLINE]: {
     color: 'bg-gray-500',
     textColor: 'text-gray-600',
-    label: 'Offline',
+    label: 'Off-Duty',
     description: 'Not accepting requests'
   },
   [COLLECTOR_STATUS.BUSY]: {

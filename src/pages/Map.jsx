@@ -363,7 +363,7 @@ const MapPage = () => {
   const { user } = useAuth();
   const { filters, updateFilters, updateFilteredRequests } = useFilters();
   const [map, setMap] = useState(null);
-  const [position, setPosition] = useState([5.6037, -0.1870]); // Default to Accra, Ghana
+  const [position, setPosition] = useState(null); // Will get real location
   const [error, setError] = useState(null);
   const [watchId, setWatchId] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -383,6 +383,108 @@ const MapPage = () => {
   const errorToastShownRef = useRef(false);
   const positionRef = useRef(position);
   
+  // Enhanced geolocation with cached position and real-time updates
+  useEffect(() => {
+    // Load cached position immediately
+    const loadCachedPosition = () => {
+      try {
+        const cached = localStorage.getItem('userLastPosition');
+        if (cached) {
+          const cachedPos = JSON.parse(cached);
+          console.log('📍 Using cached position:', cachedPos);
+          setPosition(cachedPos);
+          return true;
+        }
+      } catch (e) {
+        console.warn('Failed to load cached position:', e);
+      }
+      return false;
+    };
+
+    // Save position to cache
+    const savePositionToCache = (pos) => {
+      try {
+        localStorage.setItem('userLastPosition', JSON.stringify(pos));
+        console.log('💾 Position cached for next time');
+      } catch (e) {
+        console.warn('Failed to cache position:', e);
+      }
+    };
+
+    // Load cached position first (instant map load)
+    const hasCachedPosition = loadCachedPosition();
+    
+    if (!navigator.geolocation) {
+      setError('Geolocation not supported');
+      setLocationAttempted(true);
+      return;
+    }
+
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0
+    };
+
+    const onSuccess = (pos) => {
+      const { latitude, longitude, accuracy } = pos.coords;
+      const newPos = [latitude, longitude];
+      console.log('✅ Fresh GPS location:', newPos, `±${Math.round(accuracy)}m`);
+      setPosition(newPos);
+      savePositionToCache(newPos); // Cache for next time
+      setError(null);
+      setLocationAttempted(true);
+    };
+
+    const onError = (err) => {
+      console.error('❌ Location error:', err);
+      setLocationAttempted(true);
+      
+      switch (err.code) {
+        case err.PERMISSION_DENIED:
+          setError('Location access denied. Please enable location permissions.');
+          showToast('Enable location access for accurate results', 'warning', 5000);
+          break;
+        case err.POSITION_UNAVAILABLE:
+          setError('GPS unavailable. Trying network location...');
+          setTimeout(() => {
+            const fallbackOptions = {
+              enableHighAccuracy: false,
+              timeout: 25000,
+              maximumAge: 60000
+            };
+            navigator.geolocation.getCurrentPosition(onSuccess, () => {
+              setError('Location services unavailable');
+              showToast('Please enable GPS and refresh', 'error', 6000);
+            }, fallbackOptions);
+          }, 2000);
+          break;
+        case err.TIMEOUT:
+          setError('Location timeout. Retrying...');
+          setTimeout(() => {
+            navigator.geolocation.getCurrentPosition(onSuccess, onError, {
+              ...options,
+              timeout: 25000
+            });
+          }, 2000);
+          break;
+        default:
+          setError(`Location error: ${err.message}`);
+      }
+    };
+
+    // Get initial position
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
+    
+    // Watch for real-time updates
+    const watchId = navigator.geolocation.watchPosition(onSuccess, onError, options);
+    setWatchId(watchId);
+
+    return () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+    };
+  }, []);
+
   // Update position ref when position changes
   useEffect(() => {
     positionRef.current = position;
@@ -421,30 +523,7 @@ const MapPage = () => {
     return cleanup;
   }, []);
 
-  // Use default location instead of attempting geolocation
-  useEffect(() => {
-    // Use the same coordinates we set in the state
-    const defaultLocation = [5.672524779099469, -0.2808150610819718];
-    
-    // Initialize with default location immediately
-    setPosition(defaultLocation);
-    setLastUpdated(new Date());
-    
-    // Clear any previous error
-    setError(null);
-    
-    // If there's a watchId from before, clean it up
-    if (watchId) {
-      try {
-        navigator.geolocation.clearWatch(watchId);
-        setWatchId(null);
-      } catch (e) {
-        console.error('Error cleaning up watchId:', e);
-      }
-    }
-    
-    return () => {}; // No cleanup needed
-  }, []); // Empty dependency array - run once
+  // REMOVED: Old hardcoded default location useEffect - now using real geolocation only
 
   // Recenter map handler
   const handleRecenter = () => {
@@ -598,28 +677,40 @@ const MapPage = () => {
               
               // Handle individual item processing errors gracefully
               const safeProcessItem = () => {
-                return {
-                  id: item.id,
-                  type: item.waste_type || 'general',
-                  coordinates: coords,
-                  location: item.location || 'Unknown location',
-                  fee: Number(item.fee) || 0,
-                  status: item.status || 'available',
-                  priority: item.priority || 'medium',
-                  bag_count: Number(item.bag_count) || 1,
-                  special_instructions: item.special_instructions || '',
-                  created_at: item.created_at || new Date().toISOString(),
-                  updated_at: item.updated_at || new Date().toISOString(),
-                  distance: formatDistance(calculateDistance(
-                    [position[0], position[1]],
-                    coords
-                  )),
-                  distanceValue: calculateDistance(
-                    [position[0], position[1]],
-                    coords
-                  ),
-                  estimated_time: item.estimated_time || 'Unknown',
-                };
+                try {
+                  // Safe position handling - only use actual position
+                  if (!position) {
+                    console.warn('Position not available for distance calculation');
+                    return null; // Don't process without position
+                  }
+                  const currentPosition = position;
+                  
+                  return {
+                    id: item.id,
+                    type: item.waste_type || 'general',
+                    coordinates: coords,
+                    location: item.location || 'Unknown location',
+                    fee: Number(item.fee) || 0,
+                    status: item.status || 'available',
+                    priority: item.priority || 'medium',
+                    bag_count: Number(item.bag_count) || 1,
+                    special_instructions: item.special_instructions || '',
+                    created_at: item.created_at || new Date().toISOString(),
+                    updated_at: item.updated_at || new Date().toISOString(),
+                    distance: formatDistance(calculateDistance(
+                      currentPosition,
+                      coords
+                    )),
+                    distanceValue: calculateDistance(
+                      currentPosition,
+                      coords
+                    ),
+                    estimated_time: item.estimated_time || 'Unknown',
+                  };
+                } catch (error) {
+                  console.error('Error processing item:', error);
+                  return null;
+                }
               };
               
               // Process item safely without nested try-catch
@@ -1361,14 +1452,42 @@ const MapPage = () => {
                   )}
                   
                   {/* Request markers */}
-                  {requests && requests.map((request) => {
+                  {requests && requests.map((request, index) => {
                     if (!request.coordinates || !Array.isArray(request.coordinates)) return null;
+                    
+                    // Handle stacked markers with circular spreading pattern
+                    const baseCoords = request.coordinates;
+                    const totalMarkers = requests.length;
+                    
+                    // Circular distribution - spread markers in a circle around original point
+                    const angle = (index * 360) / totalMarkers; // Distribute evenly in circle
+                    const radiusKm = 0.002; // ~220 meters radius - clearly visible
+                    
+                    const adjustedCoords = [
+                      baseCoords[0] + (radiusKm * Math.sin(angle * Math.PI / 180)),
+                      baseCoords[1] + (radiusKm * Math.cos(angle * Math.PI / 180))
+                    ];
+                    
+                    // Add visual differentiation with different waste types
+                    const wasteTypes = ['plastic', 'organic', 'general', 'recyclable', 'paper', 'metal'];
+                    const assignedWasteType = request.waste_type || wasteTypes[index % wasteTypes.length];
+                    
+                    // Debug: Log marker coordinates and waste type
+                    console.log('🗺️ Rendering marker:', {
+                      id: request.id, 
+                      original: request.coordinates,
+                      adjusted: adjustedCoords,
+                      angle: angle,
+                      radius: radiusKm,
+                      type: assignedWasteType,
+                      index: index
+                    });
                     
                     return (
                       <Marker
                         key={request.id}
-                        position={request.coordinates}
-                        icon={createWasteTypeIcon(request.waste_type)}
+                        position={adjustedCoords}
+                        icon={createWasteTypeIcon(assignedWasteType)}
                         eventHandlers={{
                           click: () => {
                             navigate('/request', { state: { scrollToRequest: request.id } });
@@ -1378,7 +1497,7 @@ const MapPage = () => {
                         <Popup>
                           <div className="text-center max-w-xs">
                             <h3 className="font-medium text-gray-900 mb-1">
-                              {request.waste_type?.charAt(0).toUpperCase() + request.waste_type?.slice(1)} Waste
+                              {assignedWasteType?.charAt(0).toUpperCase() + assignedWasteType?.slice(1)} Waste
                             </h3>
                             <p className="text-sm text-gray-600 mb-2">{request.location}</p>
                             <p className="text-sm text-gray-600 mb-2">

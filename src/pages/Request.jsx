@@ -225,7 +225,6 @@ const RequestPage = () => {
                 special_instructions: 'Old newspapers and cardboard',
                 collector_id: user?.id,
                 accepted_at: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-                created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
               }
             ]
