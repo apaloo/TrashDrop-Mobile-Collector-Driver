@@ -675,15 +675,30 @@ const MapPage = () => {
                 return null;
               }
               
-              // Handle individual item processing errors gracefully
+              // Handle individual item processing errors gracefully  
               const safeProcessItem = () => {
                 try {
-                  // Safe position handling - only use actual position
-                  if (!position) {
-                    console.warn('Position not available for distance calculation');
-                    return null; // Don't process without position
+                  // Safe position handling - use cached position if main position unavailable
+                  let currentPosition = position;
+                  
+                  // If position is null, try to get cached position
+                  if (!currentPosition) {
+                    try {
+                      const cached = localStorage.getItem('userLastPosition');
+                      if (cached) {
+                        currentPosition = JSON.parse(cached);
+                        console.log('🔧 Using cached position for processing:', currentPosition);
+                      }
+                    } catch (e) {
+                      console.warn('Failed to load cached position for processing:', e);
+                    }
                   }
-                  const currentPosition = position;
+                  
+                  // If still no position, skip processing
+                  if (!currentPosition || !Array.isArray(currentPosition) || currentPosition.length !== 2) {
+                    console.warn('⚠️ No valid position available, skipping item processing');
+                    return null;
+                  }
                   
                   return {
                     id: item.id,

@@ -16,6 +16,7 @@ import Toast from '../components/Toast';
 import { PickupRequestStatus, WasteType, AssignmentStatus } from '../utils/types';
 import { transformRequestsData } from '../utils/requestUtils';
 import { getCurrentLocation, getLocationWithRetry, isWithinRadius } from '../utils/geoUtils';
+import { registerConnectivityListeners } from '../utils/offlineUtils';
 import { supabase, DEV_MODE } from '../services/supabase';
 import usePhotoCapture from '../hooks/usePhotoCapture';
 
@@ -29,6 +30,9 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
+
+// OPTIMIZATION: Memoize RequestCard for better performance
+const MemoizedRequestCard = memo(RequestCard);
 
 const RequestPage = () => {
   const { id: requestId } = useParams();
@@ -1730,8 +1734,9 @@ const handleLocateSite = (requestId) => {
             <>
               {activeTab === 'available' && (
                 <div>
-                  {Array.isArray(requests.available) && requests.available.length > 0 ? (
-                    requests.available.map(request => (
+                  {/* Use filtered requests from Map page context */}
+                  {Array.isArray(filteredRequests?.available) && filteredRequests.available.length > 0 ? (
+                    filteredRequests.available.map(request => (
                       request && (
                         <MemoizedRequestCard 
                           key={`available-${request.id}`} 
@@ -1744,9 +1749,19 @@ const handleLocateSite = (requestId) => {
                         />
                       )
                     ))
+                  ) : filteredRequests?.available && filteredRequests.available.length === 0 ? (
+                    <div className="p-4 text-center text-gray-500">
+                      <div className="mb-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m-6 3l6-3" />
+                        </svg>
+                      </div>
+                      <h3 className="font-medium text-gray-900 mb-1">No requests in your area</h3>
+                      <p className="text-sm text-gray-500">Try adjusting the search radius or check back later</p>
+                    </div>
                   ) : (
                     <div className="p-4 text-center text-gray-500">
-                      No available requests found
+                      <div className="animate-pulse">Loading filtered requests...</div>
                     </div>
                   )}
                 </div>

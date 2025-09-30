@@ -1,5 +1,61 @@
 import { supabase } from './supabase.js';
 
+// Mock data for development mode - initialized with real data from Supabase
+let mockPickupRequests = [
+  {
+    id: '74faaadc-73aa-4830-aca9-fb0aad5b9e8c',
+    waste_type: 'recyclable',
+    status: 'available',
+    coordinates: [5.617959595507786, -0.19255473872904202],
+    location: 'East Legon, Accra',
+    fee: 150,
+    bag_count: 2,
+    created_at: new Date().toISOString(),
+    collector_id: null,
+    accepted_at: null,
+    assignment_expires_at: null
+  },
+  {
+    id: 'b6f0317b-8264-47a9-a2df-f5a4b325d14f',
+    waste_type: 'general',
+    status: 'available', 
+    coordinates: [5.620000, -0.190000],
+    location: 'Osu, Accra',
+    fee: 120,
+    bag_count: 1,
+    created_at: new Date().toISOString(),
+    collector_id: null,
+    accepted_at: null,
+    assignment_expires_at: null
+  },
+  {
+    id: '85d1795b-834c-44ca-bfa5-551ecbcdfa49',
+    waste_type: 'hazardous',
+    status: 'available',
+    coordinates: [5.615000, -0.195000], 
+    location: 'Adabraka, Accra',
+    fee: 200,
+    bag_count: 3,
+    created_at: new Date().toISOString(),
+    collector_id: null,
+    accepted_at: null,
+    assignment_expires_at: null
+  },
+  {
+    id: '3193e0ee-7eb1-4483-85db-76fd004a8567',
+    waste_type: 'recyclable',
+    status: 'available',
+    coordinates: [5.625000, -0.185000],
+    location: 'Labadi, Accra', 
+    fee: 175,
+    bag_count: 2,
+    created_at: new Date().toISOString(),
+    collector_id: null,
+    accepted_at: null,
+    assignment_expires_at: null
+  }
+];
+
 /**
  * Request Management Service
  * Handles the complete lifecycle of pickup requests including:
@@ -27,7 +83,7 @@ export class RequestManagementService {
   async initialize(collectorId) {
     try {
       this.collectorId = collectorId;
-      console.log(`[${DEV_MODE ? 'DEV MODE' : 'PROD'}] Initializing RequestManagementService for collector:`, collectorId);
+      console.log(`[${import.meta.env.DEV ? 'DEV MODE' : 'PROD'}] Initializing RequestManagementService for collector:`, collectorId);
       
       // Start session with error handling
       try {
@@ -35,7 +91,7 @@ export class RequestManagementService {
         console.log('✅ Session started successfully');
       } catch (error) {
         console.error('❌ Failed to start session:', error);
-        if (!DEV_MODE) throw error; // In production, fail fast
+        if (!import.meta.env.DEV) throw error; // In production, fail fast
       }
       
       // Start heartbeat with error handling
@@ -64,6 +120,17 @@ export class RequestManagementService {
         console.error('❌ Failed to setup realtime subscriptions:', error);
         // Continue even if realtime fails
       }
+
+      // Sync mock data with real Supabase data in DEV mode
+      if (import.meta.env.DEV) {
+        try {
+          await this.syncMockData();
+          console.log('✅ Mock data synchronized with Supabase');
+        } catch (error) {
+          console.error('❌ Failed to sync mock data:', error);
+          // Continue even if sync fails
+        }
+      }
       
       console.log('🎉 RequestManagementService initialized successfully');
     } catch (error) {
@@ -78,7 +145,7 @@ export class RequestManagementService {
   async startSession() {
     try {
       // In dev mode, immediately use mock session without Supabase calls
-      if (DEV_MODE) {
+      if (import.meta.env.DEV) {
         console.log('[DEV MODE] Creating mock collector session for:', this.collectorId);
         const mockSession = {
           id: 'dev-session-' + Math.random().toString(36).substr(2, 9),
@@ -114,7 +181,7 @@ export class RequestManagementService {
           })
           .eq('id', session.id);
 
-        if (updateError && !DEV_MODE) throw updateError;
+        if (updateError && !import.meta.env.DEV) throw updateError;
         return session;
       } else {
         // Create new session
@@ -129,7 +196,7 @@ export class RequestManagementService {
           .select();
 
         if (insertError) {
-          if (DEV_MODE) {
+          if (import.meta.env.DEV) {
             // In dev mode, return a mock session
             return {
               id: 'dev-session-' + Math.random().toString(36).substr(2, 9),
@@ -147,7 +214,7 @@ export class RequestManagementService {
       }
     } catch (error) {
       console.error('Error starting session:', error);
-      if (DEV_MODE) {
+      if (import.meta.env.DEV) {
         // In dev mode, return a mock session even on error
         return {
           id: 'dev-session-' + Math.random().toString(36).substr(2, 9),
@@ -160,6 +227,33 @@ export class RequestManagementService {
         };
       }
       throw error;
+    }
+  }
+
+  /**
+   * Sync mock data with real Supabase data in DEV mode
+   */
+  async syncMockData() {
+    try {
+      const { data: supabaseData, error } = await supabase
+        .from('pickup_requests')
+        .select('*')
+        .eq('status', 'available')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.warn('[DEV MODE] Failed to fetch Supabase data for sync:', error);
+        return;
+      }
+
+      if (supabaseData && supabaseData.length > 0) {
+        // Update mock data with real data from Supabase
+        mockPickupRequests.length = 0; // Clear existing mock data
+        mockPickupRequests.push(...supabaseData); // Add real data
+        console.log(`[DEV MODE] Synced ${supabaseData.length} requests from Supabase to mock data`);
+      }
+    } catch (error) {
+      console.warn('[DEV MODE] Error syncing mock data:', error);
     }
   }
 
@@ -221,7 +315,7 @@ export class RequestManagementService {
       if (reserveError) throw reserveError;
 
       // Update session with reserved requests
-      if (!DEV_MODE) {
+      if (!import.meta.env.DEV) {
         await supabase
           .from('collector_sessions')
           .update({
@@ -271,7 +365,7 @@ export class RequestManagementService {
       };
     }
     
-    if (DEV_MODE) {
+    if (import.meta.env.DEV) {
       console.log('[DEV MODE] Accepting mock request:', requestId);
       try {
         // Find and update mock request
@@ -329,7 +423,7 @@ export class RequestManagementService {
       }
 
       // Update session's reserved requests
-      if (!DEV_MODE) {
+      if (!import.meta.env.DEV) {
         const { data: session } = await supabase
           .from('collector_sessions')
           .select('reserved_requests')
@@ -365,7 +459,7 @@ export class RequestManagementService {
    * Get all requests for a collector by status
    */
   async getRequestsByStatus(status) {
-    if (DEV_MODE) {
+    if (import.meta.env.DEV) {
       console.log('[DEV MODE] Using mock requests for collector:', this.collectorId);
       // Filter mock requests by status
       switch (status) {
@@ -428,7 +522,7 @@ export class RequestManagementService {
    * Update request status (for pickup and disposal)
    */
   async updateRequestStatus(requestId, status, additionalData = {}) {
-    if (DEV_MODE) {
+    if (import.meta.env.DEV) {
       console.log('[DEV MODE] Updating mock request status:', requestId, status);
       // Find and update mock request
       const requestIndex = mockPickupRequests.findIndex(req => req.id === requestId);
@@ -449,7 +543,7 @@ export class RequestManagementService {
    * Get collector notifications
    */
   async getNotifications(unreadOnly = false) {
-    if (DEV_MODE) {
+    if (import.meta.env.DEV) {
       console.log('[DEV MODE] Using mock notifications');
       return mockNotifications;
     }
@@ -472,7 +566,7 @@ export class RequestManagementService {
 
       return { success: true, notifications: data || [] };
     } catch (error) {
-      if (DEV_MODE) {
+      if (import.meta.env.DEV) {
         console.log('[DEV MODE] Error fetching notifications, using mock data:', error);
         return mockNotifications;
       }
@@ -485,7 +579,7 @@ export class RequestManagementService {
    * Cleanup expired reservations
    */
   async cleanupExpiredReservations() {
-    if (DEV_MODE) {
+    if (import.meta.env.DEV) {
       // Reduce logging frequency - only log every 10th cleanup
       this.reservationCleanupCount = (this.reservationCleanupCount || 0) + 1;
       if (this.reservationCleanupCount % 10 === 0) {
@@ -506,7 +600,7 @@ export class RequestManagementService {
         .lt('reserved_until', currentTime);
 
       if (error) {
-        if (DEV_MODE) {
+        if (import.meta.env.DEV) {
           console.log('[DEV MODE] Error cleaning up reservations:', error);
           return { success: true, cleaned: 0 };
         }
@@ -528,7 +622,7 @@ export class RequestManagementService {
         .in('id', expiredReservations.map(r => r.id));
 
       if (updateError) {
-        if (DEV_MODE) {
+        if (import.meta.env.DEV) {
           console.log('[DEV MODE] Error updating expired reservations:', updateError);
           return { success: true, cleaned: 0 };
         }
@@ -547,7 +641,7 @@ export class RequestManagementService {
    * Cleanup expired assignments
    */
   async cleanupExpiredAssignments() {
-    if (DEV_MODE) {
+    if (import.meta.env.DEV) {
       // Reduce logging frequency - only log every 10th cleanup
       this.assignmentCleanupCount = (this.assignmentCleanupCount || 0) + 1;
       if (this.assignmentCleanupCount % 10 === 0) {
@@ -565,7 +659,7 @@ export class RequestManagementService {
         .lt('assignment_expires_at', new Date().toISOString());
 
       if (error) {
-        if (DEV_MODE) {
+        if (import.meta.env.DEV) {
           console.log('[DEV MODE] Error cleaning up assignments:', error);
           return { success: true, cleaned: 0 };
         }
@@ -588,7 +682,7 @@ export class RequestManagementService {
         .in('id', expiredAssignments.map(a => a.id));
 
       if (updateError) {
-        if (DEV_MODE) {
+        if (import.meta.env.DEV) {
           console.log('[DEV MODE] Error updating expired assignments:', updateError);
           return { success: true, cleaned: 0 };
         }
@@ -606,7 +700,7 @@ export class RequestManagementService {
    * Start heartbeat timer to keep session alive
    */
   startHeartbeat() {
-    if (DEV_MODE) {
+    if (import.meta.env.DEV) {
       console.log('[DEV MODE] Starting heartbeat timer');
       // In dev mode, just log heartbeat activity occasionally
       let heartbeatCount = 0;
@@ -657,7 +751,7 @@ export class RequestManagementService {
    * Setup real-time subscriptions with error handling and reconnection logic
    */
   setupRealtimeSubscriptions() {
-    if (DEV_MODE) {
+    if (import.meta.env.DEV) {
       console.log('[DEV MODE] Setting up mock real-time subscriptions');
       // In dev mode, we'll simulate real-time updates using intervals
       this.mockSubscriptionTimer = setInterval(() => {
@@ -838,14 +932,14 @@ export class RequestManagementService {
     this.cleanupSubscriptions();
 
     // Mark session as inactive
-    if (this.collectorId && !DEV_MODE) {
+    if (this.collectorId && !import.meta.env.DEV) {
       supabase
         .from('collector_sessions')
         .update({ is_active: false })
         .eq('collector_id', this.collectorId)
         .then(() => console.log('Session marked as inactive'))
         .catch(err => console.warn('Failed to mark session inactive:', err));
-    } else if (DEV_MODE) {
+    } else if (import.meta.env.DEV) {
       console.log('[DEV MODE] Skipping session deactivation');
     }
   }
