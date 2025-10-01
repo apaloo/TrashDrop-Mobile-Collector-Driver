@@ -72,7 +72,12 @@ const loadGoogleMapsAPI = () => {
 
     script.onerror = (error) => {
       console.error('❌ Failed to load Google Maps script (Modal):', error);
-      reject(new Error('Failed to load Google Maps script'));
+      // Check for common API key issues
+      if (error.type === 'error' || error.message?.includes('ApiNotActivatedMapError')) {
+        reject(new Error('Google Maps API key invalid or not activated. Please check your API key configuration.'));
+      } else {
+        reject(new Error('Failed to load Google Maps script - network or configuration issue'));
+      }
     };
 
     document.head.appendChild(script);
@@ -477,33 +482,44 @@ const GoogleMapModalComponent = ({
         </div>
       )}
       
-      {/* Error overlay */}
+      {/* Error overlay with enhanced navigation options */}
       {hasError && (
-        <div className="absolute inset-0 rounded-lg bg-red-50 flex items-center justify-center border border-red-200 z-10">
+        <div className="absolute inset-0 rounded-lg bg-blue-50 flex items-center justify-center border border-blue-200 z-10">
           <div className="text-center p-4">
-            <div className="text-red-500 text-2xl mb-2">⚠️</div>
-            <h3 className="text-lg font-semibold text-red-700 mb-2">Navigation Unavailable</h3>
-            <p className="text-red-600 text-sm mb-4">{errorMessage}</p>
-            <div className="space-y-2">
+            <div className="text-blue-500 text-3xl mb-3">🗺️</div>
+            <h3 className="text-lg font-semibold text-blue-700 mb-2">External Navigation</h3>
+            <p className="text-blue-600 text-sm mb-4">
+              Google Maps integration temporarily unavailable.<br/>
+              Use external navigation to reach your destination.
+            </p>
+            <div className="space-y-3">
               <button 
                 onClick={() => {
-                  setHasError(false);
-                  initializationAttemptedRef.current = false;
-                  initMap();
+                  const [lat, lng] = destination;
+                  // Universal maps URL that works across platforms
+                  window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`, '_blank');
                 }} 
-                className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 mr-2 transition-colors"
+                className="w-full bg-green-500 text-white px-4 py-3 rounded-lg hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
               >
-                Try Again
+                <span>🚗</span>
+                <span>Navigate with Google Maps</span>
               </button>
               <button 
                 onClick={() => {
                   const [lat, lng] = destination;
-                  window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+                  // Apple Maps for iOS devices
+                  window.open(`https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`, '_blank');
                 }} 
-                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
+                className="w-full bg-blue-500 text-white px-4 py-3 rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
               >
-                Open in Maps
+                <span>🍎</span>
+                <span>Navigate with Apple Maps</span>
               </button>
+              <div className="pt-2 border-t border-blue-200">
+                <p className="text-xs text-blue-500">
+                  Coordinates: {destination?.[0]?.toFixed(6)}, {destination?.[1]?.toFixed(6)}
+                </p>
+              </div>
             </div>
           </div>
         </div>

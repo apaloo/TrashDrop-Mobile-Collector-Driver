@@ -9,9 +9,21 @@ const MapControls = ({ lastUpdated, isRefreshing, refreshData, requestCount }) =
 
   // Format time as HH:MM:SS
   const formatTime = (date) => {
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const seconds = date.getSeconds().toString().padStart(2, '0');
+    // Handle both Date objects and strings
+    if (typeof date === 'string') {
+      return date; // If it's already a formatted string, return as is
+    }
+    
+    // Ensure it's a valid Date object
+    const dateObj = date instanceof Date ? date : new Date(date);
+    
+    if (isNaN(dateObj.getTime())) {
+      return 'Invalid time';
+    }
+    
+    const hours = dateObj.getHours().toString().padStart(2, '0');
+    const minutes = dateObj.getMinutes().toString().padStart(2, '0');
+    const seconds = dateObj.getSeconds().toString().padStart(2, '0');
     return `${hours}:${minutes}:${seconds}`;
   };
 

@@ -141,7 +141,7 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
   
   // Ensure filters has all required properties with defaults
   const safeFilters = {
-    searchRadius: typeof filters.searchRadius === 'number' ? filters.searchRadius : 5,
+    searchRadius: typeof filters.searchRadius === 'number' ? filters.searchRadius : 15,
     wasteTypes: Array.isArray(filters.wasteTypes) ? filters.wasteTypes : [],
     minPayment: typeof filters.minPayment === 'number' ? filters.minPayment : 0,
     priority: ['all', 'high', 'medium', 'low'].includes(filters.priority) ? filters.priority : 'all',
@@ -210,11 +210,11 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
         <input 
           type="range" 
           min="1" 
-          max="10" 
+          max="20" 
           step="1"
           value={safeFilters.searchRadius} 
           onChange={(e) => {
-            const newDistance = parseFloat(e.target.value) || 5;
+            const newDistance = parseFloat(e.target.value) || 15;
             handleFilterChange({ searchRadius: newDistance });
           }} 
           className="w-full accent-green-500"
@@ -830,8 +830,8 @@ const MapPage = () => {
 
   // Apply filters to requests
   const applyFilters = useCallback(async () => {
-    // Reduce logging frequency - only log 20% of the time
-    if (Math.random() < 0.2) {
+    // Reduce console spam - only log 5% of filter applications
+    if (Math.random() < 0.05) {
       console.log('🔍 Applying filters...', { filters, allRequestsCount: allRequests.length, position });
     }
     
@@ -855,13 +855,13 @@ const MapPage = () => {
 
     const safeFilters = filters || {};
     const activeFilter = safeFilters.activeFilter || 'all';
-    const radiusKm = parseFloat(safeFilters.searchRadius) || 10;
+    const radiusKm = parseFloat(safeFilters.searchRadius) || 15;
     
     console.log('🎯 Filter criteria:', { activeFilter, radiusKm, collectorStatus: statusInfo.status });
     console.log('DEBUG: Sample requests:', allRequests.slice(0, 2));
     console.log('🗂️ Waste types in requests:', allRequests.map(r => r.waste_type || r.type).filter(Boolean));
     
-    const searchRadius = filters.searchRadius || filters.maxDistance || 10; // Use searchRadius with fallback to maxDistance
+    const searchRadius = filters.searchRadius || filters.maxDistance || 15; // Use searchRadius with fallback to maxDistance
     
     const filteredRequests = allRequests.filter(req => {
       // Skip if request is invalid
@@ -884,19 +884,25 @@ const MapPage = () => {
             req.coordinates
           );
           
-          // If using fallback location, show all requests but still calculate distance for sorting
-          if (!isUsingFallbackLocation && distance > radiusKm) {
-            console.log('❌ Filtered out - distance too far:', req.id, 'distance:', distance.toFixed(2) + 'km', 'limit:', radiusKm + 'km');
+          // Apply distance filtering properly
+          if (distance > radiusKm) {
+            // Reduce console spam - only log 20% of filtered out requests
+            if (Math.random() < 0.2) {
+              console.log('❌ Filtered out - distance too far:', req.id, 'distance:', distance.toFixed(2) + 'km', 'limit:', radiusKm + 'km');
+            }
             return false;
           }
           
           // Add distance to request for sorting
           req.distance = distance;
           
-          if (isUsingFallbackLocation) {
-            console.log('📍 Showing all requests - using fallback location:', req.id, 'calculated distance:', distance.toFixed(2) + 'km');
-          } else {
-            console.log('✅ Passed distance filter:', req.id, 'distance:', distance.toFixed(2) + 'km');
+          // Reduce console spam - only log 10% of passed requests
+          if (Math.random() < 0.1) {
+            if (isUsingFallbackLocation) {
+              console.log('📍 Request passed filter (fallback location):', req.id, 'distance:', distance.toFixed(2) + 'km');
+            } else {
+              console.log('✅ Passed distance filter:', req.id, 'distance:', distance.toFixed(2) + 'km');
+            }
           }
         } catch (error) {
           console.error('❌ Filtered out - distance calculation error:', error);
