@@ -139,9 +139,9 @@ const RecenterButton = ({ onClick }) => {
 const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   
-  // Ensure filters has all required properties with defaults
+  // Ensure filters has all required properties with defaults (capped for efficiency)
   const safeFilters = {
-    searchRadius: typeof filters.searchRadius === 'number' ? filters.searchRadius : 15,
+    searchRadius: typeof filters.searchRadius === 'number' ? Math.min(filters.searchRadius, 10) : 5,
     wasteTypes: Array.isArray(filters.wasteTypes) ? filters.wasteTypes : [],
     minPayment: typeof filters.minPayment === 'number' ? filters.minPayment : 0,
     priority: ['all', 'high', 'medium', 'low'].includes(filters.priority) ? filters.priority : 'all',
@@ -206,15 +206,15 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
           </button>
         </div>
         
-        {/* Radius Slider - Always Visible */}
+        {/* Radius Slider - Always Visible (Capped at 10km for operational efficiency) */}
         <input 
           type="range" 
           min="1" 
-          max="20" 
+          max="10" 
           step="1"
-          value={safeFilters.searchRadius} 
+          value={Math.min(safeFilters.searchRadius, 10)} 
           onChange={(e) => {
-            const newDistance = parseFloat(e.target.value) || 15;
+            const newDistance = parseFloat(e.target.value) || 5;
             handleFilterChange({ searchRadius: newDistance });
           }} 
           className="w-full accent-green-500"
@@ -855,13 +855,13 @@ const MapPage = () => {
 
     const safeFilters = filters || {};
     const activeFilter = safeFilters.activeFilter || 'all';
-    const radiusKm = parseFloat(safeFilters.searchRadius) || 15;
+    const radiusKm = parseFloat(safeFilters.searchRadius) || 5;
     
     console.log('🎯 Filter criteria:', { activeFilter, radiusKm, collectorStatus: statusInfo.status });
     console.log('DEBUG: Sample requests:', allRequests.slice(0, 2));
     console.log('🗂️ Waste types in requests:', allRequests.map(r => r.waste_type || r.type).filter(Boolean));
     
-    const searchRadius = filters.searchRadius || filters.maxDistance || 15; // Use searchRadius with fallback to maxDistance
+    const searchRadius = filters.searchRadius || filters.maxDistance || 5; // Use searchRadius with fallback to maxDistance
     
     const filteredRequests = allRequests.filter(req => {
       // Skip if request is invalid

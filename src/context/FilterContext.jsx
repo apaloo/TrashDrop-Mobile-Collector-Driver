@@ -5,15 +5,15 @@ const FilterContext = createContext();
 export const FilterProvider = ({ children }) => {
   // Default filter values
   const [filters, setFilters] = useState(() => {
-    // Force update radius to 15km minimum
+    // Cap radius to 10km maximum for operational efficiency
     try {
       const savedFilters = localStorage.getItem('collectorFilters');
       if (savedFilters) {
         const parsed = JSON.parse(savedFilters);
-        // Force searchRadius to be at least 15km
-        const updatedRadius = Math.max(parsed.searchRadius || 15, 15);
+        // Cap searchRadius to maximum 10km for operational efficiency
+        const updatedRadius = Math.min(Math.max(parsed.searchRadius || 5, 1), 10);
         const updatedFilters = {
-          searchRadius: updatedRadius, // Force minimum 15km
+          searchRadius: updatedRadius, // Cap at 10km for efficiency
           wasteTypes: Array.isArray(parsed.wasteTypes) && parsed.wasteTypes.length > 0 
             ? parsed.wasteTypes 
             : ['All Types'],
@@ -31,7 +31,7 @@ export const FilterProvider = ({ children }) => {
     
     // Default values if nothing in localStorage
     return {
-      searchRadius: 15, // in km
+      searchRadius: 5, // in km - reasonable default for efficiency
       wasteTypes: ['All Types'],
       minPayment: 0,
       priority: 'all',
