@@ -477,13 +477,6 @@ const RequestPage = () => {
           accepted: newAccepted
         });
         
-        // Update cache for offline support
-        saveToCache(CACHE_KEYS.ALL_REQUESTS, {
-          ...requests,
-          available: newAvailable,
-          accepted: newAccepted
-        });
-        
         if (showToasts) {
           showToast(`Successfully accepted ${requestToAccept.waste_type || requestToAccept.type} pickup in DEV_MODE!`, 'success');
           setActiveTab('accepted');
@@ -549,9 +542,6 @@ const RequestPage = () => {
       };
       
       setRequests(updatedRequests);
-      
-      // Update cache
-      saveToCache(CACHE_KEYS.ALL_REQUESTS, updatedRequests);
       
       // Show success toast and switch tab only if showToasts is true
       if (showToasts) {
@@ -845,11 +835,9 @@ const RequestPage = () => {
         };
       });
       
-      // Async cache operations (don't block UI)
+      // Async operations (don't block UI)
       Promise.resolve().then(() => {
         try {
-          // Cache the scanned bags
-          saveToCache(`${CACHE_KEYS.REQUEST_SCANNED_BAGS}_${requestId}`, scannedBags);
           
           // Process earnings transaction asynchronously
           const latestBag = scannedBags[scannedBags.length - 1];
@@ -1070,9 +1058,6 @@ const RequestPage = () => {
       };
       
       setRequests(updatedRequests);
-      
-      // Update cache
-      saveToCache(CACHE_KEYS.ALL_REQUESTS, updatedRequests);
       
       // Show success toast with bonus info
       showToast(
@@ -1451,9 +1436,6 @@ const handleLocateSite = (requestId) => {
       };
       
       setRequests(updatedRequests);
-      
-      // Update cache
-      saveToCache(CACHE_KEYS.ALL_REQUESTS, updatedRequests);
       
       // Show success toast
       showToast('Successfully disposed bags!', 'success');

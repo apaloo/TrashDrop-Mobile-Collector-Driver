@@ -5,14 +5,15 @@ const FilterContext = createContext();
 export const FilterProvider = ({ children }) => {
   // Default filter values
   const [filters, setFilters] = useState(() => {
-    // Try to load from localStorage first, then use defaults
+    // Force update radius to 15km minimum
     try {
       const savedFilters = localStorage.getItem('collectorFilters');
       if (savedFilters) {
         const parsed = JSON.parse(savedFilters);
-        // Ensure all required fields exist with defaults
-        return {
-          searchRadius: parsed.searchRadius || 10, // in km
+        // Force searchRadius to be at least 15km
+        const updatedRadius = Math.max(parsed.searchRadius || 15, 15);
+        const updatedFilters = {
+          searchRadius: updatedRadius, // Force minimum 15km
           wasteTypes: Array.isArray(parsed.wasteTypes) && parsed.wasteTypes.length > 0 
             ? parsed.wasteTypes 
             : ['All Types'],
@@ -20,6 +21,9 @@ export const FilterProvider = ({ children }) => {
           priority: parsed.priority || 'all',
           activeFilter: parsed.activeFilter || 'all', // Default to 'all' types
         };
+        // Update localStorage with new radius
+        localStorage.setItem('collectorFilters', JSON.stringify(updatedFilters));
+        return updatedFilters;
       }
     } catch (e) {
       console.error('Error loading saved filters:', e);
@@ -27,7 +31,7 @@ export const FilterProvider = ({ children }) => {
     
     // Default values if nothing in localStorage
     return {
-      searchRadius: 10, // in km
+      searchRadius: 15, // in km
       wasteTypes: ['All Types'],
       minPayment: 0,
       priority: 'all',

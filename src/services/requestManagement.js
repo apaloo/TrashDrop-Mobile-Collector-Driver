@@ -75,12 +75,20 @@ export class RequestManagementService {
     this.heartbeatTimer = null;
     this.cleanupTimer = null;
     this.subscriptions = [];
+    this.isInitialized = false;
+    this.collectorId = null;
   }
 
   /**
    * Initialize the service with session management and cleanup timers
    */
   async initialize(collectorId) {
+    // Skip initialization if already initialized with same collector
+    if (this.isInitialized && this.collectorId === collectorId) {
+      console.log('🔄 RequestManagementService already initialized for collector:', collectorId);
+      return;
+    }
+    
     try {
       this.collectorId = collectorId;
       console.log(`[${import.meta.env.DEV ? 'DEV MODE' : 'PROD'}] Initializing RequestManagementService for collector:`, collectorId);
@@ -132,6 +140,7 @@ export class RequestManagementService {
         }
       }
       
+      this.isInitialized = true;
       console.log('🎉 RequestManagementService initialized successfully');
     } catch (error) {
       console.error('💥 Critical failure initializing RequestManagementService:', error);

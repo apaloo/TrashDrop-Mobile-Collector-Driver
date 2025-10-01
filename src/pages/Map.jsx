@@ -687,7 +687,10 @@ const MapPage = () => {
                       const cached = localStorage.getItem('userLastPosition');
                       if (cached) {
                         currentPosition = JSON.parse(cached);
-                        console.log('🔧 Using cached position for processing:', currentPosition);
+                        // Reduced logging frequency - only log occasionally
+                        if (Math.random() < 0.1) {
+                          console.log('🔧 Using cached position for processing:', currentPosition);
+                        }
                       }
                     } catch (e) {
                       console.warn('Failed to load cached position for processing:', e);
@@ -819,21 +822,24 @@ const MapPage = () => {
 
     const safeFilters = filters || {};
     const activeFilter = safeFilters.activeFilter || 'all';
-    const radiusKm = parseFloat(safeFilters.radius) || 1;
+    const radiusKm = parseFloat(safeFilters.searchRadius) || 15;
     
     console.log('🎯 Filter criteria:', { activeFilter, radiusKm, collectorStatus: statusInfo.status });
     console.log('DEBUG: Sample requests:', allRequests.slice(0, 2));
+    console.log('🗂️ Waste types in requests:', allRequests.map(r => r.waste_type || r.type).filter(Boolean));
     
     const searchRadius = filters.searchRadius || filters.maxDistance || 10; // Use searchRadius with fallback to maxDistance
     
     const filteredRequests = allRequests.filter(req => {
       // Skip if request is invalid
       if (!req || !req.coordinates) {
+        console.log('❌ Filtered out - invalid request or no coordinates:', req?.id);
         return false;
       }
       
       // Filter by status - only show available requests
       if (req.status !== 'available') {
+        console.log('❌ Filtered out - status not available:', req.id, 'status:', req.status);
         return false;
       }
       
@@ -845,21 +851,34 @@ const MapPage = () => {
             req.coordinates
           );
           
-          if (distance > searchRadius) {
+          if (distance > radiusKm) {
+            console.log('❌ Filtered out - distance too far:', req.id, 'distance:', distance.toFixed(2) + 'km', 'limit:', radiusKm + 'km');
             return false;
           }
           
           // Add distance to request for sorting
           req.distance = distance;
+          console.log('✅ Passed distance filter:', req.id, 'distance:', distance.toFixed(2) + 'km');
         } catch (error) {
-          console.error('Error calculating distance:', error);
+          console.error('❌ Filtered out - distance calculation error:', error);
           return false;
         }
       }
       
-      // Filter by waste type
+      // Filter by waste type using activeFilter
+      if (activeFilter && activeFilter !== 'all') {
+        const requestWasteType = req.waste_type || req.type;
+        if (requestWasteType !== activeFilter) {
+          console.log('❌ Filtered out - waste type mismatch:', req.id, 'request type:', requestWasteType, 'filter:', activeFilter);
+          return false;
+        }
+      }
+      
+      // Also filter by waste types array (if provided)
       if (filters.wasteTypes?.length > 0 && !filters.wasteTypes.includes('All Types')) {
-        if (!filters.wasteTypes.includes(req.type)) {
+        const requestWasteType = req.waste_type || req.type;
+        if (!filters.wasteTypes.includes(requestWasteType)) {
+          console.log('❌ Filtered out - not in wasteTypes array:', req.id, 'request type:', requestWasteType, 'allowed types:', filters.wasteTypes);
           return false;
         }
       }
@@ -867,14 +886,17 @@ const MapPage = () => {
       // Filter by minimum payment
       const minPayment = parseFloat(filters.minPayment) || 0;
       if (minPayment > 0 && (parseFloat(req.fee) || 0) < minPayment) {
+        console.log('❌ Filtered out - payment too low:', req.id, 'fee:', req.fee, 'minimum:', minPayment);
         return false;
       }
       
       // Filter by priority
       if (filters.priority && filters.priority !== 'all' && req.priority !== filters.priority) {
+        console.log('❌ Filtered out - priority mismatch:', req.id, 'request priority:', req.priority, 'filter:', filters.priority);
         return false;
       }
       
+      console.log('✅ Request passed all filters:', req.id, 'type:', req.waste_type || req.type, 'distance:', req.distance?.toFixed(2) + 'km');
       return true;
     });
     
@@ -900,7 +922,7 @@ const MapPage = () => {
   // Effect to apply filters when filter criteria OR position changes
   useEffect(() => {
     applyFilters();
-  }, [filters]);
+  }, [applyFilters]);
   
   // Effect to reapply filters when position becomes available
   useEffect(() => {
