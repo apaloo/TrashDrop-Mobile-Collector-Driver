@@ -6,9 +6,10 @@ import AssignmentDetailsModal from '../components/AssignmentDetailsModal';
 import CompletionModal from '../components/CompletionModal';
 import DisposalModal from '../components/DisposalModal';
 import ReportModal from '../components/ReportModal';
+import AssignmentNavigationModal from '../components/AssignmentNavigationModal';
 import { supabase } from '../services/supabase';
 
-const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onDumpingSite, onDispose, onViewReport }) => {
+const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNavigate, onDumpingSite, onDispose, onViewReport }) => {
   const [expanded, setExpanded] = useState(false);
   
   const getStatusRibbonColor = (status) => {
@@ -190,11 +191,7 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onDumpin
               <div className="grid grid-cols-1 gap-2">
                 <div>
                   <button 
-                    onClick={() => {
-                      // Open Google Maps with the location
-                      const location = encodeURIComponent(assignment.location);
-                      window.open(`https://www.google.com/maps/search/?api=1&query=${location}`, '_blank');
-                    }}
+                    onClick={() => onNavigate(assignment)}
                     className="py-3 bg-indigo-500 text-white rounded-md flex items-center justify-center hover:bg-indigo-600 transition-colors w-full"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -267,6 +264,7 @@ const AssignPage = () => {
   const [completionModalOpen, setCompletionModalOpen] = useState(false);
   const [disposalModalOpen, setDisposalModalOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [navigationModalOpen, setNavigationModalOpen] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   
   // Toast notification state
@@ -416,8 +414,71 @@ const AssignPage = () => {
     }
   };
   
-  // Handle navigate to assignment with enhanced GPS coordinates parsing
+  // Handle navigate to assignment - Open in-app navigation modal
   const handleNavigate = (assignment) => {
+    console.log('🗺️ Opening in-app navigation for assignment:', assignment?.id);
+    console.log('📍 Assignment coordinates data:', assignment?.coordinates);
+    
+    setSelectedAssignment(assignment);
+    setNavigationModalOpen(true);
+    setDetailsModalOpen(false); // Close details modal if open
+  };
+  
+  // Handle assignment arrival (auto-completion when within 50m)
+  const handleAssignmentArrival = async (assignmentId) => {
+    try {
+      console.log(`✅ Assignment ${assignmentId} auto-completed via navigation`);
+      
+      const assignmentToComplete = assignments.accepted.find(assign => assign.id === assignmentId);
+      if (!assignmentToComplete) {
+        showToast('Assignment not found', 'error');
+        return;
+      }
+
+      // Update assignment status to completed in Supabase
+      const { error } = await supabase
+        .from('authority_assignments')
+        .update({ 
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', assignmentId);
+
+      if (error) {
+        console.error('Error auto-completing assignment:', error);
+        showToast('Failed to complete assignment. Please try again.', 'error');
+        return;
+      }
+
+      // Update local state
+      const updatedAssignment = {
+        ...assignmentToComplete,
+        status: AssignmentStatus.COMPLETED,
+        completed_at: new Date().toISOString(),
+        hasDisposed: false
+      };
+      
+      setAssignments(prev => ({
+        available: prev.available,
+        accepted: prev.accepted.filter(assign => assign.id !== assignmentId),
+        completed: [...prev.completed, updatedAssignment]
+      }));
+      
+      // Switch to completed tab to show the result
+      setActiveTab('completed');
+      
+      // Show success toast
+      showToast('🎉 Assignment completed successfully!');
+      
+    } catch (error) {
+      console.error('Unexpected error auto-completing assignment:', error);
+      showToast('An unexpected error occurred. Please try again.', 'error');
+    }
+  };
+  
+  // Legacy Google Maps navigation (keeping for fallback)
+  const handleLegacyNavigate = (assignment) => {
     console.log('🗺️ Opening Google Maps navigation for assignment:', assignment?.id);
     console.log('📍 Assignment coordinates data:', assignment?.coordinates);
     
@@ -763,6 +824,7 @@ const AssignPage = () => {
                       onAccept={handleAccept}
                       onComplete={handleComplete}
                       onViewMore={openDetailsModal}
+                      onNavigate={handleNavigate}
                       onDumpingSite={handleDumpingSite}
                       onDispose={handleDispose}
                       onViewReport={handleViewReport}
@@ -780,6 +842,7 @@ const AssignPage = () => {
                       onAccept={handleAccept}
                       onComplete={handleComplete}
                       onViewMore={openDetailsModal}
+                      onNavigate={handleNavigate}
                       onDumpingSite={handleDumpingSite}
                       onDispose={handleDispose}
                       onViewReport={handleViewReport}
@@ -797,6 +860,7 @@ const AssignPage = () => {
                       onAccept={handleAccept}
                       onComplete={handleComplete}
                       onViewMore={openDetailsModal}
+                      onNavigate={handleNavigate}
                       onDumpingSite={handleDumpingSite}
                       onDispose={handleDispose}
                       onViewReport={handleViewReport}
@@ -844,6 +908,16 @@ const AssignPage = () => {
         assignment={selectedAssignment}
         isOpen={reportModalOpen}
         onClose={() => setReportModalOpen(false)}
+      />
+      
+      {/* Assignment Navigation Modal */}
+      <AssignmentNavigationModal
+        isOpen={navigationModalOpen}
+        onClose={() => setNavigationModalOpen(false)}
+        destination={selectedAssignment?.coordinates}
+        assignmentId={selectedAssignment?.id}
+        assignmentTitle={selectedAssignment?.type}
+        onArrival={handleAssignmentArrival}
       />
       
       {/* Toast Notification */}

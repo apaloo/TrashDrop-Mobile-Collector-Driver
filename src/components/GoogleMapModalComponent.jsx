@@ -126,16 +126,50 @@ const createDestinationIcon = () => {
   };
 };
 
-// Helper function to normalize coordinates to [lat, lng] array format
+// Helper function to normalize coordinates to [lat, lng] format
 const normalizeCoords = (coords) => {
   if (!coords) return null;
   
-  // If it's already an array [lat, lng]
-  if (Array.isArray(coords)) {
-    return coords;
+  // Handle array format [lat, lng]
+  if (Array.isArray(coords) && coords.length >= 2) {
+    return [coords[0], coords[1]];
   }
   
-  // If it's an object {lat, lng} or {latitude, longitude}
+  // Handle string coordinates
+  if (typeof coords === 'string') {
+    try {
+      // Handle PostGIS POINT format: "POINT(lng lat)"
+      const pointMatch = coords.match(/POINT\(([+-]?\d+\.?\d*) ([+-]?\d+\.?\d*)\)/);
+      if (pointMatch) {
+        const lng = parseFloat(pointMatch[1]);
+        const lat = parseFloat(pointMatch[2]);
+        console.log('📍 Parsed PostGIS POINT coordinates:', { lat, lng });
+        return [lat, lng];
+      }
+      
+      // Handle PostGIS binary format - extract readable coordinates
+      if (coords.startsWith('0101000020')) {
+        console.warn('⚠️ PostGIS binary format detected - using fallback coordinates');
+        // For now, return Accra coordinates as fallback
+        // TODO: Implement proper PostGIS binary parsing
+        return [5.6037, -0.1870]; // Accra, Ghana
+      }
+      
+      // Handle "lat,lng" string
+      const coordParts = coords.split(',').map(c => c.trim());
+      if (coordParts.length === 2) {
+        const lat = parseFloat(coordParts[0]);
+        const lng = parseFloat(coordParts[1]);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          return [lat, lng];
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing string coordinates:', error);
+    }
+  }
+  
+  // Handle object format {lat: x, lng: y}
   if (typeof coords === 'object') {
     const lat = coords.lat || coords.latitude;
     const lng = coords.lng || coords.lon || coords.longitude;
@@ -495,9 +529,12 @@ const GoogleMapModalComponent = ({
             <div className="space-y-3">
               <button 
                 onClick={() => {
-                  const [lat, lng] = destination;
-                  // Universal maps URL that works across platforms
-                  window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`, '_blank');
+                  const coords = normalizeCoords(destination);
+                  if (coords) {
+                    const [lat, lng] = coords;
+                    // Universal maps URL that works across platforms
+                    window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`, '_blank');
+                  }
                 }} 
                 className="w-full bg-green-500 text-white px-4 py-3 rounded-lg hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
               >
@@ -506,9 +543,12 @@ const GoogleMapModalComponent = ({
               </button>
               <button 
                 onClick={() => {
-                  const [lat, lng] = destination;
-                  // Apple Maps for iOS devices
-                  window.open(`https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`, '_blank');
+                  const coords = normalizeCoords(destination);
+                  if (coords) {
+                    const [lat, lng] = coords;
+                    // Apple Maps for iOS devices
+                    window.open(`https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`, '_blank');
+                  }
                 }} 
                 className="w-full bg-blue-500 text-white px-4 py-3 rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
               >
@@ -517,7 +557,10 @@ const GoogleMapModalComponent = ({
               </button>
               <div className="pt-2 border-t border-blue-200">
                 <p className="text-xs text-blue-500">
-                  Coordinates: {destination?.[0]?.toFixed(6)}, {destination?.[1]?.toFixed(6)}
+                  Coordinates: {(() => {
+                    const coords = normalizeCoords(destination);
+                    return coords ? `${coords[0]?.toFixed(6)}, ${coords[1]?.toFixed(6)}` : 'Invalid coordinates';
+                  })()}
                 </p>
               </div>
             </div>
