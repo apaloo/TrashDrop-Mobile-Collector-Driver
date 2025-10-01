@@ -3,67 +3,78 @@ import React, { useEffect, useRef, useState } from 'react';
 // Google Maps configuration
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
 
-// Load Google Maps API with improved error handling
+// Load Google Maps API with enhanced validation and preload support
 const loadGoogleMapsAPI = () => {
   return new Promise((resolve, reject) => {
-    // Check if Google Maps is already loaded
-    if (window.google && window.google.maps) {
-      console.log('✅ Google Maps already loaded (Modal)');
+    // Check if Google Maps is fully loaded with all required objects
+    if (window.googleMapsReady && window.google && window.google.maps && window.google.maps.MapTypeId) {
+      console.log('✅ Google Maps fully loaded from preload (Modal)');
+      resolve(window.google.maps);
+      return;
+    }
+    
+    // Check if Google Maps is available without preload flag
+    if (window.google && window.google.maps && window.google.maps.MapTypeId && window.google.maps.MapTypeId.ROADMAP) {
+      console.log('✅ Google Maps fully loaded (Modal)');
       resolve(window.google.maps);
       return;
     }
 
-    // Check if script is already loading
+    // Listen for global ready event or check existing script
     const existingScript = document.querySelector(`script[src*="maps.googleapis.com"]`);
-    if (existingScript) {
-      console.log('⏳ Google Maps script already exists, waiting for load... (Modal)');
-      // Wait for the existing script to load with timeout
+    if (existingScript || window.googleMapsReady === false) {
+      console.log('⏳ Google Maps script exists or preloaded, waiting for complete load... (Modal)');
+      // Wait for the API to be ready with enhanced validation
       let attempts = 0;
-      const maxAttempts = 50; // 5 seconds timeout
-      const checkLoaded = () => {
-        if (window.google && window.google.maps) {
+      const maxAttempts = 100; // 10 seconds timeout
+      const checkReady = () => {
+        if ((window.googleMapsReady && window.google && window.google.maps) ||
+            (window.google && window.google.maps && window.google.maps.MapTypeId && window.google.maps.MapTypeId.ROADMAP)) {
+          console.log('✅ Google Maps API fully ready (Modal)');
           resolve(window.google.maps);
         } else if (attempts++ < maxAttempts) {
-          setTimeout(checkLoaded, 100);
+          setTimeout(checkReady, 100);
         } else {
-          reject(new Error('Timeout waiting for existing Google Maps script to load'));
+          reject(new Error('Google Maps API timeout - not ready after 10 seconds'));
         }
       };
-      checkLoaded();
+      checkReady();
       return;
     }
 
-    // Validate API key exists
-    if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === 'your-api-key-here') {
-      reject(new Error('Google Maps API key is not configured'));
-      return;
-    }
-
-    console.log('📥 Loading Google Maps API... (Modal)');
+    // Create new script
+    console.log('🔄 Loading Google Maps API script... (Modal)');
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=geometry&loading=async`;
     script.async = true;
     script.defer = true;
-    
+
     script.onload = () => {
-      console.log('🔄 Google Maps script loaded, checking API availability... (Modal)');
-      // Add a small delay to ensure the API is fully initialized
-      setTimeout(() => {
-        if (window.google && window.google.maps) {
-          console.log('✅ Google Maps API fully loaded and ready (Modal)');
+      console.log('📜 Google Maps script loaded, validating complete API... (Modal)');
+      // Poll for complete API availability with enhanced validation
+      let attempts = 0;
+      const maxAttempts = 100; // 10 seconds timeout
+      const checkFullyLoaded = () => {
+        if (window.google && 
+            window.google.maps && 
+            window.google.maps.MapTypeId && 
+            window.google.maps.MapTypeId.ROADMAP) {
+          console.log('✅ Google Maps API fully ready with MapTypeId (Modal)');
           resolve(window.google.maps);
+        } else if (attempts++ < maxAttempts) {
+          setTimeout(checkFullyLoaded, 100);
         } else {
-          console.error('❌ Google Maps API loaded but not available (Modal)');
-          reject(new Error('Google Maps API failed to initialize'));
+          reject(new Error('Google Maps API incomplete - MapTypeId not available'));
         }
-      }, 200);
+      };
+      checkFullyLoaded();
     };
-    
+
     script.onerror = (error) => {
       console.error('❌ Failed to load Google Maps script (Modal):', error);
-      reject(new Error('Failed to load Google Maps API script - check API key and network'));
+      reject(new Error('Failed to load Google Maps script'));
     };
-    
+
     document.head.appendChild(script);
   });
 };
@@ -150,7 +161,7 @@ const GoogleMapModalComponent = ({
   const [errorMessage, setErrorMessage] = useState('');
   const initializationAttemptedRef = useRef(false);
 
-  // Initialize map with retry mechanism
+  // Initialize map with enhanced error handling
   const initMap = async () => {
     // Prevent multiple initialization attempts
     if (initializationAttemptedRef.current) {
@@ -163,9 +174,18 @@ const GoogleMapModalComponent = ({
       setHasError(false);
       console.log('📍 Initializing Google Maps modal...');
       
+      // Validate API key first
+      if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === 'your-api-key-here') {
+        throw new Error('Google Maps API key not configured');
+      }
+      
       const maps = await loadGoogleMapsAPI();
       
-      // At this point mapRef should be available (already checked above)
+      // Validate complete API object
+      if (!maps.MapTypeId || !maps.MapTypeId.ROADMAP) {
+        throw new Error('Google Maps API incomplete - MapTypeId not available');
+      }
+      
       if (!mapRef.current) {
         throw new Error('Map container not available');
       }
@@ -220,9 +240,9 @@ const GoogleMapModalComponent = ({
       
       setIsLoading(false);
     } catch (error) {
-      console.error('❌ Failed to initialize Google Maps modal:', error);
+      console.error('❌ Google Maps initialization failed:', error);
       setHasError(true);
-      setErrorMessage(error.message || 'Failed to load navigation map');
+      setErrorMessage(error.message);
       setIsLoading(false);
       initializationAttemptedRef.current = false; // Allow retry
     }
@@ -298,31 +318,90 @@ const GoogleMapModalComponent = ({
       console.log('🧭 Setting up navigation route from', normalizedUserLocation, 'to', normalizedDestination);
     }
 
-    // Clear existing markers
+    // Clear existing markers (handle both modern and legacy)
     if (userMarkerRef.current) {
-      userMarkerRef.current.setMap(null);
+      if (userMarkerRef.current.setMap) {
+        userMarkerRef.current.setMap(null);
+      } else if (userMarkerRef.current.map) {
+        userMarkerRef.current.map = null;
+      }
     }
     if (destinationMarkerRef.current) {
-      destinationMarkerRef.current.setMap(null);
+      if (destinationMarkerRef.current.setMap) {
+        destinationMarkerRef.current.setMap(null);
+      } else if (destinationMarkerRef.current.map) {
+        destinationMarkerRef.current.map = null;
+      }
     }
 
-    // Add user location marker
-    userMarkerRef.current = new window.google.maps.Marker({
-      position: { lat: normalizedUserLocation[0], lng: normalizedUserLocation[1] },
-      map: mapInstanceRef.current,
-      icon: createUserLocationIcon(),
-      title: 'Your Location',
-      zIndex: 1000
-    });
+    // Add user location marker with modern API fallback
+    try {
+      // Try to use modern AdvancedMarkerElement if available
+      if (window.google.maps.marker && window.google.maps.marker.AdvancedMarkerElement) {
+        const userPin = document.createElement('div');
+        userPin.innerHTML = '📍';
+        userPin.style.fontSize = '24px';
+        
+        userMarkerRef.current = new window.google.maps.marker.AdvancedMarkerElement({
+          position: { lat: normalizedUserLocation[0], lng: normalizedUserLocation[1] },
+          map: mapInstanceRef.current,
+          content: userPin,
+          title: 'Your Location'
+        });
+      } else {
+        // Fallback to legacy Marker
+        userMarkerRef.current = new window.google.maps.Marker({
+          position: { lat: normalizedUserLocation[0], lng: normalizedUserLocation[1] },
+          map: mapInstanceRef.current,
+          icon: createUserLocationIcon(),
+          title: 'Your Location',
+          zIndex: 1000
+        });
+      }
+    } catch (error) {
+      // Fallback to legacy Marker if modern API fails
+      userMarkerRef.current = new window.google.maps.Marker({
+        position: { lat: normalizedUserLocation[0], lng: normalizedUserLocation[1] },
+        map: mapInstanceRef.current,
+        icon: createUserLocationIcon(),
+        title: 'Your Location',
+        zIndex: 1000
+      });
+    }
 
-    // Add destination marker
-    destinationMarkerRef.current = new window.google.maps.Marker({
-      position: { lat: normalizedDestination[0], lng: normalizedDestination[1] },
-      map: mapInstanceRef.current,
-      icon: createDestinationIcon(),
-      title: 'Pickup Location',
-      zIndex: 1000
-    });
+    // Add destination marker with modern API fallback
+    try {
+      if (window.google.maps.marker && window.google.maps.marker.AdvancedMarkerElement) {
+        const destPin = document.createElement('div');
+        destPin.innerHTML = '🗑️';
+        destPin.style.fontSize = '24px';
+        
+        destinationMarkerRef.current = new window.google.maps.marker.AdvancedMarkerElement({
+          position: { lat: normalizedDestination[0], lng: normalizedDestination[1] },
+          map: mapInstanceRef.current,
+          content: destPin,
+          title: 'Pickup Location'
+        });
+      } else {
+        // Fallback to legacy Marker
+        destinationMarkerRef.current = new window.google.maps.Marker({
+          position: { lat: normalizedDestination[0], lng: normalizedDestination[1] },
+          map: mapInstanceRef.current,
+          icon: createDestinationIcon(),
+          title: 'Pickup Location',
+          zIndex: 1000
+        });
+      }
+    } catch (error) {
+      // Fallback to legacy Marker if modern API fails
+      destinationMarkerRef.current = new window.google.maps.Marker({
+        position: { lat: normalizedDestination[0], lng: normalizedDestination[1] },
+        map: mapInstanceRef.current,
+        icon: createDestinationIcon(),
+        title: 'Pickup Location',
+        zIndex: 1000
+      });
+    }
 
     // Calculate and display route
     if (directionsServiceRef.current && directionsRendererRef.current) {
@@ -402,19 +481,26 @@ const GoogleMapModalComponent = ({
       {hasError && (
         <div className="absolute inset-0 rounded-lg bg-red-50 flex items-center justify-center border border-red-200 z-10">
           <div className="text-center p-4">
-            <div className="text-red-500 text-3xl mb-2">📍</div>
-            <p className="text-red-700 text-sm font-medium mb-1">Navigation Unavailable</p>
-            <p className="text-red-600 text-xs mb-3">{errorMessage}</p>
-            <div className="space-x-2">
+            <div className="text-red-500 text-2xl mb-2">⚠️</div>
+            <h3 className="text-lg font-semibold text-red-700 mb-2">Navigation Unavailable</h3>
+            <p className="text-red-600 text-sm mb-4">{errorMessage}</p>
+            <div className="space-y-2">
               <button 
-                onClick={handleRetry} 
-                className="px-3 py-2 bg-red-600 text-white rounded text-xs hover:bg-red-700 transition-colors"
+                onClick={() => {
+                  setHasError(false);
+                  initializationAttemptedRef.current = false;
+                  initMap();
+                }} 
+                className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 mr-2 transition-colors"
               >
                 Try Again
               </button>
               <button 
-                onClick={() => window.open(`https://www.openstreetmap.org/directions?from=${userLocation?.[0]},${userLocation?.[1]}&to=${destination?.[0]},${destination?.[1]}`, '_blank')} 
-                className="px-3 py-2 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors"
+                onClick={() => {
+                  const [lat, lng] = destination;
+                  window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+                }} 
+                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
               >
                 Open in Maps
               </button>

@@ -363,7 +363,12 @@ const MapPage = () => {
   const { user } = useAuth();
   const { filters, updateFilters, updateFilteredRequests } = useFilters();
   const [map, setMap] = useState(null);
-  const [position, setPosition] = useState(null); // Will get real location
+  // Default fallback location (Accra, Ghana) for immediate map load
+  const DEFAULT_POSITION = [5.6037, -0.1870]; // Accra coordinates
+  
+  const [position, setPosition] = useState(DEFAULT_POSITION); // Start with fallback, update with real location
+  const [isUsingCachedLocation, setIsUsingCachedLocation] = useState(false); // Track if using cached location
+  const [isUsingFallbackLocation, setIsUsingFallbackLocation] = useState(true); // Track if using default fallback
   const [error, setError] = useState(null);
   const [watchId, setWatchId] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -391,13 +396,16 @@ const MapPage = () => {
         const cached = localStorage.getItem('userLastPosition');
         if (cached) {
           const cachedPos = JSON.parse(cached);
-          console.log('📍 Using cached position:', cachedPos);
+          console.log('📍 Using cached position temporarily while fetching GPS:', cachedPos);
           setPosition(cachedPos);
+          setIsUsingCachedLocation(true); // Mark as using cached location
+          setIsUsingFallbackLocation(false); // No longer using fallback
           return true;
         }
       } catch (e) {
         console.warn('Failed to load cached position:', e);
       }
+      console.log('🗺️ Using default location (Accra, Ghana) to load map immediately');
       return false;
     };
 
@@ -429,16 +437,37 @@ const MapPage = () => {
     const onSuccess = (pos) => {
       const { latitude, longitude, accuracy } = pos.coords;
       const newPos = [latitude, longitude];
-      console.log('✅ Fresh GPS location:', newPos, `±${Math.round(accuracy)}m`);
+      
+      // Check if this is a significant location update
+      if (isUsingCachedLocation) {
+        console.log('🎯 GPS location acquired! Updating from cached to real position:', newPos, `±${Math.round(accuracy)}m`);
+        setIsUsingCachedLocation(false); // Mark as no longer using cached location
+      } else if (isUsingFallbackLocation) {
+        console.log('🎯 GPS location acquired! Updating from default to real position:', newPos, `±${Math.round(accuracy)}m`);
+        setIsUsingFallbackLocation(false); // Mark as no longer using fallback
+      } else {
+        console.log('📍 GPS location updated:', newPos, `±${Math.round(accuracy)}m`);
+      }
+      
       setPosition(newPos);
       savePositionToCache(newPos); // Cache for next time
       setError(null);
       setLocationAttempted(true);
+      setLastUpdated(new Date().toLocaleTimeString());
     };
 
     const onError = (err) => {
-      console.error('❌ Location error:', err);
+      // Reduce geolocation error logging frequency - only 10% of the time
+      if (Math.random() < 0.1) {
+        console.error('❌ Location error:', err);
+      }
       setLocationAttempted(true);
+      
+      // If GPS fails, we're no longer "acquiring" GPS even though we might still be using cached location
+      if (isUsingCachedLocation) {
+        console.log('⚠️ GPS acquisition failed, keeping cached location');
+        // Keep isUsingCachedLocation as true to show user we're still using cached data
+      }
       
       switch (err.code) {
         case err.PERMISSION_DENIED:
@@ -801,11 +830,15 @@ const MapPage = () => {
 
   // Apply filters to requests
   const applyFilters = useCallback(async () => {
-    console.log('🔍 Applying filters...', { filters, allRequestsCount: allRequests.length, position });
+    // Reduce logging frequency - only log 20% of the time
+    if (Math.random() < 0.2) {
+      console.log('🔍 Applying filters...', { filters, allRequestsCount: allRequests.length, position });
+    }
     
-    // Return empty if position is not available
+    // Position should always be available now (fallback location ensures this)
     if (!position || !position[0] || !position[1]) {
-      console.log('⚠️ Position not available, returning empty results');
+      // This should rarely happen now that we have fallback location
+      console.warn('⚠️ Position not available even with fallback - this should not happen');
       setRequests([]);
       updateFilteredRequests([]);
       return;
@@ -822,7 +855,7 @@ const MapPage = () => {
 
     const safeFilters = filters || {};
     const activeFilter = safeFilters.activeFilter || 'all';
-    const radiusKm = parseFloat(safeFilters.searchRadius) || 15;
+    const radiusKm = parseFloat(safeFilters.searchRadius) || 10;
     
     console.log('🎯 Filter criteria:', { activeFilter, radiusKm, collectorStatus: statusInfo.status });
     console.log('DEBUG: Sample requests:', allRequests.slice(0, 2));
@@ -843,7 +876,7 @@ const MapPage = () => {
         return false;
       }
       
-      // Filter by distance
+      // Filter by distance (only apply strict filtering if using real GPS location)
       if (position && position[0] && position[1]) {
         try {
           const distance = calculateDistance(
@@ -851,14 +884,20 @@ const MapPage = () => {
             req.coordinates
           );
           
-          if (distance > radiusKm) {
+          // If using fallback location, show all requests but still calculate distance for sorting
+          if (!isUsingFallbackLocation && distance > radiusKm) {
             console.log('❌ Filtered out - distance too far:', req.id, 'distance:', distance.toFixed(2) + 'km', 'limit:', radiusKm + 'km');
             return false;
           }
           
           // Add distance to request for sorting
           req.distance = distance;
-          console.log('✅ Passed distance filter:', req.id, 'distance:', distance.toFixed(2) + 'km');
+          
+          if (isUsingFallbackLocation) {
+            console.log('📍 Showing all requests - using fallback location:', req.id, 'calculated distance:', distance.toFixed(2) + 'km');
+          } else {
+            console.log('✅ Passed distance filter:', req.id, 'distance:', distance.toFixed(2) + 'km');
+          }
         } catch (error) {
           console.error('❌ Filtered out - distance calculation error:', error);
           return false;
@@ -909,15 +948,18 @@ const MapPage = () => {
     setRequests(filteredRequests);
     
     // DEBUG: Log what we're sharing with Request page
-    console.log('DEBUG: Sharing filtered requests with Request page:', {
-      available: filteredRequests,
-      count: filteredRequests.length,
-      firstRequest: filteredRequests[0] || 'none'
-    });
+    // Reduce logging frequency for debug sharing - only 10% of the time
+    if (Math.random() < 0.1) {
+      console.log('DEBUG: Sharing filtered requests with Request page:', {
+        available: filteredRequests,
+        count: filteredRequests.length,
+        firstRequest: filteredRequests[0] || 'none'
+      });
+    }
     
     // Update filtered requests in context
     updateFilteredRequests({ available: filteredRequests });
-  }, [allRequests, filters, position, updateFilteredRequests]);
+  }, [allRequests, filters, position, isUsingFallbackLocation, updateFilteredRequests]);
 
   // Effect to apply filters when filter criteria OR position changes
   useEffect(() => {
@@ -927,7 +969,10 @@ const MapPage = () => {
   // Effect to reapply filters when position becomes available
   useEffect(() => {
     if (position && position[0] && position[1] && allRequests.length > 0) {
-      console.log('DEBUG: Position loaded, reapplying filters');
+      // Reduce logging frequency - only 20% of the time
+      if (Math.random() < 0.2) {
+        console.log('DEBUG: Position loaded, reapplying filters');
+      }
       setTimeout(() => applyFilters(), 100); // Small delay to ensure state is updated
     }
   }, [position, allRequests]);
@@ -1414,25 +1459,30 @@ const MapPage = () => {
                     return '0';
                   }
                   
-                  // Only show count if we have a valid position
+                  // Show count even with fallback position (position should always be available now)
                   if (!position || position[0] === undefined || position[1] === undefined) {
-                    console.log('No valid position, showing ?');
+                    console.log('No valid position, showing ? - this should not happen with fallback');
                     return '?';
                   }
                   
-                  // Log the current state for debugging
-                  console.log('Request count display:', {
-                    totalRequests: allRequests?.length || 0,
-                    filteredRequests: requests.length,
-                    position,
-                    filters: {
-                      searchRadius: filters.searchRadius,
-                      maxDistance: filters.maxDistance,
-                      wasteTypes: filters.wasteTypes,
-                      minPayment: filters.minPayment,
-                      priority: filters.priority
-                    }
-                  });
+                  // Log the current state for debugging - reduced frequency to 5%
+                  if (Math.random() < 0.05) {
+                    console.log('Request count display:', {
+                      totalRequests: allRequests?.length || 0,
+                      filteredRequests: requests.length,
+                      position,
+                      filters: {
+                        searchRadius: filters.searchRadius,
+                        maxDistance: filters.maxDistance,
+                        wasteTypes: filters.wasteTypes,
+                        minPayment: filters.minPayment,
+                        maxPickupTime: filters.maxPickupTime,
+                        priority: filters.priority,
+                        activeFilter: filters.activeFilter,
+                        radiusKm: filters.radiusKm
+                      }
+                    });
+                  }
                   
                   return requests.length;
                 })()}
@@ -1440,11 +1490,24 @@ const MapPage = () => {
             </div>
             
             {/* Enhanced Online/Offline Status Button */}
-            <div className="absolute top-2 right-0 flex justify-center z-[2000] pointer-events-auto" style={{ marginRight: '0.4rem' }}>
+            <div className="absolute top-2 right-0 flex flex-col items-end gap-1 z-[2000] pointer-events-auto" style={{ marginRight: '0.4rem' }}>
               <StatusButton 
                 showSessionInfo={true}
                 className="transition-all duration-300 hover:scale-105"
               />
+              
+              {/* GPS Status Indicator */}
+              {(isUsingCachedLocation || isUsingFallbackLocation) && (
+                <div className="bg-orange-500 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 animate-pulse">
+                  <div className="w-2 h-2 bg-white rounded-full animate-spin"></div>
+                  {isUsingFallbackLocation 
+                    ? 'Getting GPS...' 
+                    : error 
+                      ? 'Using Cached' 
+                      : 'GPS Acquiring'
+                  }
+                </div>
+              )}
             </div>
             
             <div className="relative h-full">
@@ -1468,7 +1531,20 @@ const MapPage = () => {
                     <Popup>
                       <div className="text-center">
                         <p className="font-medium text-blue-600">Your Location</p>
-                        <p className="text-sm text-gray-600">Collector Position</p>
+                        <p className="text-sm text-gray-600">
+                          {isUsingFallbackLocation 
+                            ? 'Default Location (Acquiring GPS...)'
+                            : isUsingCachedLocation 
+                              ? 'Cached Position (Updating...)' 
+                              : 'Live GPS Position'
+                          }
+                        </p>
+                        {lastUpdated && !isUsingCachedLocation && !isUsingFallbackLocation && (
+                          <p className="text-xs text-green-600">Updated: {lastUpdated}</p>
+                        )}
+                        {(isUsingCachedLocation || isUsingFallbackLocation) && (
+                          <p className="text-xs text-orange-600">🔄 Acquiring GPS...</p>
+                        )}
                       </div>
                     </Popup>
                   </Marker>
@@ -1510,15 +1586,17 @@ const MapPage = () => {
                     const assignedWasteType = request.waste_type || wasteTypes[index % wasteTypes.length];
                     
                     // Debug: Log marker coordinates and waste type
-                    console.log('🗺️ Rendering marker:', {
-                      id: request.id, 
-                      original: request.coordinates,
-                      adjusted: adjustedCoords,
-                      angle: angle,
-                      radius: radiusKm,
-                      type: assignedWasteType,
-                      index: index
-                    });
+                    // Reduced logging frequency for marker rendering - only 5% of the time
+                    if (Math.random() < 0.05) {
+                      console.log('🗺️ Rendering marker:', {
+                        id: request.id,
+                        original: request.coordinates,
+                        adjusted: adjustedCoords,
+                        angle: angle,
+                        radius: radiusKm,
+                        wasteType: request.waste_type
+                      });
+                    }
                     
                     return (
                       <Marker
@@ -1557,7 +1635,8 @@ const MapPage = () => {
                 <div className="h-full flex items-center justify-center bg-gray-100">
                   <div className="text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-2"></div>
-                    <p className="text-gray-600">Getting your location...</p>
+                    <p className="text-gray-600">Loading map...</p>
+                    <p className="text-xs text-gray-500 mt-1">This should not take long</p>
                   </div>
                 </div>
               )}

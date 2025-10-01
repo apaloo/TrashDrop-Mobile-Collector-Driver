@@ -18,10 +18,22 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Google Maps API Preloading -->
+    <script>
+      window.googleMapsReady = false;
+      function initGoogleMaps() {
+        window.googleMapsReady = true;
+        console.log('🗺️ Google Maps API preloaded globally');
+      }
+    </script>
+    <script async defer
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA&libraries=geometry,marker&loading=async&callback=initGoogleMaps">
+    </script>
+    
+    <!-- PWA Manifest -->
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
-</html>

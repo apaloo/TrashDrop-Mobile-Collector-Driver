@@ -34,6 +34,7 @@ const NavigationQRModal = ({
   const [distanceToDestination, setDistanceToDestination] = useState(null);
   const [scanStartTime, setScanStartTime] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [locationRetryCount, setLocationRetryCount] = useState(0);
   
   const mapRef = useRef(null);
   const routingControlRef = useRef(null);
@@ -250,7 +251,7 @@ const NavigationQRModal = ({
     }
   }, [isWithinGeofence]);
 
-  // Retry mechanism for location updates
+  // Retry mechanism for location updates (declared first to avoid temporal dead zone)
   const retryLocationUpdate = useCallback(async (maxRetries = LOCATION_RETRY_MAX_ATTEMPTS) => {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -290,8 +291,8 @@ const NavigationQRModal = ({
         const distance = calculateDistance({ lat: coords[0], lng: coords[1] }, { lat: destination[0], lng: destination[1] });
         const within50m = distance <= 0.05; // 50 meters = 0.05 km
         
-        // Force within geofence if in dev mode
-        const isWithin = DEV_MODE ? true : within50m;
+        // Use actual distance check (don't force geofence in dev mode for QR scanning)
+        const isWithin = within50m;
         
         setDistanceToDestination(distance);
         setIsWithinGeofence(isWithin);
@@ -329,6 +330,32 @@ const NavigationQRModal = ({
       }
     }
   }, [destination, DEV_MODE]);
+
+  // Handle retry location button
+  const handleRetryLocation = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      console.log('🔄 Retrying location update...');
+      const coords = await retryLocationUpdate();
+      if (coords) {
+        console.log('✅ Location retry successful:', coords);
+        showToast({
+          message: 'Location updated successfully',
+          type: 'success'
+        });
+      }
+    } catch (err) {
+      console.error('❌ Location retry failed:', err);
+      showToast({
+        message: 'Unable to get location. Please check your GPS settings.',
+        type: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [retryLocationUpdate, showToast]);
 
   // Location tracking with debounce and retry logic
   const updateLocation = useCallback(
@@ -513,11 +540,12 @@ const requestCameraPermission = useCallback(async () => {
           
           setDistanceToDestination(distance);
           
-          const withinGeofence = isWithinRadius(position, destinationObj, GEOFENCE_RADIUS);
+          // Use distance-based check for geofence (50m = 0.05km)
+          const withinGeofence = distance <= 0.05;
           
           // Only log geofence status occasionally
           if (consecutiveFallbackUpdates < 2) {
-            console.log('Within geofence:', withinGeofence);
+            console.log('Within geofence (50m):', withinGeofence, `Distance: ${distance.toFixed(3)}km`);
           }
           
           setIsWithinGeofence(withinGeofence);
@@ -769,42 +797,48 @@ const requestCameraPermission = useCallback(async () => {
                       Retry Location
                     </button>
                   )}
-                  <button
-                    onClick={isWithinGeofence ? handleSwitchToQR : handleStartNavigation}
-                    className={`px-6 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm transform hover:scale-105 ${
-                      isWithinGeofence
-                        ? isCameraPreloading
+                  {/* Only show Scan Now button when within 50m geofence */}
+                  {isWithinGeofence ? (
+                    <button
+                      onClick={handleSwitchToQR}
+                      className={`px-6 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm transform hover:scale-105 ${
+                        isCameraPreloading
                           ? 'bg-green-500 opacity-75'
                           : 'bg-green-600 hover:bg-green-700 hover:shadow-lg'
-                        : navigationStarted
+                      }`}
+                      aria-label="Switch to QR code scanning"
+                      disabled={isLoading || hasCameraPermission === false || isCameraPreloading}
+                    >
+                      <div className="flex items-center justify-center">
+                        {isCameraPreloading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            Preparing Camera...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m0 14v1m8-8h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" />
+                            </svg>
+                            Scan Now
+                          </>
+                        )}
+                      </div>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleStartNavigation}
+                      className={`px-6 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm ${
+                        navigationStarted
                           ? 'bg-blue-700 hover:bg-blue-800'
                           : 'bg-blue-600 hover:bg-blue-700'
-                    }`}
-                    aria-label={isWithinGeofence ? 'Switch to QR code scanning' : 'Start navigation'}
-                    disabled={isLoading || (isWithinGeofence && (hasCameraPermission === false || isCameraPreloading))}
-                  >
-                    <div className="flex items-center justify-center">
-                      {isWithinGeofence
-                        ? isCameraPreloading
-                          ? (
-                            <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                              Preparing Camera...
-                            </>
-                          )
-                          : (
-                            <>
-                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m0 14v1m8-8h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" />
-                              </svg>
-                              Scan Now
-                            </>
-                          )
-                        : navigationStarted 
-                          ? 'Navigating...' 
-                          : 'Start'}
-                    </div>
-                  </button>
+                      }`}
+                      aria-label="Start navigation"
+                      disabled={isLoading}
+                    >
+                      {navigationStarted ? 'Navigating...' : 'Start Navigation'}
+                    </button>
+                  )}
                 </>
               )}
               {mode === 'qr' && (

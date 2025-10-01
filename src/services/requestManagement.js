@@ -77,6 +77,7 @@ export class RequestManagementService {
     this.subscriptions = [];
     this.isInitialized = false;
     this.collectorId = null;
+    this.initializationPromise = null;
   }
 
   /**
@@ -85,13 +86,24 @@ export class RequestManagementService {
   async initialize(collectorId) {
     // Skip initialization if already initialized with same collector
     if (this.isInitialized && this.collectorId === collectorId) {
-      console.log('🔄 RequestManagementService already initialized for collector:', collectorId);
+      // Only log occasionally to reduce spam
+      if (Math.random() < 0.3) {
+        console.log('🔄 RequestManagementService already initialized for collector:', collectorId);
+      }
       return;
     }
     
-    try {
-      this.collectorId = collectorId;
-      console.log(`[${import.meta.env.DEV ? 'DEV MODE' : 'PROD'}] Initializing RequestManagementService for collector:`, collectorId);
+    // If initialization is in progress, wait for it
+    if (this.initializationPromise) {
+      console.log('⏳ Waiting for existing initialization to complete...');
+      return this.initializationPromise;
+    }
+    
+    // Create initialization promise to prevent race conditions
+    this.initializationPromise = (async () => {
+      try {
+        this.collectorId = collectorId;
+        console.log(`[${import.meta.env.DEV ? 'DEV MODE' : 'PROD'}] Initializing RequestManagementService for collector:`, collectorId);
       
       // Start session with error handling
       try {
@@ -142,10 +154,15 @@ export class RequestManagementService {
       
       this.isInitialized = true;
       console.log('🎉 RequestManagementService initialized successfully');
-    } catch (error) {
-      console.error('💥 Critical failure initializing RequestManagementService:', error);
-      throw error;
-    }
+      return this;
+      } catch (error) {
+        console.error('💥 Critical failure initializing RequestManagementService:', error);
+        this.initializationPromise = null; // Reset promise on failure
+        throw error;
+      }
+    })();
+    
+    return this.initializationPromise;
   }
 
   /**
