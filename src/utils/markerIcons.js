@@ -74,10 +74,58 @@ const createDustbinIcon = (color, type) => {
   });
 };
 
+// Create a black dustbin icon for digital bins
+const createDigitalBinIcon = () => {
+  const svgTemplate = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 64" width="48" height="64">
+      <!-- Wheels -->
+      <circle cx="12" cy="56" r="4" fill="#1F2937" stroke="#111827" stroke-width="1.5"/>
+      <circle cx="36" cy="56" r="4" fill="#1F2937" stroke="#111827" stroke-width="1.5"/>
+      
+      <!-- Wheel highlights -->
+      <circle cx="12" cy="56" r="2" fill="#4B5563" opacity="0.7"/>
+      <circle cx="36" cy="56" r="2" fill="#4B5563" opacity="0.7"/>
+      
+      <!-- Bin body - Black with dark gray outline -->
+      <path fill="#000000" stroke="#1F2937" stroke-width="1.5" 
+            d="M40,16h-4v-2c0-1.1-0.9-2-2-2H14c-1.1,0-2,0.9-2,2v2H8v32c0,4.4,3.6,8,8,8h16c4.4,0,8-3.6,8-8V16H40z M18,16v-2h12v2H18z"/>
+      
+      <!-- Bin lid -->
+      <path fill="#1F2937" stroke="#1F2937" stroke-width="1.5" 
+            d="M40,16H8c-1.1,0-2-0.9-2-2v-2c0-1.1,0.9-2,2-2h32c1.1,0,2,0.9,2,2v2C42,15.1,41.1,16,40,16z"/>
+      
+      <!-- Lid handle -->
+      <rect x="20" y="10" width="8" height="2" rx="1" fill="#9CA3AF"/>
+      
+      <!-- Digital indicator (D for Digital) -->
+      <path fill="#FFFFFF" d="M18,24 L30,24 Q32,24 32,26 L32,34 Q32,36 30,36 L18,36 Q16,36 16,34 L16,26 Q16,24 18,24 Z"/>
+      <text x="24" y="32" font-size="8" text-anchor="middle" fill="#000000" font-weight="bold" font-family="Arial, sans-serif">D</text>
+      
+      <!-- Type indicator -->
+      <circle cx="38" cy="12" r="6" fill="white" stroke="#1F2937" stroke-width="1.5"/>
+      <text x="38" y="15" font-size="8" text-anchor="middle" fill="#1F2937" font-weight="bold" font-family="Arial, sans-serif">
+        D
+      </text>
+    </svg>
+  `;
+  
+  // Convert SVG to data URL
+  const svgBase64 = btoa(unescape(encodeURIComponent(svgTemplate)));
+  const dataUrl = `data:image/svg+xml;base64,${svgBase64}`;
+  
+  return L.icon({
+    iconUrl: dataUrl,
+    iconSize: [48, 64],
+    iconAnchor: [24, 64],
+    popupAnchor: [0, -64]
+  });
+};
+
 // Create dustbin icons for different types
 export const startMarkerIcon = createDustbinIcon('#22c55e', 'start'); // Green
 export const assignmentMarkerIcon = createDustbinIcon('#3b82f6', 'assignment'); // Blue
 export const requestMarkerIcon = createDustbinIcon('#ef4444', 'request'); // Red
+export const digitalBinMarkerIcon = createDigitalBinIcon(); // Black for digital bins
 
 // Function to get the appropriate icon based on stop type
 export const getStopIcon = (stop) => {

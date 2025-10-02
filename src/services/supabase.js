@@ -4,9 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Development mode to bypass actual SMS sending
-// Set to false for production to use actual Supabase authentication
-// Disabled to use real database data instead of mock data
+// Development mode completely disabled to use real Supabase data
 export const DEV_MODE = false;
 
 // Create dev mode session data with valid JWT claims
@@ -54,11 +52,12 @@ const createDevModeSession = (userId) => {
 const DEV_USER_ID = '6fba1031-839f-4985-a180-9ae0a04b7812';
 const devModeData = createDevModeSession(DEV_USER_ID);
 
-// Create Supabase client with appropriate key based on mode
-// In DEV_MODE, use anon key with modified config to prevent auth errors
+// Always use anon key for client operations (realtime requires it)
+console.log('🔑 Supabase initialized with: ANON_KEY for client operations');
+
 const supabase = createClient(
   supabaseUrl,
-  supabaseAnonKey, // Always use anon key to avoid 401 errors
+  supabaseAnonKey, // Use anon key for all client operations
   {
     auth: {
       autoRefreshToken: !DEV_MODE,

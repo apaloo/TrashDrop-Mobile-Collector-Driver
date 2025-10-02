@@ -17,7 +17,7 @@ import { PickupRequestStatus, WasteType, AssignmentStatus } from '../utils/types
 import { transformRequestsData } from '../utils/requestUtils';
 import { getCurrentLocation, getLocationWithRetry, isWithinRadius } from '../utils/geoUtils';
 import { registerConnectivityListeners } from '../utils/offlineUtils';
-import { supabase, DEV_MODE } from '../services/supabase';
+import { supabase } from '../services/supabase';
 import usePhotoCapture from '../hooks/usePhotoCapture';
 
 // OPTIMIZATION: Memoize RequestCard for better performance
@@ -117,17 +117,40 @@ const RequestPage = () => {
   // Fetch requests from Supabase
   const fetchRequests = useCallback(async () => {
     try {
+      // Clear cache if force reset flag is set (for debugging request issues)
+      if (localStorage.getItem('force_cache_reset')) {
+        localStorage.removeItem('force_cache_reset');
+        setRequestCache({
+          available: { data: [], timestamp: 0 },
+          accepted: { data: [], timestamp: 0 },
+          picked_up: { data: [], timestamp: 0 }
+        });
+        console.log('🔄 Cache reset due to force flag');
+      }
+      
       // SUPER-FAST: Show cached data immediately, then update in background
       if (requestCache.available.data.length > 0) {
-        // Only log instant cache occasionally to reduce console spam
-        if (Math.random() < 0.05) { // 5% chance of logging
-          console.log('⚡ INSTANT: Showing cached data immediately');
+        // Check if cached data contains valid request IDs (not temp or invalid)
+        const validCachedData = requestCache.available.data.filter(req => 
+          req.id && 
+          !req.id.startsWith('temp-') && 
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.id)
+        );
+        
+        if (validCachedData.length > 0) {
+          // Only log instant cache occasionally to reduce console spam
+          if (Math.random() < 0.05) { // 5% chance of logging
+            console.log('⚡ INSTANT: Showing cached data immediately');
+          }
+          setRequests(prev => ({
+            ...prev,
+            available: validCachedData
+          }));
+          setIsLoading(false);
+        } else {
+          console.log('🗑️ Clearing invalid cached data');
+          setIsLoading(true);
         }
-        setRequests(prev => ({
-          ...prev,
-          available: requestCache.available.data
-        }));
-        setIsLoading(false);
       } else {
         setIsLoading(true);
       }
@@ -177,100 +200,107 @@ const RequestPage = () => {
       const online = navigator.onLine;
       setIsOnlineStatus(online);
       
-      if (online || DEV_MODE) {
+      if (online) {
         let availableResult, acceptedResult, pickedUpResult;
         
-        if (DEV_MODE) {
-          console.log('[DEV MODE] Using mock request data...');
-          
-          // Mock data for development
-          availableResult = {
-            data: [
-              {
-                id: '00000000-0000-4000-a000-000000000001',
-                waste_type: 'plastic',
-                coordinates: [5.672505, -0.280669],
-                location: 'East Legon, Accra',
-                fee: 50,
-                status: 'available',
-                priority: 'medium',
-                bag_count: 2,
-                special_instructions: 'Plastic bottles and containers',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              },
-              {
-                id: '00000000-0000-4000-a000-000000000002',
-                waste_type: 'organic',
-                coordinates: [5.6801, -0.2874],
-                location: 'Osu, Accra',
-                fee: 30,
-                status: 'available',
-                priority: 'high',
-                bag_count: 1,
-                special_instructions: 'Food waste and organic materials',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              }
-            ]
-          };
-          
-          acceptedResult = {
-            data: [
-              {
-                id: '00000000-0000-4000-a000-000000000003',
-                waste_type: 'paper',
-                coordinates: [5.6644, -0.2656],
-                location: 'Adabraka, Accra',
-                fee: 25,
-                status: 'accepted',
-                priority: 'low',
-                bag_count: 3,
-                special_instructions: 'Old newspapers and cardboard',
-                collector_id: user?.id,
-                accepted_at: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-                updated_at: new Date().toISOString()
-              }
-            ]
-          };
-          
-          pickedUpResult = { data: [] };
-        } else {
-          // OPTIMIZATION: Parallelize all Supabase queries for faster loading
-          const [
-            availableRes,
-            acceptedRes, 
-            pickedUpRes
-          ] = await Promise.all([
-            // PERFORMANCE: Skip available requests query if we have filtered data from Map
-            filteredRequests.available && filteredRequests.available.length > 0 
-              ? { data: filteredRequests.available } 
-              : supabase
+        try {
+          // Check if user is authenticated before making queries
+          if (!user?.id) {
+            console.warn('User not authenticated, using empty data');
+            availableResult = { data: [] };
+            acceptedResult = { data: [] };
+            pickedUpResult = { data: [] };
+          } else {
+            // OPTIMIZATION: Parallelize all Supabase queries for faster loading
+            const [
+              availableRes,
+              acceptedRes, 
+              pickedUpRes
+            ] = await Promise.all([
+              // PERFORMANCE: Skip available requests query if we have filtered data from Map
+              filteredRequests.available && filteredRequests.available.length > 0 
+                ? { data: filteredRequests.available } 
+                : Promise.all([
+                    // Fetch pickup requests
+                    supabase
+                      .from('pickup_requests')
+                      .select('*')
+                      .eq('status', PickupRequestStatus.AVAILABLE)
+                      .order('created_at', { ascending: false }),
+                    // Fetch digital bins
+                    supabase
+                      .from('digital_bins')
+                      .select('*')
+                      .order('created_at', { ascending: false })
+                  ]).then(([pickupResult, binsResult]) => {
+                    if (pickupResult.error) {
+                      console.warn('Pickup requests query failed:', pickupResult.error);
+                    }
+                    if (binsResult.error) {
+                      console.warn('Digital bins query failed:', binsResult.error);
+                    }
+                    
+                    // Combine data and add source type identification
+                    const pickupRequests = (pickupResult.data || []).map(item => ({
+                      ...item,
+                      source_type: 'pickup_request'
+                    }));
+                    
+                    const digitalBins = (binsResult.data || []).map(item => ({
+                      ...item,
+                      source_type: 'digital_bin',
+                      // Ensure digital bins have required fields for compatibility
+                      status: 'available', // Digital bins are always available
+                      waste_type: item.waste_type || 'general', // Default waste type if not specified
+                      fee: item.fee || 0 // Default fee if not specified
+                    }));
+                    
+                    return { data: [...pickupRequests, ...digitalBins] };
+                  }),
+                  
+              // Get accepted requests (pickup_requests only - digital bins don't get "accepted")
+              supabase
                 .from('pickup_requests')
                 .select('*')
-                .eq('status', PickupRequestStatus.AVAILABLE)
-                .order('created_at', { ascending: false }),
+                .eq('collector_id', user?.id)
+                .eq('status', PickupRequestStatus.ACCEPTED)
+                .order('accepted_at', { ascending: false })
+                .then(result => {
+                  if (result.error) {
+                    console.warn('Accepted requests query failed:', result.error);
+                    return { data: [] };
+                  }
+                  return result;
+                }),
                 
-            // Get accepted requests
-            supabase
-              .from('pickup_requests')
-              .select('*')
-              .eq('collector_id', user?.id)
-              .eq('status', PickupRequestStatus.ACCEPTED)
-              .order('accepted_at', { ascending: false }),
-              
-            // Get picked up requests
-            supabase
-              .from('pickup_requests')
-              .select('*')
-              .eq('collector_id', user?.id)
-              .eq('status', PickupRequestStatus.PICKED_UP)
-              .order('accepted_at', { ascending: false })
-          ]);
+              // Get picked up requests
+              supabase
+                .from('pickup_requests')
+                .select('*')
+                .eq('collector_id', user?.id)
+                .eq('status', PickupRequestStatus.PICKED_UP)
+                .order('accepted_at', { ascending: false })
+                .then(result => {
+                  if (result.error) {
+                    console.warn('Picked up requests query failed:', result.error);
+                    return { data: [] };
+                  }
+                  return result;
+                })
+            ]);
+            
+            availableResult = availableRes;
+            acceptedResult = acceptedRes;
+            pickedUpResult = pickedUpRes;
+          }
+        } catch (error) {
+          console.error('Database query error:', error);
+          showToast('Unable to load requests. Using offline mode.', 'error');
           
-          availableResult = availableRes;
-          acceptedResult = acceptedRes;
-          pickedUpResult = pickedUpRes;
+          // Fallback to empty data
+          availableResult = { data: [] };
+          acceptedResult = { data: [] };
+          pickedUpResult = { data: [] };
         }
         
         // Process results with TURBO mode
@@ -280,6 +310,12 @@ const RequestPage = () => {
         let pickedUpRequests = [];
         
         if (availableResult?.data) {
+          console.log('📊 Database query result:', {
+            availableCount: availableResult.data.length,
+            sampleData: availableResult.data.slice(0, 2),
+            filteredCount: filteredRequests.available?.length || 0
+          });
+          
           // OPTIMIZATION: Use filtered data from Map if available
           if (filteredRequests.available && filteredRequests.available.length > 0) {
             console.log('⚡ TURBO: Using pre-filtered requests');
@@ -287,6 +323,8 @@ const RequestPage = () => {
           } else {
             availableRequests = transformRequestsData(availableResult.data);
           }
+          
+          console.log('📋 Final available requests to display:', availableRequests.length);
           
           // Update request cache for snappy UX
           requestAnimationFrame(() => {
@@ -351,14 +389,16 @@ const RequestPage = () => {
         // Offline: show error message
         setError('No internet connection. Please connect to the internet.');
       }
+      
+      setIsLoading(false);
+      setIsInitialLoading(false);
+      setIsRefreshing(false);
     } catch (error) {
       console.error('Error fetching requests:', error);
       setError('Failed to fetch requests. Please try again.');
-      // Cache removed - no fallback available
-    } finally {
       setIsLoading(false);
-      setIsRefreshing(false);
       setIsInitialLoading(false);
+      setIsRefreshing(false);
     }
   }, [user?.id, filteredRequests, requestCache]);
 
@@ -452,44 +492,43 @@ const RequestPage = () => {
         return;
       }
 
-      // Determine if this is a pickup request or authority assignment
-      const isPickupRequest = !requestToAccept.authority_id;
+      // Determine request type: pickup_request, digital_bin, or authority_assignment
+      const sourceType = requestToAccept.source_type;
+      const isPickupRequest = sourceType === 'pickup_request' || (!sourceType && !requestToAccept.authority_id);
+      const isDigitalBin = sourceType === 'digital_bin';
+      const isAuthorityAssignment = requestToAccept.authority_id;
 
-      // Special handling for DEV_MODE mock requests
-      if (DEV_MODE && isPickupRequest) {
-        console.log('🔧 DEV_MODE: Handling mock request acceptance locally');
-        
-        // Handle mock acceptance in DEV_MODE without database operations
-        const updatedRequest = {
-          ...requestToAccept,
-          status: PickupRequestStatus.ACCEPTED,
-          accepted_at: new Date().toISOString(),
-          collector_id: user?.id
-        };
-        
-        // Update local state only
-        const newAvailable = requests.available.filter(req => req.id !== requestId);
-        const newAccepted = [...requests.accepted, updatedRequest];
-        
-        setRequests({
-          ...requests,
-          available: newAvailable,
-          accepted: newAccepted
-        });
-        
-        if (showToasts) {
-          showToast(`Successfully accepted ${requestToAccept.waste_type || requestToAccept.type} pickup in DEV_MODE!`, 'success');
-          setActiveTab('accepted');
-        }
-        return;
-      }
       
-      // Normal database operations for non-DEV_MODE or authority assignments
+      // Database operations for different request types
       let result;
-      if (isPickupRequest) {
+      if (isDigitalBin) {
+        // Handle digital bin collection - update digital_bins table
+        result = await supabase
+          .from('digital_bins')
+          .update({ 
+            status: 'collected', // Change status to collected
+            collector_id: user?.id,
+            collected_at: new Date().toISOString()
+          })
+          .eq('id', requestId);
+          
+        // Check for database errors
+        if (result.error) {
+          console.error('Digital bin collection failed:', result.error);
+          throw new Error(result.error.message || 'Failed to collect digital bin');
+        }
+        
+        result = { success: true }; // Normalize response format
+      } else if (isPickupRequest) {
+        // Ensure requestManager is initialized
+        if (!requestManager.isInitialized) {
+          console.log('Initializing requestManager before accepting request...');
+          await requestManager.initialize(user?.id);
+        }
+        
         // Use requestManager for pickup requests
         result = await requestManager.acceptRequest(requestId, user?.id);
-      } else {
+      } else if (isAuthorityAssignment) {
         // Direct Supabase call for authority assignments
         result = await supabase
           .from('authority_assignments')
@@ -501,9 +540,12 @@ const RequestPage = () => {
           .eq('id', requestId);
       }
 
-      if (result?.error) {
+      // Check for both success flag and error
+      if (!result?.success || result?.error) {
+        console.error('Request acceptance failed:', result);
+        
         // Handle specific error cases
-        if (result.error.code === '22P02') {
+        if (result?.error?.code === '22P02') {
           console.error('UUID validation error:', result.error);
           showToast('Invalid request ID format. This request may be test data.', 'error');
           
@@ -517,38 +559,58 @@ const RequestPage = () => {
           
           return;
         }
-        throw result.error;
+        
+        // Show the specific error message
+        const errorMessage = result?.error || result?.message || 'Failed to accept request. Please try again.';
+        showToast(errorMessage, 'error');
+        return;
       }
       
-      // Update the status
-      const updatedRequest = {
-        ...requestToAccept,
-        status: isPickupRequest ? PickupRequestStatus.ACCEPTED : AssignmentStatus.ACCEPTED,
-        accepted_at: new Date().toISOString(),
-        collector_id: user?.id
-      };
-      
-      // Remove from available list
+      // Remove from available list for all types
       const newAvailable = requests.available.filter(req => req.id !== requestId);
       
-      // Add to accepted list
-      const newAccepted = [...requests.accepted, updatedRequest];
-      
-      // Update state
-      const updatedRequests = {
-        ...requests,
-        available: newAvailable,
-        accepted: newAccepted
-      };
+      // Handle UI updates based on request type
+      let updatedRequests;
+      if (isDigitalBin) {
+        // Digital bins are just removed from available (they don't go to accepted tab)
+        updatedRequests = {
+          ...requests,
+          available: newAvailable
+        };
+        
+        // Show success toast
+        if (showToasts) {
+          showToast(`Successfully collected digital bin!`, 'success');
+          // Don't switch tabs for digital bins - they're completed immediately
+        }
+      } else {
+        // Update the status for pickup requests and authority assignments
+        const updatedRequest = {
+          ...requestToAccept,
+          status: isPickupRequest ? PickupRequestStatus.ACCEPTED : AssignmentStatus.ACCEPTED,
+          accepted_at: new Date().toISOString(),
+          collector_id: user?.id
+        };
+        
+        // Add to accepted list
+        const newAccepted = [...requests.accepted, updatedRequest];
+        
+        // Update state
+        updatedRequests = {
+          ...requests,
+          available: newAvailable,
+          accepted: newAccepted
+        };
+        
+        // Show success toast and switch tab
+        if (showToasts) {
+          showToast(`Successfully accepted ${requestToAccept.type || requestToAccept.waste_type} ${isPickupRequest ? 'pickup' : 'assignment'}!`, 'success');
+          // Switch to accepted tab
+          setActiveTab('accepted');
+        }
+      }
       
       setRequests(updatedRequests);
-      
-      // Show success toast and switch tab only if showToasts is true
-      if (showToasts) {
-        showToast(`Successfully accepted ${requestToAccept.type || requestToAccept.waste_type} ${isPickupRequest ? 'pickup' : 'assignment'}!`, 'success');
-        // Switch to accepted tab
-        setActiveTab('accepted');
-      }
     } catch (err) {
       console.error('Error accepting request:', err);
       if (err?.message?.includes('already accepted') || err?.message?.includes('reservation expired')) {
@@ -658,11 +720,6 @@ const RequestPage = () => {
         });
         unregister = connectivityListeners?.unregister || null;
 
-        // Skip real-time subscription in DEV_MODE to avoid API errors
-        if (DEV_MODE) {
-          console.log('[DEV MODE] Skipping real-time subscription setup');
-          return;
-        }
 
         // Set up real-time subscription
         subscription = supabase

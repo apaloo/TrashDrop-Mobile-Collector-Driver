@@ -26,9 +26,15 @@ export default defineConfig({
         name: 'TrashDrop Mobile Collector Driver',
         short_name: 'TrashDrop',
         description: 'Mobile app for TrashDrop collectors and drivers',
-        theme_color: '#4CAF50',
+        theme_color: '#9AE65C',
         background_color: '#ffffff',
         icons: [
+          {
+            src: 'logo.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable'
+          },
           {
             src: 'icons/icon-192x192.png',
             sizes: '192x192',

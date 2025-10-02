@@ -124,16 +124,23 @@ const RequestCard = ({
   const renderActionButtons = () => {
     switch (request.status) {
       case PickupRequestStatus.AVAILABLE:
+        // Different styling for digital bins
+        const isDigitalBin = request.source_type === 'digital_bin';
+        const buttonText = isDigitalBin ? 'Collect' : 'Accept';
+        const buttonClasses = isDigitalBin 
+          ? "w-full bg-black hover:bg-gray-800 text-white py-3 px-4 rounded-md flex items-center justify-center"
+          : "w-full bg-green-500 hover:bg-green-600 text-white py-3 px-4 rounded-md flex items-center justify-center";
+        
         return (
           <div>
             <button 
               onClick={() => onAccept && onAccept(request.id)}
-              className="w-full bg-green-500 hover:bg-green-600 text-white py-3 px-4 rounded-md flex items-center justify-center"
+              className={buttonClasses}
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
               </svg>
-              Accept
+              {buttonText}
             </button>
           </div>
         );
@@ -193,8 +200,10 @@ const RequestCard = ({
   
   return (
     <div className={`bg-white rounded-lg shadow-md mb-4 overflow-hidden relative ${selected ? 'ring-2 ring-green-500' : ''}`}>
-      {/* Green accent in top-right corner */}
-      <div className="absolute top-0 right-0 w-12 h-12 bg-green-500 transform rotate-45 translate-x-6 -translate-y-6"></div>
+      {/* Accent in top-right corner - black for digital bins, green for others */}
+      <div className={`absolute top-0 right-0 w-12 h-12 transform rotate-45 translate-x-6 -translate-y-6 ${
+        request.source_type === 'digital_bin' ? 'bg-black' : 'bg-green-500'
+      }`}></div>
       
       {/* Selection checkbox - only shown when selectable is true */}
       {selectable && (
@@ -211,7 +220,9 @@ const RequestCard = ({
       {/* Card Body */}
       <div className="p-4">
         <div className="flex justify-between items-center mb-2">
-          <h3 className="font-medium">Anonymous</h3>
+          <h3 className="font-medium">
+            {request.source_type === 'digital_bin' ? 'Digital Bin' : 'Anonymous'}
+          </h3>
           <div className="text-sm text-gray-500">
             {formatDate(request.created_at)}
           </div>
@@ -220,15 +231,30 @@ const RequestCard = ({
         <h3 className="font-medium text-lg mb-3">{request.location}</h3>
         
         <div className="flex justify-start space-x-4 mb-3">
-          <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
-            {request.bags || 1} bag
+          <span className={`px-3 py-1 rounded-full text-sm ${
+            request.source_type === 'digital_bin' 
+              ? 'bg-gray-100 text-gray-800' 
+              : 'bg-blue-100 text-blue-800'
+          }`}>
+            {request.source_type === 'digital_bin' 
+              ? `${request.waste_type || 'General'} Bin`
+              : `${request.bags || 1} bag`
+            }
           </span>
-          <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm">
-            {request.points || 100} points
-          </span>
-          <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
-            {formatCurrency(request.fee || 8.55, currency)}
-          </span>
+          {request.source_type !== 'digital_bin' && (
+            <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm">
+              {request.points || 100} points
+            </span>
+          )}
+          {request.source_type === 'digital_bin' ? (
+            <span className="bg-black text-white px-3 py-1 rounded-full text-sm">
+              Digital Collection
+            </span>
+          ) : (
+            <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
+              {formatCurrency(request.fee || 8.55, currency)}
+            </span>
+          )}
         </div>
         
         {/* View More Button */}

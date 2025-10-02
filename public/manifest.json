@@ -1,7 +1,7 @@
 {
   "name": "TrashDrop Carter",
   "short_name": "TrashDrop Carter",
-  "theme_color": "#4CAF50",
+  "theme_color": "#9AE65C",
   "background_color": "#ffffff",
   "display": "standalone",
   "orientation": "portrait",
@@ -9,9 +9,9 @@
   "start_url": "/",
   "icons": [
     {
-      "src": "logo.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     },
     {

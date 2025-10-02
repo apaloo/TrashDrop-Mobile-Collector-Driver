@@ -13,7 +13,7 @@ import StatusButton from '../components/StatusButton';
 import { useAuth } from '../context/AuthContext';
 import { supabase, DEV_MODE } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
-import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, getStopIcon } from '../utils/markerIcons';
+import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, getStopIcon, digitalBinMarkerIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
 
 // Simple online status check
@@ -42,8 +42,13 @@ L.Icon.Default.mergeOptions({
 });
 
 // Create waste type icon using imported marker icons
-const createWasteTypeIcon = (type) => {
-  // Map waste types to appropriate dustbin icon colors
+const createWasteTypeIcon = (type, sourceType) => {
+  // Digital bins always use black icon
+  if (sourceType === 'digital_bin') {
+    return digitalBinMarkerIcon;
+  }
+  
+  // Map waste types to appropriate dustbin icon colors for pickup requests
   const typeColorMap = {
     recyclable: 'request',    // Red dustbin for recyclables  
     organic: 'assignment',    // Blue dustbin for organic
@@ -102,7 +107,12 @@ const formatDistance = (distance) => {
 };
 
 // Function to get color based on waste type
-const getWasteTypeColor = (type) => {
+const getWasteTypeColor = (type, sourceType) => {
+  // Digital bins are always black
+  if (sourceType === 'digital_bin') {
+    return '#000000'; // black
+  }
+  
   const colors = {
     'plastic': '#3b82f6', // blue-500
     'paper': '#eab308',   // yellow-500
@@ -128,24 +138,36 @@ const RecenterButton = ({ onClick }) => {
       className="absolute z-10 bottom-28 right-4 bg-white p-2 rounded-full shadow-md"
       aria-label="Recenter map"
     >
-      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+      <svg 
+        xmlns="http://www.w3.org/2000/svg" 
+        className="h-5 w-5" 
+        viewBox="0 0 20 20" 
+        fill="currentColor"
+      >
+        <path 
+          fillRule="evenodd" 
+          d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" 
+          clipRule="evenodd" 
+        />
       </svg>
     </button>
   );
 };
 
 // New Filter Card component that appears at the bottom of the map
-const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
+const FilterCard = ({ filters = {}, updateFilters, applyFilters, getMaxRadius, tempRadiusExtension }) => {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   
-  // Ensure filters has all required properties with defaults (capped for efficiency)
+  // Get current maximum radius (10km standard, 10km during extension)
+  const currentMaxRadius = getMaxRadius ? getMaxRadius() : 10;
+  
+  // Ensure filters has all required properties with defaults (capped to current max)
   const safeFilters = {
-    searchRadius: typeof filters.searchRadius === 'number' ? Math.min(filters.searchRadius, 10) : 5,
+    searchRadius: typeof filters.searchRadius === 'number' ? Math.min(filters.searchRadius, currentMaxRadius) : 5,
     wasteTypes: Array.isArray(filters.wasteTypes) ? filters.wasteTypes : [],
     minPayment: typeof filters.minPayment === 'number' ? filters.minPayment : 0,
     priority: ['all', 'high', 'medium', 'low'].includes(filters.priority) ? filters.priority : 'all',
-    activeFilter: filters.activeFilter || 'all' // Add activeFilter to safeFilters
+    activeFilter: filters.activeFilter || 'all'
   };
   
   // Handle filter changes
@@ -189,7 +211,11 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
       {/* Header Section - Always Visible */}
       <div className="p-4 pb-2">
         <div className="flex justify-between items-center mb-2">
-          <span className="font-medium" style={{ color: '#0a0a0a' }}>Radius: {safeFilters.searchRadius} km</span>
+          <div className="flex flex-col">
+            <span className="font-medium" style={{ color: '#0a0a0a' }}>
+              Radius: {safeFilters.searchRadius} km
+            </span>
+          </div>
           <button
             onClick={() => setFiltersExpanded(!filtersExpanded)}
             className="p-1 hover:bg-gray-100 rounded-full transition-colors duration-200"
@@ -206,19 +232,23 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters }) => {
           </button>
         </div>
         
-        {/* Radius Slider - Always Visible (Capped at 10km for operational efficiency) */}
+        {/* Radius Slider - Dynamic max based on extension status */}
         <input 
           type="range" 
           min="1" 
-          max="10" 
+          max={currentMaxRadius} 
           step="1"
-          value={Math.min(safeFilters.searchRadius, 10)} 
+          value={Math.min(safeFilters.searchRadius, currentMaxRadius)} 
           onChange={(e) => {
             const newDistance = parseFloat(e.target.value) || 5;
             handleFilterChange({ searchRadius: newDistance });
           }} 
           className="w-full accent-green-500"
         />
+        <div className="flex justify-between text-xs text-gray-500 mt-1">
+          <span>1km</span>
+          <span>{currentMaxRadius}km</span>
+        </div>
       </div>
       
       {/* Collapsible Filter Options */}
@@ -361,7 +391,7 @@ const FilterPanel = ({ isOpen, onClose, filters, updateFilters, applyFilters }) 
 const MapPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { filters, updateFilters, updateFilteredRequests } = useFilters();
+  const { filters, updateFilters, updateFilteredRequests, tempRadiusExtension, getMaxRadius } = useFilters();
   const [map, setMap] = useState(null);
   // Default fallback location (Accra, Ghana) for immediate map load
   const DEFAULT_POSITION = [5.6037, -0.1870]; // Accra coordinates
@@ -668,7 +698,7 @@ const MapPage = () => {
       if (DEV_MODE) {
         console.log('[DEV MODE] Using mock pickup requests data...');
         
-        // Mock data for development
+        // Mock data for development - mix of pickup requests and digital bins
         data = [
           {
             id: 'mock-1',
@@ -680,6 +710,7 @@ const MapPage = () => {
             priority: 'medium',
             bag_count: 2,
             special_instructions: 'Plastic bottles and containers',
+            source_type: 'pickup_request',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           },
@@ -693,6 +724,7 @@ const MapPage = () => {
             priority: 'high',
             bag_count: 1,
             special_instructions: 'Food waste and organic materials',
+            source_type: 'pickup_request',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           },
@@ -706,31 +738,95 @@ const MapPage = () => {
             priority: 'low',
             bag_count: 3,
             special_instructions: 'Old newspapers and cardboard',
+            source_type: 'pickup_request',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          // Digital bins
+          {
+            id: 'digital-bin-1',
+            waste_type: 'general',
+            coordinates: [5.6705, -0.2750], // Near East Legon
+            location: 'East Legon Digital Bin Station',
+            fee: 0, // Digital bins are free
+            status: 'available',
+            priority: 'medium',
+            source_type: 'digital_bin',
+            bin_capacity: '80%',
+            last_emptied: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          {
+            id: 'digital-bin-2',
+            waste_type: 'recycling',
+            coordinates: [5.6820, -0.2890], // Near Osu
+            location: 'Osu Smart Recycling Hub',
+            fee: 0,
+            status: 'available',
+            priority: 'high',
+            source_type: 'digital_bin',
+            bin_capacity: '95%',
+            last_emptied: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           }
         ];
       } else if (online) {
-        console.log('Fetching pickup requests from Supabase...');
+        console.log('Fetching pickup requests and digital bins from Supabase...');
         
         // Log Supabase configuration
         console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
         
-        // Fetch available pickup requests
-        const { data: supabaseData, error, count } = await supabase
-          .from('pickup_requests')
-          .select('*', { count: 'exact' })
-          .eq('status', 'available')
-          .order('created_at', { ascending: false });
+        // Fetch data from both tables in parallel
+        const [pickupRequestsResult, digitalBinsResult] = await Promise.all([
+          // Fetch available pickup requests
+          supabase
+            .from('pickup_requests')
+            .select('*', { count: 'exact' })
+            .eq('status', 'available')
+            .order('created_at', { ascending: false }),
+          
+          // Fetch digital bins (assuming they don't have status field)
+          supabase
+            .from('digital_bins')
+            .select('*', { count: 'exact' })
+            .order('created_at', { ascending: false })
+        ]);
         
-        console.log('Supabase query results:', { data: supabaseData, error, count });
+        const { data: pickupData, error: pickupError, count: pickupCount } = pickupRequestsResult;
+        const { data: binsData, error: binsError, count: binsCount } = digitalBinsResult;
         
-        if (error) {
-          console.error('Supabase query error:', error);
-          throw error;
+        console.log('Pickup requests query results:', { data: pickupData, error: pickupError, count: pickupCount });
+        console.log('Digital bins query results:', { data: binsData, error: binsError, count: binsCount });
+        
+        // Handle errors
+        if (pickupError) {
+          console.error('Pickup requests query error:', pickupError);
+          throw pickupError;
         }
         
-        data = supabaseData || [];
+        if (binsError) {
+          console.warn('Digital bins query error (continuing with pickup requests only):', binsError);
+        }
+        
+        // Combine data and add source type identification
+        const pickupRequests = (pickupData || []).map(item => ({
+          ...item,
+          source_type: 'pickup_request'
+        }));
+        
+        const digitalBins = (binsData || []).map(item => ({
+          ...item,
+          source_type: 'digital_bin',
+          // Ensure digital bins have required fields for compatibility
+          status: 'available', // Digital bins are always available
+          waste_type: item.waste_type || 'general', // Default waste type if not specified
+          fee: item.fee || 0 // Default fee if not specified
+        }));
+        
+        // Combine both data sources
+        data = [...pickupRequests, ...digitalBins];
       } else {
         // Offline - no cache available
         showToast('No internet connection. Please connect to view pickup requests.', 'error');
@@ -1512,7 +1608,9 @@ const MapPage = () => {
             <FilterCard 
               filters={filters} 
               updateFilters={updateFilters} 
-              applyFilters={applyFilters} 
+              applyFilters={applyFilters}
+              getMaxRadius={getMaxRadius}
+              tempRadiusExtension={tempRadiusExtension} 
             />
             
             {/* Waste type legend - moved outside map container */}
@@ -1678,7 +1776,7 @@ const MapPage = () => {
                       <Marker
                         key={request.id}
                         position={adjustedCoords}
-                        icon={createWasteTypeIcon(assignedWasteType)}
+                        icon={createWasteTypeIcon(assignedWasteType, request.source_type)}
                         eventHandlers={{
                           click: () => {
                             navigate('/request', { state: { scrollToRequest: request.id } });
@@ -1688,18 +1786,30 @@ const MapPage = () => {
                         <Popup>
                           <div className="text-center max-w-xs">
                             <h3 className="font-medium text-gray-900 mb-1">
-                              {assignedWasteType?.charAt(0).toUpperCase() + assignedWasteType?.slice(1)} Waste
+                              {request.source_type === 'digital_bin' ? (
+                                <>Digital Bin - {assignedWasteType?.charAt(0).toUpperCase() + assignedWasteType?.slice(1)}</>
+                              ) : (
+                                <>{assignedWasteType?.charAt(0).toUpperCase() + assignedWasteType?.slice(1)} Waste</>
+                              )}
                             </h3>
                             <p className="text-sm text-gray-600 mb-2">{request.location}</p>
                             <p className="text-sm text-gray-600 mb-2">
                               Distance: {formatDistance(calculateDistance(position, request.coordinates))}
                             </p>
-                            <p className="text-lg font-bold text-green-600 mb-2">₵{request.fee}</p>
+                            {request.source_type === 'digital_bin' ? (
+                              <p className="text-sm text-blue-600 mb-2 font-medium">Digital Bin Collection</p>
+                            ) : (
+                              <p className="text-lg font-bold text-green-600 mb-2">₵{request.fee}</p>
+                            )}
                             <button
                               onClick={() => navigate('/request', { state: { scrollToRequest: request.id } })}
-                              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                request.source_type === 'digital_bin' 
+                                  ? 'bg-black text-white hover:bg-gray-800' 
+                                  : 'bg-green-600 text-white hover:bg-green-700'
+                              }`}
                             >
-                              Get
+                              {request.source_type === 'digital_bin' ? 'Collect' : 'Get'}
                             </button>
                           </div>
                         </Popup>
