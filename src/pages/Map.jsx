@@ -408,7 +408,6 @@ const MapPage = () => {
       console.log('🗺️ Using default location (Accra, Ghana) to load map immediately');
       return false;
     };
-
     // Save position to cache
     const savePositionToCache = (pos) => {
       try {
@@ -419,14 +418,20 @@ const MapPage = () => {
       }
     };
 
-    // Load cached position first (instant map load)
-    const hasCachedPosition = loadCachedPosition();
-    
-    if (!navigator.geolocation) {
-      setError('Geolocation not supported');
-      setLocationAttempted(true);
-      return;
-    }
+  // Location service setup and management
+  useEffect(() => {
+    let locationInterval;
+    let errorRetryInterval;
+
+    const getLocation = async () => {
+      // Try to load cached position first
+      const hasCachedPosition = loadCachedPosition();
+      
+      if (!navigator.geolocation) {
+        setError('Geolocation not supported');
+        setLocationAttempted(true);
+        return;
+      }
 
     const options = {
       enableHighAccuracy: true,
@@ -509,7 +514,8 @@ const MapPage = () => {
           showToast('Enable location access for accurate results', 'warning', 5000);
           break;
         case err.POSITION_UNAVAILABLE:
-          setError('GPS unavailable. Trying network location...');
+          // Clear error and try network location instead of showing error immediately
+          setError(null);
           setTimeout(() => {
             const fallbackOptions = {
               enableHighAccuracy: false,
@@ -523,7 +529,8 @@ const MapPage = () => {
           }, 2000);
           break;
         case err.TIMEOUT:
-          setError('Location timeout. Retrying...');
+          // Clear error and retry instead of showing error immediately
+          setError(null);
           setTimeout(() => {
             navigator.geolocation.getCurrentPosition(onSuccess, onError, {
               ...options,
@@ -536,15 +543,23 @@ const MapPage = () => {
       }
     };
 
-    // Get initial position
-    navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
-    
-    // Watch for real-time updates
-    const watchId = navigator.geolocation.watchPosition(onSuccess, onError, options);
-    setWatchId(watchId);
+      // Get initial position
+      navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
+      
+      // Watch for real-time updates
+      const watchId = navigator.geolocation.watchPosition(onSuccess, onError, options);
+      setWatchId(watchId);
+
+      return () => {
+        if (watchId) navigator.geolocation.clearWatch(watchId);
+      };
+    };
+
+    getLocation();
 
     return () => {
-      if (watchId) navigator.geolocation.clearWatch(watchId);
+      if (locationInterval) clearInterval(locationInterval);
+      if (errorRetryInterval) clearInterval(errorRetryInterval);
     };
   }, []);
 
