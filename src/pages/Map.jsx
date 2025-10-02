@@ -1546,14 +1546,14 @@ const MapPage = () => {
               />
               
               {/* GPS Status Indicator */}
-              {(isUsingCachedLocation || isUsingFallbackLocation) && (
-                <div className="bg-orange-500 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 animate-pulse">
-                  <div className="w-2 h-2 bg-white rounded-full animate-spin"></div>
-                  {isUsingFallbackLocation 
-                    ? 'Getting GPS...' 
-                    : isUsingCachedLocation
-                      ? 'Using Cached' 
-                      : 'GPS Acquiring'
+              {(isUsingCachedLocation || isUsingFallbackLocation || error) && (
+                <div className={`text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 ${
+                  error ? 'bg-red-500' : 'bg-orange-500 animate-pulse'
+                }`}>
+                  <div className={`w-2 h-2 bg-white rounded-full ${error ? '' : 'animate-spin'}`}></div>
+                  {error 
+                    ? 'Using Cached' 
+                    : 'Getting GPS...'
                   }
                 </div>
               )}
