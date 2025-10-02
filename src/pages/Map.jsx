@@ -422,6 +422,7 @@ const MapPage = () => {
   useEffect(() => {
     let locationInterval;
     let errorRetryInterval;
+    let watchId;
 
     const getLocation = async () => {
       // Try to load cached position first
@@ -547,12 +548,8 @@ const MapPage = () => {
       navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
       
       // Watch for real-time updates
-      const watchId = navigator.geolocation.watchPosition(onSuccess, onError, options);
+      watchId = navigator.geolocation.watchPosition(onSuccess, onError, options);
       setWatchId(watchId);
-
-      return () => {
-        if (watchId) navigator.geolocation.clearWatch(watchId);
-      };
     };
 
     getLocation();
@@ -560,6 +557,7 @@ const MapPage = () => {
     return () => {
       if (locationInterval) clearInterval(locationInterval);
       if (errorRetryInterval) clearInterval(errorRetryInterval);
+      if (watchId) navigator.geolocation.clearWatch(watchId);
     };
   }, []);
 
