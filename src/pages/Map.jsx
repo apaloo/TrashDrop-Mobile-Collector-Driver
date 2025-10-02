@@ -371,6 +371,7 @@ const MapPage = () => {
   const [isUsingFallbackLocation, setIsUsingFallbackLocation] = useState(true); // Track if using default fallback
   const [error, setError] = useState(null);
   const [showCachedFlash, setShowCachedFlash] = useState(false); // Brief flash for "Using Cached"
+  const [hasGoodAccuracy, setHasGoodAccuracy] = useState(false); // Track if we have <=50m accuracy
   const [watchId, setWatchId] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [locationAttempted, setLocationAttempted] = useState(false);
@@ -442,6 +443,16 @@ const MapPage = () => {
       // Only switch from cached/fallback to live GPS if accuracy is better than 50m
       const isAccurateEnough = accuracy <= 50;
       
+      // Track when we achieve good accuracy (≤50m) to hide "Getting GPS..." indicator
+      if (isAccurateEnough && !hasGoodAccuracy) {
+        setHasGoodAccuracy(true);
+        console.log('✅ GPS accuracy achieved! ±' + Math.round(accuracy) + 'm - hiding "Getting GPS..." indicator');
+      } else if (!isAccurateEnough && hasGoodAccuracy) {
+        // Show indicator again when accuracy degrades beyond 50m
+        setHasGoodAccuracy(false);
+        console.log('⚠️ GPS accuracy degraded to ±' + Math.round(accuracy) + 'm - showing "Getting GPS..." again');
+      }
+      
       // Check if this is a significant location update
       if (isUsingCachedLocation) {
         if (isAccurateEnough) {
@@ -450,7 +461,7 @@ const MapPage = () => {
         } else {
           // Reduce low accuracy GPS logging to prevent spam
           if (Math.random() < 0.02) {
-            console.log('📍 GPS reading too inaccurate, keeping cached location:', `±${Math.round(accuracy)}m (need <50m)`);
+            console.log('📍 GPS reading too inaccurate, keeping cached location:', `±${Math.round(accuracy)}m (need ≤50m)`);
           }
           return; // Don't update position if accuracy is poor
         }
@@ -465,7 +476,7 @@ const MapPage = () => {
         } else {
           // Reduce low accuracy GPS logging to prevent spam  
           if (Math.random() < 0.02) {
-            console.log('📍 GPS reading too inaccurate, keeping fallback location:', `±${Math.round(accuracy)}m (need <50m)`);
+            console.log('📍 GPS reading too inaccurate, keeping fallback location:', `±${Math.round(accuracy)}m (need ≤50m)`);
           }
           return; // Don't update position if accuracy is poor
         }
@@ -1554,8 +1565,8 @@ const MapPage = () => {
                 className="transition-all duration-300 hover:scale-105"
               />
               
-              {/* GPS Status Indicator */}
-              {(isUsingCachedLocation || isUsingFallbackLocation || error || showCachedFlash) && (
+              {/* GPS Status Indicator - Hide when accuracy ≤50m achieved */}
+              {(isUsingCachedLocation || isUsingFallbackLocation || error || showCachedFlash) && !hasGoodAccuracy && (
                 <div className={`text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 transition-all duration-300 ${
                   (showCachedFlash || (error && error.includes('denied'))) ? 'bg-red-500' : 'bg-orange-500 animate-pulse'
                 }`}>
@@ -1596,14 +1607,19 @@ const MapPage = () => {
                             ? 'Default Location (Acquiring GPS...)'
                             : isUsingCachedLocation 
                               ? 'Cached Position (Updating...)' 
-                              : 'Live GPS Position'
+                              : hasGoodAccuracy 
+                                ? 'Live GPS Position (High Accuracy ≤50m)'
+                                : 'Live GPS Position'
                           }
                         </p>
                         {lastUpdated && !isUsingCachedLocation && !isUsingFallbackLocation && (
                           <p className="text-xs text-green-600">Updated: {lastUpdated}</p>
                         )}
-                        {(isUsingCachedLocation || isUsingFallbackLocation) && (
+                        {(isUsingCachedLocation || isUsingFallbackLocation) && !hasGoodAccuracy && (
                           <p className="text-xs text-orange-600">🔄 Acquiring GPS...</p>
+                        )}
+                        {hasGoodAccuracy && (
+                          <p className="text-xs text-green-600">✅ Accuracy ≤50m achieved</p>
                         )}
                       </div>
                     </Popup>

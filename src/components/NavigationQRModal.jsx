@@ -333,6 +333,11 @@ const NavigationQRModal = ({
 
   // Handle retry location button
   const handleRetryLocation = useCallback(async () => {
+    // Provide haptic feedback on mobile devices
+    if (navigator.vibrate) {
+      navigator.vibrate(50); // Short vibration for button press
+    }
+    
     setIsLoading(true);
     setError(null);
     
@@ -345,6 +350,11 @@ const NavigationQRModal = ({
           message: 'Location updated successfully',
           type: 'success'
         });
+        
+        // Success haptic feedback
+        if (navigator.vibrate) {
+          navigator.vibrate([100, 50, 100]); // Success pattern
+        }
       }
     } catch (err) {
       console.error('❌ Location retry failed:', err);
@@ -352,6 +362,11 @@ const NavigationQRModal = ({
         message: 'Unable to get location. Please check your GPS settings.',
         type: 'error'
       });
+      
+      // Error haptic feedback
+      if (navigator.vibrate) {
+        navigator.vibrate([200, 100, 200]); // Error pattern
+      }
     } finally {
       setIsLoading(false);
     }
@@ -785,23 +800,34 @@ const requestCameraPermission = useCallback(async () => {
                 </div>
               )}
             </div>
-            <div className="flex space-x-2">
+            <div className="flex space-x-2 min-w-0">
               {mode === 'navigation' && (
                 <>
                   {error && !isWithinGeofence && (
                     <button
                       onClick={handleRetryLocation}
-                      className="px-4 py-2 text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-medium"
+                      className="relative p-2 text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 hover:shadow-md active:scale-95 active:bg-blue-100 transition-all duration-200 font-medium flex-shrink-0 transform hover:scale-105 overflow-hidden group"
                       disabled={isLoading}
+                      title={isLoading ? 'Retrying...' : 'Retry Location'}
                     >
-                      Retry Location
+                      {/* Ripple effect overlay */}
+                      <div className="absolute inset-0 rounded-lg opacity-0 group-active:opacity-100 group-active:animate-ping bg-blue-200 transition-opacity duration-300"></div>
+                      
+                      {/* Pulse effect on click */}
+                      <div className={`absolute inset-0 rounded-lg transition-all duration-500 ${isLoading ? 'animate-pulse bg-blue-100' : ''}`}></div>
+                      
+                      <div className={`relative transition-all duration-300 ${isLoading ? 'animate-spin' : 'hover:rotate-180 group-active:rotate-90 group-active:scale-110'}`}>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </div>
                     </button>
                   )}
                   {/* Only show Scan Now button when within 50m geofence */}
                   {isWithinGeofence ? (
                     <button
                       onClick={handleSwitchToQR}
-                      className={`px-6 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm transform hover:scale-105 ${
+                      className={`flex-1 min-w-0 px-3 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm transform hover:scale-105 ${
                         isCameraPreloading
                           ? 'bg-green-500 opacity-75'
                           : 'bg-green-600 hover:bg-green-700 hover:shadow-lg'
@@ -809,18 +835,18 @@ const requestCameraPermission = useCallback(async () => {
                       aria-label="Switch to QR code scanning"
                       disabled={isLoading || hasCameraPermission === false || isCameraPreloading}
                     >
-                      <div className="flex items-center justify-center">
+                      <div className="flex items-center justify-center min-w-0">
                         {isCameraPreloading ? (
                           <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                            Preparing Camera...
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2 flex-shrink-0"></div>
+                            <span className="truncate">Preparing Camera...</span>
                           </>
                         ) : (
                           <>
-                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m0 14v1m8-8h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" />
                             </svg>
-                            Scan Now
+                            <span className="truncate">Scan Now</span>
                           </>
                         )}
                       </div>
@@ -828,7 +854,7 @@ const requestCameraPermission = useCallback(async () => {
                   ) : (
                     <button
                       onClick={handleStartNavigation}
-                      className={`px-6 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm ${
+                      className={`flex-1 min-w-0 px-3 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm ${
                         navigationStarted
                           ? 'bg-blue-700 hover:bg-blue-800'
                           : 'bg-blue-600 hover:bg-blue-700'
@@ -836,7 +862,9 @@ const requestCameraPermission = useCallback(async () => {
                       aria-label="Start navigation"
                       disabled={isLoading}
                     >
-                      {navigationStarted ? 'Navigating...' : 'Start Navigation'}
+                      <span className="truncate">
+                        {navigationStarted ? 'Navigating...' : 'Start Navigation'}
+                      </span>
                     </button>
                   )}
                 </>
