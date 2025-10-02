@@ -438,21 +438,48 @@ const MapPage = () => {
       const { latitude, longitude, accuracy } = pos.coords;
       const newPos = [latitude, longitude];
       
+      // Only switch from cached/fallback to live GPS if accuracy is better than 50m
+      const isAccurateEnough = accuracy <= 50;
+      
       // Check if this is a significant location update
       if (isUsingCachedLocation) {
-        console.log('🎯 GPS location acquired! Updating from cached to real position:', newPos, `±${Math.round(accuracy)}m`);
-        setIsUsingCachedLocation(false); // Mark as no longer using cached location
-      } else if (isUsingFallbackLocation) {
-        // Reduce GPS location logging to 5% frequency to prevent spam
-        if (Math.random() < 0.05) {
-          console.log('🎯 GPS location acquired! Updating from default to real position:', newPos, `±${Math.round(accuracy)}m`);
-          console.log('💾 Position cached for next time');
+        if (isAccurateEnough) {
+          console.log('🎯 GPS location acquired! Updating from cached to real position:', newPos, `±${Math.round(accuracy)}m`);
+          setIsUsingCachedLocation(false); // Mark as no longer using cached location
+        } else {
+          // Reduce low accuracy GPS logging to prevent spam
+          if (Math.random() < 0.02) {
+            console.log('📍 GPS reading too inaccurate, keeping cached location:', `±${Math.round(accuracy)}m (need <50m)`);
+          }
+          return; // Don't update position if accuracy is poor
         }
-        setIsUsingFallbackLocation(false); // Mark as no longer using fallback
+      } else if (isUsingFallbackLocation) {
+        if (isAccurateEnough) {
+          // Reduce GPS location logging to 5% frequency to prevent spam
+          if (Math.random() < 0.05) {
+            console.log('🎯 GPS location acquired! Updating from default to real position:', newPos, `±${Math.round(accuracy)}m`);
+            console.log('💾 Position cached for next time');
+          }
+          setIsUsingFallbackLocation(false); // Mark as no longer using fallback
+        } else {
+          // Reduce low accuracy GPS logging to prevent spam  
+          if (Math.random() < 0.02) {
+            console.log('📍 GPS reading too inaccurate, keeping fallback location:', `±${Math.round(accuracy)}m (need <50m)`);
+          }
+          return; // Don't update position if accuracy is poor
+        }
       } else {
-        // Reduce regular GPS update logging to 2% frequency
-        if (Math.random() < 0.02) {
-          console.log('📍 GPS location updated:', newPos, `±${Math.round(accuracy)}m`);
+        // For live GPS updates, always update but log based on accuracy
+        if (isAccurateEnough) {
+          // Reduce regular GPS update logging to 2% frequency
+          if (Math.random() < 0.02) {
+            console.log('📍 GPS location updated:', newPos, `±${Math.round(accuracy)}m`);
+          }
+        } else {
+          // Reduce low accuracy update logging
+          if (Math.random() < 0.01) {
+            console.log('📍 GPS location updated (low accuracy):', newPos, `±${Math.round(accuracy)}m`);
+          }
         }
       }
       
@@ -1524,7 +1551,7 @@ const MapPage = () => {
                   <div className="w-2 h-2 bg-white rounded-full animate-spin"></div>
                   {isUsingFallbackLocation 
                     ? 'Getting GPS...' 
-                    : error 
+                    : isUsingCachedLocation
                       ? 'Using Cached' 
                       : 'GPS Acquiring'
                   }
