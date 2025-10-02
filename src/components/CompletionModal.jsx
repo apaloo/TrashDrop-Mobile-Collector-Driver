@@ -164,6 +164,11 @@ const CompletionModal = ({
       setLocationVerified(withinRange);
     }
   };
+
+  // Add the missing verifyLocation function
+  const verifyLocation = () => {
+    getUserLocation();
+  };
   
   if (!isOpen || !assignment) return null;
   
@@ -289,10 +294,10 @@ const CompletionModal = ({
   };
   
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isOpen ? 'visible' : 'invisible'}`}>
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isOpen ? 'visible' : 'invisible'}`} style={{ paddingTop: '4rem', paddingBottom: '5rem' }}>
       <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose}></div>
       
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto z-10 relative">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-full overflow-y-auto z-10 relative mx-4">
         {/* Header */}
         <div className="p-4 border-b border-gray-200 sticky top-0 bg-white z-20">
           <h2 className="text-xl font-semibold text-gray-800">Complete Assignment</h2>

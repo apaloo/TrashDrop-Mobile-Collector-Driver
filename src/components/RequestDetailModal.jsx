@@ -376,8 +376,8 @@ const RequestDetailModal = ({ request, onClose }) => {
   };
   
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" style={{ paddingTop: '4rem', paddingBottom: '5rem' }}>
+      <div className="bg-white rounded-lg w-full max-w-3xl max-h-full flex flex-col">
         <div className="p-4 border-b flex justify-between items-center">
           <h2 className="text-lg font-medium">Request Details</h2>
           <button onClick={onClose} className="text-gray-500">

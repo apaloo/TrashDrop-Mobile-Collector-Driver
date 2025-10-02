@@ -118,7 +118,10 @@ const AssignmentNavigationModal = ({
         
         // Handle PostGIS binary format - use fallback coordinates
         if (dest.startsWith('0101000020')) {
-          console.warn('⚠️ PostGIS binary format detected - using fallback coordinates for assignment');
+          // Reduce PostGIS warning spam to 1% frequency
+          if (Math.random() < 0.01) {
+            console.warn('⚠️ PostGIS binary format detected - using fallback coordinates for assignment');
+          }
           // Return Accra coordinates as fallback but mark as fallback
           return { lat: 5.6037, lng: -0.1870, isFallback: true };
         }
@@ -343,22 +346,6 @@ const AssignmentNavigationModal = ({
           // Check if within 50m radius (0.05km)
           const withinGeofence = distance <= 0.05;
           
-          // Check if we're using fallback coordinates (prevent false arrivals)
-          const usingFallbackDestination = destinationObj.isFallback;
-          const usingFallbackUserLocation = position.isFallback;
-          
-          console.log(`📍 Distance to ${assignmentTitle}: ${formatDistance(distance)} | Within 50m: ${withinGeofence} | Fallback dest: ${usingFallbackDestination} | Fallback user: ${usingFallbackUserLocation}`);
-          
-          // DEBUG: Additional logging for troubleshooting  
-          console.log('🔍 Debug info:', { 
-            distance, 
-            withinGeofence, 
-            usingFallbackDestination, 
-            usingFallbackUserLocation, 
-            destinationObj, 
-            position 
-          });
-          
           // Update geofence status - only if using real coordinates
           const canDetectArrival = !usingFallbackDestination && !usingFallbackUserLocation;
           const userWithinGeofence = withinGeofence && canDetectArrival;
@@ -384,7 +371,10 @@ const AssignmentNavigationModal = ({
               type: 'success'
             });
           } else if (withinGeofence && (usingFallbackDestination || usingFallbackUserLocation)) {
-            console.log('⚠️ Cannot verify precise arrival - using fallback coordinates');
+            // Reduce fallback coordinate warning spam to 1% frequency
+            if (Math.random() < 0.01) {
+              console.log('⚠️ Cannot verify precise arrival - using fallback coordinates');
+            }
             setWithinGeofence(false); // Don't show arrival state with fallback coords
             showToast({
               message: 'Unable to verify precise location. Please ensure GPS is enabled for accurate distance tracking.',
@@ -392,7 +382,10 @@ const AssignmentNavigationModal = ({
             });
           }
         } else {
-          console.warn('Unable to calculate distance - missing coordinates:', { position, destinationObj, destination });
+          // Reduce missing coordinates warning to 1% frequency
+          if (Math.random() < 0.01) {
+            console.warn('Unable to calculate distance - missing coordinates:', { position, destinationObj, destination });
+          }
         }
       } catch (err) {
           console.error('Error updating location:', err);
@@ -491,8 +484,8 @@ const AssignmentNavigationModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black bg-opacity-60 flex items-center justify-center overflow-y-auto py-8">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[95vh] overflow-hidden flex flex-col my-4 mx-4 sm:mx-auto">
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-60 flex items-center justify-center overflow-y-auto" style={{ paddingTop: '4rem', paddingBottom: '5rem' }}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-full overflow-hidden flex flex-col mx-4">
         {/* Header */}
         <div className="p-5 border-b flex justify-between items-center">
           <h2 className="text-xl font-semibold text-gray-800">

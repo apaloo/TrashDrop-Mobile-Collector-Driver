@@ -9,9 +9,9 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const { sendOtp, login, loading: authLoading, error: authError, user } = useAuth();
   
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('+233501234567'); // Default valid phone for dev mode
   const [otpSent, setOtpSent] = useState(false);
-  const [otp, setOtp] = useState('');
+  const [otp, setOtp] = useState('123456'); // Default dev OTP
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
@@ -52,10 +52,11 @@ const LoginPage = () => {
           // Store in localStorage for persistence
           localStorage.setItem('dev_mode_session', JSON.stringify(mockSession));
           
-          // First send OTP
-          await sendOtp(phoneNumber);
-          // Then verify with default code
-          const { success } = await login(phoneNumber, otp);
+          // Skip actual OTP sending in dev mode - just simulate it
+          console.log('🔧 DEV MODE: Skipping real OTP, using mock authentication');
+          
+          // Simulate successful authentication without real OTP
+          const { success } = await login(phoneNumber, '123456'); // Default dev OTP
           
           if (success) {
             console.log('Auto-login successful!');

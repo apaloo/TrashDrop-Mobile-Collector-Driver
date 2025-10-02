@@ -662,8 +662,8 @@ const requestCameraPermission = useCallback(async () => {
 
   // Main component render
   return (
-    <div className="fixed inset-0 z-50 bg-black bg-opacity-60 flex items-center justify-center overflow-y-auto py-8">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[95vh] overflow-hidden flex flex-col my-4 mx-4 sm:mx-auto">
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-60 flex items-center justify-center overflow-y-auto" style={{ paddingTop: '4rem', paddingBottom: '5rem' }}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-full overflow-hidden flex flex-col mx-4">
         {/* Header */}
         <div className="p-5 border-b flex justify-between items-center">
           <h2 className="text-xl font-semibold text-gray-800">

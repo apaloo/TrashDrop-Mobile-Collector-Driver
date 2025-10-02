@@ -443,10 +443,17 @@ const MapPage = () => {
         console.log('🎯 GPS location acquired! Updating from cached to real position:', newPos, `±${Math.round(accuracy)}m`);
         setIsUsingCachedLocation(false); // Mark as no longer using cached location
       } else if (isUsingFallbackLocation) {
-        console.log('🎯 GPS location acquired! Updating from default to real position:', newPos, `±${Math.round(accuracy)}m`);
+        // Reduce GPS location logging to 5% frequency to prevent spam
+        if (Math.random() < 0.05) {
+          console.log('🎯 GPS location acquired! Updating from default to real position:', newPos, `±${Math.round(accuracy)}m`);
+          console.log('💾 Position cached for next time');
+        }
         setIsUsingFallbackLocation(false); // Mark as no longer using fallback
       } else {
-        console.log('📍 GPS location updated:', newPos, `±${Math.round(accuracy)}m`);
+        // Reduce regular GPS update logging to 2% frequency
+        if (Math.random() < 0.02) {
+          console.log('📍 GPS location updated:', newPos, `±${Math.round(accuracy)}m`);
+        }
       }
       
       setPosition(newPos);
@@ -847,7 +854,10 @@ const MapPage = () => {
     // Check collector status - only show requests if online (Uber-like behavior)
     const statusInfo = statusService.getStatus();
     if (!statusInfo.isOnline) {
-      console.log('👤 Collector is offline - hiding all requests (Uber-style)');
+      // Reduce offline logging to 1% frequency to prevent spam
+      if (Math.random() < 0.01) {
+        console.log('👤 Collector is offline - hiding all requests (Uber-style)');
+      }
       setRequests([]);
       updateFilteredRequests([]);
       return;
@@ -857,14 +867,17 @@ const MapPage = () => {
     const activeFilter = safeFilters.activeFilter || 'all';
     const radiusKm = parseFloat(safeFilters.searchRadius) || 5;
     
-    console.log('🎯 Filter criteria:', { activeFilter, radiusKm, collectorStatus: statusInfo.status });
-    console.log('DEBUG: Sample requests:', allRequests.slice(0, 2));
-    console.log('🗂️ Waste types in requests:', allRequests.map(r => r.waste_type || r.type).filter(Boolean));
+    // Reduce filter criteria logging to 1% frequency to prevent spam
+    if (Math.random() < 0.01) {
+      console.log('🎯 Filter criteria:', { activeFilter, radiusKm, collectorStatus: statusInfo.status });
+      console.log('DEBUG: Sample requests:', allRequests.slice(0, 2));
+      console.log('🗂️ Waste types in requests:', allRequests.map(r => r.waste_type || r.type).filter(Boolean));
+    }
     
     const searchRadius = filters.searchRadius || filters.maxDistance || 5; // Use searchRadius with fallback to maxDistance
     
     const filteredRequests = allRequests.filter(req => {
-      // Skip if request is invalid
+      // Skip if request is invalid  
       if (!req || !req.coordinates) {
         console.log('❌ Filtered out - invalid request or no coordinates:', req?.id);
         return false;
@@ -886,8 +899,8 @@ const MapPage = () => {
           
           // Apply distance filtering properly
           if (distance > radiusKm) {
-            // Reduce console spam - only log 20% of filtered out requests
-            if (Math.random() < 0.2) {
+            // Reduce console spam - only log 1% of filtered out requests
+            if (Math.random() < 0.01) {
               console.log('❌ Filtered out - distance too far:', req.id, 'distance:', distance.toFixed(2) + 'km', 'limit:', radiusKm + 'km');
             }
             return false;
@@ -896,8 +909,8 @@ const MapPage = () => {
           // Add distance to request for sorting
           req.distance = distance;
           
-          // Reduce console spam - only log 10% of passed requests
-          if (Math.random() < 0.1) {
+          // Reduce console spam - only log 1% of passed requests
+          if (Math.random() < 0.01) {
             if (isUsingFallbackLocation) {
               console.log('📍 Request passed filter (fallback location):', req.id, 'distance:', distance.toFixed(2) + 'km');
             } else {
@@ -950,12 +963,15 @@ const MapPage = () => {
       filteredRequests.sort((a, b) => (a.distance || 0) - (b.distance || 0));
     }
     
-    console.log('Filtered requests:', filteredRequests.length, 'out of', allRequests.length);
+    // Reduce filtered results logging to 1% frequency
+    if (Math.random() < 0.01) {
+      console.log('Filtered requests:', filteredRequests.length, 'out of', allRequests.length);
+    }
     setRequests(filteredRequests);
     
     // DEBUG: Log what we're sharing with Request page
-    // Reduce logging frequency for debug sharing - only 10% of the time
-    if (Math.random() < 0.1) {
+    // Reduce logging frequency for debug sharing - only 1% of the time
+    if (Math.random() < 0.01) {
       console.log('DEBUG: Sharing filtered requests with Request page:', {
         available: filteredRequests,
         count: filteredRequests.length,
@@ -975,8 +991,8 @@ const MapPage = () => {
   // Effect to reapply filters when position becomes available
   useEffect(() => {
     if (position && position[0] && position[1] && allRequests.length > 0) {
-      // Reduce logging frequency - only 20% of the time
-      if (Math.random() < 0.2) {
+      // Reduce position reload logging to 1% frequency to prevent spam
+      if (Math.random() < 0.01) {
         console.log('DEBUG: Position loaded, reapplying filters');
       }
       setTimeout(() => applyFilters(), 100); // Small delay to ensure state is updated
@@ -1471,8 +1487,8 @@ const MapPage = () => {
                     return '?';
                   }
                   
-                  // Log the current state for debugging - reduced frequency to 5%
-                  if (Math.random() < 0.05) {
+                  // Log the current state for debugging - reduced frequency to 1%
+                  if (Math.random() < 0.01) {
                     console.log('Request count display:', {
                       totalRequests: allRequests?.length || 0,
                       filteredRequests: requests.length,
