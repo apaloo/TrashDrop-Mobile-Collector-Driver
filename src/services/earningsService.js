@@ -35,6 +35,37 @@ class EarningsService {
           success: true,
           data: {
             transactions: mockTransactions,
+            chartData: {
+              week: [
+                { label: 'Mon', amount: 20 },
+                { label: 'Tue', amount: 0 },
+                { label: 'Wed', amount: 30 },
+                { label: 'Thu', amount: 25 },
+                { label: 'Fri', amount: 50 },
+                { label: 'Sat', amount: 0 },
+                { label: 'Sun', amount: 0 }
+              ],
+              month: [
+                { label: 'W1', amount: 75 },
+                { label: 'W2', amount: 50 },
+                { label: 'W3', amount: 0 },
+                { label: 'W4', amount: 0 }
+              ],
+              year: [
+                { label: 'Jan', amount: 125 },
+                { label: 'Feb', amount: 0 },
+                { label: 'Mar', amount: 0 },
+                { label: 'Apr', amount: 0 },
+                { label: 'May', amount: 0 },
+                { label: 'Jun', amount: 0 },
+                { label: 'Jul', amount: 0 },
+                { label: 'Aug', amount: 0 },
+                { label: 'Sep', amount: 0 },
+                { label: 'Oct', amount: 0 },
+                { label: 'Nov', amount: 0 },
+                { label: 'Dec', amount: 0 }
+              ]
+            },
             stats: {
               totalEarnings: 125,
               completedJobs: 2,
@@ -86,10 +117,57 @@ class EarningsService {
         customer: `Customer #${pickup.id}`
       })) || [];
 
+      // Generate chart data from actual pickup data
+      const generateChartData = (pickups) => {
+        const today = new Date();
+        
+        // Week data (last 7 days)
+        const weekData = Array.from({ length: 7 }, (_, i) => {
+          const date = new Date(today - i * 24 * 60 * 60 * 1000);
+          const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
+          const dayEarnings = pickups
+            ?.filter(p => new Date(p.picked_up_at).toDateString() === date.toDateString())
+            ?.reduce((sum, p) => sum + (p.fee || 0), 0) || 0;
+          return { label: dayName, amount: dayEarnings };
+        }).reverse();
+
+        // Month data (last 4 weeks)
+        const monthData = Array.from({ length: 4 }, (_, i) => {
+          const weekStart = new Date(today - (i + 1) * 7 * 24 * 60 * 60 * 1000);
+          const weekEnd = new Date(today - i * 7 * 24 * 60 * 60 * 1000);
+          const weekEarnings = pickups
+            ?.filter(p => {
+              const pickupDate = new Date(p.picked_up_at);
+              return pickupDate >= weekStart && pickupDate < weekEnd;
+            })
+            ?.reduce((sum, p) => sum + (p.fee || 0), 0) || 0;
+          return { label: `W${4-i}`, amount: weekEarnings };
+        }).reverse();
+
+        // Year data (last 12 months)
+        const yearData = Array.from({ length: 12 }, (_, i) => {
+          const monthStart = new Date(today.getFullYear(), today.getMonth() - i, 1);
+          const monthEnd = new Date(today.getFullYear(), today.getMonth() - i + 1, 0);
+          const monthName = monthStart.toLocaleDateString('en-US', { month: 'short' });
+          const monthEarnings = pickups
+            ?.filter(p => {
+              const pickupDate = new Date(p.picked_up_at);
+              return pickupDate >= monthStart && pickupDate <= monthEnd;
+            })
+            ?.reduce((sum, p) => sum + (p.fee || 0), 0) || 0;
+          return { label: monthName, amount: monthEarnings };
+        }).reverse();
+
+        return { week: weekData, month: monthData, year: yearData };
+      };
+
+      const chartData = generateChartData(completedPickups);
+
       return {
         success: true,
         data: {
           transactions,
+          chartData,
           stats: {
             totalEarnings,
             completedJobs,

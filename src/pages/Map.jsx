@@ -370,6 +370,7 @@ const MapPage = () => {
   const [isUsingCachedLocation, setIsUsingCachedLocation] = useState(false); // Track if using cached location
   const [isUsingFallbackLocation, setIsUsingFallbackLocation] = useState(true); // Track if using default fallback
   const [error, setError] = useState(null);
+  const [showCachedFlash, setShowCachedFlash] = useState(false); // Brief flash for "Using Cached"
   const [watchId, setWatchId] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [locationAttempted, setLocationAttempted] = useState(false);
@@ -408,6 +409,7 @@ const MapPage = () => {
       console.log('🗺️ Using default location (Accra, Ghana) to load map immediately');
       return false;
     };
+
     // Save position to cache
     const savePositionToCache = (pos) => {
       try {
@@ -418,21 +420,14 @@ const MapPage = () => {
       }
     };
 
-  // Location service setup and management
-  useEffect(() => {
-    let locationInterval;
-    let errorRetryInterval;
-    let watchId;
-
-    const getLocation = async () => {
-      // Try to load cached position first
-      const hasCachedPosition = loadCachedPosition();
-      
-      if (!navigator.geolocation) {
-        setError('Geolocation not supported');
-        setLocationAttempted(true);
-        return;
-      }
+    // Load cached position first (instant map load)
+    const hasCachedPosition = loadCachedPosition();
+    
+    if (!navigator.geolocation) {
+      setError('Geolocation not supported');
+      setLocationAttempted(true);
+      return;
+    }
 
     const options = {
       enableHighAccuracy: true,
@@ -503,35 +498,40 @@ const MapPage = () => {
       }
       setLocationAttempted(true);
       
-      // If GPS fails, we're no longer "acquiring" GPS even though we might still be using cached location
-      if (isUsingCachedLocation) {
-        console.log('⚠️ GPS acquisition failed, keeping cached location');
-        // Keep isUsingCachedLocation as true to show user we're still using cached data
+      // Flash "Using Cached" briefly, then return to "Getting GPS..." to show continuous effort
+      if (isUsingCachedLocation || isUsingFallbackLocation) {
+        setShowCachedFlash(true);
+        console.log('⚠️ GPS acquisition failed, using cached/fallback location');
+        
+        // Clear the flash after 1.5 seconds and return to "Getting GPS..." state
+        setTimeout(() => {
+          setShowCachedFlash(false);
+          setError(null); // Clear error to show "Getting GPS..." again
+        }, 1500);
       }
       
       switch (err.code) {
         case err.PERMISSION_DENIED:
+          // For permission denied, show persistent error
           setError('Location access denied. Please enable location permissions.');
           showToast('Enable location access for accurate results', 'warning', 5000);
           break;
         case err.POSITION_UNAVAILABLE:
-          // Clear error and try network location instead of showing error immediately
-          setError(null);
+          // Flash cached status, then continue trying
           setTimeout(() => {
             const fallbackOptions = {
               enableHighAccuracy: false,
               timeout: 25000,
               maximumAge: 60000
             };
-            navigator.geolocation.getCurrentPosition(onSuccess, () => {
-              setError('Location services unavailable');
-              showToast('Please enable GPS and refresh', 'error', 6000);
+            navigator.geolocation.getCurrentPosition(onSuccess, (fallbackErr) => {
+              // Even if fallback fails, keep trying - don't show permanent error
+              console.log('⚠️ Network location also failed, continuing GPS attempts...');
             }, fallbackOptions);
           }, 2000);
           break;
         case err.TIMEOUT:
-          // Clear error and retry instead of showing error immediately
-          setError(null);
+          // Flash cached status, then continue retrying
           setTimeout(() => {
             navigator.geolocation.getCurrentPosition(onSuccess, onError, {
               ...options,
@@ -540,23 +540,19 @@ const MapPage = () => {
           }, 2000);
           break;
         default:
-          setError(`Location error: ${err.message}`);
+          // For unknown errors, flash cached status but keep trying
+          console.log(`⚠️ Location error: ${err.message}, continuing attempts...`);
       }
     };
 
-      // Get initial position
-      navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
-      
-      // Watch for real-time updates
-      watchId = navigator.geolocation.watchPosition(onSuccess, onError, options);
-      setWatchId(watchId);
-    };
-
-    getLocation();
+    // Get initial position
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
+    
+    // Watch for real-time updates
+    const watchId = navigator.geolocation.watchPosition(onSuccess, onError, options);
+    setWatchId(watchId);
 
     return () => {
-      if (locationInterval) clearInterval(locationInterval);
-      if (errorRetryInterval) clearInterval(errorRetryInterval);
       if (watchId) navigator.geolocation.clearWatch(watchId);
     };
   }, []);
@@ -1559,14 +1555,16 @@ const MapPage = () => {
               />
               
               {/* GPS Status Indicator */}
-              {(isUsingCachedLocation || isUsingFallbackLocation || error) && (
-                <div className={`text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 ${
-                  error ? 'bg-red-500' : 'bg-orange-500 animate-pulse'
+              {(isUsingCachedLocation || isUsingFallbackLocation || error || showCachedFlash) && (
+                <div className={`text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 transition-all duration-300 ${
+                  (showCachedFlash || (error && error.includes('denied'))) ? 'bg-red-500' : 'bg-orange-500 animate-pulse'
                 }`}>
-                  <div className={`w-2 h-2 bg-white rounded-full ${error ? '' : 'animate-spin'}`}></div>
-                  {error 
+                  <div className={`w-2 h-2 bg-white rounded-full ${(showCachedFlash || (error && error.includes('denied'))) ? '' : 'animate-spin'}`}></div>
+                  {showCachedFlash 
                     ? 'Using Cached' 
-                    : 'Getting GPS...'
+                    : (error && error.includes('denied'))
+                      ? 'Location Denied'
+                      : 'Getting GPS...'
                   }
                 </div>
               )}

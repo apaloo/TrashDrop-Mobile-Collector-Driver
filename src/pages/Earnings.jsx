@@ -363,12 +363,11 @@ const EarningsPage = () => {
 
   const handleWithdrawalSuccess = async (amount) => {
     try {
-      const { data: userData } = await auth.getUser();
-      if (!userData?.user?.id) {
+      if (!user?.id) {
         throw new Error('User not authenticated');
       }
 
-      const earningsService = createEarningsService(userData.user.id);
+      const earningsService = createEarningsService(user.id);
       const { success, error } = await earningsService.processWithdrawal(amount, {
         method: 'momo', // Default to mobile money for now
         timestamp: new Date().toISOString()
