@@ -244,6 +244,16 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, onWithdrawalSuccess }) =
 const EarningsLineChart = ({ data, period }) => {
   // In a real implementation, we would use a library like Chart.js or Recharts
   // This is a simplified visual representation
+  
+  // Guard against undefined or empty data
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    return (
+      <div className="mt-4 mb-6 text-center text-gray-500">
+        <p>No earnings data available</p>
+      </div>
+    );
+  }
+  
   const maxValue = Math.max(...data.map(d => d.amount));
   
   return (
@@ -307,7 +317,7 @@ const TransactionItem = ({ transaction }) => {
 };
 
 const EarningsPage = () => {
-  const { auth } = useAuth();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('summary');
   const [period, setPeriod] = useState('week');
@@ -329,12 +339,11 @@ const EarningsPage = () => {
   const fetchEarningsData = async () => {
     try {
       setIsLoading(true);
-      const { data: userData } = await auth.getUser();
-      if (!userData?.user?.id) {
+      if (!user?.id) {
         throw new Error('User not authenticated');
       }
 
-      const earningsService = createEarningsService(userData.user.id);
+      const earningsService = createEarningsService(user.id);
       const { success, data, error } = await earningsService.getEarningsData();
 
       if (!success || error) {
@@ -382,18 +391,37 @@ const EarningsPage = () => {
 
   // Load data when component mounts
   useEffect(() => {
-    fetchEarningsData();
-  }, []);
+    // Only fetch data if user is available
+    if (user?.id) {
+      fetchEarningsData();
+    } else {
+      setIsLoading(false);
+    }
+  }, [period, user?.id]);
 
   // Show loading state
   if (isLoading) {
     return (
       <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
-        <TopNavBar user={{ first_name: 'Driver' }} />
         <div className="flex-grow mt-14 mb-16 flex items-center justify-center">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             <p className="mt-2 text-gray-600">Loading earnings data...</p>
+          </div>
+        </div>
+        <BottomNavBar />
+      </div>
+    );
+  }
+
+  // Show authentication required state
+  if (!user?.id) {
+    return (
+      <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="flex-grow mt-14 mb-16 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-gray-600">Authentication required to view earnings</p>
+            <p className="text-sm text-gray-500 mt-2">Please log in to continue</p>
           </div>
         </div>
         <BottomNavBar />
