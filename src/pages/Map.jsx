@@ -160,17 +160,10 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters, getMaxRadius, t
   
   // Get current maximum radius (10km standard, 10km during extension)
   const currentMaxRadius = getMaxRadius ? getMaxRadius() : 10;
-  
   // Ensure filters has all required properties with defaults (capped to current max)
-  const safeFilters = {
-    searchRadius: typeof filters.searchRadius === 'number' ? Math.min(filters.searchRadius, currentMaxRadius) : 5,
-    wasteTypes: Array.isArray(filters.wasteTypes) ? filters.wasteTypes : [],
-    minPayment: typeof filters.minPayment === 'number' ? filters.minPayment : 0,
-    priority: ['all', 'high', 'medium', 'low'].includes(filters.priority) ? filters.priority : 'all',
-    activeFilter: filters.activeFilter || 'all'
-  };
-  
-  // Handle filter changes
+  const safeFilters = filters || {};
+  const activeFilter = safeFilters.activeFilter || 'all';
+  const radiusKm = parseFloat(safeFilters.searchRadius) || 15;
   const handleFilterChange = (updates) => {
     updateFilters(updates);
     applyFilters();
@@ -787,10 +780,15 @@ const MapPage = () => {
             .eq('status', 'available')
             .order('created_at', { ascending: false }),
           
-          // Fetch digital bins (assuming they don't have status field)
+          // Fetch digital bins with location data via LEFT JOIN to see all records
           supabase
             .from('digital_bins')
-            .select('*', { count: 'exact' })
+            .select(`
+              *,
+              bin_locations!location_id(
+                coordinates
+              )
+            `, { count: 'exact' })
             .order('created_at', { ascending: false })
         ]);
         
@@ -816,14 +814,147 @@ const MapPage = () => {
           source_type: 'pickup_request'
         }));
         
-        const digitalBins = (binsData || []).map(item => ({
-          ...item,
-          source_type: 'digital_bin',
-          // Ensure digital bins have required fields for compatibility
-          status: 'available', // Digital bins are always available
-          waste_type: item.waste_type || 'general', // Default waste type if not specified
-          fee: item.fee || 0 // Default fee if not specified
-        }));
+        console.log('📦 Processed pickup requests:', {
+          count: pickupRequests.length,
+          sample: pickupRequests[0],
+          coordinates: pickupRequests.map(r => ({ id: r.id, coords: r.coordinates })).slice(0, 3)
+        });
+        
+        const digitalBins = (binsData || [])
+          .map(item => {
+            // Extract coordinates from the joined bin_location table
+            let coordinates = null;
+            let location = item.location || 'Digital Bin Station';
+            
+            if (item.bin_locations && item.bin_locations.coordinates) {
+              const binCoords = item.bin_locations.coordinates;
+              console.log('%c🔵 Digital bin coordinate data:', 'color: blue; font-weight: bold', {
+                id: item.id,
+                rawCoords: binCoords,
+                coordsType: typeof binCoords
+              });
+              
+              // Handle GeoJSON Point format (most common from Supabase PostGIS)
+              if (binCoords && binCoords.type === 'Point' && Array.isArray(binCoords.coordinates)) {
+                const [lng, lat] = binCoords.coordinates;
+                console.log('%c🔵 GeoJSON Point parsing:', 'color: blue; font-weight: bold', {
+                  id: item.id,
+                  lng: lng,
+                  lat: lat
+                });
+                
+                // Skip digital bins with invalid coordinates (0,0)
+                if (lng !== 0 || lat !== 0) {
+                  coordinates = [lat, lng]; // Convert to [lat, lng] format
+                  console.log('%c🔵 Valid GeoJSON coordinates:', 'color: blue; font-weight: bold', {
+                    id: item.id,
+                    coordinates: coordinates
+                  });
+                } else {
+                  console.log('%c🔵 Skipping GeoJSON (0,0):', 'color: blue; font-weight: bold', {
+                    id: item.id,
+                    lng: lng,
+                    lat: lat
+                  });
+                }
+              }
+              // Handle POINT coordinates from PostGIS geometry field (string format)
+              else if (typeof binCoords === 'string' && binCoords.includes('POINT(')) {
+                // Parse PostGIS POINT format: "POINT(lng lat)"
+                const pointMatch = binCoords.match(/POINT\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
+                console.log('%c🔵 POINT parsing result:', 'color: blue; font-weight: bold', {
+                  id: item.id,
+                  binCoords: binCoords,
+                  pointMatch: pointMatch
+                });
+                
+                if (pointMatch) {
+                  const lng = parseFloat(pointMatch[1]);
+                  const lat = parseFloat(pointMatch[2]);
+                  
+                  // Skip digital bins with invalid coordinates (0,0)
+                  if (lng !== 0 || lat !== 0) {
+                    coordinates = [lat, lng]; // Convert to [lat, lng] format
+                    console.log('%c🔵 Valid coordinates parsed:', 'color: blue; font-weight: bold', {
+                      id: item.id,
+                      coordinates: coordinates
+                    });
+                  } else {
+                    console.log('%c🔵 Skipping POINT(0 0):', 'color: blue; font-weight: bold', {
+                      id: item.id,
+                      lng: lng,
+                      lat: lat
+                    });
+                  }
+                }
+              } 
+              // Handle PostGIS POINT object format (x/y properties)
+              else if (binCoords && binCoords.x !== undefined && binCoords.y !== undefined) {
+                const lng = binCoords.x;
+                const lat = binCoords.y;
+                
+                console.log('%c🔵 Object coordinate data:', 'color: blue; font-weight: bold', {
+                  id: item.id,
+                  lng: lng,
+                  lat: lat
+                });
+                
+                // Skip digital bins with invalid coordinates (0,0)
+                if (lng !== 0 || lat !== 0) {
+                  coordinates = [lat, lng]; // y=lat, x=lng
+                  console.log('%c🔵 Valid object coordinates:', 'color: blue; font-weight: bold', {
+                    id: item.id,
+                    coordinates: coordinates
+                  });
+                } else {
+                  console.log('%c🔵 Skipping object (0,0):', 'color: blue; font-weight: bold', {
+                    id: item.id,
+                    lng: lng,
+                    lat: lat
+                  });
+                }
+              }
+            }
+            
+            const digitalBinResult = {
+              ...item,
+              coordinates,
+              location,
+              source_type: 'digital_bin',
+              // Ensure digital bins have required fields for compatibility
+              status: item.status || 'available',
+              waste_type: item.waste_type || 'general',
+              fee: item.fee || 0
+            };
+            
+            console.log('%c🔵 Digital bin result:', 'color: blue; font-weight: bold', {
+              id: item.id,
+              coordinates: digitalBinResult.coordinates,
+              source_type: digitalBinResult.source_type
+            });
+            
+            return digitalBinResult;
+          })
+          .filter(bin => {
+            // Only include digital bins with valid coordinates
+            if (!bin.coordinates || !Array.isArray(bin.coordinates)) {
+              console.log('%c🔵 Skipping digital bin with invalid coordinates:', 'color: blue; font-weight: bold', {
+                id: bin.id,
+                coordinates: bin.coordinates
+              });
+              return false;
+            }
+            console.log('%c🔵 Digital bin passed filter:', 'color: blue; font-weight: bold', {
+              id: bin.id,
+              coordinates: bin.coordinates
+            });
+            return true;
+          });
+        
+        console.log('%c🔵 Final digital bins count:', 'color: blue; font-weight: bold', {
+          totalFromDB: binsData?.length || 0,
+          afterFiltering: digitalBins.length
+        });
         
         // Combine both data sources
         data = [...pickupRequests, ...digitalBins];
@@ -885,6 +1016,7 @@ const MapPage = () => {
                   return {
                     id: item.id,
                     type: item.waste_type || 'general',
+                    waste_type: item.waste_type || 'general', // Keep both for compatibility
                     coordinates: coords,
                     location: item.location || 'Unknown location',
                     fee: Number(item.fee) || 0,
@@ -894,6 +1026,7 @@ const MapPage = () => {
                     special_instructions: item.special_instructions || '',
                     created_at: item.created_at || new Date().toISOString(),
                     updated_at: item.updated_at || new Date().toISOString(),
+                    source_type: item.source_type, // 🔥 CRITICAL: Preserve source_type for filtering
                     distance: formatDistance(calculateDistance(
                       currentPosition,
                       coords
@@ -985,6 +1118,20 @@ const MapPage = () => {
       console.log('🔍 Applying filters...', { filters, allRequestsCount: allRequests.length, position });
     }
     
+    // Debug: Check what types of data we're processing
+    const digitalBinCount = allRequests.filter(r => r.source_type === 'digital_bin').length;
+    const pickupCount = allRequests.filter(r => r.source_type === 'pickup_request').length;
+    const undefinedSourceCount = allRequests.filter(r => !r.source_type).length;
+    console.log('🔍 applyFilters input data:', { 
+      digitalBins: digitalBinCount, 
+      pickupRequests: pickupCount,
+      undefinedSource: undefinedSourceCount,
+      total: allRequests.length,
+      samplePickupRequest: allRequests.find(r => r.source_type === 'pickup_request'),
+      sampleDigitalBin: allRequests.find(r => r.source_type === 'digital_bin'),
+      sampleUndefined: allRequests.find(r => !r.source_type)
+    });
+    
     // Position should always be available now (fallback location ensures this)
     if (!position || !position[0] || !position[1]) {
       // This should rarely happen now that we have fallback location
@@ -993,6 +1140,11 @@ const MapPage = () => {
       updateFilteredRequests([]);
       return;
     }
+
+    // Define filter variables
+    const safeFilters = filters || {};
+    const activeFilter = safeFilters.activeFilter || 'all';
+    const radiusKm = parseFloat(safeFilters.searchRadius) || 5;
 
     // Check collector status - only show requests if online (Uber-like behavior)
     const statusInfo = statusService.getStatus();
@@ -1005,11 +1157,6 @@ const MapPage = () => {
       updateFilteredRequests([]);
       return;
     }
-
-    const safeFilters = filters || {};
-    const activeFilter = safeFilters.activeFilter || 'all';
-    const radiusKm = parseFloat(safeFilters.searchRadius) || 5;
-    
     // Reduce filter criteria logging to 1% frequency to prevent spam
     if (Math.random() < 0.01) {
       console.log('🎯 Filter criteria:', { activeFilter, radiusKm, collectorStatus: statusInfo.status });
@@ -1026,10 +1173,16 @@ const MapPage = () => {
         return false;
       }
       
-      // Filter by status - only show available requests
-      if (req.status !== 'available') {
-        console.log('❌ Filtered out - status not available:', req.id, 'status:', req.status);
-        return false;
+      // Digital bins use different filtering logic
+      if (req.source_type === 'digital_bin') {
+        console.log('🟦 Processing digital bin:', req.id, 'coordinates:', req.coordinates);
+        // Digital bins are always "available" for collection, skip status check
+      } else {
+        // Filter by status - only show available requests (for pickup requests only)
+        if (req.status !== 'available') {
+          console.log('❌ Filtered out - status not available:', req.id, 'status:', req.status);
+          return false;
+        }
       }
       
       // Filter by distance (only apply strict filtering if using real GPS location)
@@ -1042,9 +1195,21 @@ const MapPage = () => {
           
           // Apply distance filtering properly
           if (distance > radiusKm) {
-            // Reduce console spam - only log 1% of filtered out requests
-            if (Math.random() < 0.01) {
-              console.log('❌ Filtered out - distance too far:', req.id, 'distance:', distance.toFixed(2) + 'km', 'limit:', radiusKm + 'km');
+            // Log digital bins outside range in blue
+            if (req.source_type === 'digital_bin') {
+              console.log('%c🔵 Digital bin outside filter range:', 'color: blue; font-weight: bold', {
+                id: req.id,
+                location: req.location,
+                waste_type: req.waste_type,
+                distance: distance.toFixed(2) + 'km',
+                limit: radiusKm + 'km',
+                coordinates: req.coordinates
+              });
+            } else {
+              // Reduce console spam - only log 1% of filtered out pickup requests
+              if (Math.random() < 0.01) {
+                console.log('❌ Filtered out - distance too far:', req.id, 'distance:', distance.toFixed(2) + 'km', 'limit:', radiusKm + 'km');
+              }
             }
             return false;
           }
@@ -1052,8 +1217,17 @@ const MapPage = () => {
           // Add distance to request for sorting
           req.distance = distance;
           
-          // Reduce console spam - only log 1% of passed requests
-          if (Math.random() < 0.01) {
+          // Log digital bins that pass filters in blue, reduce spam for pickup requests
+          if (req.source_type === 'digital_bin') {
+            console.log('%c🟦 Digital bin passed distance filter:', 'color: blue; font-weight: bold', {
+              id: req.id,
+              location: req.location,
+              waste_type: req.waste_type,
+              distance: distance.toFixed(2) + 'km',
+              coordinates: req.coordinates
+            });
+          } else if (Math.random() < 0.01) {
+            // Reduce console spam - only log 1% of passed pickup requests
             if (isUsingFallbackLocation) {
               console.log('📍 Request passed filter (fallback location):', req.id, 'distance:', distance.toFixed(2) + 'km');
             } else {
@@ -1061,7 +1235,13 @@ const MapPage = () => {
             }
           }
         } catch (error) {
-          console.error('❌ Filtered out - distance calculation error:', error);
+          console.error('❌ Filtered out - distance calculation error:', {
+            error: error.message,
+            requestId: req?.id,
+            sourceType: req?.source_type,
+            coordinates: req?.coordinates,
+            position: position
+          });
           return false;
         }
       }
@@ -1070,7 +1250,18 @@ const MapPage = () => {
       if (activeFilter && activeFilter !== 'all') {
         const requestWasteType = req.waste_type || req.type;
         if (requestWasteType !== activeFilter) {
-          console.log('❌ Filtered out - waste type mismatch:', req.id, 'request type:', requestWasteType, 'filter:', activeFilter);
+          // Log digital bins filtered by waste type in blue
+          if (req.source_type === 'digital_bin') {
+            console.log('%c🔵 Digital bin filtered by waste type:', 'color: blue; font-weight: bold', {
+              id: req.id,
+              location: req.location,
+              waste_type: requestWasteType,
+              filter: activeFilter,
+              coordinates: req.coordinates
+            });
+          } else {
+            console.log('❌ Filtered out - waste type mismatch:', req.id, 'request type:', requestWasteType, 'filter:', activeFilter);
+          }
           return false;
         }
       }
@@ -1097,7 +1288,12 @@ const MapPage = () => {
         return false;
       }
       
-      console.log('✅ Request passed all filters:', req.id, 'type:', req.waste_type || req.type, 'distance:', req.distance?.toFixed(2) + 'km');
+      // Log success differently for digital bins vs pickup requests
+      if (req.source_type === 'digital_bin') {
+        console.log('🟦 Digital bin passed all filters:', req.id, 'type:', req.waste_type || req.type, 'distance:', req.distance?.toFixed(2) + 'km');
+      } else {
+        console.log('✅ Request passed all filters:', req.id, 'type:', req.waste_type || req.type, 'distance:', req.distance?.toFixed(2) + 'km');
+      }
       return true;
     });
     
@@ -1105,6 +1301,15 @@ const MapPage = () => {
     if (position && position[0] && position[1]) {
       filteredRequests.sort((a, b) => (a.distance || 0) - (b.distance || 0));
     }
+    
+    // Debug: Check what types survived filtering
+    const finalDigitalBins = filteredRequests.filter(r => r.source_type === 'digital_bin').length;
+    const finalPickupRequests = filteredRequests.filter(r => r.source_type === 'pickup_request').length;
+    console.log('🔍 applyFilters output data:', { 
+      digitalBins: finalDigitalBins, 
+      pickupRequests: finalPickupRequests, 
+      total: filteredRequests.length 
+    });
     
     // Reduce filtered results logging to 1% frequency
     if (Math.random() < 0.01) {
@@ -1235,9 +1440,9 @@ const MapPage = () => {
         // First fetch initial data
         await fetchRequests();
         
-        // Then set up real-time subscription
+        // Then set up real-time subscriptions for both pickup requests and digital bins
         subscription = supabase
-          .channel('pickup_requests_changes')
+          .channel('requests_and_bins_changes')
           .on('postgres_changes', {
             event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
             schema: 'public',
@@ -1346,9 +1551,109 @@ const MapPage = () => {
             // Update last updated timestamp
             setLastUpdated(new Date());
           })
+          .on('postgres_changes', {
+            event: '*', // Listen to all events (INSERT, UPDATE, DELETE) 
+            schema: 'public',
+            table: 'digital_bins',
+            filter: 'status=eq.available' // Only listen to available digital bins
+          }, (payload) => {
+            // Handle digital bins changes
+            const { eventType, new: newRecord, old: oldRecord } = payload;
+            
+            switch (eventType) {
+              case 'INSERT': {
+                if (newRecord.status === 'available') {
+                  const coords = parseCoordinates(newRecord.coordinates);
+                  // Transform the new digital bin record
+                  const transformedBin = {
+                    id: newRecord.id,
+                    type: newRecord.waste_type || 'general',
+                    coordinates: coords,
+                    location: newRecord.location || 'Digital Bin Station',
+                    fee: newRecord.fee || 0,
+                    status: newRecord.status,
+                    priority: newRecord.priority || 'medium',
+                    bin_capacity: newRecord.bin_capacity || '0%',
+                    last_emptied: newRecord.last_emptied,
+                    source_type: 'digital_bin',
+                    created_at: newRecord.created_at,
+                    updated_at: newRecord.updated_at,
+                    distance: formatDistance(calculateDistance(position, coords))
+                  };
+                  
+                  // Add to the current requests
+                  setAllRequests(prev => {
+                    const updated = [...prev, transformedBin];
+                    return updated;
+                  });
+                  
+                  showToast('New digital bin available!', 'success');
+                }
+                break;
+              }
+              
+              case 'UPDATE': {
+                if (oldRecord.status === 'available' && 
+                    newRecord.status !== 'available') {
+                  // Digital bin was collected or put in maintenance
+                  setAllRequests(prev => {
+                    const updated = prev.filter(r => r.id !== newRecord.id);
+                    return updated;
+                  });
+                  
+                  if (newRecord.collector_id !== user?.id) {
+                    showToast('A digital bin was collected by another collector', 'info');
+                  }
+                } else if (newRecord.status === 'available' && 
+                          oldRecord.status !== 'available') {
+                  // Digital bin became available again
+                  const coords = parseCoordinates(newRecord.coordinates);
+                  const transformedBin = {
+                    id: newRecord.id,
+                    type: newRecord.waste_type || 'general',
+                    coordinates: coords,
+                    location: newRecord.location || 'Digital Bin Station',
+                    fee: newRecord.fee || 0,
+                    status: newRecord.status,
+                    priority: newRecord.priority || 'medium',
+                    bin_capacity: newRecord.bin_capacity || '0%',
+                    last_emptied: newRecord.last_emptied,
+                    source_type: 'digital_bin',
+                    created_at: newRecord.created_at,
+                    updated_at: newRecord.updated_at,
+                    distance: formatDistance(calculateDistance(position, coords))
+                  };
+                  
+                  setAllRequests(prev => {
+                    const exists = prev.some(r => r.id === newRecord.id);
+                    if (exists) return prev;
+                    
+                    const updated = [...prev, transformedBin];
+                    return updated;
+                  });
+                }
+                break;
+              }
+              
+              case 'DELETE': {
+                setAllRequests(prev => {
+                  const updated = prev.filter(r => r.id !== oldRecord.id);
+                  return updated;
+                });
+                showToast('A digital bin was removed', 'info');
+                break;
+              }
+            }
+            
+            // Apply filters after any changes
+            applyFilters();
+            
+            // Update last updated timestamp
+            setLastUpdated(new Date());
+          })
           .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
-              console.log('Subscribed to pickup_requests table');
+              console.log('Subscribed to pickup_requests and digital_bins tables');
               showToast('Live updates enabled', 'success', 2000);
             }
           });
