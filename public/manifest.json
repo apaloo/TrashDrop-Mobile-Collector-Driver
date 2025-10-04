@@ -9,9 +9,10 @@
   "scope": "/",
   "start_url": "/",
   "categories": ["utilities", "productivity", "business"],
+  "version": "2.0.0",
   "icons": [
     {
-      "src": "logo.svg",
+      "src": "logo.svg?v=2.0.0",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
