@@ -170,7 +170,7 @@ const PWAInstallPrompt = () => {
         <div className="mb-4 text-center">
           <div className="mb-3 flex justify-center">
             <img 
-              src="/icons/logo-02.svg" 
+              src="/icons/logo-02.jpg" 
               alt="TrashDrop Carter" 
               className="h-16 w-16 rounded-2xl shadow-lg"
             />
