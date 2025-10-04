@@ -58,7 +58,7 @@ const SplashScreen = ({ onComplete }) => {
       
       <div className={`splash-logo-container ${animationPhase}`}>
         <img
-          src="/icons/logo-02.svg"
+          src="/logo.svg"
           alt="TrashDrop Logo"
           className="splash-logo"
           draggable={false}
