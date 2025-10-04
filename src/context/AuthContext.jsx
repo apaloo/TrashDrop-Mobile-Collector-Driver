@@ -25,45 +25,55 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const checkAuth = async () => {
+      console.log('🔐 Starting authentication check...');
       setLoading(true);
+      
       try {
-        // First check if user has explicitly logged out
+        // IMMEDIATE: First check if user has explicitly logged out
         const isLoggedOut = localStorage.getItem('user_logged_out') === 'true';
         if (isLoggedOut) {
-          console.log('User is logged out, clearing any existing sessions');
+          console.log('🚫 User is logged out, clearing any existing sessions');
           localStorage.removeItem('dev_mode_session');
           setUser(null);
           setHasLoggedOut(true);
+          setLoading(false); // Stop loading immediately for logged out users
           return;
         }
 
-        // Get current session from Supabase
+        // IMMEDIATE: Check for existing dev mode session (fastest path)
+        const existingDevSession = localStorage.getItem('dev_mode_session');
+        if (existingDevSession) {
+          try {
+            const mockUser = JSON.parse(existingDevSession).user;
+            console.log('⚡ Found existing dev mode session - authenticating immediately');
+            setUser(mockUser);
+            setHasLoggedOut(false);
+            setLoading(false); // Stop loading immediately with cached session
+            return;
+          } catch (e) {
+            console.warn('🗑️ Invalid dev session found, removing');
+            localStorage.removeItem('dev_mode_session');
+          }
+        }
+
+        // BACKGROUND: Get current session from Supabase (slower, network dependent)
+        console.log('🌐 Checking Supabase session...');
         const { session, user, error } = await authService.getSession();
         
         // If we have a valid user from session, use it
         if (user && !error) {
-          console.log('Found existing user session:', user?.id);
+          console.log('✅ Found existing Supabase session:', user?.id);
           setUser(user);
           setHasLoggedOut(false);
           return;
         }
 
-        // Check for existing dev mode session
-        const existingDevSession = localStorage.getItem('dev_mode_session');
-        if (existingDevSession) {
-          console.log('Found existing dev mode session');
-          const mockUser = JSON.parse(existingDevSession).user;
-          setUser(mockUser);
-          setHasLoggedOut(false);
-          return;
-        }
-
         // If we get here, we have no session and no dev mode session
-        console.log('No session found, user remains logged out');
+        console.log('🔍 No valid session found, user remains logged out');
         setUser(null);
         
       } catch (err) {
-        console.error('Auth check error:', err);
+        console.error('❌ Auth check error:', err);
         setError(err.message);
         setUser(null);
       } finally {
@@ -71,7 +81,7 @@ export const AuthProvider = ({ children }) => {
       }
     };
     
-    // Check auth on load
+    // Check auth on load - non-blocking for cached sessions
     checkAuth();
     
     // Set up auth state change listener

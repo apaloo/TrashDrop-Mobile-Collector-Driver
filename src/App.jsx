@@ -83,9 +83,15 @@ const ProtectedRoute = ({ children }) => {
   });
   
   if (loading) {
-    return <div className="flex h-screen items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-    </div>;
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+          <p className="mt-4 text-gray-700 font-medium">🔐 Checking access...</p>
+          <p className="mt-1 text-sm text-gray-500">Verifying your permissions</p>
+        </div>
+      </div>
+    );
   }
   
   // Allow access if authenticated OR if we have a dev mode session AND user hasn't logged out
@@ -112,9 +118,15 @@ const PublicRoute = ({ children }) => {
   });
   
   if (loading) {
-    return <div className="flex h-screen items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-    </div>;
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+          <p className="mt-4 text-gray-700 font-medium">⚡ Loading app...</p>
+          <p className="mt-1 text-sm text-gray-500">Setting up your workspace</p>
+        </div>
+      </div>
+    );
   }
   
   // Only redirect to map if authenticated OR if we have a dev mode session AND user hasn't logged out
@@ -190,8 +202,12 @@ const DefaultRedirect = () => {
   
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+          <p className="mt-4 text-gray-700 font-medium">🚀 Starting up...</p>
+          <p className="mt-1 text-sm text-gray-500">Preparing your dashboard</p>
+        </div>
       </div>
     );
   }

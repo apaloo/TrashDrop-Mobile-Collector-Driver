@@ -13,49 +13,60 @@ export const CurrencyProvider = ({ children }) => {
   const [currency, setCurrency] = useState(CURRENCY_MAP.GH);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Update currency based on user location
+  // Update currency based on user location - NON-BLOCKING approach
   useEffect(() => {
     const updateCurrencyFromLocation = async () => {
       try {
-        setIsLoading(true);
-        
-        // First try to get from localStorage (cached value)
+        // IMMEDIATE: Start with cached currency or default to avoid blocking
         const storedCurrency = localStorage.getItem('trashdrop_currency');
         if (storedCurrency) {
-          console.log('[Currency] Using cached currency from localStorage');
+          console.log('[Currency] ⚡ Using cached currency immediately');
           setCurrency(JSON.parse(storedCurrency));
+          setIsLoading(false); // Stop loading immediately with cached data
         } else {
-          console.log('[Currency] No cached currency found in localStorage');
+          console.log('[Currency] ⚡ Using default currency immediately (Ghana)');
+          setCurrency(CURRENCY_MAP.GH); // Default to Ghana Cedi immediately
+          setIsLoading(false); // Stop loading immediately with default
         }
         
-        // Then try to get fresh location if geolocation is available
+        // BACKGROUND: Try to get location without blocking startup
         if (navigator.geolocation) {
           const geolocationOptions = {
-            enableHighAccuracy: false, // Set to false to avoid network location provider errors
-            timeout: 5000, // 5 seconds timeout
+            enableHighAccuracy: false,
+            timeout: 2000, // Reduced to 2 seconds to prevent blocking
             maximumAge: 1000 * 60 * 60 // 1 hour cache
           };
           
-          console.log('[Currency] Attempting to get current position...');
+          // Set up timeout to prevent infinite waiting
+          const timeoutId = setTimeout(() => {
+            console.log('[Currency] 🏃 Location timeout - keeping current currency');
+          }, 2000);
+          
+          console.log('[Currency] 🔍 Getting location in background (non-blocking)...');
           navigator.geolocation.getCurrentPosition(
             async (position) => {
               try {
-                console.log('[Currency] Position obtained, detecting currency...');
+                clearTimeout(timeoutId);
+                console.log('[Currency] 📍 Background location obtained, updating currency...');
                 const { latitude, longitude } = position.coords;
                 const detectedCurrency = await getCurrencyFromCoordinates([latitude, longitude]);
-                console.log('[Currency] Detected currency:', detectedCurrency.code);
-                setCurrency(detectedCurrency);
-                // Store in local storage for offline use
-                localStorage.setItem('trashdrop_currency', JSON.stringify(detectedCurrency));
-                console.log('[Currency] Currency saved to localStorage');
+                
+                // Only update if different from current
+                if (detectedCurrency.code !== currency.code) {
+                  console.log('[Currency] 💱 Updating currency to:', detectedCurrency.code);
+                  setCurrency(detectedCurrency);
+                  localStorage.setItem('trashdrop_currency', JSON.stringify(detectedCurrency));
+                } else {
+                  console.log('[Currency] ✅ Currency unchanged, keeping current');
+                }
               } catch (error) {
-                console.warn('[Currency] Error processing location data:', error);
-                // Continue with default or stored currency
-              } finally {
-                setIsLoading(false);
+                clearTimeout(timeoutId);
+                console.warn('[Currency] ⚠️ Background location processing failed:', error);
+                // Keep current currency - don't change anything
               }
             },
             (error) => {
+              clearTimeout(timeoutId);
               // Only log geolocation errors once to reduce console spam
               if (!window.currencyGeoErrorLogged) {
                 const errorMessages = {
@@ -63,33 +74,28 @@ export const CurrencyProvider = ({ children }) => {
                   2: 'Position unavailable', 
                   3: 'Timeout'
                 };
-                console.warn(`[Currency] Location detection failed (${errorMessages[error.code] || 'Unknown'}), using stored/default currency`);
+                console.warn(`[Currency] 🚫 Background location failed (${errorMessages[error.code] || 'Unknown'}) - keeping current currency`);
                 window.currencyGeoErrorLogged = true;
               }
-              // If we have a stored currency, use it, otherwise use default
-              if (!storedCurrency) {
-                setCurrency(CURRENCY_MAP.GH); // Default to Ghana Cedi
-              }
-              setIsLoading(false);
+              // Keep current currency - don't change anything
             },
             geolocationOptions
           );
         } else {
-          // Geolocation not supported
-          console.warn('Geolocation is not supported by this browser');
-          if (!storedCurrency) {
-            setCurrency(CURRENCY_MAP.GH); // Default to Ghana Cedi
-          }
-          setIsLoading(false);
+          console.warn('[Currency] 🚫 Geolocation not supported - using current currency');
         }
       } catch (error) {
-        console.error('Error in currency detection:', error);
+        console.error('[Currency] 💥 Error in currency detection:', error);
+        // Ensure we have a currency set even if everything fails
+        if (!currency) {
+          setCurrency(CURRENCY_MAP.GH);
+        }
         setIsLoading(false);
       }
     };
 
     updateCurrencyFromLocation();
-  }, []);
+  }, []); // Empty dependency array - run only once
 
   // Manual currency override (could be used in settings)
   const setCurrencyOverride = (currencyCode) => {

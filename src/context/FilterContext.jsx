@@ -75,35 +75,10 @@ export const FilterProvider = ({ children }) => {
     }
   }, []); // Run only once on mount
 
-  // Default filter values
+  // Default filter values - IMMEDIATE startup, defer localStorage
   const [filters, setFilters] = useState(() => {
-    // Get current max radius (accounting for any active extension)
-    const maxRadius = getMaxRadius();
-    
-    try {
-      const savedFilters = localStorage.getItem('collectorFilters');
-      if (savedFilters) {
-        const parsed = JSON.parse(savedFilters);
-        // Cap searchRadius to current maximum
-        const updatedRadius = Math.min(Math.max(parsed.searchRadius || 5, 1), maxRadius);
-        const updatedFilters = {
-          searchRadius: updatedRadius,
-          wasteTypes: Array.isArray(parsed.wasteTypes) && parsed.wasteTypes.length > 0 
-            ? parsed.wasteTypes 
-            : ['All Types'],
-          minPayment: typeof parsed.minPayment === 'number' ? parsed.minPayment : 0,
-          priority: parsed.priority || 'all',
-          activeFilter: parsed.activeFilter || 'all', // Default to 'all' types
-        };
-        // Update localStorage with new radius
-        localStorage.setItem('collectorFilters', JSON.stringify(updatedFilters));
-        return updatedFilters;
-      }
-    } catch (e) {
-      console.error('Error loading saved filters:', e);
-    }
-    
-    // Default values if nothing in localStorage
+    // IMMEDIATE: Start with safe defaults to avoid blocking
+    console.log('[Filters] ⚡ Starting with default filters immediately');
     return {
       searchRadius: 5, // in km - reasonable default for efficiency
       wasteTypes: ['All Types'],
@@ -120,37 +95,104 @@ export const FilterProvider = ({ children }) => {
     picked_up: []
   });
 
-  // Load filters and filtered requests from localStorage on initial load
+  // Load filters and filtered requests from localStorage - NON-BLOCKING approach
   useEffect(() => {
-    const loadData = () => {
-      try {
-        // Load filters
-        const savedFilters = localStorage.getItem('collectorFilters');
-        if (savedFilters) {
-          setFilters(JSON.parse(savedFilters));
+    // BACKGROUND: Load saved data without blocking startup
+    const loadDataAsync = () => {
+      // Use requestIdleCallback for non-blocking localStorage access
+      const loadWhenIdle = () => {
+        try {
+          console.log('[Filters] 🔍 Loading saved data in background...');
+          
+          // Load filters
+          const savedFilters = localStorage.getItem('collectorFilters');
+          if (savedFilters) {
+            const parsed = JSON.parse(savedFilters);
+            // Get current max radius (accounting for any active extension)
+            const maxRadius = getMaxRadius();
+            
+            // Cap searchRadius to current maximum and validate data
+            const updatedFilters = {
+              searchRadius: Math.min(Math.max(parsed.searchRadius || 5, 1), maxRadius),
+              wasteTypes: Array.isArray(parsed.wasteTypes) && parsed.wasteTypes.length > 0 
+                ? parsed.wasteTypes 
+                : ['All Types'],
+              minPayment: typeof parsed.minPayment === 'number' ? parsed.minPayment : 0,
+              priority: parsed.priority || 'all',
+              activeFilter: parsed.activeFilter || 'all',
+            };
+            
+            console.log('[Filters] 📁 Loaded saved filters:', updatedFilters);
+            setFilters(updatedFilters);
+            
+            // Update localStorage with validated data
+            localStorage.setItem('collectorFilters', JSON.stringify(updatedFilters));
+          } else {
+            console.log('[Filters] 📄 No saved filters found, keeping defaults');
+          }
+          
+          // Load filtered requests
+          const savedRequests = localStorage.getItem('filteredRequests');
+          if (savedRequests) {
+            const parsed = JSON.parse(savedRequests);
+            console.log('[Filters] 📁 Loaded saved requests');
+            setFilteredRequests(parsed);
+          } else {
+            console.log('[Filters] 📄 No saved requests found, keeping defaults');
+          }
+        } catch (e) {
+          console.error('[Filters] ❌ Failed to load saved data:', e);
+          // Keep using defaults if loading fails
         }
-        
-        // Load filtered requests
-        const savedRequests = localStorage.getItem('filteredRequests');
-        if (savedRequests) {
-          setFilteredRequests(JSON.parse(savedRequests));
-        }
-      } catch (e) {
-        console.error('Failed to load saved data', e);
+      };
+
+      // Use requestIdleCallback if available, otherwise setTimeout
+      if (typeof requestIdleCallback !== 'undefined') {
+        requestIdleCallback(loadWhenIdle, { timeout: 1000 });
+      } else {
+        setTimeout(loadWhenIdle, 100); // Small delay to not block initial render
       }
     };
     
-    loadData();
-  }, []);
+    loadDataAsync();
+  }, [tempRadiusExtension]); // Include tempRadiusExtension to get current max radius
 
-  // Save filters to localStorage whenever they change
+  // Save filters to localStorage whenever they change - NON-BLOCKING
   useEffect(() => {
-    localStorage.setItem('collectorFilters', JSON.stringify(filters));
+    // Use requestIdleCallback to defer localStorage writes
+    const saveFilters = () => {
+      try {
+        localStorage.setItem('collectorFilters', JSON.stringify(filters));
+        console.log('[Filters] 💾 Saved filters to localStorage');
+      } catch (e) {
+        console.error('[Filters] ❌ Failed to save filters:', e);
+      }
+    };
+
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(saveFilters, { timeout: 500 });
+    } else {
+      setTimeout(saveFilters, 50); // Small delay to not block UI updates
+    }
   }, [filters]);
   
-  // Save filtered requests to localStorage whenever they change
+  // Save filtered requests to localStorage whenever they change - NON-BLOCKING
   useEffect(() => {
-    localStorage.setItem('filteredRequests', JSON.stringify(filteredRequests));
+    // Use requestIdleCallback to defer localStorage writes
+    const saveRequests = () => {
+      try {
+        localStorage.setItem('filteredRequests', JSON.stringify(filteredRequests));
+        console.log('[Filters] 💾 Saved requests to localStorage');
+      } catch (e) {
+        console.error('[Filters] ❌ Failed to save requests:', e);
+      }
+    };
+
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(saveRequests, { timeout: 500 });
+    } else {
+      setTimeout(saveRequests, 50); // Small delay to not block UI updates
+    }
   }, [filteredRequests]);
 
   const updateFilters = useCallback((newFilters) => {

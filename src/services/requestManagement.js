@@ -84,18 +84,18 @@ export class RequestManagementService {
    * Initialize the service with session management and cleanup timers
    */
   async initialize(collectorId) {
-    // Skip initialization if already initialized with same collector
+    // IMMEDIATE: Skip initialization if already initialized with same collector
     if (this.isInitialized && this.collectorId === collectorId) {
       // Only log occasionally to reduce spam
       if (Math.random() < 0.3) {
-        console.log('🔄 RequestManagementService already initialized for collector:', collectorId);
+        console.log('⚡ RequestManagementService already initialized for collector:', collectorId);
       }
-      return;
+      return Promise.resolve(this); // Return immediately for already initialized
     }
     
-    // If initialization is in progress, wait for it
+    // IMMEDIATE: If initialization is in progress, return existing promise
     if (this.initializationPromise) {
-      console.log('⏳ Waiting for existing initialization to complete...');
+      console.log('⏳ Reusing existing initialization promise...');
       return this.initializationPromise;
     }
     
