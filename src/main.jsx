@@ -25,15 +25,13 @@ const updateSW = registerSW({
     // Notify user that app is ready for offline use
     console.log('✅ TrashDrop Carter ready to work offline');
     
-    // Show toast notification for offline readiness
-    setTimeout(() => {
-      if (!localStorage.getItem('offline-ready-shown')) {
-        alert('📶 TrashDrop Carter is now ready to work offline!\n\nYou can use the app even without internet connection.');
-        localStorage.setItem('offline-ready-shown', 'true');
-      }
-    }, 3000);
+    // Mark offline ready (removed blocking alert for better performance)
+    if (!localStorage.getItem('offline-ready-shown')) {
+      console.log('📶 TrashDrop Carter is now ready to work offline!');
+      localStorage.setItem('offline-ready-shown', 'true');
+    }
   },
-  immediate: true, // Register immediately for faster offline capability
+  // Register after app loads for better startup performance
 })
 
 createRoot(document.getElementById('root')).render(
