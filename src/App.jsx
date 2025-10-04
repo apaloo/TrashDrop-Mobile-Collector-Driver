@@ -1,15 +1,14 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-// import { OfflineProvider } from './contexts/OfflineContext'; // Removed for faster startup
+import { OfflineProvider } from './contexts/OfflineContext';
 import { CurrencyProvider } from './context/CurrencyContext';
 import { FilterProvider } from './context/FilterContext';
 import AppLayout from './components/AppLayout';
 import SplashScreen from './components/SplashScreen';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { useEffect, useState, Suspense, lazy } from 'react';
+import { useEffect, useState } from 'react';
 import ImageManager from './utils/imageManager';
-import PWAInstallPrompt from './components/PWAInstallPrompt';
 // Removed cacheUtils import - no longer using caching
 
 // Clear stale test-user-id session data
@@ -35,29 +34,19 @@ if (process.env.NODE_ENV === 'development') {
   clearStaleSession();
 }
 
-// Lazy-loaded Pages for better performance
-const LoginPage = lazy(() => import('./pages/Login'));
-const SignupPage = lazy(() => import('./pages/Signup'));
-const WelcomePage = lazy(() => import('./pages/Welcome'));
-const TermsPage = lazy(() => import('./pages/Terms'));
-const PrivacyPage = lazy(() => import('./pages/Privacy'));
-const MapPage = lazy(() => import('./pages/Map'));
-const RequestPage = lazy(() => import('./pages/Request'));
-const AssignPage = lazy(() => import('./pages/Assign'));
-const EarningsPage = lazy(() => import('./pages/Earnings'));
-const ProfilePage = lazy(() => import('./pages/Profile'));
-const DiagnosticPage = lazy(() => import('./pages/DiagnosticPage'));
-const RouteOptimizationPage = lazy(() => import('./pages/RouteOptimization'));
-
-// Loading fallback component for lazy-loaded pages
-const PageLoadingFallback = () => (
-  <div className="flex h-screen items-center justify-center bg-gray-50">
-    <div className="text-center">
-      <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-green-600 border-r-transparent"></div>
-      <p className="text-gray-600">Loading...</p>
-    </div>
-  </div>
-);
+// Pages
+import LoginPage from './pages/Login';
+import SignupPage from './pages/Signup';
+import WelcomePage from './pages/Welcome';
+import TermsPage from './pages/Terms';
+import PrivacyPage from './pages/Privacy';
+import MapPage from './pages/Map';
+import RequestPage from './pages/Request';
+import AssignPage from './pages/Assign';
+import EarningsPage from './pages/Earnings';
+import ProfilePage from './pages/Profile';
+import DiagnosticPage from './pages/DiagnosticPage';
+import RouteOptimizationPage from './pages/RouteOptimization';
 
 // Component to handle cleanup on route changes
 const RouteCleanup = () => {
@@ -152,13 +141,13 @@ function App() {
 
   return (
     <AuthProvider>
-      <CurrencyProvider>
-        <FilterProvider>
-          <Router>
-            <AppLayout>
-              <RouteCleanup />
-              <Suspense fallback={<PageLoadingFallback />}>
-                  <Routes>
+      <OfflineProvider>
+        <CurrencyProvider>
+          <FilterProvider>
+            <Router>
+              <AppLayout>
+                <RouteCleanup />
+                <Routes>
                   <Route path="/" element={<DefaultRedirect />} />
                   <Route path="/welcome" element={<WelcomePage />} />
                   <Route path="/terms" element={<TermsPage />} />
@@ -185,16 +174,13 @@ function App() {
                       </button>
                     </div>
                   } />
-                  </Routes>
-                </Suspense>
+                </Routes>
                 <ToastContainer position="top-center" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
-                
-                {/* PWA Install Prompt - shows for first-time users */}
-                <PWAInstallPrompt />
               </AppLayout>
             </Router>
           </FilterProvider>
         </CurrencyProvider>
+      </OfflineProvider>
     </AuthProvider>
   );
 }
