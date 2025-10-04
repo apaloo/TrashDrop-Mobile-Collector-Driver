@@ -9,6 +9,7 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useEffect, useState } from 'react';
 import ImageManager from './utils/imageManager';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 // Removed cacheUtils import - no longer using caching
 
 // Clear stale test-user-id session data
@@ -176,6 +177,9 @@ function App() {
                   } />
                 </Routes>
                 <ToastContainer position="top-center" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
+                
+                {/* PWA Install Prompt - shows for first-time users */}
+                <PWAInstallPrompt />
               </AppLayout>
             </Router>
           </FilterProvider>

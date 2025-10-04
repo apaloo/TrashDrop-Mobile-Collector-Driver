@@ -2,12 +2,13 @@
   "name": "TrashDrop Carter",
   "short_name": "TrashDrop Carter",
   "description": "Professional waste collection and management app for TrashDrop Carter collectors",
+  "version": "1.1.0",
   "theme_color": "#9AE65C",
   "background_color": "#ffffff",
   "display": "standalone",
   "orientation": "portrait-primary",
   "scope": "/",
-  "start_url": "/",
+  "start_url": "/?v=1.1.0",
   "categories": ["utilities", "productivity", "business"],
   "icons": [
     {

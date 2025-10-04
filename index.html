@@ -33,7 +33,27 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="/manifest.json?v=1.1.0" />
+    
+    <!-- PWA Install Prompt Enhancement -->
+    <script>
+      // Early PWA install prompt setup
+      window.addEventListener('load', () => {
+        console.log('🔍 TrashDrop Carter: Checking for PWA install capability...');
+        
+        // Check if already installed
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                            window.navigator.standalone ||
+                            document.referrer.includes('android-app://');
+        
+        if (isStandalone) {
+          console.log('✅ TrashDrop Carter: Already installed as PWA');
+          localStorage.setItem('pwa-installed', 'true');
+        } else {
+          console.log('📱 TrashDrop Carter: Available for installation');
+        }
+      });
+    </script>
     
     <!-- Google Maps API Preloading -->
     <script>

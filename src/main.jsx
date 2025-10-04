@@ -15,15 +15,25 @@ import App from './App.jsx' // Using real App with proper credentials
 const updateSW = registerSW({
   onNeedRefresh() {
     // Show a notification or prompt to the user about available update
-    if (confirm('New content available. Reload?')) {
-      updateSW(true)
+    console.log('🔄 New app version available!');
+    const updateConfirm = confirm('🚀 TrashDrop Carter has been updated!\n\nNew features and improvements are available.\nWould you like to reload now?');
+    if (updateConfirm) {
+      updateSW(true);
     }
   },
   onOfflineReady() {
     // Notify user that app is ready for offline use
-    console.log('App ready to work offline')
-    // In a real app, you might want to show a toast notification
+    console.log('✅ TrashDrop Carter ready to work offline');
+    
+    // Show toast notification for offline readiness
+    setTimeout(() => {
+      if (!localStorage.getItem('offline-ready-shown')) {
+        alert('📶 TrashDrop Carter is now ready to work offline!\n\nYou can use the app even without internet connection.');
+        localStorage.setItem('offline-ready-shown', 'true');
+      }
+    }, 3000);
   },
+  immediate: true, // Register immediately for faster offline capability
 })
 
 createRoot(document.getElementById('root')).render(
