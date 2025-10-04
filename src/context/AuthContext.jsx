@@ -16,7 +16,7 @@ export const useAuth = () => {
 // Auth provider component
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Don't block UI during auth check
   const [error, setError] = useState(null);
   // Initialize hasLoggedOut from localStorage to persist across refreshes
   const [hasLoggedOut, setHasLoggedOut] = useState(
@@ -25,7 +25,7 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      setLoading(true);
+      // Auth check runs in background - UI already unblocked
       try {
         // First check if user has explicitly logged out
         const isLoggedOut = localStorage.getItem('user_logged_out') === 'true';
@@ -67,7 +67,7 @@ export const AuthProvider = ({ children }) => {
         setError(err.message);
         setUser(null);
       } finally {
-        setLoading(false);
+        // Already set loading to false at start for faster UI
       }
     };
     

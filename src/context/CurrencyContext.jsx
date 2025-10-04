@@ -11,7 +11,7 @@ const CurrencyContext = createContext();
 export const CurrencyProvider = ({ children }) => {
   // Default to Ghana Cedi
   const [currency, setCurrency] = useState(CURRENCY_MAP.GH);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // Don't block UI for currency loading
 
   // Update currency based on user location
   useEffect(() => {
