@@ -9,12 +9,12 @@
   "scope": "/",
   "start_url": "/",
   "categories": ["utilities", "productivity", "business"],
-  "version": "2.0.0",
+  "version": "2.0.1",
   "icons": [
     {
-      "src": "logo.svg?v=2.0.0",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "icons/logo-02.jpg?v=2.0.1",
+      "sizes": "512x512",
+      "type": "image/jpeg",
       "purpose": "any"
     },
     {
