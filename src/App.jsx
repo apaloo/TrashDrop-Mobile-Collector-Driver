@@ -4,9 +4,10 @@ import { OfflineProvider } from './contexts/OfflineContext';
 import { CurrencyProvider } from './context/CurrencyContext';
 import { FilterProvider } from './context/FilterContext';
 import AppLayout from './components/AppLayout';
+import SplashScreen from './components/SplashScreen';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import ImageManager from './utils/imageManager';
 // Removed cacheUtils import - no longer using caching
 
@@ -127,6 +128,17 @@ const PublicRoute = ({ children }) => {
 };
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
+  const handleSplashComplete = () => {
+    setShowSplash(false);
+  };
+
+  // Show splash screen first
+  if (showSplash) {
+    return <SplashScreen onComplete={handleSplashComplete} />;
+  }
+
   return (
     <AuthProvider>
       <OfflineProvider>

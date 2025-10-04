@@ -26,6 +26,7 @@
   "dependencies": {
     "@yudiel/react-qr-scanner": "^2.3.1",
     "autoprefixer": "^10.4.21",
+    "framer-motion": "^12.23.22",
     "html5-qrcode": "^2.3.8",
     "leaflet": "^1.9.4",
     "leaflet-routing-machine": "^3.2.12",
