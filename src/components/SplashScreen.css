@@ -41,7 +41,7 @@
 }
 
 .splash-logo {
-  width: 100px;
+  width: 80px;
   height: auto;
   max-width: none;
   display: block;
@@ -162,20 +162,20 @@
 /* Responsive Design */
 @media (min-width: 768px) {
   .splash-logo {
-    width: 140px;
+    width: 110px;
   }
 }
 
 @media (min-width: 1024px) {
   .splash-logo {
-    width: 160px;
+    width: 120px;
   }
 }
 
 /* Mobile optimizations */
 @media (max-width: 480px) {
   .splash-logo {
-    width: 90px;
+    width: 70px;
   }
   
   .skip-indicator {
