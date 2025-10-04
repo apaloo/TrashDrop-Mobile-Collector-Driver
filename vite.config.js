@@ -23,14 +23,14 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: 'TrashDrop Mobile Collector Driver',
-        short_name: 'TrashDrop',
+        name: 'TrashDrop Collector',
+        short_name: 'TrashDrop Collector',
         description: 'Mobile app for TrashDrop collectors and drivers',
         theme_color: '#9AE65C',
         background_color: '#ffffff',
         icons: [
           {
-            src: 'icons/logo-02.jpg?v=2.0.1',
+            src: 'icons/logo-02.jpg?v=3.0.0',
             sizes: '512x512',
             type: 'image/jpeg',
             purpose: 'any'
