@@ -2,7 +2,7 @@ import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { TopNavBar } from './NavBar';
 import BottomNavBar from './BottomNavBar';
-import OfflineIndicator from './OfflineIndicator';
+// import OfflineIndicator from './OfflineIndicator'; // Removed for faster startup
 import { useAuth } from '../context/AuthContext';
 
 /**
@@ -29,8 +29,7 @@ const AppLayout = ({ children }) => {
       {/* Show BottomNavBar only on authenticated routes */}
       {!isPublicRoute && <BottomNavBar />}
       
-      {/* Offline indicator is always visible when needed */}
-      <OfflineIndicator />
+      {/* Offline indicator removed for faster startup */}
     </div>
   );
 };

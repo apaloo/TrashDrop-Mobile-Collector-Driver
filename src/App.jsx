@@ -1,12 +1,13 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { OfflineProvider } from './contexts/OfflineContext';
+// import { OfflineProvider } from './contexts/OfflineContext'; // Removed for faster startup
 import { CurrencyProvider } from './context/CurrencyContext';
 import { FilterProvider } from './context/FilterContext';
 import AppLayout from './components/AppLayout';
+import SplashScreen from './components/SplashScreen';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { useEffect, Suspense, lazy } from 'react';
+import { useEffect, useState, Suspense, lazy } from 'react';
 import ImageManager from './utils/imageManager';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 // Removed cacheUtils import - no longer using caching
@@ -138,15 +139,25 @@ const PublicRoute = ({ children }) => {
 };
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
+  const handleSplashComplete = () => {
+    setShowSplash(false);
+  };
+
+  // Show splash screen first
+  if (showSplash) {
+    return <SplashScreen onComplete={handleSplashComplete} />;
+  }
+
   return (
     <AuthProvider>
-      <OfflineProvider>
-        <CurrencyProvider>
-          <FilterProvider>
-            <Router>
-              <AppLayout>
-                <RouteCleanup />
-                <Suspense fallback={<PageLoadingFallback />}>
+      <CurrencyProvider>
+        <FilterProvider>
+          <Router>
+            <AppLayout>
+              <RouteCleanup />
+              <Suspense fallback={<PageLoadingFallback />}>
                   <Routes>
                   <Route path="/" element={<DefaultRedirect />} />
                   <Route path="/welcome" element={<WelcomePage />} />
@@ -184,7 +195,6 @@ function App() {
             </Router>
           </FilterProvider>
         </CurrencyProvider>
-      </OfflineProvider>
     </AuthProvider>
   );
 }
