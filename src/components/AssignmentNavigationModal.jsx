@@ -347,6 +347,8 @@ const AssignmentNavigationModal = ({
           const withinGeofence = distance <= 0.05;
           
           // Update geofence status - only if using real coordinates
+          const usingFallbackDestination = destinationObj.isFallback === true;
+          const usingFallbackUserLocation = position.isFallback === true;
           const canDetectArrival = !usingFallbackDestination && !usingFallbackUserLocation;
           const userWithinGeofence = withinGeofence && canDetectArrival;
           
@@ -645,55 +647,115 @@ const AssignmentNavigationModal = ({
               )}
             </div>
             
-            <div className="flex space-x-2 min-w-0">
+            <div className="flex flex-col space-y-3 min-w-0">
               {error && !hasArrived && (
                 <button
                   onClick={handleRetryLocation}
-                  className="relative p-2 text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 hover:shadow-md active:scale-95 active:bg-blue-100 transition-all duration-200 font-medium flex-shrink-0 transform hover:scale-105 overflow-hidden group"
-                  disabled={isLoading}
-                  title={isLoading ? 'Retrying...' : 'Retry Location'}
-                >
-                  {/* Ripple effect overlay */}
-                  <div className="absolute inset-0 rounded-lg opacity-0 group-active:opacity-100 group-active:animate-ping bg-blue-200 transition-opacity duration-300"></div>
-                  
-                  {/* Pulse effect on click */}
-                  <div className={`absolute inset-0 rounded-lg transition-all duration-500 ${isLoading ? 'animate-pulse bg-blue-100' : ''}`}></div>
-                  
-                  <div className={`relative transition-all duration-300 ${isLoading ? 'animate-spin' : 'hover:rotate-180 group-active:rotate-90 group-active:scale-110'}`}>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  </div>
-                </button>
-              )}
-              
-              {!hasArrived && !withinGeofence && userLocation && parseDestination(destination) && !isNavigating && (
-                <button
-                  onClick={startInAppNavigation}
-                  className="flex-1 min-w-0 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
+                  className="w-full px-4 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl hover:from-orange-600 hover:to-red-600 active:from-orange-700 active:to-red-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={isLoading}
                 >
-                  <div className="flex items-center justify-center min-w-0">
-                    <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                    </svg>
-                    <span className="truncate">
-                      {isLoading ? 'Starting...' : 'Start Navigation'}
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className={`transition-transform duration-500 ${isLoading ? 'animate-spin' : ''}`}>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </div>
+                    <span className="font-semibold">
+                      {isLoading ? 'Retrying...' : 'Retry Location'}
                     </span>
                   </div>
                 </button>
               )}
               
+              {!hasArrived && !withinGeofence && userLocation && parseDestination(destination) && !isNavigating && (
+                <div className="space-y-3">
+                  {/* In-App Navigation Button */}
+                  <button
+                    onClick={startInAppNavigation}
+                    className="w-full px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 active:from-blue-800 active:to-blue-900 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isLoading}
+                  >
+                    <div className="flex items-center justify-center space-x-3">
+                      <div className="p-1 bg-white/20 rounded-lg">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                        </svg>
+                      </div>
+                      <div className="text-left">
+                        <div className="text-lg font-bold">
+                          {isLoading ? 'Starting...' : 'In-App Navigation'}
+                        </div>
+                        <div className="text-blue-100 text-sm">
+                          Interactive map with route guidance
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                  
+                  {/* External Google Maps Button */}
+                  <button
+                    onClick={() => {
+                      console.log('🚀 External navigation button clicked');
+                      const dest = parseDestination(destination);
+                      console.log('📍 Parsed destination:', dest);
+                      
+                      if (dest && !dest.isFallback) {
+                        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${dest.lat},${dest.lng}&travelmode=driving`;
+                        console.log('🗺️ Opening Google Maps URL:', mapsUrl);
+                        window.open(mapsUrl, '_blank');
+                        showToast({
+                          message: 'Opening Google Maps for turn-by-turn directions',
+                          type: 'info'
+                        });
+                      } else {
+                        console.log('⚠️ Cannot open external navigation - using fallback coordinates');
+                        showToast({
+                          message: 'Cannot open Google Maps - precise coordinates needed. Enable GPS for accurate navigation.',
+                          type: 'warning'
+                        });
+                      }
+                    }}
+                    className="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 active:from-green-800 active:to-emerald-800 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isLoading}
+                  >
+                    <div className="flex items-center justify-center space-x-3">
+                      <div className="p-1 bg-white/20 rounded-lg">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </div>
+                      <div className="text-left">
+                        <div className="text-lg font-bold">
+                          Google Maps Navigation
+                        </div>
+                        <div className="text-green-100 text-sm">
+                          Voice-guided turn-by-turn directions
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              )}
+              
               {isNavigating && (
                 <button
                   onClick={stopNavigation}
-                  className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium shadow-sm"
+                  className="w-full px-6 py-4 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl hover:from-red-700 hover:to-red-800 active:from-red-800 active:to-red-900 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
                 >
-                  <div className="flex items-center">
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    Stop Navigation
+                  <div className="flex items-center justify-center space-x-3">
+                    <div className="p-1 bg-white/20 rounded-lg">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </div>
+                    <div className="text-left">
+                      <div className="text-lg font-bold">
+                        Stop Navigation
+                      </div>
+                      <div className="text-red-100 text-sm">
+                        End current navigation session
+                      </div>
+                    </div>
                   </div>
                 </button>
               )}
