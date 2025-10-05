@@ -606,168 +606,167 @@ const AssignmentNavigationModal = ({
         )}
 
         {/* Status Bar */}
-        <div className="bg-white border-t p-5 shadow-inner">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              {hasArrived ? (
-                <div className="flex items-center text-green-600 font-medium">
-                  <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  Assignment Started!
-                </div>
-              ) : withinGeofence ? (
-                <div className="flex items-center text-green-600 font-medium">
-                  <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M3 10a7 7 0 1114 0 7 7 0 01-14 0zm7-3a1 1 0 00-.867.5L8 9H6a1 1 0 100 2h2l1.133 1.5a1 1 0 001.734 0L12 11h2a1 1 0 100-2h-2l-1.133-1.5A1 1 0 0010 7z" clipRule="evenodd" />
-                  </svg>
-                  🎯 You have arrived! Ready to start cleaning.
-                </div>
-              ) : (
-                <div className="text-gray-700">
-                  {distanceToDestination !== null && !isNaN(distanceToDestination) ? (
-                    <div>
-                      <span className="font-medium">
-                        {formatDistance(distanceToDestination)} to assignment
-                      </span>
-                      {(() => {
-                        const destinationObj = parseDestination(destination);
-                        const usingFallback = destinationObj?.isFallback || userLocation?.isFallback;
-                        return usingFallback ? (
-                          <div className="text-xs text-amber-600 mt-1">
-                            ⚠️ Using approximate location - enable GPS for precise tracking
-                          </div>
-                        ) : null;
-                      })()} 
+        <div className="bg-white border-t p-4 shadow-inner">
+          {/* Row 1: Distance and GPS Status */}
+          <div className="mb-4">
+            {hasArrived ? (
+              <div className="flex items-center text-green-600 font-medium">
+                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                Assignment Started!
+              </div>
+            ) : withinGeofence ? (
+              <div className="flex items-center text-green-600 font-medium">
+                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M3 10a7 7 0 1114 0 7 7 0 01-14 0zm7-3a1 1 0 00-.867.5L8 9H6a1 1 0 100 2h2l1.133 1.5a1 1 0 001.734 0L12 11h2a1 1 0 100-2h-2l-1.133-1.5A1 1 0 0010 7z" clipRule="evenodd" />
+                </svg>
+                🎯 You have arrived! Ready to start cleaning.
+              </div>
+            ) : (
+              <div className="text-gray-700">
+                {distanceToDestination !== null && !isNaN(distanceToDestination) ? (
+                  <div>
+                    <div className="font-medium text-base">
+                      {formatDistance(distanceToDestination)} to assignment
                     </div>
-                  ) : (
+                    {(() => {
+                      // Hide GPS warning when we have distance calculation - only show during calculation phase
+                      // Show GPS warning only when accuracy is above 50m OR using fallback coordinates
+                      const destinationObj = parseDestination(destination);
+                      const usingFallback = destinationObj?.isFallback || userLocation?.isFallback;
+                      const hasLowAccuracy = userLocation?.accuracy && userLocation.accuracy > 50;
+                      
+                      // Don't show warning when we have valid distance calculation
+                      const shouldShowWarning = false; // Never show when distance is calculated
+                      
+                      return shouldShowWarning ? (
+                        <div className="text-xs text-amber-600 mt-1">
+                          ⚠️ Using approximate location - enable GPS for precise tracking
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                ) : (
+                  <div>
                     <span>Calculating distance...</span>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            <div className="flex flex-col space-y-3 min-w-0">
-              {error && !hasArrived && (
-                <button
-                  onClick={handleRetryLocation}
-                  className="w-full px-4 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl hover:from-orange-600 hover:to-red-600 active:from-orange-700 active:to-red-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isLoading}
-                >
-                  <div className="flex items-center justify-center space-x-2">
-                    <div className={`transition-transform duration-500 ${isLoading ? 'animate-spin' : ''}`}>
+                    {(() => {
+                      // Show GPS warning when calculating distance and accuracy is above 50m
+                      const destinationObj = parseDestination(destination);
+                      const usingFallback = destinationObj?.isFallback || userLocation?.isFallback;
+                      const hasLowAccuracy = userLocation?.accuracy && userLocation.accuracy > 50;
+                      const shouldShowWarning = usingFallback || hasLowAccuracy;
+                      
+                      return shouldShowWarning ? (
+                        <div className="text-xs text-amber-600 mt-1">
+                          ⚠️ Using approximate location - enable GPS for precise tracking
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Row 2: Refresh and In-App Navigation */}
+          {!hasArrived && !withinGeofence && userLocation && parseDestination(destination) && !isNavigating && (
+            <div className="mb-3">
+              <div className="flex space-x-2">
+                {/* Refresh Button */}
+                {error && (
+                  <button
+                    onClick={handleRetryLocation}
+                    className="p-2 text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 hover:shadow-md active:scale-95 active:bg-blue-100 transition-all duration-200 font-medium flex-shrink-0"
+                    disabled={isLoading}
+                  >
+                    <div className={`transition-transform duration-300 ${isLoading ? 'animate-spin' : 'hover:rotate-180'}`}>
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
                     </div>
-                    <span className="font-semibold">
-                      {isLoading ? 'Retrying...' : 'Retry Location'}
-                    </span>
-                  </div>
-                </button>
-              )}
-              
-              {!hasArrived && !withinGeofence && userLocation && parseDestination(destination) && !isNavigating && (
-                <div className="space-y-3">
-                  {/* In-App Navigation Button */}
-                  <button
-                    onClick={startInAppNavigation}
-                    className="w-full px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 active:from-blue-800 active:to-blue-900 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={isLoading}
-                  >
-                    <div className="flex items-center justify-center space-x-3">
-                      <div className="p-1 bg-white/20 rounded-lg">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                        </svg>
-                      </div>
-                      <div className="text-left">
-                        <div className="text-lg font-bold">
-                          {isLoading ? 'Starting...' : 'In-App Navigation'}
-                        </div>
-                        <div className="text-blue-100 text-sm">
-                          Interactive map with route guidance
-                        </div>
-                      </div>
-                    </div>
                   </button>
-                  
-                  {/* External Google Maps Button */}
-                  <button
-                    onClick={() => {
-                      console.log('🚀 External navigation button clicked');
-                      const dest = parseDestination(destination);
-                      console.log('📍 Parsed destination:', dest);
-                      
-                      if (dest && !dest.isFallback) {
-                        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${dest.lat},${dest.lng}&travelmode=driving`;
-                        console.log('🗺️ Opening Google Maps URL:', mapsUrl);
-                        window.open(mapsUrl, '_blank');
-                        showToast({
-                          message: 'Opening Google Maps for turn-by-turn directions',
-                          type: 'info'
-                        });
-                      } else {
-                        console.log('⚠️ Cannot open external navigation - using fallback coordinates');
-                        showToast({
-                          message: 'Cannot open Google Maps - precise coordinates needed. Enable GPS for accurate navigation.',
-                          type: 'warning'
-                        });
-                      }
-                    }}
-                    className="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 active:from-green-800 active:to-emerald-800 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={isLoading}
-                  >
-                    <div className="flex items-center justify-center space-x-3">
-                      <div className="p-1 bg-white/20 rounded-lg">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                      </div>
-                      <div className="text-left">
-                        <div className="text-lg font-bold">
-                          Google Maps Navigation
-                        </div>
-                        <div className="text-green-100 text-sm">
-                          Voice-guided turn-by-turn directions
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              )}
-              
-              {isNavigating && (
+                )}
+                
+                {/* In-App Navigation Button */}
                 <button
-                  onClick={stopNavigation}
-                  className="w-full px-6 py-4 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl hover:from-red-700 hover:to-red-800 active:from-red-800 active:to-red-900 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
+                  onClick={startInAppNavigation}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-all duration-200 font-medium text-sm"
+                  disabled={isLoading}
                 >
-                  <div className="flex items-center justify-center space-x-3">
-                    <div className="p-1 bg-white/20 rounded-lg">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </div>
-                    <div className="text-left">
-                      <div className="text-lg font-bold">
-                        Stop Navigation
-                      </div>
-                      <div className="text-red-100 text-sm">
-                        End current navigation session
-                      </div>
-                    </div>
+                  <div className="flex items-center justify-center space-x-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                    <span>In-App Navigation</span>
                   </div>
                 </button>
-              )}
-              
-              {hasArrived && (
-                <div className="flex items-center text-green-600">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600 mr-2"></div>
-                  <span className="text-sm">Assignment started...</span>
-                </div>
-              )}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Row 3: Google Maps Navigation */}
+          {!hasArrived && !withinGeofence && userLocation && parseDestination(destination) && !isNavigating && (
+            <div>
+              <button
+                onClick={() => {
+                  console.log('🚀 External navigation button clicked');
+                  const dest = parseDestination(destination);
+                  console.log('📍 Parsed destination:', dest);
+                  
+                  if (dest && !dest.isFallback) {
+                    const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${dest.lat},${dest.lng}&travelmode=driving`;
+                    console.log('🗺️ Opening Google Maps URL:', mapsUrl);
+                    window.open(mapsUrl, '_blank');
+                    showToast({
+                      message: 'Opening Google Maps for turn-by-turn directions',
+                      type: 'info'
+                    });
+                  } else {
+                    console.log('⚠️ Cannot open external navigation - using fallback coordinates');
+                    showToast({
+                      message: 'Cannot open Google Maps - precise coordinates needed. Enable GPS for accurate navigation.',
+                      type: 'warning'
+                    });
+                  }
+                }}
+                className="w-full px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 active:bg-green-800 transition-all duration-200 font-medium text-sm"
+                disabled={isLoading}
+              >
+                <div className="flex items-center justify-center space-x-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  <span>Google Maps Navigation</span>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* Stop Navigation Button */}
+          {isNavigating && (
+            <div className="mt-3">
+              <button
+                onClick={stopNavigation}
+                className="w-full px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 active:bg-red-800 transition-all duration-200 font-medium text-sm"
+              >
+                <div className="flex items-center justify-center space-x-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  <span>Stop Navigation</span>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* Arrival Status */}
+          {hasArrived && (
+            <div className="mt-3 flex items-center text-green-600">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600 mr-2"></div>
+              <span className="text-sm">Assignment started...</span>
+            </div>
+          )}
         </div>
 
         {/* Success Message Overlay */}
