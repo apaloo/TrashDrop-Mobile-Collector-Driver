@@ -64,11 +64,18 @@ export const getCurrencyFromCoordinates = async (coordinates) => {
     console.warn(`No currency mapping found for country code: ${countryCode}`);
     return CURRENCY_MAP.GH; // Default to Ghana Cedi if country not found or not supported
   } catch (error) {
-    // Reduce error logging frequency to prevent spam
-    if (Math.random() < 0.1) {
-      console.error('Error determining currency from location:', error);
+    // Reduce error logging frequency to prevent spam - only log meaningful errors
+    if (Math.random() < 0.05) { // Further reduced to 5%
+      // Only log if error has meaningful information
+      if (error.name === 'AbortError') {
+        console.warn('[Currency] Request timeout - using Ghana Cedi fallback');
+      } else if (error.message) {
+        console.warn('[Currency] Network error:', error.message);
+      } else {
+        console.warn('[Currency] Location detection failed - using Ghana Cedi fallback');
+      }
     }
-    // Default to Ghana if there's an error
+    // Always default to Ghana if there's an error
     return CURRENCY_MAP.GH;
   }
 };

@@ -1,18 +1,36 @@
+import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
+// Context providers
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { OfflineProvider } from './contexts/OfflineContext';
 import { CurrencyProvider } from './context/CurrencyContext';
 import { FilterProvider } from './context/FilterContext';
+
+// Components
 import AppLayout from './components/AppLayout';
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-import { useEffect } from 'react';
 import ImageManager from './utils/imageManager';
-// Removed cacheUtils import - no longer using caching
+
+// IMMEDIATE: Critical pages loaded immediately for fast startup
+import WelcomePage from './pages/Welcome';
+import TermsPage from './pages/Terms';
+import PrivacyPage from './pages/Privacy';
+import LoginPage from './pages/Login';
+import SignupPage from './pages/Signup';
+import DiagnosticPage from './pages/DiagnosticPage';
+
+// LAZY: Heavy pages loaded on demand to reduce initial bundle
+const MapPage = lazy(() => import('./pages/Map'));
+const RequestPage = lazy(() => import('./pages/Request'));
+const AssignPage = lazy(() => import('./pages/Assign'));
+const EarningsPage = lazy(() => import('./pages/Earnings'));
+const ProfilePage = lazy(() => import('./pages/Profile'));
+const RouteOptimizationPage = lazy(() => import('./pages/RouteOptimization'));
 
 // Clear stale test-user-id session data
 const clearStaleSession = () => {
-  try {
     const devModeSession = localStorage.getItem('dev_mode_session');
     if (devModeSession) {
       const session = JSON.parse(devModeSession);
@@ -21,31 +39,12 @@ const clearStaleSession = () => {
         localStorage.removeItem('dev_mode_session');
       }
     }
-  } catch (err) {
-    console.error('Error clearing stale session:', err);
   }
-};
-
-// Removed cache cleanup - no longer using caching
-
-// Execute cleanup on app startup
-if (process.env.NODE_ENV === 'development') {
-  clearStaleSession();
-}
-
-// Pages
-import LoginPage from './pages/Login';
-import SignupPage from './pages/Signup';
-import WelcomePage from './pages/Welcome';
-import TermsPage from './pages/Terms';
-import PrivacyPage from './pages/Privacy';
-import MapPage from './pages/Map';
-import RequestPage from './pages/Request';
-import AssignPage from './pages/Assign';
-import EarningsPage from './pages/Earnings';
-import ProfilePage from './pages/Profile';
-import DiagnosticPage from './pages/DiagnosticPage';
-import RouteOptimizationPage from './pages/RouteOptimization';
+  
+  // Execute cleanup on app startup
+  if (process.env.NODE_ENV === 'development') {
+    clearStaleSession();
+  }
 
 // Component to handle cleanup on route changes
 const RouteCleanup = () => {
@@ -154,14 +153,91 @@ function App() {
                   <Route path="/privacy" element={<PrivacyPage />} />
                   <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
                   <Route path="/signup" element={<PublicRoute><SignupPage /></PublicRoute>} />
-                  <Route path="/map" element={<ProtectedRoute><MapPage /></ProtectedRoute>} />
-                  <Route path="/request" element={<ProtectedRoute><RequestPage /></ProtectedRoute>} />
-                  <Route path="/request/:id" element={<ProtectedRoute><RequestPage /></ProtectedRoute>} />
-                  <Route path="/assign" element={<ProtectedRoute><AssignPage /></ProtectedRoute>} />
-                  <Route path="/earnings" element={<ProtectedRoute><EarningsPage /></ProtectedRoute>} />
-                  <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+                  <Route path="/map" element={
+                    <ProtectedRoute>
+                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                        <div className="text-center">
+                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                          <p className="mt-4 text-gray-700 font-medium">🗺️ Loading Map...</p>
+                        </div>
+                      </div>}>
+                        <MapPage />
+                      </Suspense>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/request" element={
+                    <ProtectedRoute>
+                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                        <div className="text-center">
+                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                          <p className="mt-4 text-gray-700 font-medium">📋 Loading Requests...</p>
+                        </div>
+                      </div>}>
+                        <RequestPage />
+                      </Suspense>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/request/:id" element={
+                    <ProtectedRoute>
+                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                        <div className="text-center">
+                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                          <p className="mt-4 text-gray-700 font-medium">📋 Loading Request...</p>
+                        </div>
+                      </div>}>
+                        <RequestPage />
+                      </Suspense>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/assign" element={
+                    <ProtectedRoute>
+                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                        <div className="text-center">
+                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                          <p className="mt-4 text-gray-700 font-medium">📦 Loading Assignments...</p>
+                        </div>
+                      </div>}>
+                        <AssignPage />
+                      </Suspense>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/earnings" element={
+                    <ProtectedRoute>
+                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                        <div className="text-center">
+                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                          <p className="mt-4 text-gray-700 font-medium">💰 Loading Earnings...</p>
+                        </div>
+                      </div>}>
+                        <EarningsPage />
+                      </Suspense>
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/profile" element={
+                    <ProtectedRoute>
+                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                        <div className="text-center">
+                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                          <p className="mt-4 text-gray-700 font-medium">👤 Loading Profile...</p>
+                        </div>
+                      </div>}>
+                        <ProfilePage />
+                      </Suspense>
+                    </ProtectedRoute>
+                  } />
                   <Route path="/diagnostic" element={<DiagnosticPage />} />
-                  <Route path="/route-optimization" element={<ProtectedRoute><RouteOptimizationPage /></ProtectedRoute>} />
+                  <Route path="/route-optimization" element={
+                    <ProtectedRoute>
+                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                        <div className="text-center">
+                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                          <p className="mt-4 text-gray-700 font-medium">🚗 Loading Route Optimization...</p>
+                        </div>
+                      </div>}>
+                        <RouteOptimizationPage />
+                      </Suspense>
+                    </ProtectedRoute>
+                  } />
                   <Route path="*" element={
                     <div className="flex flex-col h-screen items-center justify-center p-4">
                       <h1 className="text-2xl font-bold mb-4">Page Not Found</h1>

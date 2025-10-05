@@ -7,6 +7,37 @@ export default defineConfig({
   define: {
     'import.meta.env.VITE_GOOGLE_MAPS_API_KEY': JSON.stringify(process.env.VITE_GOOGLE_MAPS_API_KEY || '')
   },
+  build: {
+    // PERFORMANCE: Split chunks to reduce initial bundle size
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Vendor libraries
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-maps': ['leaflet', 'react-leaflet'],
+          'vendor-ui': ['framer-motion', 'react-toastify'],
+          'vendor-supabase': ['@supabase/supabase-js'],
+          
+          // App modules
+          'app-pages': [
+            './src/pages/Map.jsx',
+            './src/pages/Request.jsx', 
+            './src/pages/Assign.jsx'
+          ],
+          'app-components': [
+            './src/components/GoogleMapComponent.jsx',
+            './src/components/NavigationQRModal.jsx',
+            './src/components/AssignmentNavigationModal.jsx'
+          ],
+          'app-services': [
+            './src/services/requestManagement.js',
+            './src/services/supabase.js'
+          ]
+        }
+      }
+    },
+    chunkSizeWarningLimit: 800 // Increase warning limit
+  },
   server: {
     proxy: {
       // Proxy API requests to avoid CORS issues

@@ -33,17 +33,8 @@
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
     
-    <!-- Google Maps API Preloading -->
-    <script>
-      window.googleMapsReady = false;
-      function initGoogleMaps() {
-        window.googleMapsReady = true;
-        console.log('🗺️ Google Maps API preloaded globally');
-      }
-    </script>
-    <script async defer
-      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA&libraries=geometry,marker&loading=async&callback=initGoogleMaps">
-    </script>
+    <!-- REMOVED: Google Maps API - now loaded dynamically when needed -->
+    <!-- This was causing 15-25 second blocking delays due to invalid API key -->
     
     <!-- PWA Manifest -->
   </head>

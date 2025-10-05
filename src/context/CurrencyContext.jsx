@@ -49,19 +49,30 @@ export const CurrencyProvider = ({ children }) => {
                 clearTimeout(timeoutId);
                 console.log('[Currency] 📍 Background location obtained, updating currency...');
                 const { latitude, longitude } = position.coords;
-                const detectedCurrency = await getCurrencyFromCoordinates([latitude, longitude]);
-                
-                // Only update if different from current
-                if (detectedCurrency.code !== currency.code) {
-                  console.log('[Currency] 💱 Updating currency to:', detectedCurrency.code);
-                  setCurrency(detectedCurrency);
-                  localStorage.setItem('trashdrop_currency', JSON.stringify(detectedCurrency));
-                } else {
-                  console.log('[Currency] ✅ Currency unchanged, keeping current');
+                try {
+                  const detectedCurrency = await getCurrencyFromCoordinates([latitude, longitude]);
+                  
+                  // Only update if different from current
+                  if (detectedCurrency && detectedCurrency.code !== currency.code) {
+                    console.log('[Currency] 💱 Updating currency to:', detectedCurrency.code);
+                    setCurrency(detectedCurrency);
+                    localStorage.setItem('trashdrop_currency', JSON.stringify(detectedCurrency));
+                  } else {
+                    console.log('[Currency] ✅ Currency unchanged, keeping current');
+                  }
+                } catch (currencyError) {
+                  // Only log occasionally and with meaningful messages
+                  if (Math.random() < 0.05) {
+                    console.warn('[Currency] ⚠️ Currency detection failed - keeping current currency');
+                  }
+                  // Keep current currency - don't change anything
                 }
               } catch (error) {
                 clearTimeout(timeoutId);
-                console.warn('[Currency] ⚠️ Background location processing failed:', error);
+                // Only log occasionally to prevent spam
+                if (Math.random() < 0.05) {
+                  console.warn('[Currency] ⚠️ Background location processing failed - keeping current currency');
+                }
                 // Keep current currency - don't change anything
               }
             },

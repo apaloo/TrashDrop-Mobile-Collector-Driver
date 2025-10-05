@@ -11,23 +11,24 @@ import App from './App.jsx' // Using real App with proper credentials
 // import MinimalApp from './MinimalApp.jsx' // Testing component
 // import SimpleApp from './SimpleApp.jsx' // Testing component
 
-// Register service worker for PWA functionality
-const updateSW = registerSW({
-  onNeedRefresh() {
-    // Show a notification or prompt to the user about available update
-    if (confirm('New content available. Reload?')) {
-      updateSW(true)
-    }
-  },
-  onOfflineReady() {
-    // Notify user that app is ready for offline use
-    console.log('App ready to work offline')
-    // In a real app, you might want to show a toast notification
-  },
-})
+// Register service worker for PWA functionality - DEFERRED to not block startup
+setTimeout(() => {
+  const updateSW = registerSW({
+    onNeedRefresh() {
+      // Show a notification or prompt to the user about available update
+      if (confirm('New content available. Reload?')) {
+        updateSW(true)
+      }
+    },
+    onOfflineReady() {
+      // Notify user that app is ready for offline use
+      console.log('App ready to work offline')
+      // In a real app, you might want to show a toast notification  
+    },
+  })
+}, 2000); // Register SW after 2 seconds to not block initial startup
 
 createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
+  // REMOVED StrictMode to prevent double initialization in development
+  <App />
 )
