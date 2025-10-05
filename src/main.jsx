@@ -59,8 +59,20 @@ root.render(<App />);
 console.log('⚡ React render initiated at:', Date.now());
 console.timeEnd('🚀 App Startup Total');
 
-// CRITICAL: Mark app as fully rendered
+// CRITICAL: Hide static splash screen and show React app
 if (typeof window !== 'undefined') {
+  // Immediately mark body as react-loaded to hide splash
+  document.body.classList.add('react-loaded');
+  
+  // Remove the splash screen element completely after a brief delay
+  setTimeout(() => {
+    const splashElement = document.getElementById('instant-splash');
+    if (splashElement) {
+      splashElement.remove();
+      console.log('🗑️ Static splash screen removed');
+    }
+  }, 100);
+  
   // Use requestAnimationFrame to ensure DOM is painted
   requestAnimationFrame(() => {
     if (window.performance && window.performance.mark) {
@@ -70,5 +82,8 @@ if (typeof window !== 'undefined') {
     
     // Dispatch event that app is fully interactive
     window.dispatchEvent(new Event('app-interactive'));
+    
+    // Reset body overflow for normal scrolling
+    document.body.style.overflow = 'auto';
   });
 }

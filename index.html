@@ -32,6 +32,97 @@
     <!-- PWA Manifest -->
   </head>
   <body>
-    <div id="root"></div>
+    <!-- CRITICAL: Static HTML that shows INSTANTLY while JS loads -->
+    <div id="root">
+      <!-- Instant splash screen - appears immediately on click -->
+      <div id="instant-splash" style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        background-color: #f8f9fa;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      ">
+        <!-- TrashDrop Logo - Using Original -->
+        <div style="
+          width: 120px;
+          height: 120px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 30px;
+        ">
+          <img 
+            src="/icons/logo-02.png" 
+            alt="TrashDrop Logo" 
+            style="
+              width: 120px;
+              height: 120px;
+              object-fit: contain;
+            "
+            onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+          />
+          <!-- Fallback logo if image fails to load -->
+          <div style="
+            width: 120px;
+            height: 120px;
+            background-color: #9AE65C;
+            border-radius: 20px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            color: #2D3748;
+            font-size: 24px;
+            font-weight: 800;
+          ">TD</div>
+        </div>
+        
+        <!-- Loading indicator -->
+        <div style="
+          width: 40px;
+          height: 40px;
+          border: 3px solid #E2E8F0;
+          border-top: 3px solid #9AE65C;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        "></div>
+        
+        <!-- Loading text -->
+        <p style="
+          font-size: 14px;
+          color: #A0AEC0;
+          margin: 20px 0 0 0;
+          font-weight: 500;
+        ">Loading your dashboard...</p>
+      </div>
+    </div>
+    
+    <!-- CSS animation for loading spinner -->
+    <style>
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      /* Prevent flash of unstyled content */
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: #f8f9fa;
+        overflow: hidden;
+      }
+      
+      /* Hide splash when React loads */
+      .react-loaded #instant-splash {
+        display: none;
+      }
+    </style>
+    
     <script type="module" src="/src/main.jsx"></script>
   </body>

@@ -8,35 +8,60 @@ export default defineConfig({
     'import.meta.env.VITE_GOOGLE_MAPS_API_KEY': JSON.stringify(process.env.VITE_GOOGLE_MAPS_API_KEY || '')
   },
   build: {
+    // CRITICAL: Aggressive mobile optimization for instant startup
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: false, // Keep console for debugging
+        drop_debugger: true,
+        pure_funcs: ['console.debug', 'console.trace']
+      }
+    },
+    
     // PERFORMANCE: Split chunks to reduce initial bundle size
     rollupOptions: {
       output: {
+        // Smaller chunks for faster mobile loading
         manualChunks: {
-          // Vendor libraries
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          // CRITICAL: Core app bundle (loaded first)
+          'app-core': ['react', 'react-dom'],
+          'app-router': ['react-router-dom'],
+          
+          // LAZY: Heavy libraries (loaded on demand)
           'vendor-maps': ['leaflet', 'react-leaflet'],
           'vendor-ui': ['framer-motion', 'react-toastify'],
           'vendor-supabase': ['@supabase/supabase-js'],
           
-          // App modules
-          'app-pages': [
-            './src/pages/Map.jsx',
-            './src/pages/Request.jsx', 
-            './src/pages/Assign.jsx'
-          ],
-          'app-components': [
+          // LAZY: Pages (loaded on route change)
+          'page-map': ['./src/pages/Map.jsx'],
+          'page-request': ['./src/pages/Request.jsx'], 
+          'page-assign': ['./src/pages/Assign.jsx'],
+          'page-profile': ['./src/pages/Profile.jsx'],
+          
+          // LAZY: Heavy components (loaded when needed)
+          'components-maps': [
             './src/components/GoogleMapComponent.jsx',
             './src/components/NavigationQRModal.jsx',
             './src/components/AssignmentNavigationModal.jsx'
           ],
-          'app-services': [
+          
+          // LAZY: Services (loaded when needed)
+          'services': [
             './src/services/requestManagement.js',
             './src/services/supabase.js'
           ]
-        }
+        },
+        
+        // Optimize chunk file names for caching
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]'
       }
     },
-    chunkSizeWarningLimit: 800 // Increase warning limit
+    
+    // CRITICAL: Target modern browsers for smaller bundles
+    target: ['es2020', 'chrome80', 'safari13'],
+    chunkSizeWarningLimit: 500 // Smaller chunks for mobile
   },
   server: {
     proxy: {
@@ -53,12 +78,18 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      
+      // CRITICAL: PWA settings for instant mobile loading
       manifest: {
         name: 'TrashDrop Carter',
         short_name: 'TrashDrop Carter',
         description: 'Mobile app for TrashDrop collectors and drivers',
         theme_color: '#9AE65C',
-        background_color: '#ffffff',
+        background_color: '#f8f9fa',
+        display: 'standalone',
+        orientation: 'portrait',
+        start_url: '/',
+        scope: '/',
         icons: [
           {
             src: 'icons/logo-02.jpg?v=3.0.0',
@@ -85,47 +116,79 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
+        // CRITICAL: Aggressive caching for instant mobile startup
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,jpg,jpeg,webp}'],
+        maximumFileSizeToCacheInBytes: 5000000, // 5MB limit
+        
+        // CRITICAL: Cache additional files
+        additionalManifestEntries: [
+          { url: '/', revision: null },
+          { url: '/manifest.json', revision: null }
+        ],
+        
         runtimeCaching: [
+          // CRITICAL: App shell - cache immediately
+          {
+            urlPattern: /^\/$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'app-shell',
+              networkTimeoutSeconds: 3,
+              expiration: {
+                maxEntries: 5,
+                maxAgeSeconds: 60 * 60 * 24 // 1 day
+              }
+            }
+          },
+          
+          // CRITICAL: App assets - cache aggressively
+          {
+            urlPattern: /^\/assets\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'app-assets',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+              }
+            }
+          },
+          
+          // External resources
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'google-fonts-cache',
+              cacheName: 'google-fonts',
               expiration: {
                 maxEntries: 10,
                 maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
               }
             }
           },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'gstatic-fonts-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          },
+          
           {
             urlPattern: /^https:\/\/unpkg\.com\/.*/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'unpkg-cache',
+              cacheName: 'cdn-assets',
               expiration: {
-                maxEntries: 10,
+                maxEntries: 20,
                 maxAgeSeconds: 60 * 60 * 24 * 7 // 1 week
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
+              }
+            }
+          },
+          
+          // CRITICAL: API calls - background sync for offline
+          {
+            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/.*$/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-cache',
+              networkTimeoutSeconds: 5,
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 5 // 5 minutes
               }
             }
           }
