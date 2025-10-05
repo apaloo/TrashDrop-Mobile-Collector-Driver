@@ -229,10 +229,27 @@ export const authService = {
     }
   },
   
-  // Get current user session
+  // Get current user session - OPTIMIZED for immediate startup
   getSession: async () => {
     console.time('[AuthService] getSession Duration');
     console.log('[AuthService] getSession called at:', Date.now());
+    
+    // CRITICAL: Return immediately if in non-production mode
+    if (DEV_MODE) {
+      console.log('⚡ DEV_MODE: Returning session immediately for startup optimization');
+      const devSession = localStorage.getItem('dev_mode_session');
+      if (devSession) {
+        try {
+          const session = JSON.parse(devSession);
+          console.timeEnd('[AuthService] getSession Duration');
+          return { session: session, user: session.user };
+        } catch (e) {
+          localStorage.removeItem('dev_mode_session');
+        }
+      }
+      console.timeEnd('[AuthService] getSession Duration');
+      return { session: null, user: null };
+    }
     
     try {
       // Check if we have a dev mode session in localStorage

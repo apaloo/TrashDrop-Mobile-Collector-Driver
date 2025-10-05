@@ -81,17 +81,19 @@ const ProtectedRoute = ({ children }) => {
     hasLoggedOut
   });
   
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
-          <p className="mt-4 text-gray-700 font-medium">🔐 Checking access...</p>
-          <p className="mt-1 text-sm text-gray-500">Verifying your permissions</p>
-        </div>
-      </div>
-    );
-  }
+  // CRITICAL: Don't block UI on loading - show app immediately
+  // Only block if user has explicitly logged out
+  // if (loading) {
+  //   return (
+  //     <div className="flex h-screen items-center justify-center bg-gray-50">
+  //       <div className="text-center">
+  //         <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+  //         <p className="mt-4 text-gray-700 font-medium">🔐 Checking access...</p>
+  //         <p className="mt-1 text-sm text-gray-500">Verifying your permissions</p>
+  //       </div>
+  //     </div>
+  //   );
+  // }
   
   // Allow access if authenticated OR if we have a dev mode session AND user hasn't logged out
   if ((!isAuthenticated && !hasDevModeSession) || hasLoggedOut) {
@@ -116,17 +118,18 @@ const PublicRoute = ({ children }) => {
     hasLoggedOut
   });
   
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
-          <p className="mt-4 text-gray-700 font-medium">⚡ Loading app...</p>
-          <p className="mt-1 text-sm text-gray-500">Setting up your workspace</p>
-        </div>
-      </div>
-    );
-  }
+  // CRITICAL: Don't block UI on loading - show app immediately
+  // if (loading) {
+  //   return (
+  //     <div className="flex h-screen items-center justify-center bg-gray-50">
+  //       <div className="text-center">
+  //         <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+  //         <p className="mt-4 text-gray-700 font-medium">⚡ Loading app...</p>
+  //         <p className="mt-1 text-sm text-gray-500">Setting up your workspace</p>
+  //       </div>
+  //     </div>
+  //   );
+  // }
   
   // Only redirect to map if authenticated OR if we have a dev mode session AND user hasn't logged out
   if ((isAuthenticated || hasDevModeSession) && !hasLoggedOut) {
@@ -279,17 +282,19 @@ const DefaultRedirect = () => {
     hasLoggedOut
   });
   
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
-          <p className="mt-4 text-gray-700 font-medium">🚀 Starting up...</p>
-          <p className="mt-1 text-sm text-gray-500">Preparing your dashboard</p>
-        </div>
-      </div>
-    );
-  }
+  // CRITICAL: Don't block UI on loading - decide immediately based on current state
+  // Background auth checks will update this later if needed
+  // if (loading) {
+  //   return (
+  //     <div className="flex h-screen items-center justify-center bg-gray-50">
+  //       <div className="text-center">
+  //         <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+  //         <p className="mt-4 text-gray-700 font-medium">🚀 Starting up...</p>
+  //         <p className="mt-1 text-sm text-gray-500">Preparing your dashboard</p>
+  //       </div>
+  //     </div>
+  //   );
+  // }
   
   // Redirect based on authentication status OR dev mode session, but respect logout state
   if ((isAuthenticated || hasDevModeSession) && !hasLoggedOut) {

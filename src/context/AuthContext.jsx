@@ -16,18 +16,24 @@ export const useAuth = () => {
 // Auth provider component
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // CRITICAL: Start with loading = false for immediate UI render
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   // Initialize hasLoggedOut from localStorage to persist across refreshes
   const [hasLoggedOut, setHasLoggedOut] = useState(
     localStorage.getItem('user_logged_out') === 'true'
   );
+  
+  // IMMEDIATE: Track if we've done the initial auth check
+  const [hasInitiallyChecked, setHasInitiallyChecked] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
       console.log('🔐 Starting authentication check at:', Date.now());
       console.time('🔐 Auth Check Duration');
-      setLoading(true);
+      
+      // CRITICAL: Don't set loading=true for immediate checks
+      // Only set loading for operations that might take time
       
       try {
         // IMMEDIATE: First check if user has explicitly logged out
@@ -37,7 +43,7 @@ export const AuthProvider = ({ children }) => {
           localStorage.removeItem('dev_mode_session');
           setUser(null);
           setHasLoggedOut(true);
-          setLoading(false); // Stop loading immediately for logged out users
+          setHasInitiallyChecked(true);
           return;
         }
 
@@ -49,7 +55,7 @@ export const AuthProvider = ({ children }) => {
             console.log('⚡ Found existing dev mode session - authenticating immediately');
             setUser(mockUser);
             setHasLoggedOut(false);
-            setLoading(false); // Stop loading immediately with cached session
+            setHasInitiallyChecked(true);
             return;
           } catch (e) {
             console.warn('🗑️ Invalid dev session found, removing');
@@ -81,13 +87,13 @@ export const AuthProvider = ({ children }) => {
         // If we get here, we have no session and no dev mode session - SET IMMEDIATELY
         console.log('🔍 No immediate session found, user remains logged out');
         setUser(null);
+        setHasInitiallyChecked(true);
         
       } catch (err) {
         console.error('❌ Auth check error:', err);
         setError(err.message);
         setUser(null);
       } finally {
-        setLoading(false);
         console.timeEnd('🔐 Auth Check Duration');
         console.log('🔐 Auth check completed at:', Date.now());
       }
