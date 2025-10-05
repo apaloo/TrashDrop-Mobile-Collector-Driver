@@ -138,6 +138,9 @@ const PublicRoute = ({ children }) => {
 };
 
 function App() {
+  console.log('🏁 App component rendering at:', Date.now());
+  console.time('🔐 Context Providers Setup');
+  
   return (
     <AuthProvider>
       <OfflineProvider>

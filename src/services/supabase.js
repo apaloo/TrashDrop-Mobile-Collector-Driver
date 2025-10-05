@@ -231,6 +231,9 @@ export const authService = {
   
   // Get current user session
   getSession: async () => {
+    console.time('[AuthService] getSession Duration');
+    console.log('[AuthService] getSession called at:', Date.now());
+    
     try {
       // Check if we have a dev mode session in localStorage
       if (DEV_MODE) {
@@ -267,13 +270,22 @@ export const authService = {
         return { session: newSession, user: newSession.user };
       }
       
-      // Real Supabase call for non-DEV_MODE
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
-      return { session: data.session, user: data.session?.user || null };
+      // Real Supabase call ONLY for non-DEV_MODE (this was causing 15s delays!)
+      if (!DEV_MODE) {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        return { session: data.session, user: data.session?.user || null };
+      }
+      
+      // If we're in DEV_MODE but somehow reached here, return null session
+      console.warn('[DEV MODE] Reached fallback case - returning null session');
+      return { session: null, user: null };
     } catch (error) {
       console.error('Error getting session:', error);
       return { session: null, user: null, error: error.message };
+    } finally {
+      console.timeEnd('[AuthService] getSession Duration');
+      console.log('[AuthService] getSession completed at:', Date.now());
     }
   },
   

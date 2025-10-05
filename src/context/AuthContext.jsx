@@ -25,7 +25,8 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      console.log('🔐 Starting authentication check...');
+      console.log('🔐 Starting authentication check at:', Date.now());
+      console.time('🔐 Auth Check Duration');
       setLoading(true);
       
       try {
@@ -56,20 +57,29 @@ export const AuthProvider = ({ children }) => {
           }
         }
 
-        // BACKGROUND: Get current session from Supabase (slower, network dependent)
-        console.log('🌐 Checking Supabase session...');
-        const { session, user, error } = await authService.getSession();
-        
-        // If we have a valid user from session, use it
-        if (user && !error) {
-          console.log('✅ Found existing Supabase session:', user?.id);
-          setUser(user);
-          setHasLoggedOut(false);
-          return;
-        }
+        // BACKGROUND: Get current session from Supabase (slower, network dependent) - DEFERRED
+        setTimeout(async () => {
+          try {
+            console.log('🌐 Checking Supabase session in background...');
+            const { session, user, error } = await authService.getSession();
+            
+            // If we have a valid user from session and no dev session already exists, use it
+            if (user && !error && !localStorage.getItem('dev_mode_session')) {
+              console.log('✅ Found existing Supabase session:', user?.id);
+              setUser(user);
+              setHasLoggedOut(false);
+              return;
+            }
 
-        // If we get here, we have no session and no dev mode session
-        console.log('🔍 No valid session found, user remains logged out');
+            console.log('🔍 Background Supabase check complete - no session updates needed');
+          } catch (backgroundError) {
+            console.warn('⚠️ Background Supabase check failed:', backgroundError.message);
+            // Don't change anything on background failures
+          }
+        }, 100); // Defer by 100ms to not block startup
+
+        // If we get here, we have no session and no dev mode session - SET IMMEDIATELY
+        console.log('🔍 No immediate session found, user remains logged out');
         setUser(null);
         
       } catch (err) {
@@ -78,6 +88,8 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
       } finally {
         setLoading(false);
+        console.timeEnd('🔐 Auth Check Duration');
+        console.log('🔐 Auth check completed at:', Date.now());
       }
     };
     
