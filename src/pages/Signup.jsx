@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { formatPhoneNumber } from '../services/supabase';
+import { formatPhoneNumber, authService } from '../services/supabase';
 
 const SignupPage = () => {
   const navigate = useNavigate();
@@ -25,19 +25,31 @@ const SignupPage = () => {
     first_name: '',
     last_name: '',
     phone: '',
-    email: '',
     region: '',
     otp: '',
+    
+    // ID Verification
+    id_type: 'Ghana Card',
+    id_front_photo: null,
+    id_back_photo: null,
     
     // Vehicle info
     vehicle_type: 'Motorcycle',
     license_plate: '',
     vehicle_color: '',
+    vehicle_photo: null,
     
     // Company info
     company_id: '',
     company_name: '',
     role: 'Driver'
+  });
+  
+  // File preview URLs
+  const [previewUrls, setPreviewUrls] = useState({
+    id_front: null,
+    id_back: null,
+    vehicle: null
   });
   
   // Handle input changes
@@ -47,6 +59,41 @@ const SignupPage = () => {
       ...prev,
       [name]: value
     }));
+  };
+  
+  // Handle file uploads
+  const handleFileChange = (e, fieldName, previewKey) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError('Please upload an image file');
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Image size should be less than 5MB');
+        return;
+      }
+      
+      setFormData(prev => ({
+        ...prev,
+        [fieldName]: file
+      }));
+      
+      // Create preview URL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrls(prev => ({
+          ...prev,
+          [previewKey]: reader.result
+        }));
+      };
+      reader.readAsDataURL(file);
+      
+      setError(null);
+    }
   };
   
   // Send OTP to verify phone
@@ -102,15 +149,23 @@ const SignupPage = () => {
         throw new Error('Invalid OTP. Please enter a valid 6-digit code.');
       }
       
-      // We don't fully verify with Supabase here - we'll do that in the final submission
-      // This is just a step in the multi-step form
-      // During final submission, we'll use the signup method which handles verification
+      // CRITICAL: Verify OTP with Supabase directly (without setting user in context)
+      // This authenticates the user and creates their session in Supabase
+      // BUT we don't update AuthContext yet - that happens after profile creation
+      console.log('Verifying OTP with Supabase...');
+      const { success, error: verifyError } = await authService.verifyOtp(formData.phone, formData.otp);
       
-      // For the purposes of the signup flow, we validate format and proceed
-      console.log('OTP format valid, proceeding to vehicle info');
-      setStep(3); // Move to vehicle info
+      if (!success) {
+        throw new Error(verifyError || 'Invalid verification code. Please try again.');
+      }
+      
+      // OTP verified successfully - user is now authenticated in Supabase
+      // Session exists, but we haven't set user in AuthContext yet
+      console.log('✅ OTP verified successfully - Supabase session created');
+      console.log('📝 User can now proceed to fill profile information');
+      setStep(3); // Move to personal info
     } catch (err) {
-      console.error('OTP verification error:', err);
+      console.error('❌ OTP verification error:', err);
       setError(err.message || 'Failed to verify OTP. Please try again.');
     } finally {
       setLoading(false);
@@ -124,12 +179,60 @@ const SignupPage = () => {
     setError(null);
     
     try {
+      console.log('📤 Starting file uploads...');
+      
+      // Upload photos to Supabase Storage
+      const photoUrls = {
+        id_front_photo_url: null,
+        id_back_photo_url: null,
+        vehicle_photo_url: null
+      };
+      
+      // Upload ID front photo
+      if (formData.id_front_photo) {
+        const result = await authService.uploadPhoto(formData.id_front_photo, 'id_front');
+        if (!result.success) throw new Error('Failed to upload ID front photo');
+        photoUrls.id_front_photo_url = result.url;
+      }
+      
+      // Upload ID back photo
+      if (formData.id_back_photo) {
+        const result = await authService.uploadPhoto(formData.id_back_photo, 'id_back');
+        if (!result.success) throw new Error('Failed to upload ID back photo');
+        photoUrls.id_back_photo_url = result.url;
+      }
+      
+      // Upload vehicle photo
+      if (formData.vehicle_photo) {
+        const result = await authService.uploadPhoto(formData.vehicle_photo, 'vehicle');
+        if (!result.success) throw new Error('Failed to upload vehicle photo');
+        photoUrls.vehicle_photo_url = result.url;
+      }
+      
+      console.log('✅ All photos uploaded successfully');
+      
+      // Prepare signup data (without email, with photo URLs)
+      const signupData = {
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        phone: formData.phone,
+        region: formData.region,
+        id_type: formData.id_type,
+        ...photoUrls,
+        vehicle_type: formData.vehicle_type,
+        license_plate: formData.license_plate,
+        vehicle_color: formData.vehicle_color,
+        company_id: formData.company_id,
+        company_name: formData.company_name,
+        role: formData.role
+      };
+      
       // Use our AuthContext signup method
-      const { success, error } = await signup(formData);
+      const { success, error } = await signup(signupData);
       
       if (success) {
         // Log success for demo purposes
-        console.log('Registration successful with data:', formData);
+        console.log('✅ Registration successful with data:', signupData);
         
         // Redirect to welcome page
         navigate('/welcome');
@@ -207,24 +310,7 @@ const SignupPage = () => {
             <button
               type="button"
               className="w-full btn btn-primary"
-              onClick={(e) => {
-                e.preventDefault();
-                // Directly transition to step 2 after validating phone
-                if (formData.phone && formData.phone.length >= 9) {
-                  // Format the phone number first
-                  const formattedPhone = formatPhoneNumber(formData.phone);
-                  setFormData(prev => ({ ...prev, phone: formattedPhone }));
-                  console.log(`Formatted phone number: ${formattedPhone}`);
-                  
-                  // Just show feedback in dev mode without actually sending OTP
-                  console.log(`[DEV MODE] Simulating OTP sent to ${formattedPhone}. Use '123456' as verification code.`);
-                  
-                  // Force transition to next step
-                  goToStep(2);
-                } else {
-                  setError('Please enter a valid phone number');
-                }
-              }}
+              onClick={handleSendOtp}
               disabled={loading || !formData.phone}
             >
               {loading ? 'Sending...' : 'Send Verification Code'}
@@ -291,6 +377,90 @@ const SignupPage = () => {
       case 3:
         return (
           <>
+            <h2 className="text-xl font-bold mb-4">ID Verification</h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+              Please upload clear photos of your identification document
+            </p>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">ID Type</label>
+              <select
+                name="id_type"
+                value={formData.id_type}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border rounded-md"
+                required
+              >
+                <option value="Ghana Card">Ghana Card</option>
+                <option value="Passport">Passport</option>
+                <option value="Voters ID">Voters ID</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Front View of ID Card</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleFileChange(e, 'id_front_photo', 'id_front')}
+                className="w-full px-3 py-2 border rounded-md"
+                required
+              />
+              {previewUrls.id_front && (
+                <div className="mt-2">
+                  <img 
+                    src={previewUrls.id_front} 
+                    alt="ID Front Preview" 
+                    className="w-full h-48 object-cover rounded-md border"
+                  />
+                </div>
+              )}
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Back View of ID Card</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleFileChange(e, 'id_back_photo', 'id_back')}
+                className="w-full px-3 py-2 border rounded-md"
+                required
+              />
+              {previewUrls.id_back && (
+                <div className="mt-2">
+                  <img 
+                    src={previewUrls.id_back} 
+                    alt="ID Back Preview" 
+                    className="w-full h-48 object-cover rounded-md border"
+                  />
+                </div>
+              )}
+            </div>
+            
+            <div className="flex space-x-2 mt-4">
+              <button
+                type="button"
+                className="flex-1 btn bg-gray-300 text-gray-800"
+                onClick={() => setStep(2)}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="flex-1 btn btn-primary"
+                onClick={() => setStep(4)}
+                disabled={!formData.id_front_photo || !formData.id_back_photo}
+              >
+                Continue
+              </button>
+            </div>
+          </>
+        );
+        
+      case 4:
+        return (
+          <>
             <h2 className="text-xl font-bold mb-4">Personal Information</h2>
             
             <div className="mb-3">
@@ -311,18 +481,6 @@ const SignupPage = () => {
                 type="text"
                 name="last_name"
                 value={formData.last_name}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-md"
-                required
-              />
-            </div>
-            
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">Email</label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border rounded-md"
                 required
@@ -352,15 +510,15 @@ const SignupPage = () => {
               <button
                 type="button"
                 className="flex-1 btn bg-gray-300 text-gray-800"
-                onClick={() => setStep(2)}
+                onClick={() => setStep(3)}
               >
                 Back
               </button>
               <button
                 type="button"
                 className="flex-1 btn btn-primary"
-                onClick={() => setStep(4)}
-                disabled={!formData.first_name || !formData.last_name || !formData.email || !formData.region}
+                onClick={() => setStep(5)}
+                disabled={!formData.first_name || !formData.last_name || !formData.region}
               >
                 Continue
               </button>
@@ -368,7 +526,7 @@ const SignupPage = () => {
           </>
         );
         
-      case 4:
+      case 5:
         return (
           <>
             <h2 className="text-xl font-bold mb-4">Vehicle Information</h2>
@@ -415,19 +573,42 @@ const SignupPage = () => {
               />
             </div>
             
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Vehicle Photo</label>
+              <p className="text-xs text-gray-500 mb-2">
+                Upload a clear photo of your vehicle
+              </p>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleFileChange(e, 'vehicle_photo', 'vehicle')}
+                className="w-full px-3 py-2 border rounded-md"
+                required
+              />
+              {previewUrls.vehicle && (
+                <div className="mt-2">
+                  <img 
+                    src={previewUrls.vehicle} 
+                    alt="Vehicle Preview" 
+                    className="w-full h-48 object-cover rounded-md border"
+                  />
+                </div>
+              )}
+            </div>
+            
             <div className="flex space-x-2 mt-4">
               <button
                 type="button"
                 className="flex-1 btn bg-gray-300 text-gray-800"
-                onClick={() => setStep(3)}
+                onClick={() => setStep(4)}
               >
                 Back
               </button>
               <button
                 type="button"
                 className="flex-1 btn btn-primary"
-                onClick={() => setStep(5)}
-                disabled={!formData.license_plate || !formData.vehicle_color}
+                onClick={() => setStep(6)}
+                disabled={!formData.license_plate || !formData.vehicle_color || !formData.vehicle_photo}
               >
                 Continue
               </button>
@@ -435,7 +616,7 @@ const SignupPage = () => {
           </>
         );
         
-      case 5:
+      case 6:
         return (
           <>
             <h2 className="text-xl font-bold mb-4">Company Information</h2>
@@ -486,7 +667,7 @@ const SignupPage = () => {
               <button
                 type="button"
                 className="flex-1 btn bg-gray-300 text-gray-800"
-                onClick={() => setStep(4)}
+                onClick={() => setStep(5)}
               >
                 Back
               </button>
@@ -522,13 +703,13 @@ const SignupPage = () => {
         {/* Step Indicator */}
         <div className="flex justify-center mb-4">
           <div className="flex items-center">
-            {[1, 2, 3, 4, 5].map((s) => (
+            {[1, 2, 3, 4, 5, 6].map((s) => (
               <div key={s} className="flex items-center">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${step >= s ? 'bg-primary text-white' : 'bg-gray-300 text-gray-600'}`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${step >= s ? 'bg-primary text-white' : 'bg-gray-300 text-gray-600'}`}>
                   {s}
                 </div>
-                {s < 5 && (
-                  <div className={`w-8 h-1 ${step > s ? 'bg-primary' : 'bg-gray-300'}`}></div>
+                {s < 6 && (
+                  <div className={`w-6 h-1 ${step > s ? 'bg-primary' : 'bg-gray-300'}`}></div>
                 )}
               </div>
             ))}

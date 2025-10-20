@@ -7,7 +7,8 @@ import CompletionModal from '../components/CompletionModal';
 import DisposalModal from '../components/DisposalModal';
 import ReportModal from '../components/ReportModal';
 import AssignmentNavigationModal from '../components/AssignmentNavigationModal';
-import { supabase } from '../services/supabase';
+import { supabase, authService } from '../services/supabase';
+import { useAuth } from '../context/AuthContext';
 
 const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNavigate, onDumpingSite, onDispose, onViewReport }) => {
   const [expanded, setExpanded] = useState(false);
@@ -255,6 +256,8 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
 };
 
 const AssignPage = () => {
+  const { user } = useAuth();
+  const [userProfile, setUserProfile] = useState(null);
   const [activeTab, setActiveTab] = useState('available');
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date().toISOString());
@@ -340,6 +343,28 @@ const AssignPage = () => {
     }
   };
 
+  // Fetch user profile
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const { success, profile } = await authService.getUserProfile(user.id);
+        if (success && profile) {
+          setUserProfile({
+            first_name: profile.first_name,
+            last_name: profile.last_name,
+            phone: profile.phone
+          });
+        }
+      } catch (err) {
+        console.error('Error loading user profile for nav:', err);
+      }
+    };
+    
+    fetchUserProfile();
+  }, [user]);
+  
   // Load assignments when component mounts
   useEffect(() => {
     fetchAssignments();
@@ -739,7 +764,7 @@ const AssignPage = () => {
 
   return (
     <div className="app-container bg-gray-100 min-h-screen flex flex-col">
-      <TopNavBar />
+      <TopNavBar user={userProfile} />
       
       {/* Fixed Header Section */}
       <div className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md pt-16 pb-0">

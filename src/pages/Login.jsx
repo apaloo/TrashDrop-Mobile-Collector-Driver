@@ -9,76 +9,20 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const { sendOtp, login, loading: authLoading, error: authError, user } = useAuth();
   
-  const [phoneNumber, setPhoneNumber] = useState('+233501234567'); // Default valid phone for dev mode
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [otpSent, setOtpSent] = useState(false);
-  const [otp, setOtp] = useState('123456'); // Default dev OTP
+  const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
   
-  // Auto-login for development mode
+  // Redirect if already authenticated
   useEffect(() => {
-    const performAutoLogin = async () => {
-      // Skip auto-login if user is logged out
-      const isLoggedOut = localStorage.getItem('user_logged_out') === 'true';
-      if (isLoggedOut) {
-        console.log('User is logged out, skipping auto-login');
-        return;
-      }
-
-      if (!user && !autoLoginAttempted) {
-        setAutoLoginAttempted(true);
-        console.log('Auto-login attempt in progress...');
-        try {
-          // Create mock user for dev mode
-          const mockUser = {
-            id: '00000000-0000-4000-a000-000000000000', // Valid UUID format for DEV_MODE
-            email: 'test@example.com',
-            phone: phoneNumber,
-            user_metadata: {
-              name: 'Test User',
-              role: 'driver'
-            }
-          };
-          
-          // Create a mock session for dev mode
-          const mockSession = {
-            access_token: 'dev-mode-token',
-            expires_in: 3600,
-            refresh_token: 'dev-mode-refresh-token',
-            user: mockUser
-          };
-
-          // Store in localStorage for persistence
-          localStorage.setItem('dev_mode_session', JSON.stringify(mockSession));
-          
-          // Skip actual OTP sending in dev mode - just simulate it
-          console.log('🔧 DEV MODE: Skipping real OTP, using mock authentication');
-          
-          // Simulate successful authentication without real OTP
-          const { success } = await login(phoneNumber, '123456'); // Default dev OTP
-          
-          if (success) {
-            console.log('Auto-login successful!');
-            navigate('/map');
-          }
-        } catch (err) {
-          console.error('Auto-login failed:', err);
-          // Clean up mock session if login fails
-          localStorage.removeItem('dev_mode_session');
-        }
-      }
-    };
-    
-    performAutoLogin();
-  }, [user, autoLoginAttempted, sendOtp, login, phoneNumber, otp, navigate]);
+    if (user) {
+      console.log('User already authenticated, redirecting to map');
+      navigate('/map');
+    }
+  }, [user, navigate]);
   
-  // Force transition to OTP verification
-  const goToOtpVerification = () => {
-    console.log('Transitioning to OTP verification screen');
-    setOtpSent(true);
-  };
-
   // Send OTP to phone number
   const handleSendOtp = async (e) => {
     e.preventDefault();
@@ -123,30 +67,7 @@ const LoginPage = () => {
       // Format phone number consistently
       const formattedPhone = formatPhoneNumber(phoneNumber);
       
-      // Create mock user for dev mode
-      const mockUser = {
-        id: '00000000-0000-4000-a000-000000000000', // Valid UUID format for DEV_MODE
-        email: 'test@example.com',
-        phone: formattedPhone,
-        user_metadata: {
-          name: 'Test User',
-          role: 'driver'
-        }
-      };
-      
-      // Create a mock session for dev mode
-      const mockSession = {
-        access_token: 'dev-mode-token',
-        expires_in: 3600,
-        refresh_token: 'dev-mode-refresh-token',
-        user: mockUser
-      };
-
-      // Store in localStorage for persistence
-      localStorage.setItem('dev_mode_session', JSON.stringify(mockSession));
-      localStorage.removeItem('user_logged_out');
-      
-      // Use our AuthContext login method which now uses real Supabase verification
+      // Use our AuthContext login method which uses real Supabase verification
       const { success, user, error } = await login(formattedPhone, otp);
       
       if (success) {

@@ -121,29 +121,16 @@ export const authService = {
     try {
       const formattedPhone = formatPhoneNumber(phoneNumber);
       
-      // Use mock data in development mode
-      if (DEV_MODE) {
-        console.log(`[DEV MODE] OTP sent to ${formattedPhone}. Use '123456' as the verification code.`);
-        return { 
-          success: true, 
-          data: { 
-            user: null,
-            session: null,
-            // Store the phone number for later verification
-            __devPhone: formattedPhone 
-          } 
-        };
-      }
-      
-      // Real Supabase call in production
+      // Real Supabase call - send OTP via SMS
       const { data, error } = await supabase.auth.signInWithOtp({
         phone: formattedPhone
       });
       
       if (error) throw error;
+      console.log('✅ OTP sent successfully to:', formattedPhone);
       return { success: true, data };
     } catch (error) {
-      console.error('Error sending OTP:', error);
+      console.error('❌ Error sending OTP:', error);
       return { success: false, error: error.message };
     }
   },
@@ -153,68 +140,7 @@ export const authService = {
     try {
       const formattedPhone = formatPhoneNumber(phoneNumber);
       
-      // Use mock data in development mode
-      if (DEV_MODE) {
-        // In dev mode, we accept '123456' as the valid OTP
-        if (otp === '123456') {
-          // Generate a proper UUID format for development mode
-          const generateUUID = () => {
-            // This creates a RFC4122 compliant UUID
-            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-              const r = Math.random() * 16 | 0,
-                    v = c === 'x' ? r : (r & 0x3 | 0x8);
-              return v.toString(16);
-            });
-          };
-          
-          const mockUser = {
-            id: generateUUID(), // Use a proper UUID format
-            phone: formattedPhone,
-            role: 'collector',
-            app_metadata: {
-              provider: 'phone'
-            }
-          };
-          
-          console.log(`[DEV MODE] OTP verified successfully for ${formattedPhone}`);
-          
-          // Create a mock session
-          const mockSession = {
-            access_token: 'dev-mode-token',
-            expires_in: 3600,
-            refresh_token: 'dev-mode-refresh-token',
-            user: mockUser
-          };
-          
-          // Store in localStorage for persistence
-          localStorage.setItem('dev_mode_session', JSON.stringify(mockSession));
-          
-          // Set headers for dev mode
-          supabase.rest.headers.set('x-rls-bypass', 'true');
-          supabase.rest.headers.set('x-dev-mode', 'true');
-          
-          // Set auth session
-          supabase.auth.setSession({
-            access_token: mockSession.access_token,
-            refresh_token: mockSession.refresh_token,
-            user: mockUser
-          });
-          
-          return {
-            success: true,
-            session: mockSession,
-            user: mockUser
-          };
-        } else {
-          console.log(`[DEV MODE] Invalid OTP. Expected '123456', got '${otp}'`);
-          return {
-            success: false,
-            error: 'Invalid verification code'
-          };
-        }
-      }
-      
-      // Real Supabase call in production
+      // Real Supabase call - verify OTP code
       const { data, error } = await supabase.auth.verifyOtp({
         phone: formattedPhone,
         token: otp,
@@ -222,9 +148,10 @@ export const authService = {
       });
       
       if (error) throw error;
+      console.log('✅ OTP verified successfully for:', formattedPhone);
       return { success: true, session: data.session, user: data.user };
     } catch (error) {
-      console.error('Error verifying OTP:', error);
+      console.error('❌ Error verifying OTP:', error);
       return { success: false, error: error.message };
     }
   },
@@ -327,31 +254,41 @@ export const authService = {
   },
   
   // Create a new user profile after authentication
+  // If profile already exists, update it instead (useful for testing/re-registration)
   createUserProfile: async (userId, profileData) => {
     try {
-      // Mock profile creation in development mode
-      if (DEV_MODE) {
-        const mockProfile = {
-          id: `profile-${Date.now()}`,
-          user_id: userId,
-          created_at: new Date().toISOString(),
-          ...profileData
-        };
-        
-        console.log('[DEV MODE] Created mock profile:', mockProfile);
-        return { success: true, profile: mockProfile };
-      }
-      
-      // Real Supabase call in production
-      const { data, error } = await supabase
+      // Check if profile already exists
+      const { data: existingProfile } = await supabase
         .from('collector_profiles')
-        .insert([{ user_id: userId, ...profileData }])
-        .select();
+        .select('id')
+        .eq('user_id', userId)
+        .single();
       
-      if (error) throw error;
-      return { success: true, profile: data[0] };
+      if (existingProfile) {
+        // Profile exists - update it
+        console.log('⚠️ Profile already exists for user, updating instead:', userId);
+        const { data, error } = await supabase
+          .from('collector_profiles')
+          .update(profileData)
+          .eq('user_id', userId)
+          .select();
+        
+        if (error) throw error;
+        console.log('✅ Profile updated successfully for user:', userId);
+        return { success: true, profile: data[0] };
+      } else {
+        // Profile doesn't exist - create new one
+        const { data, error } = await supabase
+          .from('collector_profiles')
+          .insert([{ user_id: userId, ...profileData }])
+          .select();
+        
+        if (error) throw error;
+        console.log('✅ Profile created successfully for user:', userId);
+        return { success: true, profile: data[0] };
+      }
     } catch (error) {
-      console.error('Error creating profile:', error);
+      console.error('❌ Error creating/updating profile:', error);
       return { success: false, error: error.message };
     }
   },
@@ -386,6 +323,40 @@ export const authService = {
       return { success: true, profile: data[0] };
     } catch (error) {
       console.error('Error updating profile:', error);
+      return { success: false, error: error.message };
+    }
+  },
+  
+  // Upload photo to Supabase Storage
+  uploadPhoto: async (file, type) => {
+    try {
+      // Generate unique filename with timestamp
+      const timestamp = Date.now();
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${type}_${timestamp}.${fileExt}`;
+      const filePath = `collector-documents/${fileName}`;
+      
+      console.log(`📤 Uploading ${type} photo...`);
+      
+      // Upload file to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('collector-photos')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+      
+      if (error) throw error;
+      
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('collector-photos')
+        .getPublicUrl(filePath);
+      
+      console.log(`✅ ${type} photo uploaded successfully:`, publicUrl);
+      return { success: true, url: publicUrl };
+    } catch (error) {
+      console.error(`❌ Error uploading ${type} photo:`, error);
       return { success: false, error: error.message };
     }
   }

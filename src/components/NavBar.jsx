@@ -27,10 +27,14 @@ export const TopNavBar = ({ user }) => {
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
           >
             <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white font-medium">
-              {user?.first_name?.[0] || 'U'}
+              {user?.first_name?.[0] || ''}{user?.last_name?.[0] || 'U'}
             </div>
-            <span className="ml-2 hidden md:inline">{user?.first_name || 'User'}</span>
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="green">
+            <span className="ml-2 hidden md:inline text-gray-700">
+              {user?.first_name && user?.last_name 
+                ? `${user.first_name} ${user.last_name}` 
+                : 'User'}
+            </span>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>

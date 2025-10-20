@@ -17,7 +17,7 @@ import { PickupRequestStatus, WasteType, AssignmentStatus } from '../utils/types
 import { transformRequestsData } from '../utils/requestUtils';
 import { getCurrentLocation, getLocationWithRetry, isWithinRadius } from '../utils/geoUtils';
 import { registerConnectivityListeners } from '../utils/offlineUtils';
-import { supabase } from '../services/supabase';
+import { supabase, authService } from '../services/supabase';
 import usePhotoCapture from '../hooks/usePhotoCapture';
 
 // OPTIMIZATION: Memoize RequestCard for better performance
@@ -38,6 +38,7 @@ const RequestPage = () => {
   const { id: requestId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [userProfile, setUserProfile] = useState(null);
   const { filters, filteredRequests = [], updateFilteredRequests } = useFilters() || {};
   
   // Photo capture management
@@ -692,6 +693,28 @@ const RequestPage = () => {
     }
   };
 
+  // Fetch user profile
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const { success, profile } = await authService.getUserProfile(user.id);
+        if (success && profile) {
+          setUserProfile({
+            first_name: profile.first_name,
+            last_name: profile.last_name,
+            phone: profile.phone
+          });
+        }
+      } catch (err) {
+        console.error('Error loading user profile for nav:', err);
+      }
+    };
+    
+    fetchUserProfile();
+  }, [user]);
+  
   // Initial data fetch
   useEffect(() => {
     // Initialize requestManager with current user ID
@@ -1658,7 +1681,7 @@ const handleLocateSite = (requestId) => {
 
   return (
     <div className="app-container bg-gray-100 min-h-screen flex flex-col">
-      <TopNavBar title="" />
+      <TopNavBar user={userProfile} />
       
       {/* Fixed Header Section */}
       <div className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md pt-16 pb-0">

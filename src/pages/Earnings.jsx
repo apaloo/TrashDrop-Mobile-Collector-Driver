@@ -3,6 +3,7 @@ import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import { useAuth } from '../context/AuthContext';
 import { createEarningsService } from '../services/earningsService';
+import { authService } from '../services/supabase';
 
 // Cash Out Modal Component
 const CashOutModal = ({ isOpen, onClose, totalEarnings, onWithdrawalSuccess }) => {
@@ -318,6 +319,7 @@ const TransactionItem = ({ transaction }) => {
 
 const EarningsPage = () => {
   const { user } = useAuth();
+  const [userProfile, setUserProfile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('summary');
   const [period, setPeriod] = useState('week');
@@ -388,6 +390,28 @@ const EarningsPage = () => {
     }
   };
 
+  // Fetch user profile
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const { success, profile } = await authService.getUserProfile(user.id);
+        if (success && profile) {
+          setUserProfile({
+            first_name: profile.first_name,
+            last_name: profile.last_name,
+            phone: profile.phone
+          });
+        }
+      } catch (err) {
+        console.error('Error loading user profile for nav:', err);
+      }
+    };
+    
+    fetchUserProfile();
+  }, [user]);
+  
   // Load data when component mounts
   useEffect(() => {
     // Only fetch data if user is available
@@ -430,7 +454,7 @@ const EarningsPage = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
-      <TopNavBar user={{ first_name: 'Driver' }} />
+      <TopNavBar user={userProfile} />
       
       <div className="flex-grow mt-14 mb-16 flex flex-col">
         {/* Fixed Header Section */}

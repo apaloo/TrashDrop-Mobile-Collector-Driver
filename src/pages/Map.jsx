@@ -11,7 +11,7 @@ import BottomNavBar from '../components/BottomNavBar';
 import Toast from '../components/Toast';
 import StatusButton from '../components/StatusButton';
 import { useAuth } from '../context/AuthContext';
-import { supabase, DEV_MODE } from '../services/supabase';
+import { supabase, DEV_MODE, authService } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
 import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, getStopIcon, digitalBinMarkerIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
@@ -389,6 +389,9 @@ const MapPage = () => {
   // Default fallback location (Accra, Ghana) for immediate map load
   const DEFAULT_POSITION = [5.6037, -0.1870]; // Accra coordinates
   
+  // User profile data
+  const [userProfile, setUserProfile] = useState(null);
+  
   const [position, setPosition] = useState(DEFAULT_POSITION); // Start with fallback, update with real location
   const [isUsingCachedLocation, setIsUsingCachedLocation] = useState(false); // Track if using cached location
   const [isUsingFallbackLocation, setIsUsingFallbackLocation] = useState(true); // Track if using default fallback
@@ -595,6 +598,29 @@ const MapPage = () => {
   useEffect(() => {
     positionRef.current = position;
   }, [position]);
+  
+  // Fetch user profile
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const { success, profile } = await authService.getUserProfile(user.id);
+        
+        if (success && profile) {
+          setUserProfile({
+            first_name: profile.first_name,
+            last_name: profile.last_name,
+            phone: profile.phone
+          });
+        }
+      } catch (err) {
+        console.error('Error loading user profile for nav:', err);
+      }
+    };
+    
+    fetchUserProfile();
+  }, [user]);
   
   // Show toast notification
   const showToast = (message, type = 'info', duration = 3000) => {
@@ -1883,7 +1909,7 @@ const MapPage = () => {
   // Return the component UI
   return (
     <div className="flex flex-col h-screen">
-      <TopNavBar user={user || { first_name: 'Driver' }} />
+      <TopNavBar user={userProfile} />
       
       {/* Toast notification */}
       {toast.show && (

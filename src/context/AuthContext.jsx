@@ -40,52 +40,26 @@ export const AuthProvider = ({ children }) => {
         const isLoggedOut = localStorage.getItem('user_logged_out') === 'true';
         if (isLoggedOut) {
           console.log('🚫 User is logged out, clearing any existing sessions');
-          localStorage.removeItem('dev_mode_session');
           setUser(null);
           setHasLoggedOut(true);
           setHasInitiallyChecked(true);
           return;
         }
 
-        // IMMEDIATE: Check for existing dev mode session (fastest path)
-        const existingDevSession = localStorage.getItem('dev_mode_session');
-        if (existingDevSession) {
-          try {
-            const mockUser = JSON.parse(existingDevSession).user;
-            console.log('⚡ Found existing dev mode session - authenticating immediately');
-            setUser(mockUser);
-            setHasLoggedOut(false);
-            setHasInitiallyChecked(true);
-            return;
-          } catch (e) {
-            console.warn('🗑️ Invalid dev session found, removing');
-            localStorage.removeItem('dev_mode_session');
-          }
+        // Check for current Supabase session
+        console.log('🔐 Checking Supabase session...');
+        const { session, user, error } = await authService.getSession();
+        
+        if (user && !error) {
+          console.log('✅ Found existing Supabase session:', user?.id);
+          setUser(user);
+          setHasLoggedOut(false);
+          setHasInitiallyChecked(true);
+          return;
         }
 
-        // BACKGROUND: Get current session from Supabase (slower, network dependent) - DEFERRED
-        setTimeout(async () => {
-          try {
-            console.log('🌐 Checking Supabase session in background...');
-            const { session, user, error } = await authService.getSession();
-            
-            // If we have a valid user from session and no dev session already exists, use it
-            if (user && !error && !localStorage.getItem('dev_mode_session')) {
-              console.log('✅ Found existing Supabase session:', user?.id);
-              setUser(user);
-              setHasLoggedOut(false);
-              return;
-            }
-
-            console.log('🔍 Background Supabase check complete - no session updates needed');
-          } catch (backgroundError) {
-            console.warn('⚠️ Background Supabase check failed:', backgroundError.message);
-            // Don't change anything on background failures
-          }
-        }, 100); // Defer by 100ms to not block startup
-
-        // If we get here, we have no session and no dev mode session - SET IMMEDIATELY
-        console.log('🔍 No immediate session found, user remains logged out');
+        // No session found
+        console.log('🔍 No session found, user remains logged out');
         setUser(null);
         setHasInitiallyChecked(true);
         
@@ -112,15 +86,8 @@ export const AuthProvider = ({ children }) => {
           console.log('User authenticated:', user.id);
           setUser(user);
         } else {
-          // Don't clear user if we're in dev mode and have a persisted session
-          const devSession = localStorage.getItem('dev_mode_session');
-          if (!devSession) {
-            console.log('No session found, clearing user state');
-            setUser(null);
-          } else {
-            console.log('Dev mode session exists, maintaining user state');
-            // We don't need to set user here as it should already be set from checkAuth
-          }
+          console.log('No session found, clearing user state');
+          setUser(null);
         }
       }
     );
@@ -175,28 +142,34 @@ export const AuthProvider = ({ children }) => {
   };
   
   // Create a new user account and profile
+  // NOTE: User must already be authenticated (OTP verified at Step 2)
   const signup = async (userData) => {
     try {
       setLoading(true);
       
-      // First, verify OTP to create the user
-      const { success: otpSuccess, user, error: otpError } = 
-        await authService.verifyOtp(userData.phone, userData.otp);
+      // User is already authenticated from OTP verification at Step 2
+      // Just get the current session to confirm authentication
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (!otpSuccess) {
-        throw new Error(otpError || 'Failed to verify phone number');
+      if (!session || !session.user) {
+        throw new Error('User must be authenticated before completing signup. Please verify your phone number first.');
       }
       
-      // Then create a user profile with additional data
+      const user = session.user;
+      
+      // Create user profile with additional data (no email required)
       const profileData = {
         first_name: userData.first_name,
         last_name: userData.last_name,
-        email: userData.email,
         phone: userData.phone,
         region: userData.region,
+        id_type: userData.id_type,
+        id_front_photo_url: userData.id_front_photo_url,
+        id_back_photo_url: userData.id_back_photo_url,
         vehicle_type: userData.vehicle_type,
         license_plate: userData.license_plate,
         vehicle_color: userData.vehicle_color,
+        vehicle_photo_url: userData.vehicle_photo_url,
         company_id: userData.company_id,
         company_name: userData.company_name,
         role: userData.role
@@ -213,9 +186,10 @@ export const AuthProvider = ({ children }) => {
       setHasLoggedOut(false);
       localStorage.removeItem('user_logged_out');
       setUser(user);
-      console.log('User signed up successfully, logout flag cleared');
+      console.log('✅ User signup completed successfully - profile created');
       return { success: true, user };
     } catch (err) {
+      console.error('❌ Signup error:', err.message);
       setError(err.message);
       return { success: false, error: err.message };
     } finally {
@@ -234,7 +208,7 @@ export const AuthProvider = ({ children }) => {
         throw new Error(error || 'Failed to sign out');
       }
       
-      // Set logout flag to prevent automatic re-creation of mock session
+      // Set logout flag to prevent automatic session restoration
       setHasLoggedOut(true);
       
       // Save logout state to localStorage to persist across refreshes
@@ -243,9 +217,7 @@ export const AuthProvider = ({ children }) => {
       // Clear user from state
       setUser(null);
       
-      // Ensure we clear any persisted session
-      localStorage.removeItem('dev_mode_session');
-      console.log('User logged out successfully, session cleared, logout flag set');
+      console.log('✅ User logged out successfully, session cleared, logout flag set');
       
       // Force a small delay to ensure state changes propagate
       // before the navigation happens

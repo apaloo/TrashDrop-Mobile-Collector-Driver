@@ -1,45 +1,93 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
+import { useAuth } from '../context/AuthContext';
+import { authService } from '../services/supabase';
 
 const ProfilePage = () => {
+  const { user: authUser } = useAuth();
   const [activeTab, setActiveTab] = useState('personal');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   
-  // Sample user data - would be fetched from Supabase in a real app
-  const [user, setUser] = useState({
-    id: 'user123',
-    first_name: 'John',
-    last_name: 'Doe',
-    email: 'john.doe@example.com',
-    phone: '+233 50 123 4567',
-    region: 'Greater Accra',
-    rating: 4.8,
-    total_collections: 153,
-    joined_date: '2024-11-15T00:00:00Z',
-    last_active: '2025-07-14T10:30:00Z',
-    vehicle: {
-      type: 'Motorcycle',
-      license_plate: 'GR-123-20',
-      color: 'Blue'
-    },
-    company: {
-      name: 'EcoWaste Solutions',
-      id: 'C1234',
-      role: 'Driver'
-    },
-    stats: {
-      today_collections: 5,
-      today_earnings: 87,
-      week_collections: 21,
-      week_earnings: 397,
-      month_collections: 63,
-      month_earnings: 1205
-    }
-  });
+  // Real user profile data from Supabase
+  const [user, setUser] = useState(null);
+  
+  // Fetch user profile from Supabase
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!authUser?.id) {
+        console.log('⚠️ No authenticated user, cannot load profile');
+        setLoading(false);
+        return;
+      }
+      
+      try {
+        setLoading(true);
+        console.log('📥 Fetching profile for user:', authUser.id);
+        
+        const { success, profile, error: profileError } = await authService.getUserProfile(authUser.id);
+        
+        if (!success || !profile) {
+          throw new Error(profileError || 'Failed to load profile');
+        }
+        
+        // Transform profile data to match UI expectations
+        const userData = {
+          id: profile.user_id,
+          first_name: profile.first_name,
+          last_name: profile.last_name,
+          phone: profile.phone,
+          region: profile.region,
+          id_type: profile.id_type,
+          rating: 0.0, // New users start with 0 rating
+          total_collections: 0, // New users start with 0 collections
+          joined_date: profile.created_at || new Date().toISOString(),
+          last_active: new Date().toISOString(),
+          vehicle: {
+            type: profile.vehicle_type,
+            license_plate: profile.license_plate,
+            color: profile.vehicle_color,
+            photo_url: profile.vehicle_photo_url
+          },
+          company: {
+            name: profile.company_name,
+            id: profile.company_id,
+            role: profile.role
+          },
+          stats: {
+            today_collections: 0,
+            today_earnings: 0,
+            week_collections: 0,
+            week_earnings: 0,
+            month_collections: 0,
+            month_earnings: 0
+          }
+        };
+        
+        setUser(userData);
+        console.log('✅ Profile loaded successfully:', userData);
+      } catch (err) {
+        console.error('❌ Error loading profile:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchUserProfile();
+  }, [authUser]);
 
   // Form handling
   const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ ...user });
+  const [editForm, setEditForm] = useState(null);
+  
+  // Update editForm when user data is loaded
+  useEffect(() => {
+    if (user) {
+      setEditForm({ ...user });
+    }
+  }, [user]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -68,6 +116,38 @@ const ProfilePage = () => {
     setIsEditing(false);
     // In real app: update user info in Supabase
   };
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+        <TopNavBar user={null} />
+        <div className="flex-grow mt-14 mb-16 px-4 py-3 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-gray-600 dark:text-gray-400">Loading profile...</p>
+          </div>
+        </div>
+        <BottomNavBar />
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error || !user) {
+    return (
+      <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+        <TopNavBar user={null} />
+        <div className="flex-grow mt-14 mb-16 px-4 py-3 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-red-500 mb-4">{error || 'Profile not found'}</p>
+            <p className="text-gray-600 dark:text-gray-400">Please try logging in again.</p>
+          </div>
+        </div>
+        <BottomNavBar />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -152,18 +232,6 @@ const ProfilePage = () => {
                 </div>
                 
                 <div className="mb-3">
-                  <label className="block text-sm font-medium mb-1">Email</label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={editForm.email}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border rounded-md"
-                    required
-                  />
-                </div>
-                
-                <div className="mb-3">
                   <label className="block text-sm font-medium mb-1">Phone</label>
                   <input
                     type="tel"
@@ -208,11 +276,6 @@ const ProfilePage = () => {
               </form>
             ) : (
               <div className="space-y-3">
-                <div>
-                  <p className="text-sm text-gray-500">Email</p>
-                  <p>{user.email}</p>
-                </div>
-                
                 <div>
                   <p className="text-sm text-gray-500">Phone</p>
                   <p>{user.phone}</p>
