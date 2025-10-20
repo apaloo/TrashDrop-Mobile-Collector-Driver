@@ -113,7 +113,7 @@ const LoginPage = () => {
           /* Phone Number Form */
           <div className="card shadow-lg border border-gray-100 dark:border-gray-700">
             <h2 className="text-xl font-bold mb-6 text-center text-gray-800 dark:text-white">Login with Phone</h2>
-            <form onSubmit={(e) => e.preventDefault()}>
+            <form onSubmit={handleSendOtp}>
               <div className="mb-6">
                 <label htmlFor="phoneNumber" className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
                   Phone Number
@@ -140,21 +140,9 @@ const LoginPage = () => {
               </div>
               
               <button
-                type="button"
+                type="submit"
                 className="w-full btn btn-primary py-3 text-base font-medium rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-150"
                 disabled={loading || !phoneNumber}
-                onClick={(e) => {
-                  e.preventDefault();
-                  // Validate and format phone number
-                  if (phoneNumber && phoneNumber.length >= 9) {
-                    const formattedPhone = formatPhoneNumber(phoneNumber);
-                    setPhoneNumber(formattedPhone);
-                    console.log(`[DEV MODE] Simulating OTP sent to ${formattedPhone}. Use '123456' as verification code.`);
-                    goToOtpVerification();
-                  } else {
-                    setError('Please enter a valid phone number');
-                  }
-                }}
               >
                 {loading ? (
                   <span className="flex items-center justify-center">

@@ -122,8 +122,17 @@ export const authService = {
       const formattedPhone = formatPhoneNumber(phoneNumber);
       
       // Real Supabase call - send OTP via SMS
+      // Note: Sender ID must be configured in Supabase Dashboard → Auth → SMS Provider
       const { data, error } = await supabase.auth.signInWithOtp({
-        phone: formattedPhone
+        phone: formattedPhone,
+        options: {
+          // Channel can be 'sms' or 'whatsapp'
+          channel: 'sms',
+          // Data can include custom variables for SMS template
+          data: {
+            app_name: 'TrashDrop'
+          }
+        }
       });
       
       if (error) throw error;

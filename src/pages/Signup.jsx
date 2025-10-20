@@ -61,13 +61,13 @@ const SignupPage = () => {
     }));
   };
   
-  // Handle file uploads
-  const handleFileChange = (e, fieldName, previewKey) => {
+  // Handle camera capture
+  const handleCameraCapture = (e, fieldName, previewKey) => {
     const file = e.target.files[0];
     if (file) {
       // Validate file type
       if (!file.type.startsWith('image/')) {
-        setError('Please upload an image file');
+        setError('Please capture an image using your camera');
         return;
       }
       
@@ -93,7 +93,13 @@ const SignupPage = () => {
       reader.readAsDataURL(file);
       
       setError(null);
+      console.log(`📸 Photo captured for ${fieldName}`);
     }
+  };
+  
+  // Trigger camera capture
+  const triggerCamera = (inputRef) => {
+    inputRef.current?.click();
   };
   
   // Send OTP to verify phone
@@ -379,7 +385,7 @@ const SignupPage = () => {
           <>
             <h2 className="text-xl font-bold mb-4">ID Verification</h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-              Please upload clear photos of your identification document
+              📸 Use your camera to capture clear photos of your ID
             </p>
             
             <div className="mb-4">
@@ -398,42 +404,118 @@ const SignupPage = () => {
               </select>
             </div>
             
+            {/* ID Front Photo */}
             <div className="mb-4">
               <label className="block text-sm font-medium mb-2">Front View of ID Card</label>
               <input
                 type="file"
                 accept="image/*"
-                onChange={(e) => handleFileChange(e, 'id_front_photo', 'id_front')}
-                className="w-full px-3 py-2 border rounded-md"
+                capture="environment"
+                onChange={(e) => handleCameraCapture(e, 'id_front_photo', 'id_front')}
+                className="hidden"
+                id="id-front-camera"
                 required
               />
-              {previewUrls.id_front && (
-                <div className="mt-2">
+              {!previewUrls.id_front ? (
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('id-front-camera').click()}
+                  className="w-full py-12 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary transition-colors bg-gray-50 hover:bg-gray-100 flex flex-col items-center justify-center"
+                >
+                  <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span className="text-gray-600 font-medium">Capture ID Front</span>
+                  <span className="text-xs text-gray-500 mt-1">Tap to open camera</span>
+                </button>
+              ) : (
+                <div className="relative">
                   <img 
                     src={previewUrls.id_front} 
-                    alt="ID Front Preview" 
+                    alt="ID Front" 
                     className="w-full h-48 object-cover rounded-md border"
                   />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviewUrls(prev => ({ ...prev, id_front: null }));
+                      setFormData(prev => ({ ...prev, id_front_photo: null }));
+                    }}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-2 hover:bg-red-600"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('id-front-camera').click()}
+                    className="mt-2 w-full py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center justify-center"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Retake Photo
+                  </button>
                 </div>
               )}
             </div>
             
+            {/* ID Back Photo */}
             <div className="mb-4">
               <label className="block text-sm font-medium mb-2">Back View of ID Card</label>
               <input
                 type="file"
                 accept="image/*"
-                onChange={(e) => handleFileChange(e, 'id_back_photo', 'id_back')}
-                className="w-full px-3 py-2 border rounded-md"
+                capture="environment"
+                onChange={(e) => handleCameraCapture(e, 'id_back_photo', 'id_back')}
+                className="hidden"
+                id="id-back-camera"
                 required
               />
-              {previewUrls.id_back && (
-                <div className="mt-2">
+              {!previewUrls.id_back ? (
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('id-back-camera').click()}
+                  className="w-full py-12 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary transition-colors bg-gray-50 hover:bg-gray-100 flex flex-col items-center justify-center"
+                >
+                  <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span className="text-gray-600 font-medium">Capture ID Back</span>
+                  <span className="text-xs text-gray-500 mt-1">Tap to open camera</span>
+                </button>
+              ) : (
+                <div className="relative">
                   <img 
                     src={previewUrls.id_back} 
-                    alt="ID Back Preview" 
+                    alt="ID Back" 
                     className="w-full h-48 object-cover rounded-md border"
                   />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviewUrls(prev => ({ ...prev, id_back: null }));
+                      setFormData(prev => ({ ...prev, id_back_photo: null }));
+                    }}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-2 hover:bg-red-600"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('id-back-camera').click()}
+                    className="mt-2 w-full py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center justify-center"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Retake Photo
+                  </button>
                 </div>
               )}
             </div>
@@ -576,22 +658,59 @@ const SignupPage = () => {
             <div className="mb-4">
               <label className="block text-sm font-medium mb-2">Vehicle Photo</label>
               <p className="text-xs text-gray-500 mb-2">
-                Upload a clear photo of your vehicle
+                📸 Use your camera to capture a clear photo of your vehicle
               </p>
               <input
                 type="file"
                 accept="image/*"
-                onChange={(e) => handleFileChange(e, 'vehicle_photo', 'vehicle')}
-                className="w-full px-3 py-2 border rounded-md"
+                capture="environment"
+                onChange={(e) => handleCameraCapture(e, 'vehicle_photo', 'vehicle')}
+                className="hidden"
+                id="vehicle-camera"
                 required
               />
-              {previewUrls.vehicle && (
-                <div className="mt-2">
+              {!previewUrls.vehicle ? (
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('vehicle-camera').click()}
+                  className="w-full py-12 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary transition-colors bg-gray-50 hover:bg-gray-100 flex flex-col items-center justify-center"
+                >
+                  <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span className="text-gray-600 font-medium">Capture Vehicle Photo</span>
+                  <span className="text-xs text-gray-500 mt-1">Tap to open camera</span>
+                </button>
+              ) : (
+                <div className="relative">
                   <img 
                     src={previewUrls.vehicle} 
-                    alt="Vehicle Preview" 
+                    alt="Vehicle" 
                     className="w-full h-48 object-cover rounded-md border"
                   />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviewUrls(prev => ({ ...prev, vehicle: null }));
+                      setFormData(prev => ({ ...prev, vehicle_photo: null }));
+                    }}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-2 hover:bg-red-600"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('vehicle-camera').click()}
+                    className="mt-2 w-full py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center justify-center"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Retake Photo
+                  </button>
                 </div>
               )}
             </div>

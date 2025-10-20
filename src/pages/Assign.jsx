@@ -297,7 +297,7 @@ const AssignPage = () => {
         return;
       }
 
-      // Transform data to match expected format and group by status
+      // Transform data to match expected format
       const transformedAssignments = data.map(assignment => ({
         id: assignment.id,
         type: assignment.type,
@@ -318,11 +318,30 @@ const AssignPage = () => {
         collector_id: assignment.collector_id
       }));
 
+      // Deduplicate assignments by ID (keep most recent based on updated_at or created_at)
+      const uniqueAssignmentsMap = new Map();
+      transformedAssignments.forEach(assignment => {
+        const existing = uniqueAssignmentsMap.get(assignment.id);
+        if (!existing || new Date(assignment.created_at) > new Date(existing.created_at)) {
+          uniqueAssignmentsMap.set(assignment.id, assignment);
+        }
+      });
+      const uniqueAssignments = Array.from(uniqueAssignmentsMap.values());
+
+      // Log if duplicates were found
+      if (uniqueAssignments.length < transformedAssignments.length) {
+        console.warn('⚠️ Removed duplicate assignments:', {
+          original: transformedAssignments.length,
+          unique: uniqueAssignments.length,
+          duplicates: transformedAssignments.length - uniqueAssignments.length
+        });
+      }
+
       // Group assignments by status
       const groupedAssignments = {
-        available: transformedAssignments.filter(a => a.status === AssignmentStatus.AVAILABLE),
-        accepted: transformedAssignments.filter(a => a.status === AssignmentStatus.ACCEPTED),
-        completed: transformedAssignments.filter(a => a.status === AssignmentStatus.COMPLETED)
+        available: uniqueAssignments.filter(a => a.status === AssignmentStatus.AVAILABLE),
+        accepted: uniqueAssignments.filter(a => a.status === AssignmentStatus.ACCEPTED),
+        completed: uniqueAssignments.filter(a => a.status === AssignmentStatus.COMPLETED)
       };
 
       setAssignments(groupedAssignments);
