@@ -4,6 +4,8 @@ import { getCurrentLocation, isWithinRadius, calculateDistance } from '../utils/
 import Toast from './Toast';
 import { debounce } from 'lodash';
 import { DEV_MODE } from '../services/supabase';
+import { useAuth } from '../context/AuthContext';
+import { locationBroadcast } from '../services/locationBroadcast';
 import './navigation-modal.css'; // Custom CSS for better readability
 import QRCodeScanner from './QRCodeScanner'; // Import our existing QR scanner component
 import ErrorBoundary from './ErrorBoundary'; // Import error boundary
@@ -22,6 +24,7 @@ const NavigationQRModal = ({
   onQRScanned,
   expectedQRValue
 }) => {
+  const { user } = useAuth();
   const [mode, setMode] = useState('navigation'); // 'navigation' or 'qr'
   const [error, setError] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
@@ -165,6 +168,12 @@ const NavigationQRModal = ({
   // Handle starting navigation
   const handleStartNavigation = useCallback(async () => {
     setNavigationStarted(true);
+    
+    // Start broadcasting location to user
+    if (requestId && user?.id) {
+      await locationBroadcast.startTracking(requestId, user.id);
+      console.log('📡 Started real-time location tracking for user');
+    }
     
     // Show toast notification
     setError({
@@ -602,10 +611,13 @@ const requestCameraPermission = useCallback(async () => {
 
 
 
-  // Clean up on modal close
+  // Cleanup on component unmount or modal close
   useEffect(() => {
     if (!isOpen) {
-      // Reset all state
+      // Stop location broadcasting when modal closes
+      locationBroadcast.stopTracking();
+      
+      // Reset states when modal closes
       setMode('navigation');
       setError(null);
       setUserLocation(null);

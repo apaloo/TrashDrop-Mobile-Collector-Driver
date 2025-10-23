@@ -286,9 +286,23 @@ const AssignPage = () => {
       setLoading(true);
       setFetchError(null);
       
+      if (!user?.id) {
+        console.warn('⚠️ No user ID available, cannot fetch assignments');
+        setLoading(false);
+        return;
+      }
+      
+      console.log('📥 Fetching assignments for collector:', user.id);
+      
+      // Fetch ONLY assignments assigned to THIS collector by admin
+      // - Available: Assignments assigned to me by admin with status 'available' (not yet accepted)
+      // - Accepted: Assignments assigned to me that I've accepted with status 'accepted'
+      // - Completed: Assignments assigned to me that I've completed with status 'completed'
+      // Note: If collector_id IS NULL, it means no admin has assigned it yet - should not show to collectors
       const { data, error } = await supabase
         .from('authority_assignments')
         .select('*')
+        .eq('collector_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -337,7 +351,11 @@ const AssignPage = () => {
         });
       }
 
-      // Group assignments by status
+      // Group assignments by status:
+      // ALL assignments here are already filtered to THIS collector (collector_id = user.id)
+      // - Available: Assignments assigned to me by admin but not yet accepted by me
+      // - Accepted: Assignments I have accepted to work on
+      // - Completed: Assignments I have completed
       const groupedAssignments = {
         available: uniqueAssignments.filter(a => a.status === AssignmentStatus.AVAILABLE),
         accepted: uniqueAssignments.filter(a => a.status === AssignmentStatus.ACCEPTED),
@@ -347,11 +365,12 @@ const AssignPage = () => {
       setAssignments(groupedAssignments);
       setLastUpdated(new Date().toISOString());
       
-      console.log('📊 Assignments loaded:', {
+      console.log('📊 Assignments loaded for collector', user.id, ':', {
         available: groupedAssignments.available.length,
         accepted: groupedAssignments.accepted.length,
         completed: groupedAssignments.completed.length,
-        total: transformedAssignments.length
+        total: transformedAssignments.length,
+        filtered_out: transformedAssignments.length - (groupedAssignments.available.length + groupedAssignments.accepted.length + groupedAssignments.completed.length)
       });
       
     } catch (error) {
@@ -384,10 +403,12 @@ const AssignPage = () => {
     fetchUserProfile();
   }, [user]);
   
-  // Load assignments when component mounts
+  // Load assignments when component mounts or when user changes
   useEffect(() => {
-    fetchAssignments();
-  }, []);
+    if (user?.id) {
+      fetchAssignments();
+    }
+  }, [user?.id]);
   
   // Show toast notification
   const showToast = (message, type = 'success') => {
@@ -416,8 +437,16 @@ const AssignPage = () => {
         showToast('Assignment not found', 'error');
         return;
       }
+      
+      if (!user?.id) {
+        showToast('User not authenticated', 'error');
+        return;
+      }
 
-      // Update in Supabase
+      console.log('✅ Accepting assignment', assignmentId, 'for collector:', user.id);
+
+      // Update in Supabase - Change status from 'available' to 'accepted'
+      // Note: collector_id is already set by admin, we're just accepting the assignment
       const { error } = await supabase
         .from('authority_assignments')
         .update({ 
@@ -425,15 +454,19 @@ const AssignPage = () => {
           accepted_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
-        .eq('id', assignmentId);
+        .eq('id', assignmentId)
+        .eq('collector_id', user.id)
+        .eq('status', 'available');
 
       if (error) {
         console.error('Error accepting assignment:', error);
         showToast('Failed to accept assignment. Please try again.', 'error');
+        // Refresh assignments to get latest state
+        fetchAssignments();
         return;
       }
 
-      // Update local state
+      // Update local state - collector_id remains unchanged (already set by admin)
       const updatedAssignment = {
         ...assignmentToAccept,
         status: AssignmentStatus.ACCEPTED,
@@ -450,7 +483,7 @@ const AssignPage = () => {
       setDetailsModalOpen(false);
       
       // Show success toast
-      showToast('Assignment accepted successfully!');
+      showToast('✅ Assignment accepted and assigned to you!');
       
     } catch (error) {
       console.error('Unexpected error accepting assignment:', error);

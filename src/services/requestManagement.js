@@ -384,6 +384,9 @@ export class RequestManagementService {
 
       console.log('Request accepted successfully:', data[0]);
       
+      // Notify the user about request acceptance
+      await this.notifyUserOfAcceptance(data[0]);
+      
       return { success: true, request: data[0] };
     } catch (error) {
       console.error('Error accepting request:', error);
@@ -399,6 +402,57 @@ export class RequestManagementService {
       }
       
       return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
+   * Notify user when their request is accepted
+   */
+  async notifyUserOfAcceptance(acceptedRequest) {
+    try {
+      // Skip if no user_id (shouldn't happen but safety check)
+      if (!acceptedRequest.user_id) {
+        console.warn('No user_id found for request:', acceptedRequest.id);
+        return;
+      }
+
+      // Get collector profile for notification details
+      const { data: collectorProfile } = await supabase
+        .from('collector_profiles')
+        .select('first_name, last_name, phone, vehicle_type, license_plate')
+        .eq('user_id', this.collectorId)
+        .single();
+
+      const collectorName = collectorProfile 
+        ? `${collectorProfile.first_name} ${collectorProfile.last_name}`
+        : 'A collector';
+
+      // Create notification for the user
+      const { error: notificationError } = await supabase
+        .from('notifications')
+        .insert({
+          user_id: acceptedRequest.user_id,
+          title: 'Pickup Request Accepted! 🎉',
+          message: `${collectorName} has accepted your ${acceptedRequest.waste_type || 'waste'} pickup request and will arrive soon. Track their progress in the app.`,
+          type: 'pickup_accepted',
+          read: false
+        });
+
+      if (notificationError) {
+        console.error('Failed to create user notification:', notificationError);
+      } else {
+        console.log('✅ User notification created for request:', acceptedRequest.id);
+      }
+
+      // TODO: Send push notification via external service (Firebase, OneSignal, etc.)
+      // await sendPushNotification(acceptedRequest.user_id, {
+      //   title: 'Pickup Request Accepted',
+      //   body: `${collectorName} will collect your waste soon.`
+      // });
+
+    } catch (error) {
+      console.error('Error notifying user of acceptance:', error);
+      // Don't throw - notification failure shouldn't block request acceptance
     }
   }
 
