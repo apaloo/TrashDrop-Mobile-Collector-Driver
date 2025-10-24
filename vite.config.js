@@ -116,6 +116,10 @@ export default defineConfig({
         ]
       },
       workbox: {
+        // CRITICAL: Force immediate activation
+        clientsClaim: true,
+        skipWaiting: true,
+        
         // CRITICAL: Aggressive caching for instant mobile startup
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,jpg,jpeg,webp}'],
         maximumFileSizeToCacheInBytes: 5000000, // 5MB limit

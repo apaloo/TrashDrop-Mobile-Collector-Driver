@@ -2,6 +2,13 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import { logger } from './utils/logger'
+import { checkVersion } from './utils/version'
+
+// CRITICAL: Check version before anything else
+if (!checkVersion()) {
+  // Version mismatch detected - will reload automatically
+  throw new Error('Version mismatch - reloading');
+}
 
 // CRITICAL: Performance logging and aggressive startup optimization
 const startupStartTime = Date.now();
@@ -29,22 +36,30 @@ import App from './App.jsx' // Using real App with proper credentials
 // import MinimalApp from './MinimalApp.jsx' // Testing component
 // import SimpleApp from './SimpleApp.jsx' // Testing component
 
-// Register service worker for PWA functionality - DEFERRED to not block startup
+// Register service worker for PWA functionality - IMMEDIATE with auto-update
 setTimeout(() => {
   const updateSW = registerSW({
+    immediate: true,
     onNeedRefresh() {
-      // Show a notification or prompt to the user about available update
-      if (confirm('New content available. Reload?')) {
-        updateSW(true)
-      }
+      // Force immediate reload for critical fixes
+      logger.info('🔄 New version available - reloading...');
+      updateSW(true);
     },
     onOfflineReady() {
       // Notify user that app is ready for offline use
       logger.info('App ready to work offline')
       // In a real app, you might want to show a toast notification  
     },
+    onRegistered(registration) {
+      // Check for updates every 60 seconds
+      if (registration) {
+        setInterval(() => {
+          registration.update();
+        }, 60000);
+      }
+    }
   })
-}, 2000); // Register SW after 2 seconds to not block initial startup
+}, 1000); // Register SW after 1 second
 
 const renderStartTime = Date.now();
 logger.debug('⚡ Starting React render at:', renderStartTime);
