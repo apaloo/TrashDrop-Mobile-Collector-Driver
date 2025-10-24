@@ -1,38 +1,17 @@
 # Reverse Geocoding Issue & Solutions
 
-## 🚀 Quick Fix for Development
+## Current Issue
+The OpenStreetMap Nominatim API is experiencing "Failed to fetch" errors, which typically indicates:
+- **CORS restrictions** blocking requests from the browser
+- **Network firewall** blocking access to nominatim.openstreetmap.org
+- **API rate limiting** or regional blocking
 
-To enable address geocoding in development, use Netlify CLI instead of regular npm:
-
-```bash
-# Install Netlify CLI (if not already installed)
-npm install -g netlify-cli
-
-# Run your dev server with Netlify functions support
-netlify dev
-```
-
-This will:
-- Start your app at `http://localhost:8888` (or similar)
-- Enable the `/.netlify/functions/geocode` endpoint locally
-- Show addresses instead of coordinates ✅
-
-## Current Issue (Development Environment)
-The OpenStreetMap Nominatim API is experiencing "Failed to fetch" errors in development, which is caused by:
-- **CORS restrictions** blocking direct browser requests to nominatim.openstreetmap.org
-- The Netlify function proxy is only available when running `netlify dev` or in production
-
-## Solution Status ✅
-✅ **Netlify function implemented** - Fully working proxy at `netlify/functions/geocode.js`
-✅ **Circuit breaker active** - Prevents console spam after 5 failures
-✅ **Automatic fallback** - App shows coordinates when geocoding fails
-✅ **Production ready** - Will work perfectly when deployed to Netlify
-
-## How It Works Now
-1. **First attempt**: Tries Netlify function at `/.netlify/functions/geocode`
-2. **Fallback**: If Netlify function unavailable, tries direct Nominatim API
-3. **Circuit breaker**: After 5 CORS failures, stops trying for 1 minute
-4. **Display**: Shows formatted coordinates (e.g., "5.6336°N, 0.1732°W") as fallback
+## Circuit Breaker Implementation ✅
+We've implemented a circuit breaker pattern that:
+- **Stops requests** after 5 consecutive failures
+- **Waits 1 minute** before attempting again
+- **Reduces console spam** significantly
+- **Caches failures** to avoid repeated attempts
 
 ## Current Behavior
 When geocoding fails:

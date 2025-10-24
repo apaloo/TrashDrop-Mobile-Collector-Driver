@@ -8,6 +8,7 @@ import RouteOptimizer from '../components/RouteOptimizer';
 import RouteStatistics from '../components/RouteStatistics';
 import ItemList from '../components/ItemList';
 import { createAnalyticsService } from '../services/analyticsService';
+import { supabase } from '../services/supabase';
 import { logger } from '../utils/logger';
 
 // Part 1: Main component and state management
@@ -33,6 +34,9 @@ const RouteOptimizationPage = () => {
       const service = createAnalyticsService(user.id);
       setAnalyticsService(service);
       logger.debug('✅ Analytics service initialized for collector:', user.id);
+      logger.debug('👤 Current user object:', user);
+    } else {
+      logger.warn('⚠️ User or user.id not available for analytics service');
     }
   }, [user]);
   
@@ -149,6 +153,20 @@ const RouteOptimizationPage = () => {
       
       try {
         logger.debug('📊 Fetching current route data from analytics service...');
+        
+        // DIAGNOSTIC: Query database directly to see what's there
+        logger.debug('🔍 DIAGNOSTIC: Checking database for accepted requests...');
+        const { data: diagnosticData, error: diagError } = await supabase
+          .from('pickup_requests')
+          .select('id, status, collector_id, accepted_at, location')
+          .eq('status', 'accepted');
+        
+        logger.debug(`🔍 DIAGNOSTIC: Total accepted requests in database: ${diagnosticData?.length || 0}`);
+        if (diagnosticData && diagnosticData.length > 0) {
+          diagnosticData.forEach(req => {
+            logger.debug(`  • ID: ${req.id}, Status: ${req.status}, Collector: ${req.collector_id}, Accepted: ${req.accepted_at}`);
+          });
+        }
         
         // Use analytics service to get current route data
         const result = await analyticsService.getCurrentRouteData();
@@ -272,12 +290,11 @@ const RouteOptimizationPage = () => {
                   analyticsService={analyticsService}
                 />
                 
-                {/* Item List - Shows both assignments and requests */}
+                {/* Item List - Shows only accepted requests for route optimization */}
                 <ItemList 
                   assignments={assignments}
-                  requests={requests}
+                  requests={[]} 
                   userLocation={userLocation}
-                  analyticsService={analyticsService}
                 />
               </div>
               </>

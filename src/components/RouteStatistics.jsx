@@ -112,8 +112,8 @@ const RouteStatistics = ({ assignments, userLocation, analyticsService }) => {
       <div className="p-4">
         {stats.assignmentCount === 0 ? (
           <div className="text-center text-gray-600 py-4">
-            <p>No accepted assignments to analyze.</p>
-            <p className="text-sm mt-1">Accept assignments to view route statistics.</p>
+            <p>No accepted requests to analyze.</p>
+            <p className="text-sm mt-1">Accept requests to view route statistics.</p>
           </div>
         ) : (
           <div>

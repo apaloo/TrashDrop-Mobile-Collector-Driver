@@ -542,8 +542,13 @@ const RequestPage = () => {
       
       // Database operations for different request types
       let result;
+      
+      logger.debug(`🔄 Accepting request ${requestId} as ${isPickupRequest ? 'pickup_request' : isDigitalBin ? 'digital_bin' : 'authority_assignment'}`);
+      logger.debug(`👤 Collector ID: ${user?.id}`);
+      
       if (isDigitalBin) {
         // Handle digital bin acceptance - update digital_bins table to 'accepted' status
+        logger.debug('📦 Updating digital_bins table...');
         result = await supabase
           .from('digital_bins')
           .update({ 
@@ -554,22 +559,27 @@ const RequestPage = () => {
           
         // Check for database errors
         if (result.error) {
-          logger.error('Digital bin acceptance failed:', result.error);
+          logger.error('❌ Digital bin acceptance failed:', result.error);
           throw new Error(result.error.message || 'Failed to accept digital bin');
         }
         
+        logger.debug('✅ Digital bin accepted in database');
         result = { success: true }; // Normalize response format
       } else if (isPickupRequest) {
         // Ensure requestManager is initialized
         if (!requestManager.isInitialized) {
-          logger.info('Initializing requestManager before accepting request...');
+          logger.info('🔄 Initializing requestManager before accepting request...');
           await requestManager.initialize(user?.id);
         }
         
         // Use requestManager for pickup requests
+        logger.debug('📦 Using requestManager.acceptRequest()...');
         result = await requestManager.acceptRequest(requestId, user?.id);
+        
+        logger.debug('📊 RequestManager result:', { success: result?.success, error: result?.error });
       } else if (isAuthorityAssignment) {
         // Direct Supabase call for authority assignments
+        logger.debug('📦 Updating authority_assignments table...');
         result = await supabase
           .from('authority_assignments')
           .update({ 
@@ -578,6 +588,8 @@ const RequestPage = () => {
             accepted_at: new Date().toISOString()
           })
           .eq('id', requestId);
+          
+        logger.debug('✅ Authority assignment accepted in database');
       }
 
       // Check for both success flag and error

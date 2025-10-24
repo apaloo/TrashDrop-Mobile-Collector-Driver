@@ -428,8 +428,8 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
           </div>
         ) : optimizedRoute.length === 0 ? (
           <div className="py-4 text-center text-gray-600">
-            <p>No accepted assignments to optimize.</p>
-            <p className="text-sm mt-1">Accept assignments to plan your route.</p>
+            <p>No accepted requests to optimize.</p>
+            <p className="text-sm mt-1">Accept requests to plan your route.</p>
           </div>
         ) : (
           <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">

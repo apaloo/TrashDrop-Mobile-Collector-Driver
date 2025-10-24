@@ -111,12 +111,14 @@ export class AnalyticsService {
   }
 
   /**
-   * Get current active route data
+   * Get current active route data - focuses on accepted pickup requests from Request page
    */
   async getCurrentRouteData() {
     try {
-      // Get accepted pickups (current assignments)
-      const { data: acceptedPickups, error } = await supabase
+      logger.debug(`🔍 Fetching route data for collector: ${this.collectorId}`);
+
+      // Get accepted pickup requests (from Request page Accepted tab)
+      const { data: acceptedPickups, error: pickupsError } = await supabase
         .from('pickup_requests')
         .select(`
           id,
@@ -135,7 +137,25 @@ export class AnalyticsService {
         .eq('status', 'accepted')
         .order('accepted_at', { ascending: true });
 
-      if (error) throw error;
+      if (pickupsError) {
+        logger.error('❌ Error fetching accepted pickups:', pickupsError);
+        throw pickupsError;
+      }
+
+      logger.debug(`📦 Found ${acceptedPickups?.length || 0} accepted pickup requests for collector ${this.collectorId}`);
+      
+      // Log each accepted pickup for debugging
+      if (acceptedPickups && acceptedPickups.length > 0) {
+        acceptedPickups.forEach(pickup => {
+          logger.debug(`  ✓ Request ID: ${pickup.id}, Status: ${pickup.status}, Collector: ${pickup.collector_id}`);
+        });
+      } else {
+        logger.warn(`⚠️ No accepted requests found for collector ${this.collectorId}`);
+        logger.debug('Troubleshooting tips:');
+        logger.debug('  1. Check if requests are being accepted with correct collector_id');
+        logger.debug('  2. Check if status is being set to "accepted"');
+        logger.debug('  3. Verify user.id matches this.collectorId');
+      }
 
       // Get available pickups in the area (requests)
       const { data: availablePickups, error: availableError } = await supabase
@@ -157,7 +177,7 @@ export class AnalyticsService {
 
       if (availableError) throw availableError;
 
-      // Transform the data to match expected format
+      // Transform accepted pickup requests to assignment format
       const assignments = (acceptedPickups || []).map(pickup => {
         // Parse coordinates if they're stored as JSON string
         let coords = pickup.coordinates;
@@ -165,6 +185,7 @@ export class AnalyticsService {
           try {
             coords = JSON.parse(coords);
           } catch (e) {
+            logger.warn(`Failed to parse coordinates for pickup ${pickup.id}:`, e);
             coords = { lat: 0, lng: 0 };
           }
         }
@@ -172,19 +193,22 @@ export class AnalyticsService {
         return {
           id: pickup.id,
           type: 'assignment',
+          source_type: 'pickup_request',
           status: pickup.status,
           location: pickup.location || 'Unknown location',
-          customer_name: `Customer #${pickup.id}`, // Generate customer name since it doesn't exist
+          customer_name: `Customer #${pickup.id}`,
           latitude: coords?.lat || 0,
           longitude: coords?.lng || 0,
           fee: pickup.fee || 0,
-          waste_type: pickup.waste_type || 'general', // Use 'type' field
+          waste_type: pickup.waste_type || 'general',
           special_instructions: pickup.special_instructions || '',
           bag_count: pickup.bag_count || 1,
           accepted_at: pickup.accepted_at,
           created_at: pickup.created_at
         };
       });
+
+      logger.debug(`✅ Transformed ${assignments.length} accepted requests for route optimization`);
 
       const requests = (availablePickups || []).map(pickup => {
         // Parse coordinates if they're stored as JSON string
