@@ -33,14 +33,19 @@ export const AuthProvider = ({ children }) => {
       const startTime = Date.now();
       logger.debug('🔐 Starting authentication check at:', startTime);
       
-      // CRITICAL: Don't set loading=true for immediate checks
-      // Only set loading for operations that might take time
+      // CRITICAL: Set timeout to prevent infinite loading
+      const authTimeout = setTimeout(() => {
+        logger.error('⚠️ Auth check timeout - forcing completion');
+        setHasInitiallyChecked(true);
+        setUser(null);
+      }, 5000); // 5 second timeout
       
       try {
         // IMMEDIATE: First check if user has explicitly logged out
         const isLoggedOut = localStorage.getItem('user_logged_out') === 'true';
         if (isLoggedOut) {
           logger.debug('🚫 User is logged out, clearing any existing sessions');
+          clearTimeout(authTimeout);
           setUser(null);
           setHasLoggedOut(true);
           setHasInitiallyChecked(true);
@@ -50,6 +55,8 @@ export const AuthProvider = ({ children }) => {
         // Check for current Supabase session
         logger.debug('🔐 Checking Supabase session...');
         const { session, user, error } = await authService.getSession();
+        
+        clearTimeout(authTimeout);
         
         if (user && !error) {
           logger.debug('✅ Found existing Supabase session:', user?.id);
@@ -92,7 +99,9 @@ export const AuthProvider = ({ children }) => {
         
         setError(err.message);
         setUser(null);
+        setHasInitiallyChecked(true);
       } finally {
+        clearTimeout(authTimeout);
         const duration = Date.now() - startTime;
         logger.debug(`🔐 Auth check completed in ${duration}ms`);
       }

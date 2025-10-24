@@ -5,6 +5,71 @@ import { logger } from '../utils/logger';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+// CRITICAL: Validate environment variables
+if (!supabaseUrl || !supabaseAnonKey) {
+  const errorMsg = '❌ CRITICAL: Missing Supabase environment variables!\n' +
+    `VITE_SUPABASE_URL: ${supabaseUrl ? '✅ Set' : '❌ Missing'}\n` +
+    `VITE_SUPABASE_ANON_KEY: ${supabaseAnonKey ? '✅ Set' : '❌ Missing'}\n` +
+    'Please check your .env file or hosting platform environment variables.';
+  
+  logger.error(errorMsg);
+  
+  // Show user-friendly error in UI
+  if (typeof window !== 'undefined') {
+    setTimeout(() => {
+      const root = document.getElementById('root');
+      if (root) {
+        root.innerHTML = `
+          <div style="
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            text-align: center;
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          ">
+            <div style="font-size: 64px; margin-bottom: 20px;">⚠️</div>
+            <h1 style="color: #E53E3E; font-size: 24px; margin-bottom: 10px;">Configuration Error</h1>
+            <p style="color: #718096; max-width: 500px; margin-bottom: 20px;">
+              The app is missing required environment variables. Please contact your administrator.
+            </p>
+            <div style="
+              background-color: #FFF5F5;
+              border: 1px solid #FEB2B2;
+              border-radius: 8px;
+              padding: 15px;
+              max-width: 500px;
+              text-align: left;
+              margin-bottom: 20px;
+            ">
+              <p style="color: #C53030; font-size: 14px; margin: 0;">
+                <strong>Missing:</strong><br/>
+                ${!supabaseUrl ? '• VITE_SUPABASE_URL<br/>' : ''}
+                ${!supabaseAnonKey ? '• VITE_SUPABASE_ANON_KEY<br/>' : ''}
+              </p>
+            </div>
+            <button onclick="location.reload()" style="
+              background-color: #9AE65C;
+              color: #2D3748;
+              border: none;
+              padding: 12px 24px;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: 600;
+              cursor: pointer;
+            ">Retry</button>
+          </div>
+        `;
+      }
+    }, 100);
+  }
+  
+  throw new Error('Missing required environment variables');
+}
+
 // Initialize Supabase client with anon key for real authentication
 logger.info('🔑 Supabase initialized with real authentication');
 
