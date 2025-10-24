@@ -4,6 +4,7 @@ import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
 import Toast from './Toast';
 import { debounce } from 'lodash';
 import { DEV_MODE } from '../services/supabase';
+import { logger } from '../utils/logger';
 
 const GEOFENCE_RADIUS = 50; // 50 meters radius for auto-completion
 const LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
@@ -66,7 +67,7 @@ const AssignmentNavigationModal = ({
       setArrivalProcessing(true);
       setHasArrived(true);
       
-      console.log(`✅ Assignment ${assignmentId} started - user clicked Start Cleaning`);
+      logger.info(`✅ Assignment ${assignmentId} started - user clicked Start Cleaning`);
       
       // Call the onArrival callback to handle the assignment completion
       if (onArrival) {
@@ -80,7 +81,7 @@ const AssignmentNavigationModal = ({
       });
       
     } catch (error) {
-      console.error('Error starting assignment:', error);
+      logger.error('Error starting assignment:', error);
       showToast({
         message: 'Error starting assignment. Please try again.',
         type: 'error'
@@ -113,7 +114,7 @@ const AssignmentNavigationModal = ({
         if (pointMatch) {
           const lng = parseFloat(pointMatch[1]);
           const lat = parseFloat(pointMatch[2]);
-          console.log('📍 Parsed PostGIS POINT coordinates:', { lat, lng });
+          logger.debug('📍 Parsed PostGIS POINT coordinates:', { lat, lng });
           return { lat, lng, isFallback: false };
         }
         
@@ -121,7 +122,7 @@ const AssignmentNavigationModal = ({
         if (dest.startsWith('0101000020')) {
           // Reduce PostGIS warning spam to 1% frequency
           if (Math.random() < 0.01) {
-            console.warn('⚠️ PostGIS binary format detected - using fallback coordinates for assignment');
+            logger.warn('⚠️ PostGIS binary format detected - using fallback coordinates for assignment');
           }
           // Return Accra coordinates as fallback but mark as fallback
           return { lat: 5.6037, lng: -0.1870, isFallback: true };
@@ -137,7 +138,7 @@ const AssignmentNavigationModal = ({
           }
         }
       } catch (error) {
-        console.error('Error parsing destination coordinates:', error);
+        logger.error('Error parsing destination coordinates:', error);
       }
     }
     
@@ -150,7 +151,7 @@ const AssignmentNavigationModal = ({
       }
     }
     
-    console.warn('Unable to parse destination coordinates:', dest);
+    logger.warn('Unable to parse destination coordinates:', dest);
     return null;
   }, []);
 
@@ -176,7 +177,7 @@ const AssignmentNavigationModal = ({
   const getNavigationRoute = useCallback(async (origin, destination) => {
     if (!directionsService.current) {
       if (!initializeDirectionsAPI()) {
-        console.error('Google Maps not loaded');
+        logger.error('Google Maps not loaded');
         return null;
       }
     }
@@ -191,10 +192,10 @@ const AssignmentNavigationModal = ({
         avoidTolls: false
       }, (result, status) => {
         if (status === window.google.maps.DirectionsStatus.OK) {
-          console.log('🗺️ Navigation route calculated:', result);
+          logger.debug('🗺️ Navigation route calculated:', result);
           resolve(result);
         } else {
-          console.error('❌ Directions request failed:', status);
+          logger.error('❌ Directions request failed:', status);
           reject(new Error(`Directions request failed: ${status}`));
         }
       });
@@ -222,7 +223,7 @@ const AssignmentNavigationModal = ({
 
     try {
       setIsLoading(true);
-      console.log('🧭 Starting in-app navigation...');
+      logger.debug('🧭 Starting in-app navigation...');
       
       const route = await getNavigationRoute(userLocation, destinationObj);
       if (!route) {
@@ -264,7 +265,7 @@ const AssignmentNavigationModal = ({
       });
       
     } catch (error) {
-      console.error('❌ Navigation setup failed:', error);
+      logger.error('❌ Navigation setup failed:', error);
       showToast({
         message: 'Failed to start navigation. Please try again.',
         type: 'error'
@@ -286,7 +287,7 @@ const AssignmentNavigationModal = ({
       directionsRenderer.current.setMap(null);
     }
     
-    console.log('🛑 Navigation stopped');
+    logger.debug('🛑 Navigation stopped');
     showToast({
       message: 'Navigation stopped',
       type: 'info'
@@ -312,7 +313,7 @@ const AssignmentNavigationModal = ({
     // If user is within 50m of next step, advance to next instruction
     if (distanceToNextStep && distanceToNextStep <= 0.05 && currentStep < navigationInstructions.length - 1) {
       setCurrentStep(prev => prev + 1);
-      console.log(`📍 Advanced to step ${currentStep + 1}/${navigationInstructions.length}`);
+      logger.debug(`📍 Advanced to step ${currentStep + 1}/${navigationInstructions.length}`);
       
       // Announce next instruction
       const nextInstruction = navigationInstructions[currentStep + 1];
@@ -362,7 +363,7 @@ const AssignmentNavigationModal = ({
           }
           
           if (userWithinGeofence && !hasArrived) {
-            console.log('✅ User arrived within 50m - ready to start cleaning');
+            logger.info('✅ User arrived within 50m - ready to start cleaning');
             
             // Auto-stop navigation when arrived
             if (isNavigating) {
@@ -376,7 +377,7 @@ const AssignmentNavigationModal = ({
           } else if (withinGeofence && (usingFallbackDestination || usingFallbackUserLocation)) {
             // Reduce fallback coordinate warning spam to 1% frequency
             if (Math.random() < 0.01) {
-              console.log('⚠️ Cannot verify precise arrival - using fallback coordinates');
+              logger.warn('⚠️ Cannot verify precise arrival - using fallback coordinates');
             }
             setWithinGeofence(false); // Don't show arrival state with fallback coords
             showToast({
@@ -387,11 +388,11 @@ const AssignmentNavigationModal = ({
         } else {
           // Reduce missing coordinates warning to 1% frequency
           if (Math.random() < 0.01) {
-            console.warn('Unable to calculate distance - missing coordinates:', { position, destinationObj, destination });
+            logger.warn('Unable to calculate distance - missing coordinates:', { position, destinationObj, destination });
           }
         }
       } catch (err) {
-          console.error('Error updating location:', err);
+          logger.error('Error updating location:', err);
           setError({
             type: 'error',
             message: 'Could not update your location. Please check your GPS settings.'
@@ -408,7 +409,7 @@ const AssignmentNavigationModal = ({
     if (!isOpen) return;
 
     const startLocationTracking = async () => {
-      console.log(`🗺️ Starting navigation to ${assignmentTitle}...`);
+      logger.debug(`🗺️ Starting navigation to ${assignmentTitle}...`);
       
       // Initial location update
       await updateLocation();
@@ -472,7 +473,7 @@ const AssignmentNavigationModal = ({
     setError(null);
     
     try {
-      console.log('🔄 Retrying location update...');
+      logger.debug('🔄 Retrying location update...');
       await updateLocation();
       showToast({
         message: 'Location updated successfully',
@@ -484,7 +485,7 @@ const AssignmentNavigationModal = ({
         navigator.vibrate([100, 50, 100]); // Success pattern
       }
     } catch (err) {
-      console.error('❌ Location retry failed:', err);
+      logger.error('❌ Location retry failed:', err);
       showToast({
         message: 'Unable to get location. Please check your GPS settings.',
         type: 'error'
@@ -529,7 +530,7 @@ const AssignmentNavigationModal = ({
                 userLocation={userLocation}
                 destination={parseDestination(destination)}
                 onMapReady={(map) => {
-                  console.log(`✅ Google Maps loaded for ${assignmentTitle} navigation`);
+                  logger.debug(`✅ Google Maps loaded for ${assignmentTitle} navigation`);
                   mapRef.current = map;
                   
                   // Initialize directions API when map is ready
@@ -740,20 +741,20 @@ const AssignmentNavigationModal = ({
             <div>
               <button
                 onClick={() => {
-                  console.log('🚀 External navigation button clicked');
+                  logger.debug('🚀 External navigation button clicked');
                   const dest = parseDestination(destination);
-                  console.log('📍 Parsed destination:', dest);
+                  logger.debug('📍 Parsed destination:', dest);
                   
                   if (dest && !dest.isFallback) {
                     const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${dest.lat},${dest.lng}&travelmode=driving`;
-                    console.log('🗺️ Opening Google Maps URL:', mapsUrl);
+                    logger.debug('🗺️ Opening Google Maps URL:', mapsUrl);
                     window.open(mapsUrl, '_blank');
                     showToast({
                       message: 'Opening Google Maps for turn-by-turn directions',
                       type: 'info'
                     });
                   } else {
-                    console.log('⚠️ Cannot open external navigation - using fallback coordinates');
+                    logger.warn('⚠️ Cannot open external navigation - using fallback coordinates');
                     showToast({
                       message: 'Cannot open Google Maps - precise coordinates needed. Enable GPS for accurate navigation.',
                       type: 'warning'

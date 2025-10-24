@@ -4,6 +4,7 @@ import BottomNavBar from '../components/BottomNavBar';
 import { useAuth } from '../context/AuthContext';
 import { createEarningsService } from '../services/earningsService';
 import { authService } from '../services/supabase';
+import { logger } from '../utils/logger';
 
 // Cash Out Modal Component
 const CashOutModal = ({ isOpen, onClose, totalEarnings, onWithdrawalSuccess }) => {
@@ -318,7 +319,7 @@ const TransactionItem = ({ transaction }) => {
 };
 
 const EarningsPage = () => {
-  const { user } = useAuth();
+  const { user, hasInitiallyChecked } = useAuth();
   const [userProfile, setUserProfile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('summary');
@@ -336,6 +337,8 @@ const EarningsPage = () => {
   const [earningsData, setEarningsData] = useState({});
   const [transactions, setTransactions] = useState([]);
   const [showCashOutModal, setShowCashOutModal] = useState(false);
+  const [detailedEarnings, setDetailedEarnings] = useState(null);
+  const [loyaltyTier, setLoyaltyTier] = useState(null);
 
   // Fetch earnings and stats
   const fetchEarningsData = async () => {
@@ -356,9 +359,22 @@ const EarningsPage = () => {
       setStats(data.stats);
       setTransactions(data.transactions);
       setTotalEarnings(data.stats.totalEarnings);
+      
+      // Fetch detailed earnings breakdown (SOP v4.5.6)
+      const { success: detailSuccess, data: detailData } = await earningsService.getDetailedEarningsBreakdown();
+      if (detailSuccess && detailData) {
+        setDetailedEarnings(detailData);
+      }
+      
+      // Fetch loyalty tier information
+      const { success: tierSuccess, data: tierData } = await earningsService.getLoyaltyTier();
+      if (tierSuccess && tierData) {
+        setLoyaltyTier(tierData);
+      }
+      
       setIsLoading(false);
     } catch (error) {
-      console.error('Error fetching earnings data:', error);
+      logger.error('Error fetching earnings data:', error);
       setIsLoading(false);
     }
   };
@@ -385,10 +401,30 @@ const EarningsPage = () => {
       // Refresh data to reflect the withdrawal
       await fetchEarningsData();
     } catch (error) {
-      console.error('Error processing withdrawal:', error);
+      logger.error('Error processing withdrawal:', error);
       // You might want to show an error toast here
     }
   };
+
+  // Handle authentication redirect for invalid sessions
+  useEffect(() => {
+    // Only redirect if initial check is complete and user is not authenticated
+    if (hasInitiallyChecked && !user?.id) {
+      logger.warn('User not authenticated in Earnings page, clearing session and redirecting...');
+      
+      // Clear all auth-related data
+      Object.keys(localStorage).forEach(key => {
+        if (key.includes('supabase') || key.includes('sb-') || key.includes('dev_mode')) {
+          localStorage.removeItem(key);
+        }
+      });
+      
+      // Redirect to login page
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 1000);
+    }
+  }, [hasInitiallyChecked, user]);
 
   // Fetch user profile
   useEffect(() => {
@@ -405,7 +441,7 @@ const EarningsPage = () => {
           });
         }
       } catch (err) {
-        console.error('Error loading user profile for nav:', err);
+        logger.error('Error loading user profile for nav:', err);
       }
     };
     
@@ -422,14 +458,16 @@ const EarningsPage = () => {
     }
   }, [period, user?.id]);
 
-  // Show loading state
-  if (isLoading) {
+  // Show loading state while checking auth or fetching data
+  if (!hasInitiallyChecked || isLoading) {
     return (
       <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="flex-grow mt-14 mb-16 flex items-center justify-center">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <p className="mt-2 text-gray-600">Loading earnings data...</p>
+            <p className="mt-2 text-gray-600">
+              {!hasInitiallyChecked ? 'Checking authentication...' : 'Loading earnings data...'}
+            </p>
           </div>
         </div>
         <BottomNavBar />
@@ -437,14 +475,14 @@ const EarningsPage = () => {
     );
   }
 
-  // Show authentication required state
+  // Show authentication required state (redirect handled by useEffect above)
   if (!user?.id) {
     return (
       <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="flex-grow mt-14 mb-16 flex items-center justify-center">
           <div className="text-center">
             <p className="text-gray-600">Authentication required to view earnings</p>
-            <p className="text-sm text-gray-500 mt-2">Please log in to continue</p>
+            <p className="text-sm text-gray-500 mt-2">Redirecting to login...</p>
           </div>
         </div>
         <BottomNavBar />
@@ -523,6 +561,88 @@ const EarningsPage = () => {
             <p className="text-xl font-bold">₵{stats.avgPerJob.toFixed(2)}</p>
           </div>
         </div>
+        
+        {/* Earnings Breakdown (SOP v4.5.6) */}
+        {detailedEarnings && detailedEarnings.buckets && (
+          <div className="bg-white rounded-lg shadow mb-6 p-4">
+            <h3 className="text-lg font-semibold mb-3">Earnings Breakdown</h3>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-gray-700">💼 Base Core Pickups</span>
+                <span className="font-semibold text-green-600">₵{detailedEarnings.buckets.core.toFixed(0)}</span>
+              </div>
+              
+              {detailedEarnings.buckets.urgent > 0 && (
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-gray-700">⚡ Urgent Bonuses</span>
+                  <span className="font-semibold text-orange-600">₵{detailedEarnings.buckets.urgent.toFixed(0)}</span>
+                </div>
+              )}
+              
+              {detailedEarnings.buckets.distance > 0 && (
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-gray-700">📍 Distance Bonuses</span>
+                  <span className="font-semibold text-blue-600">₵{detailedEarnings.buckets.distance.toFixed(0)}</span>
+                </div>
+              )}
+              
+              {detailedEarnings.buckets.surge > 0 && (
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-gray-700">🔥 Surge Bonuses</span>
+                  <span className="font-semibold text-red-600">₵{detailedEarnings.buckets.surge.toFixed(0)}</span>
+                </div>
+              )}
+              
+              {detailedEarnings.buckets.tips > 0 && (
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-gray-700">💵 Tips Received</span>
+                  <span className="font-semibold text-purple-600">₵{detailedEarnings.buckets.tips.toFixed(0)}</span>
+                </div>
+              )}
+              
+              {detailedEarnings.buckets.recyclables > 0 && (
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-gray-700">♻️ Recyclables Share</span>
+                  <span className="font-semibold text-teal-600">₵{detailedEarnings.buckets.recyclables.toFixed(0)}</span>
+                </div>
+              )}
+              
+              {detailedEarnings.buckets.loyalty > 0 && (
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-gray-700">⭐ Loyalty Cashback</span>
+                  <span className="font-semibold text-indigo-600">₵{detailedEarnings.buckets.loyalty.toFixed(0)}</span>
+                </div>
+              )}
+              
+              <div className="flex justify-between items-center py-3 border-t-2 mt-2">
+                <span className="text-lg font-bold">Total Earnings</span>
+                <span className="text-xl font-bold text-green-600">₵{detailedEarnings.total.toFixed(0)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Loyalty Tier Info */}
+        {loyaltyTier && (
+          <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg shadow mb-6 p-4 text-white">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-lg font-semibold">⭐ {loyaltyTier.tier} Tier</h3>
+              <span className="text-sm bg-white bg-opacity-20 px-3 py-1 rounded-full">
+                {(loyaltyTier.cashback_rate * 100).toFixed(0)}% Cashback
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span>Monthly Cashback</span>
+              <span className="font-semibold">₵{loyaltyTier.cashback_earned?.toFixed(0) || 0} / ₵{loyaltyTier.monthly_cap}</span>
+            </div>
+            <div className="w-full bg-white bg-opacity-30 rounded-full h-2 mt-2">
+              <div 
+                className="bg-white h-2 rounded-full transition-all" 
+                style={{ width: `${Math.min(((loyaltyTier.cashback_earned || 0) / loyaltyTier.monthly_cap) * 100, 100)}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
         
         {/* Tab Navigation */}
         <div className="flex border-b mb-4">

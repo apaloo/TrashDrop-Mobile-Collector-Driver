@@ -4,6 +4,7 @@ import {
   calculateRouteDistance, 
   estimateRouteTime 
 } from '../utils/routeOptimizationUtils';
+import { logger } from '../utils/logger';
 
 /**
  * Component to display route statistics and metrics
@@ -33,7 +34,7 @@ const RouteStatistics = ({ assignments, userLocation, analyticsService }) => {
           setPerformanceAnalytics(result.data);
         }
       } catch (error) {
-        console.error('Error fetching performance analytics:', error);
+        logger.error('Error fetching performance analytics:', error);
       } finally {
         setIsLoadingAnalytics(false);
       }

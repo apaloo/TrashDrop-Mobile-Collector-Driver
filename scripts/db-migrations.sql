@@ -337,3 +337,168 @@ GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT ALL ON public.collector_sessions TO authenticated;
 GRANT ALL ON public.request_notifications TO authenticated;
 GRANT SELECT, UPDATE ON public.pickup_requests TO authenticated;
+
+-- ============================================================================
+-- SOP v4.5.6 PAYMENT MODEL EXTENSIONS (Collector-Only Implementation)
+-- ============================================================================
+
+-- 13. Add payment breakdown columns to pickup_requests
+-- Note: Keeps existing 'fee' field for backwards compatibility
+ALTER TABLE public.pickup_requests 
+  -- Pricing breakdown (populated by user app/backend)
+  ADD COLUMN IF NOT EXISTS base_amount DECIMAL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS onsite_surcharges DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS discount_amount DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS urgent_enabled BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS urgent_amount DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS distance_billed_km DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS distance_amount DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS surge_multiplier DECIMAL DEFAULT 1.0,
+  ADD COLUMN IF NOT EXISTS surge_uplift_amount DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS request_fee DECIMAL DEFAULT 1.0,
+  ADD COLUMN IF NOT EXISTS taxes DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS total_user_paid DECIMAL DEFAULT NULL,
+  
+  -- Distance anchors (T0, T1, T2) for fairness
+  ADD COLUMN IF NOT EXISTS anchor_dmin_t0_km DECIMAL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS anchor_d_accept_km DECIMAL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS billed_km_quote DECIMAL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS billed_km_final DECIMAL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS anchors_computed_at TIMESTAMP DEFAULT NULL,
+  
+  -- Deadhead tracking (collector to pickup distance)
+  ADD COLUMN IF NOT EXISTS deadhead_km DECIMAL DEFAULT NULL,
+  
+  -- Collector payout buckets (what collector earns)
+  ADD COLUMN IF NOT EXISTS collector_core_payout DECIMAL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS collector_urgent_payout DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS collector_distance_payout DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS collector_surge_payout DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS collector_tips DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS collector_recyclables_payout DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS collector_loyalty_cashback DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS collector_total_payout DECIMAL DEFAULT NULL,
+  
+  -- Platform revenue tracking
+  ADD COLUMN IF NOT EXISTS platform_core_margin DECIMAL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS platform_urgent_share DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS platform_surge_share DECIMAL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS platform_recyclables_share DECIMAL DEFAULT 0,
+  
+  -- Recyclables async settlement
+  ADD COLUMN IF NOT EXISTS has_recyclables BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS recycler_gross_payout DECIMAL DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS recyclables_settled_at TIMESTAMP DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS user_recyclables_credit DECIMAL DEFAULT 0;
+
+-- 14. Create indexes for payment-related queries
+CREATE INDEX IF NOT EXISTS idx_pickup_requests_urgent 
+  ON public.pickup_requests(urgent_enabled) WHERE urgent_enabled = true;
+  
+CREATE INDEX IF NOT EXISTS idx_pickup_requests_surge 
+  ON public.pickup_requests(surge_multiplier) WHERE surge_multiplier > 1.0;
+  
+CREATE INDEX IF NOT EXISTS idx_pickup_requests_recyclables 
+  ON public.pickup_requests(has_recyclables) WHERE has_recyclables = true;
+  
+CREATE INDEX IF NOT EXISTS idx_pickup_requests_collector_payout 
+  ON public.pickup_requests(collector_total_payout) WHERE collector_total_payout IS NOT NULL;
+
+-- 15. Create collector_loyalty_tiers table
+CREATE TABLE IF NOT EXISTS public.collector_loyalty_tiers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  collector_id UUID NOT NULL REFERENCES auth.users(id),
+  month DATE NOT NULL, -- First day of month, e.g., '2025-01-01'
+  tier VARCHAR(20) DEFAULT 'Silver', -- Silver, Gold, Platinum
+  csat_score DECIMAL DEFAULT 0,
+  completion_rate DECIMAL DEFAULT 0,
+  recyclables_percentage DECIMAL DEFAULT 0,
+  cashback_rate DECIMAL DEFAULT 0.01, -- 1%, 2%, 3%
+  monthly_cap DECIMAL DEFAULT 100, -- ₵100, ₵200, ₵250
+  cashback_earned DECIMAL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT now(),
+  updated_at TIMESTAMP DEFAULT now(),
+  UNIQUE(collector_id, month)
+);
+
+-- 16. Create collector_tips table
+CREATE TABLE IF NOT EXISTS public.collector_tips (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  request_id UUID REFERENCES public.pickup_requests(id),
+  collector_id UUID REFERENCES auth.users(id),
+  user_id UUID,
+  amount DECIMAL NOT NULL,
+  tip_type VARCHAR(20) DEFAULT 'post_completion', -- pre_checkout, post_completion
+  status VARCHAR(20) DEFAULT 'confirmed', -- pending, confirmed, refunded
+  created_at TIMESTAMP DEFAULT now(),
+  updated_at TIMESTAMP DEFAULT now()
+);
+
+-- 17. Create surge_events table
+CREATE TABLE IF NOT EXISTS public.surge_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_name VARCHAR(100) NOT NULL,
+  multiplier DECIMAL NOT NULL DEFAULT 1.2,
+  start_time TIMESTAMP NOT NULL,
+  end_time TIMESTAMP NOT NULL,
+  region_filter JSONB DEFAULT '{}',
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT now(),
+  updated_at TIMESTAMP DEFAULT now()
+);
+
+-- 18. Create payout_transactions table (detailed earnings log)
+CREATE TABLE IF NOT EXISTS public.payout_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  collector_id UUID NOT NULL REFERENCES auth.users(id),
+  request_id UUID REFERENCES public.pickup_requests(id),
+  transaction_type VARCHAR(30) NOT NULL, -- core, urgent, distance, surge, tip, recyclables, loyalty
+  amount DECIMAL NOT NULL,
+  description TEXT,
+  settled_at TIMESTAMP DEFAULT now(),
+  created_at TIMESTAMP DEFAULT now()
+);
+
+-- 19. Add indexes for new tables
+CREATE INDEX IF NOT EXISTS idx_loyalty_tiers_collector 
+  ON public.collector_loyalty_tiers(collector_id, month);
+  
+CREATE INDEX IF NOT EXISTS idx_tips_collector 
+  ON public.collector_tips(collector_id, created_at);
+  
+CREATE INDEX IF NOT EXISTS idx_tips_request 
+  ON public.collector_tips(request_id);
+  
+CREATE INDEX IF NOT EXISTS idx_surge_events_active 
+  ON public.surge_events(is_active, start_time, end_time) WHERE is_active = true;
+  
+CREATE INDEX IF NOT EXISTS idx_payout_transactions_collector 
+  ON public.payout_transactions(collector_id, created_at);
+  
+CREATE INDEX IF NOT EXISTS idx_payout_transactions_type 
+  ON public.payout_transactions(transaction_type, created_at);
+
+-- 20. Enable RLS on new tables
+ALTER TABLE public.collector_loyalty_tiers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.collector_tips ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.surge_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payout_transactions ENABLE ROW LEVEL SECURITY;
+
+-- 21. Create RLS policies for new tables
+CREATE POLICY view_own_loyalty_tier ON public.collector_loyalty_tiers
+  FOR SELECT TO authenticated USING (collector_id = auth.uid());
+
+CREATE POLICY view_own_tips ON public.collector_tips
+  FOR SELECT TO authenticated USING (collector_id = auth.uid());
+
+CREATE POLICY view_active_surge_events ON public.surge_events
+  FOR SELECT TO authenticated USING (is_active = true);
+
+CREATE POLICY view_own_payout_transactions ON public.payout_transactions
+  FOR SELECT TO authenticated USING (collector_id = auth.uid());
+
+-- 22. Grant permissions for new tables
+GRANT SELECT ON public.collector_loyalty_tiers TO authenticated;
+GRANT SELECT ON public.collector_tips TO authenticated;
+GRANT SELECT ON public.surge_events TO authenticated;
+GRANT SELECT ON public.payout_transactions TO authenticated;

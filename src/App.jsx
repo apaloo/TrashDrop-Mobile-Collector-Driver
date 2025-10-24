@@ -12,6 +12,7 @@ import { FilterProvider } from './context/FilterContext';
 // Components
 import AppLayout from './components/AppLayout';
 import ImageManager from './utils/imageManager';
+import { logger } from './utils/logger';
 
 // IMMEDIATE: Critical pages loaded immediately for fast startup
 import WelcomePage from './pages/Welcome';
@@ -35,7 +36,7 @@ const clearStaleSession = () => {
     if (devModeSession) {
       const session = JSON.parse(devModeSession);
       if (session?.user?.id === 'test-user-id') {
-        console.log('Clearing stale test-user-id session data');
+        logger.debug('Clearing stale test-user-id session data');
         localStorage.removeItem('dev_mode_session');
       }
     }
@@ -54,7 +55,7 @@ const RouteCleanup = () => {
     // Clean up images when navigating away from request pages
     if (!location.pathname.includes('/request/')) {
       if (process.env.NODE_ENV === 'development') {
-        console.log('🚀 Navigating away from request page, cleaning up images');
+        logger.debug('🚀 Navigating away from request page, cleaning up images');
       }
       // Don't clear all images, just revoke blob URLs to free memory
       const photos = ImageManager.getAllCapturedPhotos();
@@ -73,7 +74,7 @@ const ProtectedRoute = ({ children }) => {
   const hasDevModeSession = localStorage.getItem('dev_mode_session') !== null;
   
   // Debug logging
-  console.log('ProtectedRoute check:', { 
+  logger.debug('ProtectedRoute check:', { 
     isAuthenticated, 
     loading, 
     hasUser: !!user,
@@ -97,7 +98,7 @@ const ProtectedRoute = ({ children }) => {
   
   // Allow access if authenticated OR if we have a dev mode session AND user hasn't logged out
   if ((!isAuthenticated && !hasDevModeSession) || hasLoggedOut) {
-    console.log('Access denied: User not authenticated or has logged out');
+    logger.debug('Access denied: User not authenticated or has logged out');
     return <Navigate to="/login" replace />;
   }
   
@@ -111,7 +112,7 @@ const PublicRoute = ({ children }) => {
   const hasDevModeSession = localStorage.getItem('dev_mode_session') !== null;
   
   // Debug logging
-  console.log('PublicRoute check:', { 
+  logger.debug('PublicRoute check:', { 
     isAuthenticated, 
     loading, 
     hasDevModeSession,
@@ -133,7 +134,7 @@ const PublicRoute = ({ children }) => {
   
   // Only redirect to map if authenticated OR if we have a dev mode session AND user hasn't logged out
   if ((isAuthenticated || hasDevModeSession) && !hasLoggedOut) {
-    console.log('Redirecting to map: User is authenticated or has dev mode session and has not logged out');
+    logger.debug('Redirecting to map: User is authenticated or has dev mode session and has not logged out');
     return <Navigate to="/map" replace />;
   }
   
@@ -141,8 +142,8 @@ const PublicRoute = ({ children }) => {
 };
 
 function App() {
-  console.log('🏁 App component rendering at:', Date.now());
-  console.time('🔐 Context Providers Setup');
+  const startTime = Date.now();
+  logger.debug('🏁 App component rendering at:', startTime);
   
   return (
     <AuthProvider>
@@ -275,7 +276,7 @@ const DefaultRedirect = () => {
   const hasDevModeSession = localStorage.getItem('dev_mode_session') !== null;
   
   // Debug logging
-  console.log('DefaultRedirect check:', { 
+  logger.debug('DefaultRedirect check:', { 
     isAuthenticated, 
     loading, 
     hasDevModeSession,
@@ -298,10 +299,10 @@ const DefaultRedirect = () => {
   
   // Redirect based on authentication status OR dev mode session, but respect logout state
   if ((isAuthenticated || hasDevModeSession) && !hasLoggedOut) {
-    console.log('DefaultRedirect: Redirecting to map');
+    logger.debug('DefaultRedirect: Redirecting to map');
     return <Navigate to="/map" replace />;
   } else {
-    console.log('DefaultRedirect: Redirecting to login');
+    logger.debug('DefaultRedirect: Redirecting to login');
     return <Navigate to="/login" replace />;
   }
 }

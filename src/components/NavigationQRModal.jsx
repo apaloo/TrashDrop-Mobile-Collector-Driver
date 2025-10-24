@@ -9,6 +9,7 @@ import { locationBroadcast } from '../services/locationBroadcast';
 import './navigation-modal.css'; // Custom CSS for better readability
 import QRCodeScanner from './QRCodeScanner'; // Import our existing QR scanner component
 import ErrorBoundary from './ErrorBoundary'; // Import error boundary
+import { logger } from '../utils/logger';
 
 // QR Scan Rate Limiting
 const QR_SCAN_RATE_LIMIT = 10; // per minute
@@ -95,13 +96,13 @@ const NavigationQRModal = ({
       
       // Switch mode back to navigation
       setMode('navigation');
-      console.log('✅ Switched back to navigation mode');
+      logger.debug('✅ Switched back to navigation mode');
       
       // Small delay to ensure clean transition
       await new Promise(resolve => setTimeout(resolve, 100));
       
     } catch (err) {
-      console.error('❌ Error switching back to navigation:', err);
+      logger.error('❌ Error switching back to navigation:', err);
       setError({
         type: 'error',
         message: 'Error switching modes. Please try again.'
@@ -122,7 +123,7 @@ const NavigationQRModal = ({
     
     // Process the scanned code
     const scanStartTime = Date.now();
-    console.log(`⚡ QR scan processed in ${Date.now() - scanStartTime}ms`, decodedText);
+    logger.debug(`⚡ QR scan processed in ${Date.now() - scanStartTime}ms`, decodedText);
     
     // Validate scanned QR code
     if (expectedQRValue && decodedText !== expectedQRValue) {
@@ -151,7 +152,7 @@ const NavigationQRModal = ({
   }, [expectedQRValue, onQRScanned, onClose]);
   
   const handleQRScanError = useCallback((error) => {
-    console.error('QR scan error:', error);
+    logger.error('QR scan error:', error);
     showToast({
       message: `QR scan error: ${error.message || error}`,
       type: 'error'
@@ -172,7 +173,7 @@ const NavigationQRModal = ({
     // Start broadcasting location to user
     if (requestId && user?.id) {
       await locationBroadcast.startTracking(requestId, user.id);
-      console.log('📡 Started real-time location tracking for user');
+      logger.info('📡 Started real-time location tracking for user');
     }
     
     // Show toast notification
@@ -209,7 +210,7 @@ const NavigationQRModal = ({
       setMode('qr');
       setError(null);
     } catch (err) {
-      console.error('Camera permission error:', err);
+      logger.error('Camera permission error:', err);
       setError({ type: 'error', message: 'Camera access denied. Please grant camera permissions.' });
       setHasCameraPermission(false);
     } finally {
@@ -238,7 +239,7 @@ const NavigationQRModal = ({
     
     try {
       // Request camera permission first
-      console.log('🎥 Requesting camera permission for QR scanning...');
+      logger.debug('🎥 Requesting camera permission for QR scanning...');
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       stream.getTracks().forEach(track => track.stop()); // Release immediately after permission check
       
@@ -246,10 +247,10 @@ const NavigationQRModal = ({
       setHasCameraPermission(true);
       setMode('qr');
       setError(null);
-      console.log('✅ Successfully switched to QR scanning mode');
+      logger.debug('✅ Successfully switched to QR scanning mode');
       
     } catch (err) {
-      console.error('❌ Camera permission error:', err);
+      logger.error('❌ Camera permission error:', err);
       setError({ 
         type: 'error', 
         message: 'Camera access denied. Please grant camera permissions to scan QR codes.' 
@@ -281,7 +282,7 @@ const NavigationQRModal = ({
           
           // If using fallback location in dev mode, show warning instead of error
           if (locationResult.isFallback && DEV_MODE) {
-            console.warn('Using fallback location (Accra, Ghana) - DEV_MODE enabled');
+            logger.warn('Using fallback location (Accra, Ghana) - DEV_MODE enabled');
           } else if (locationResult.isFallback) {
             setError('Using approximate location. Enable location services for accurate navigation.');
           }
@@ -315,7 +316,7 @@ const NavigationQRModal = ({
         return coords;
         
       } catch (err) {
-        console.error(`Location attempt ${attempt} failed:`, err);
+        logger.error(`Location attempt ${attempt} failed:`, err);
         
         if (attempt === maxRetries) {
           // More user-friendly error message
@@ -327,7 +328,7 @@ const NavigationQRModal = ({
           if (DEV_MODE) {
             // In dev mode, return a default location
             const defaultCoords = [5.6037, -0.1870]; // Accra
-            console.warn('Using default location in DEV_MODE:', defaultCoords);
+            logger.warn('Using default location in DEV_MODE:', defaultCoords);
             return defaultCoords;
           } else {
             throw err;
@@ -351,10 +352,10 @@ const NavigationQRModal = ({
     setError(null);
     
     try {
-      console.log('🔄 Retrying location update...');
+      logger.debug('🔄 Retrying location update...');
       const coords = await retryLocationUpdate();
       if (coords) {
-        console.log('✅ Location retry successful:', coords);
+        logger.debug('✅ Location retry successful:', coords);
         showToast({
           message: 'Location updated successfully',
           type: 'success'
@@ -366,7 +367,7 @@ const NavigationQRModal = ({
         }
       }
     } catch (err) {
-      console.error('❌ Location retry failed:', err);
+      logger.error('❌ Location retry failed:', err);
       showToast({
         message: 'Unable to get location. Please check your GPS settings.',
         type: 'error'
@@ -403,7 +404,7 @@ const NavigationQRModal = ({
           setIsWithinGeofence(distance <= 0.05); // 50m = 0.05km
         }
       } catch (err) {
-        console.error('Error updating location:', err);
+        logger.error('Error updating location:', err);
         setError({
           type: 'error',
           message: 'Could not update your location. Please check your GPS settings.'
@@ -474,7 +475,7 @@ const requestCameraPermission = useCallback(async () => {
       setHasCameraPermission(true);
       
     } catch (err) {
-      console.error('Camera permission error:', err);
+      logger.error('Camera permission error:', err);
       setHasCameraPermission(false);
       
       // Enhanced error messages with specific guidance
@@ -524,14 +525,14 @@ const requestCameraPermission = useCallback(async () => {
     const updateLocation = async () => {
       // Only log location updates occasionally to reduce console spam
       if (consecutiveFallbackUpdates < 3 || consecutiveFallbackUpdates % 5 === 0) {
-        console.log('Updating location...');
+        logger.debug('Updating location...');
       }
       try {
         const position = await getCurrentLocation();
         
         // Only log position details occasionally
         if (consecutiveFallbackUpdates < 2) {
-          console.log('Current position:', position);
+          logger.debug('Current position:', position);
         }
         
         setUserLocation(position);
@@ -546,8 +547,8 @@ const requestCameraPermission = useCallback(async () => {
         if (destination && position) {
           // Only log debug info occasionally
           if (consecutiveFallbackUpdates < 2) {
-            console.log('DEBUG - Position:', position);
-            console.log('DEBUG - Destination:', destination);
+            logger.debug('DEBUG - Position:', position);
+            logger.debug('DEBUG - Destination:', destination);
           }
           
           // Convert destination array [lat, lng] to object {lat, lng} format
@@ -559,7 +560,7 @@ const requestCameraPermission = useCallback(async () => {
           
           // Only log distance occasionally  
           if (consecutiveFallbackUpdates < 2) {
-            console.log('Distance to destination:', distance);
+            logger.debug('Distance to destination:', distance);
           }
           
           setDistanceToDestination(distance);
@@ -569,13 +570,13 @@ const requestCameraPermission = useCallback(async () => {
           
           // Only log geofence status occasionally
           if (consecutiveFallbackUpdates < 2) {
-            console.log('Within geofence (50m):', withinGeofence, `Distance: ${distance.toFixed(3)}km`);
+            logger.debug('Within geofence (50m):', withinGeofence, `Distance: ${distance.toFixed(3)}km`);
           }
           
           setIsWithinGeofence(withinGeofence);
         }
       } catch (err) {
-        console.error('Error updating location:', err);
+        logger.error('Error updating location:', err);
       }
     };
 
@@ -603,7 +604,7 @@ const requestCameraPermission = useCallback(async () => {
           mapRef.current.removeControl(routingControlRef.current);
           routingControlRef.current = null;
         } catch (err) {
-          console.warn('Error cleaning up routing control:', err);
+          logger.warn('Error cleaning up routing control:', err);
         }
       }
     };
@@ -650,7 +651,7 @@ const requestCameraPermission = useCallback(async () => {
           qrScanner.current.clear();
           qrScanner.current = null;
         } catch (err) {
-          console.warn('Error cleaning up QR scanner:', err);
+          logger.warn('Error cleaning up QR scanner:', err);
         }
       }
 
@@ -663,7 +664,7 @@ const requestCameraPermission = useCallback(async () => {
           }
           mapRef.current = null;
         } catch (err) {
-          console.warn('Error cleaning up map container:', err);
+          logger.warn('Error cleaning up map container:', err);
         }
       }
     }
@@ -683,7 +684,7 @@ const requestCameraPermission = useCallback(async () => {
         clearTimeout(toastTimeout.current);
       }
 
-      console.log('NavigationQRModal resources cleaned up successfully');
+      logger.debug('NavigationQRModal resources cleaned up successfully');
     };
   }, []);
 
@@ -713,13 +714,13 @@ const requestCameraPermission = useCallback(async () => {
           {mode === 'navigation' ? (
             <div className="relative w-full h-[60vh] bg-gray-100 rounded-lg overflow-hidden">
               {/* Debug logging for navigation conditions - reduced frequency */}
-              {Math.random() < 0.05 && console.log('Navigation render check:', { userLocation: !!userLocation, destination: !!destination, userLocationData: userLocation, destinationData: destination })}
+              {Math.random() < 0.05 && logger.debug('Navigation render check:', { userLocation: !!userLocation, destination: !!destination, userLocationData: userLocation, destinationData: destination })}
               {userLocation && destination ? (
                 <GoogleMapModalComponent
                   userLocation={userLocation}
                   destination={destination}
                   onMapReady={(map) => {
-                    console.log('Google Maps loaded in modal');
+                    logger.debug('Google Maps loaded in modal');
                     mapRef.current = map;
                   }}
                   className="w-full h-full"

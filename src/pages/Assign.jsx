@@ -9,6 +9,7 @@ import ReportModal from '../components/ReportModal';
 import AssignmentNavigationModal from '../components/AssignmentNavigationModal';
 import { supabase, authService } from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
+import { logger } from '../utils/logger';
 
 const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNavigate, onDumpingSite, onDispose, onViewReport }) => {
   const [expanded, setExpanded] = useState(false);
@@ -287,12 +288,12 @@ const AssignPage = () => {
       setFetchError(null);
       
       if (!user?.id) {
-        console.warn('⚠️ No user ID available, cannot fetch assignments');
+        logger.warn('⚠️ No user ID available, cannot fetch assignments');
         setLoading(false);
         return;
       }
       
-      console.log('📥 Fetching assignments for collector:', user.id);
+      logger.debug('📥 Fetching assignments for collector:', user.id);
       
       // Fetch ONLY assignments assigned to THIS collector by admin
       // - Available: Assignments assigned to me by admin with status 'available' (not yet accepted)
@@ -306,7 +307,7 @@ const AssignPage = () => {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error fetching assignments:', error);
+        logger.error('Error fetching assignments:', error);
         setFetchError('Failed to load assignments. Please try again.');
         return;
       }
@@ -344,7 +345,7 @@ const AssignPage = () => {
 
       // Log if duplicates were found
       if (uniqueAssignments.length < transformedAssignments.length) {
-        console.warn('⚠️ Removed duplicate assignments:', {
+        logger.warn('⚠️ Removed duplicate assignments:', {
           original: transformedAssignments.length,
           unique: uniqueAssignments.length,
           duplicates: transformedAssignments.length - uniqueAssignments.length
@@ -365,16 +366,15 @@ const AssignPage = () => {
       setAssignments(groupedAssignments);
       setLastUpdated(new Date().toISOString());
       
-      console.log('📊 Assignments loaded for collector', user.id, ':', {
+      logger.debug('📊 Assignments loaded for collector', user.id, ':', {
         available: groupedAssignments.available.length,
         accepted: groupedAssignments.accepted.length,
         completed: groupedAssignments.completed.length,
-        total: transformedAssignments.length,
-        filtered_out: transformedAssignments.length - (groupedAssignments.available.length + groupedAssignments.accepted.length + groupedAssignments.completed.length)
+        total: uniqueAssignments.length
       });
       
     } catch (error) {
-      console.error('Unexpected error fetching assignments:', error);
+      logger.error('Unexpected error fetching assignments:', error);
       setFetchError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
@@ -396,7 +396,7 @@ const AssignPage = () => {
           });
         }
       } catch (err) {
-        console.error('Error loading user profile for nav:', err);
+        logger.error('Error loading user profile for nav:', err);
       }
     };
     
@@ -443,7 +443,7 @@ const AssignPage = () => {
         return;
       }
 
-      console.log('✅ Accepting assignment', assignmentId, 'for collector:', user.id);
+      logger.info('✅ Accepting assignment', assignmentId, 'for collector:', user.id);
 
       // Update in Supabase - Change status from 'available' to 'accepted'
       // Note: collector_id is already set by admin, we're just accepting the assignment
@@ -459,7 +459,7 @@ const AssignPage = () => {
         .eq('status', 'available');
 
       if (error) {
-        console.error('Error accepting assignment:', error);
+        logger.error('Error accepting assignment:', error);
         showToast('Failed to accept assignment. Please try again.', 'error');
         // Refresh assignments to get latest state
         fetchAssignments();
@@ -486,15 +486,15 @@ const AssignPage = () => {
       showToast('✅ Assignment accepted and assigned to you!');
       
     } catch (error) {
-      console.error('Unexpected error accepting assignment:', error);
+      logger.error('Unexpected error accepting assignment:', error);
       showToast('An unexpected error occurred. Please try again.', 'error');
     }
   };
   
   // Handle navigate to assignment - Open in-app navigation modal
   const handleNavigate = (assignment) => {
-    console.log('🗺️ Opening in-app navigation for assignment:', assignment?.id);
-    console.log('📍 Assignment coordinates data:', assignment?.coordinates);
+    logger.debug('🗺️ Opening in-app navigation for assignment:', assignment?.id);
+    logger.debug('📍 Assignment coordinates data:', assignment?.coordinates);
     
     setSelectedAssignment(assignment);
     setNavigationModalOpen(true);
@@ -504,7 +504,7 @@ const AssignPage = () => {
   // Handle assignment arrival (auto-completion when within 50m)
   const handleAssignmentArrival = async (assignmentId) => {
     try {
-      console.log(`✅ Assignment ${assignmentId} auto-completed via navigation`);
+      logger.info(`✅ Assignment ${assignmentId} auto-completed via navigation`);
       
       const assignmentToComplete = assignments.accepted.find(assign => assign.id === assignmentId);
       if (!assignmentToComplete) {
@@ -523,7 +523,7 @@ const AssignPage = () => {
         .eq('id', assignmentId);
 
       if (error) {
-        console.error('Error auto-completing assignment:', error);
+        logger.error('Error auto-completing assignment:', error);
         showToast('Failed to complete assignment. Please try again.', 'error');
         return;
       }
@@ -549,15 +549,15 @@ const AssignPage = () => {
       showToast('🎉 Assignment completed successfully!');
       
     } catch (error) {
-      console.error('Unexpected error auto-completing assignment:', error);
+      logger.error('Unexpected error auto-completing assignment:', error);
       showToast('An unexpected error occurred. Please try again.', 'error');
     }
   };
   
   // Legacy Google Maps navigation (keeping for fallback)
   const handleLegacyNavigate = (assignment) => {
-    console.log('🗺️ Opening Google Maps navigation for assignment:', assignment?.id);
-    console.log('📍 Assignment coordinates data:', assignment?.coordinates);
+    logger.debug('🗺️ Opening Google Maps navigation for assignment:', assignment?.id);
+    logger.debug('📍 Assignment coordinates data:', assignment?.coordinates);
     
     let googleMapsUrl = '';
     let lat, lng;
@@ -570,13 +570,13 @@ const AssignPage = () => {
           // Format: [lat, lng]
           lat = parseFloat(assignment.coordinates[0]);
           lng = parseFloat(assignment.coordinates[1]);
-          console.log('📍 Parsed array coordinates:', { lat, lng });
+          logger.debug('📍 Parsed array coordinates:', { lat, lng });
         } 
         else if (typeof assignment.coordinates === 'object' && assignment.coordinates !== null && !Array.isArray(assignment.coordinates)) {
           // Format: {lat: x, lng: y} or {latitude: x, longitude: y}
           lat = parseFloat(assignment.coordinates.lat || assignment.coordinates.latitude);
           lng = parseFloat(assignment.coordinates.lng || assignment.coordinates.longitude);
-          console.log('📍 Parsed object coordinates:', { lat, lng });
+          logger.debug('📍 Parsed object coordinates:', { lat, lng });
         } 
         else if (typeof assignment.coordinates === 'string') {
           // Handle PostGIS POINT format: "POINT(lng lat)"
@@ -584,14 +584,14 @@ const AssignPage = () => {
           if (pointMatch) {
             lng = parseFloat(pointMatch[1]);
             lat = parseFloat(pointMatch[2]);
-            console.log('📍 Parsed PostGIS POINT coordinates:', { lat, lng });
+            logger.debug('📍 Parsed PostGIS POINT coordinates:', { lat, lng });
           } else {
             // Try parsing as "lat,lng" string
             const coordParts = assignment.coordinates.split(',').map(c => c.trim());
             if (coordParts.length === 2) {
               lat = parseFloat(coordParts[0]);
               lng = parseFloat(coordParts[1]);
-              console.log('📍 Parsed comma-separated coordinates:', { lat, lng });
+              logger.debug('📍 Parsed comma-separated coordinates:', { lat, lng });
             }
           }
         }
@@ -600,26 +600,26 @@ const AssignPage = () => {
         if (lat && lng && !isNaN(lat) && !isNaN(lng) && 
             lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
           googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
-          console.log('✅ Using GPS coordinates for navigation:', googleMapsUrl);
+          logger.debug('✅ Using GPS coordinates for navigation:', googleMapsUrl);
         } else {
-          console.warn('⚠️ Invalid GPS coordinates, falling back to address search');
-          console.log('❌ Invalid coordinates:', { lat, lng, assignment: assignment.coordinates });
+          logger.warn('⚠️ Invalid GPS coordinates, falling back to address search');
+          logger.debug('❌ Invalid coordinates:', { lat, lng, assignment: assignment.coordinates });
           throw new Error('Invalid coordinates');
         }
       } catch (error) {
-        console.warn('⚠️ Error parsing GPS coordinates:', error);
+        logger.warn('⚠️ Error parsing GPS coordinates:', error);
         // Fallback to location string search
         googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(assignment.location || 'assignment location')}`;
-        console.log('🔄 Using address search fallback:', googleMapsUrl);
+        logger.debug('🔄 Using address search fallback:', googleMapsUrl);
       }
     } else {
       // No coordinates available, use location string
       googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(assignment.location || 'assignment location')}`;
-      console.log('🔄 No coordinates found, using address search:', googleMapsUrl);
+      logger.debug('🔄 No coordinates found, using address search:', googleMapsUrl);
     }
     
     // Open Google Maps
-    console.log('🚀 Opening Google Maps:', googleMapsUrl);
+    logger.debug('🚀 Opening Google Maps:', googleMapsUrl);
     window.open(googleMapsUrl, '_blank');
     
     // Close modal
@@ -662,7 +662,7 @@ const AssignPage = () => {
         .eq('id', assignmentId);
 
       if (error) {
-        console.error('Error completing assignment:', error);
+        logger.error('Error completing assignment:', error);
         showToast('Failed to complete assignment. Please try again.', 'error');
         return;
       }
@@ -686,7 +686,7 @@ const AssignPage = () => {
       showToast('Assignment completed successfully!');
       
     } catch (error) {
-      console.error('Unexpected error completing assignment:', error);
+      logger.error('Unexpected error completing assignment:', error);
       showToast('An unexpected error occurred. Please try again.', 'error');
     }
   };

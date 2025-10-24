@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { isWithinRadius } from '../utils/locationUtils';
+import { logger } from '../utils/logger';
 
 /**
  * Modal component for disposal process
@@ -53,7 +54,7 @@ const DisposalModal = ({
             .select('*');
             
           if (error) {
-            console.error('Error fetching disposal centers:', error);
+            logger.error('Error fetching disposal centers:', error);
             return;
           }
           
@@ -73,7 +74,7 @@ const DisposalModal = ({
             setDisposalCenters(centers);
           }
         } catch (err) {
-          console.error('Failed to fetch disposal centers:', err);
+          logger.error('Failed to fetch disposal centers:', err);
         }
       };
       
@@ -114,12 +115,12 @@ const DisposalModal = ({
                 });
                 setDisposalCenters(updatedCenters);
               } catch (err) {
-                console.error('Error calculating distances:', err);
+                logger.error('Error calculating distances:', err);
               }
             }
           },
           (error) => {
-            console.error('Error getting location:', error);
+            logger.error('Error getting location:', error);
             // Keep default location if there's an error
           },
           { enableHighAccuracy: true }

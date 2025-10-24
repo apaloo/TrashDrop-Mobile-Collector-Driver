@@ -4,6 +4,8 @@ import { PickupRequestStatus, WasteType } from '../utils/types';
 import { isWithinRadius } from '../utils/locationUtils';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatCurrency } from '../utils/currencyUtils';
+import { formatLocationAsync } from '../utils/geoUtils';
+import { logger } from '../utils/logger';
 
 const RequestCard = ({ 
   request, 
@@ -27,7 +29,19 @@ const RequestCard = ({
   const [userLocation, setUserLocation] = useState(null);
   const [isWithinRange, setIsWithinRange] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const [formattedLocation, setFormattedLocation] = useState('Loading location...');
   const RADIUS_METERS = 50; // 50 meter radius requirement
+  
+  // Format location with reverse geocoding
+  useEffect(() => {
+    const loadLocation = async () => {
+      if (request.location) {
+        const formatted = await formatLocationAsync(request.location);
+        setFormattedLocation(formatted);
+      }
+    };
+    loadLocation();
+  }, [request.location]);
   
   // Get user's current location when QR scanner modal opens
   useEffect(() => {
@@ -39,7 +53,7 @@ const RequestCard = ({
             setUserLocation([latitude, longitude]);
           },
           (error) => {
-            console.error('Error getting location:', error);
+            logger.error('Error getting location:', error);
             // Keep default location if there's an error
             setUserLocation([5.5913, -0.1969]); // Default location
           },
@@ -228,7 +242,7 @@ const RequestCard = ({
           </div>
         </div>
         
-        <h3 className="font-medium text-lg mb-3">{request.location}</h3>
+        <p className="text-sm text-gray-600 mb-3">{formattedLocation}</p>
         
         <div className="flex justify-start space-x-4 mb-3">
           <span className={`px-3 py-1 rounded-full text-sm ${
@@ -270,8 +284,113 @@ const RequestCard = ({
         
         {/* Expanded Content */}
         {expanded && (
-          <div className="mb-4 p-3 bg-gray-50 rounded-md">
-            <p className="text-sm text-gray-600 mb-2">Additional request details will appear here.</p>
+          <div className="mb-4 p-3 bg-gray-50 rounded-md space-y-3">
+            {/* Payment Breakdown - show for both new and legacy requests */}
+            {(() => {
+              // New payment model - has breakdown data
+              if (request.collector_core_payout) {
+                return (
+                  <div className="bg-white p-3 rounded border border-green-200">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Your Payout Breakdown</h4>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">
+                          Core ({request.deadhead_km?.toFixed(1) || '?'}km approach)
+                        </span>
+                        <span className="font-medium">{formatCurrency(request.collector_core_payout, currency)}</span>
+                      </div>
+                      
+                      {request.collector_urgent_payout > 0 && (
+                        <div className="flex justify-between text-orange-600">
+                          <span>⚡ Urgent Bonus</span>
+                          <span className="font-medium">{formatCurrency(request.collector_urgent_payout, currency)}</span>
+                        </div>
+                      )}
+                      
+                      {request.collector_distance_payout > 0 && (
+                        <div className="flex justify-between text-blue-600">
+                          <span>📍 Distance Bonus</span>
+                          <span className="font-medium">{formatCurrency(request.collector_distance_payout, currency)}</span>
+                        </div>
+                      )}
+                      
+                      {request.surge_multiplier > 1.0 && (
+                        <div className="flex justify-between text-red-600">
+                          <span>🔥 Surge ×{request.surge_multiplier}</span>
+                          <span className="font-medium">{formatCurrency(request.collector_surge_payout, currency)}</span>
+                        </div>
+                      )}
+                      
+                      {request.collector_tips > 0 && (
+                        <div className="flex justify-between text-purple-600">
+                          <span>💵 Tips</span>
+                          <span className="font-medium">{formatCurrency(request.collector_tips, currency)}</span>
+                        </div>
+                      )}
+                      
+                      {request.collector_recyclables_payout > 0 && (
+                        <div className="flex justify-between text-teal-600">
+                          <span>♻️ Recyclables</span>
+                          <span className="font-medium">{formatCurrency(request.collector_recyclables_payout, currency)}</span>
+                        </div>
+                      )}
+                      
+                      {request.collector_loyalty_cashback > 0 && (
+                        <div className="flex justify-between text-indigo-600">
+                          <span>⭐ Loyalty Cashback</span>
+                          <span className="font-medium">{formatCurrency(request.collector_loyalty_cashback, currency)}</span>
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-between font-bold text-green-600 border-t pt-1 mt-1">
+                        <span>Total Payout</span>
+                        <span>{formatCurrency(request.collector_total_payout, currency)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              
+              // Legacy request - show estimated breakdown
+              if (request.fee) {
+                const totalPayout = parseFloat(request.fee);
+                // Estimate: 87% core (average deadhead), 13% potential bonuses
+                const estimatedCore = totalPayout * 0.87;
+                const estimatedBonus = totalPayout * 0.13;
+                
+                return (
+                  <div className="bg-white p-3 rounded border border-blue-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-sm font-semibold text-gray-700">Estimated Payout Breakdown</h4>
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Estimated</span>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">💼 Base Payout</span>
+                        <span className="font-medium">{formatCurrency(estimatedCore, currency)}</span>
+                      </div>
+                      
+                      <div className="flex justify-between text-blue-600">
+                        <span>⚡ Potential Bonuses</span>
+                        <span className="font-medium">{formatCurrency(estimatedBonus, currency)}</span>
+                      </div>
+                      
+                      <div className="flex justify-between font-bold text-green-600 border-t pt-1 mt-1">
+                        <span>Total Payout</span>
+                        <span>{formatCurrency(totalPayout, currency)}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      💡 Actual breakdown will be calculated when you accept this request based on your location and bonuses.
+                    </p>
+                  </div>
+                );
+              }
+              
+              return null;
+            })()}
+            
+            <p className="text-sm text-gray-600">Additional request details will appear here.</p>
           </div>
         )}
         
@@ -362,7 +481,7 @@ const RequestCard = ({
               <QRCodeScanner
                 isWithinRange={isWithinRange}
                 onScanSuccess={(decodedText) => {
-                  console.log('QR Code scanned:', decodedText);
+                  logger.debug('QR Code scanned:', decodedText);
                   try {
                     // Parse the QR code data
                     const qrData = JSON.parse(decodedText);
@@ -371,11 +490,11 @@ const RequestCard = ({
                       handleScanQR(qrData);
                     }
                   } catch (e) {
-                    console.error('Error processing QR data:', e);
+                    logger.error('Error processing QR data:', e);
                   }
                 }}
                 onScanError={(error) => {
-                  console.error('QR scan error:', error);
+                  logger.error('QR scan error:', error);
                   // Display error to user if needed
                 }}
               />

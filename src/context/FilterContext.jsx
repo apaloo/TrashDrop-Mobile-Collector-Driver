@@ -1,4 +1,5 @@
 import { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import { logger } from '../utils/logger';
 
 const FilterContext = createContext();
 
@@ -36,14 +37,14 @@ export const FilterProvider = ({ children }) => {
     setTempRadiusExtension(extension);
     localStorage.setItem('tempRadiusExtension', JSON.stringify(extension));
     
-    console.log('🚀 TEMPORARY RADIUS EXTENSION ACTIVATED: 10km for 30 minutes');
-    console.log('⏰ Extension expires at:', new Date(expiresAt).toLocaleTimeString());
+    logger.info('🚀 TEMPORARY RADIUS EXTENSION ACTIVATED: 10km for 30 minutes');
+    logger.info('⏰ Extension expires at:', new Date(expiresAt).toLocaleTimeString());
     
     // Set timer to auto-revert after 30 minutes
     setTimeout(() => {
       setTempRadiusExtension(null);
       localStorage.removeItem('tempRadiusExtension');
-      console.log('⏰ RADIUS EXTENSION EXPIRED: Reverted to standard 10km');
+      logger.info('⏰ RADIUS EXTENSION EXPIRED: Reverted to standard 10km');
       
       // Also update current filters if they exceed the new limit
       setFilters(prev => ({
@@ -70,7 +71,7 @@ export const FilterProvider = ({ children }) => {
   useEffect(() => {
     // Check if extension is not already active
     if (!tempRadiusExtension) {
-      console.log('🎯 AUTO-STARTING temporary radius extension as requested...');
+      logger.debug('🎯 AUTO-STARTING temporary radius extension as requested...');
       startTemporaryRadiusExtension();
     }
   }, []); // Run only once on mount
@@ -78,7 +79,7 @@ export const FilterProvider = ({ children }) => {
   // Default filter values - IMMEDIATE startup, defer localStorage
   const [filters, setFilters] = useState(() => {
     // IMMEDIATE: Start with safe defaults to avoid blocking
-    console.log('[Filters] ⚡ Starting with default filters immediately');
+    logger.debug('[Filters] ⚡ Starting with default filters immediately');
     return {
       searchRadius: 5, // in km - reasonable default for efficiency
       wasteTypes: ['All Types'],
@@ -102,7 +103,7 @@ export const FilterProvider = ({ children }) => {
       // Use requestIdleCallback for non-blocking localStorage access
       const loadWhenIdle = () => {
         try {
-          console.log('[Filters] 🔍 Loading saved data in background...');
+          logger.debug('[Filters] 🔍 Loading saved data in background...');
           
           // Load filters
           const savedFilters = localStorage.getItem('collectorFilters');
@@ -122,26 +123,26 @@ export const FilterProvider = ({ children }) => {
               activeFilter: parsed.activeFilter || 'all',
             };
             
-            console.log('[Filters] 📁 Loaded saved filters:', updatedFilters);
+            logger.debug('[Filters] 📁 Loaded saved filters:', updatedFilters);
             setFilters(updatedFilters);
             
             // Update localStorage with validated data
             localStorage.setItem('collectorFilters', JSON.stringify(updatedFilters));
           } else {
-            console.log('[Filters] 📄 No saved filters found, keeping defaults');
+            logger.debug('[Filters] 📄 No saved filters found, keeping defaults');
           }
           
           // Load filtered requests
           const savedRequests = localStorage.getItem('filteredRequests');
           if (savedRequests) {
             const parsed = JSON.parse(savedRequests);
-            console.log('[Filters] 📁 Loaded saved requests');
+            logger.debug('[Filters] 📁 Loaded saved requests');
             setFilteredRequests(parsed);
           } else {
-            console.log('[Filters] 📄 No saved requests found, keeping defaults');
+            logger.debug('[Filters] 📄 No saved requests found, keeping defaults');
           }
         } catch (e) {
-          console.error('[Filters] ❌ Failed to load saved data:', e);
+          logger.error('[Filters] ❌ Failed to load saved data:', e);
           // Keep using defaults if loading fails
         }
       };
@@ -163,9 +164,9 @@ export const FilterProvider = ({ children }) => {
     const saveFilters = () => {
       try {
         localStorage.setItem('collectorFilters', JSON.stringify(filters));
-        console.log('[Filters] 💾 Saved filters to localStorage');
+        logger.debug('[Filters] 💾 Saved filters to localStorage');
       } catch (e) {
-        console.error('[Filters] ❌ Failed to save filters:', e);
+        logger.error('[Filters] ❌ Failed to save filters:', e);
       }
     };
 
@@ -182,9 +183,9 @@ export const FilterProvider = ({ children }) => {
     const saveRequests = () => {
       try {
         localStorage.setItem('filteredRequests', JSON.stringify(filteredRequests));
-        console.log('[Filters] 💾 Saved requests to localStorage');
+        logger.debug('[Filters] 💾 Saved requests to localStorage');
       } catch (e) {
-        console.error('[Filters] ❌ Failed to save requests:', e);
+        logger.error('[Filters] ❌ Failed to save requests:', e);
       }
     };
 

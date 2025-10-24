@@ -1,4 +1,5 @@
 import { createContext, useState, useContext } from 'react';
+import { logger } from '../utils/logger';
 
 // Create the mock context
 export const AuthContext = createContext();
@@ -20,7 +21,7 @@ export const AuthProvider = ({ children }) => {
   
   // Simulated OTP sending
   const sendOtp = async (phoneNumber) => {
-    console.log(`Mock: Sending OTP to ${phoneNumber}`);
+    logger.debug(`Mock: Sending OTP to ${phoneNumber}`);
     setLoading(true);
     
     return new Promise((resolve) => {
@@ -34,7 +35,7 @@ export const AuthProvider = ({ children }) => {
   
   // Simulated login
   const login = async (phoneNumber, otp) => {
-    console.log(`Mock: Verifying OTP ${otp} for ${phoneNumber}`);
+    logger.debug(`Mock: Verifying OTP ${otp} for ${phoneNumber}`);
     setLoading(true);
     
     return new Promise((resolve) => {
@@ -63,7 +64,7 @@ export const AuthProvider = ({ children }) => {
   
   // Simulated signup
   const signup = async (userData) => {
-    console.log('Mock: Creating new user with data:', userData);
+    logger.debug('Mock: Creating new user with data:', userData);
     setLoading(true);
     
     return new Promise((resolve) => {
@@ -89,7 +90,7 @@ export const AuthProvider = ({ children }) => {
   
   // Simulated logout
   const logout = async () => {
-    console.log('Mock: Logging out');
+    logger.debug('Mock: Logging out');
     setLoading(true);
     
     return new Promise((resolve) => {

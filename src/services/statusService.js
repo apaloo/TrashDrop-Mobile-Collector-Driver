@@ -4,6 +4,7 @@
  */
 
 import { supabase, DEV_MODE } from './supabase';
+import { logger } from '../utils/logger';
 
 // Status constants
 export const COLLECTOR_STATUS = {
@@ -76,9 +77,9 @@ class CollectorStatusService {
       // Sync with backend
       await this.syncStatusWithBackend();
       
-      console.log(`✅ Status initialized: ${this.currentStatus}`);
+      logger.debug(`✅ Status initialized: ${this.currentStatus}`);
     } catch (error) {
-      console.error('❌ Error initializing status:', error);
+      logger.error('❌ Error initializing status:', error);
       this.currentStatus = COLLECTOR_STATUS.OFFLINE;
     }
   }
@@ -117,7 +118,7 @@ class CollectorStatusService {
         this.notifyStatusListeners(newStatus, previousStatus);
       }
 
-      console.log(`📡 Status changed: ${previousStatus} → ${newStatus}${reason ? ` (${reason})` : ''}`);
+      logger.info(`📡 Status changed: ${previousStatus} → ${newStatus}${reason ? ` (${reason})` : ''}`);
       
       return {
         success: true,
@@ -127,7 +128,7 @@ class CollectorStatusService {
       };
 
     } catch (error) {
-      console.error('❌ Error setting status:', error);
+      logger.error('❌ Error setting status:', error);
       // Revert on error
       this.currentStatus = previousStatus;
       throw error;
@@ -172,7 +173,7 @@ class CollectorStatusService {
       requestsCompleted: 0
     };
 
-    console.log('🟢 Online session started');
+    logger.info('🟢 Online session started');
   }
 
   /**
@@ -191,7 +192,7 @@ class CollectorStatusService {
       this.sessionStart = null;
       localStorage.removeItem('collector_session_start');
       
-      console.log(`🔴 Online session ended (Duration: ${Math.round(sessionDuration / 1000 / 60)} minutes)`);
+      logger.info(`🔴 Online session ended (Duration: ${Math.round(sessionDuration / 1000 / 60)} minutes)`);
     }
   }
 
@@ -201,7 +202,7 @@ class CollectorStatusService {
   async updateBackendStatus(status, reason, timestamp) {
     try {
       if (DEV_MODE) {
-        console.log('[DEV MODE] Simulating backend status update:', {
+        logger.debug('[DEV MODE] Simulating backend status update:', {
           status,
           reason,
           timestamp
@@ -224,10 +225,10 @@ class CollectorStatusService {
         });
 
       if (error) {
-        console.error('❌ Error updating backend status:', error);
+        logger.error('❌ Error updating backend status:', error);
       }
     } catch (error) {
-      console.error('❌ Error in backend status update:', error);
+      logger.error('❌ Error in backend status update:', error);
     }
   }
 
@@ -237,7 +238,7 @@ class CollectorStatusService {
   async syncStatusWithBackend() {
     try {
       if (DEV_MODE) {
-        console.log('[DEV MODE] Simulating status sync with backend');
+        logger.debug('[DEV MODE] Simulating status sync with backend');
         return;
       }
       const { data: userData } = await supabase.auth.getUser();
@@ -250,7 +251,7 @@ class CollectorStatusService {
         .single();
 
       if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.error('❌ Error syncing status:', error);
+        logger.error('❌ Error syncing status:', error);
         return;
       }
 
@@ -259,7 +260,7 @@ class CollectorStatusService {
         localStorage.setItem('collector_status', data.status);
       }
     } catch (error) {
-      console.error('❌ Error syncing with backend:', error);
+      logger.error('❌ Error syncing with backend:', error);
     }
   }
 
@@ -269,7 +270,7 @@ class CollectorStatusService {
   async saveSessionToBackend(startTime, endTime, duration) {
     try {
       if (DEV_MODE) {
-        console.log('[DEV MODE] Simulating session save:', {
+        logger.debug('[DEV MODE] Simulating session save:', {
           startTime,
           endTime,
           duration,
@@ -294,10 +295,10 @@ class CollectorStatusService {
         });
 
       if (error) {
-        console.error('❌ Error saving session:', error);
+        logger.error('❌ Error saving session:', error);
       }
     } catch (error) {
-      console.error('❌ Error in session save:', error);
+      logger.error('❌ Error in session save:', error);
     }
   }
 
@@ -326,7 +327,7 @@ class CollectorStatusService {
           timestamp: new Date()
         });
       } catch (error) {
-        console.error('❌ Error in status listener:', error);
+        logger.error('❌ Error in status listener:', error);
       }
     });
   }

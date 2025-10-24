@@ -1,4 +1,7 @@
 import { supabase } from './supabase.js';
+import { calculatePaymentBreakdown, calculateBilledDistance, applyOnlyDownRule } from '../utils/paymentCalculations.js';
+import { calculateDistance, getCurrentLocation } from '../utils/geoUtils.js';
+import { logger } from '../utils/logger.js';
 
 // Mock data for development mode - initialized with real data from Supabase
 let mockPickupRequests = [
@@ -86,16 +89,14 @@ export class RequestManagementService {
   async initialize(collectorId) {
     // IMMEDIATE: Skip initialization if already initialized with same collector
     if (this.isInitialized && this.collectorId === collectorId) {
-      // Only log occasionally to reduce spam
-      if (Math.random() < 0.3) {
-        console.log('⚡ RequestManagementService already initialized for collector:', collectorId);
-      }
+      // Debug only - service already initialized
+      logger.debug('⚡ RequestManagementService already initialized for collector:', collectorId);
       return Promise.resolve(this); // Return immediately for already initialized
     }
     
     // IMMEDIATE: If initialization is in progress, return existing promise
     if (this.initializationPromise) {
-      console.log('⏳ Reusing existing initialization promise...');
+      logger.debug('⏳ Reusing existing initialization promise...');
       return this.initializationPromise;
     }
     
@@ -103,39 +104,39 @@ export class RequestManagementService {
     this.initializationPromise = (async () => {
       try {
         this.collectorId = collectorId;
-        console.log('Initializing RequestManagementService for collector:', collectorId);
+        logger.info('Initializing RequestManagementService for collector:', collectorId);
       
       // Start session with error handling
       try {
         await this.startSession();
-        console.log('✅ Session started successfully');
+        logger.debug('✅ Session started successfully');
       } catch (error) {
-        console.error('❌ Failed to start session:', error);
+        logger.error('❌ Failed to start session:', error);
         if (!import.meta.env.DEV) throw error; // In production, fail fast
       }
       
       // Skip heartbeat for now to avoid RLS issues
-      console.log('⏭️ Skipping heartbeat to avoid RLS complications');
+      logger.debug('⏭️ Skipping heartbeat to avoid RLS complications');
       
       // Start cleanup timer with error handling
       try {
         this.startCleanupTimer();
-        console.log('✅ Cleanup timer started successfully');
+        logger.debug('✅ Cleanup timer started successfully');
       } catch (error) {
-        console.error('❌ Failed to start cleanup timer:', error);
+        logger.error('❌ Failed to start cleanup timer:', error);
         // Continue even if cleanup fails
       }
       
       // Skip realtime subscriptions for now to avoid WebSocket issues
-      console.log('⏭️ Skipping realtime subscriptions to avoid WebSocket complications');
+      logger.debug('⏭️ Skipping realtime subscriptions to avoid WebSocket complications');
 
       
       this.isInitialized = true;
-      console.log('🎉 RequestManagementService initialized successfully');
+      logger.info('🎉 RequestManagementService initialized successfully');
       
       return this;
       } catch (error) {
-        console.error('💥 Critical failure initializing RequestManagementService:', error);
+        logger.error('💥 Critical failure initializing RequestManagementService:', error);
         this.initializationPromise = null; // Reset promise on failure
         throw error;
       }
@@ -149,7 +150,7 @@ export class RequestManagementService {
   async startSession() {
     try {
       // Simplified session - just log for now to avoid RLS issues
-      console.log('✅ Session started for collector:', this.collectorId);
+      logger.debug('✅ Session started for collector:', this.collectorId);
       return { 
         success: true,
         session: {
@@ -160,7 +161,7 @@ export class RequestManagementService {
         }
       };
     } catch (error) {
-      console.error('Session error:', error);
+      logger.error('Session error:', error);
       return { success: false, error: error.message };
     }
   }
@@ -234,14 +235,14 @@ export class RequestManagementService {
           })
           .eq('collector_id', this.collectorId);
       } else {
-        console.log('[DEV MODE] Skipping session update for reserved requests');
+        logger.debug('[DEV MODE] Skipping session update for reserved requests');
       }
 
-      console.log(`Reserved ${reservedRequests.length} requests for collector`);
+      logger.info(`Reserved ${reservedRequests.length} requests for collector`);
       
       return { success: true, requests: reservedRequests };
     } catch (error) {
-      console.error('Error filtering and reserving requests:', error);
+      logger.error('Error filtering and reserving requests:', error);
       return { success: false, error: error.message };
     }
   }
@@ -257,7 +258,7 @@ export class RequestManagementService {
     
     // Check if service is initialized
     if (!this.isInitialized) {
-      console.warn('RequestManagementService not initialized');
+      logger.warn('RequestManagementService not initialized');
       return { 
         success: false, 
         error: 'Service not initialized. Please wait and try again.' 
@@ -266,7 +267,7 @@ export class RequestManagementService {
     
     // Check for temporary IDs
     if (requestId && requestId.startsWith('temp-')) {
-      console.warn('Attempted to accept request with temporary ID:', requestId);
+      logger.warn('Attempted to accept request with temporary ID:', requestId);
       return { 
         success: false, 
         error: 'Cannot accept temporary requests. Please wait for the data to sync.' 
@@ -276,7 +277,7 @@ export class RequestManagementService {
     // Validate UUID format (8-4-4-4-12 hexadecimal digits with hyphens)
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (requestId && !uuidRegex.test(requestId)) {
-      console.warn('Attempted to accept request with invalid UUID format:', requestId);
+      logger.warn('Attempted to accept request with invalid UUID format:', requestId);
       return { 
         success: false, 
         error: 'Invalid request ID format. This may be test data or an incomplete request.' 
@@ -285,7 +286,7 @@ export class RequestManagementService {
     
     // Check authentication
     if (!effectiveCollectorId) {
-      console.warn('No collector ID provided for request acceptance');
+      logger.warn('No collector ID provided for request acceptance');
       return { 
         success: false, 
         error: 'Authentication required. Please log in and try again.' 
@@ -296,10 +297,10 @@ export class RequestManagementService {
       const currentTime = new Date().toISOString();
       const assignmentExpiry = new Date(Date.now() + this.ASSIGNMENT_DURATION).toISOString();
       
-      // First check if the request exists and is available
+      // First check if the request exists and is available (fetch all fields for payment calculation)
       const { data: existingRequest, error: checkError } = await supabase
         .from('pickup_requests')
-        .select('id, status, collector_id')
+        .select('*') // Get all fields for payment calculation
         .eq('id', requestId)
         .single();
 
@@ -322,11 +323,103 @@ export class RequestManagementService {
         throw new Error('Request has already been accepted by another collector');
       }
 
+      // Calculate payment breakdown (SOP v4.5.6)
+      let paymentFields = {};
+      
+      try {
+        // Get collector's current GPS position
+        const collectorLocation = await getCurrentLocation();
+        
+        if (collectorLocation && existingRequest.coordinates) {
+          // Parse coordinates (supports arrays or PostGIS formats)
+          let pickupCoords = existingRequest.coordinates;
+          if (Array.isArray(pickupCoords)) {
+            pickupCoords = { lat: pickupCoords[0], lng: pickupCoords[1] };
+          }
+          
+          // Calculate deadhead distance (collector to pickup)
+          const deadheadKm = calculateDistance(
+            { lat: collectorLocation.lat, lng: collectorLocation.lng },
+            pickupCoords
+          );
+          
+          // T1 Anchor: Distance at accept time
+          const anchorT1 = deadheadKm;
+          
+          // Apply only-down rule if T0 anchor exists
+          const finalDeadhead = applyOnlyDownRule(
+            existingRequest.anchor_dmin_t0_km,
+            anchorT1,
+            deadheadKm
+          );
+          
+          // Calculate billed distance (only if urgent and >5km)
+          const billedKm = calculateBilledDistance(
+            existingRequest.urgent_enabled || false,
+            finalDeadhead
+          );
+          
+          // Get active surge multiplier (or use what's already set)
+          const surgeMultiplier = existingRequest.surge_multiplier || 1.0;
+          
+          // Calculate full payment breakdown
+          const breakdown = calculatePaymentBreakdown({
+            base: existingRequest.base_amount || existingRequest.fee || 0, // Fallback to fee
+            onSite: existingRequest.onsite_surcharges || 0,
+            discount: existingRequest.discount_amount || 0,
+            urgentEnabled: existingRequest.urgent_enabled || false,
+            deadheadKm: finalDeadhead,
+            billedKm,
+            surgeMultiplier,
+            requestFee: existingRequest.request_fee || 1.0,
+            taxes: existingRequest.taxes || 0,
+            tips: 0, // Tips added after completion
+            recyclerGross: 0, // Settled later
+            loyaltyRate: 0 // Calculated monthly
+          });
+          
+          // Build payment fields to update
+          paymentFields = {
+            deadhead_km: finalDeadhead,
+            anchor_d_accept_km: anchorT1,
+            billed_km_final: billedKm,
+            distance_billed_km: billedKm,
+            distance_amount: breakdown.distanceAmt,
+            surge_multiplier: surgeMultiplier,
+            surge_uplift_amount: breakdown.surgeUplift,
+            collector_core_payout: breakdown.collectorCore,
+            collector_urgent_payout: breakdown.collectorUrg,
+            collector_distance_payout: breakdown.collectorDist,
+            collector_surge_payout: breakdown.collectorSurge,
+            collector_total_payout: breakdown.collectorTotal,
+            platform_core_margin: breakdown.platformCore,
+            platform_urgent_share: breakdown.platformUrg,
+            platform_surge_share: breakdown.platformSurge,
+            total_user_paid: breakdown.userTotal,
+            anchors_computed_at: currentTime
+          };
+          
+          logger.debug('💰 Payment breakdown calculated:', {
+            deadheadKm: finalDeadhead.toFixed(2),
+            collectorTotal: breakdown.collectorTotal.toFixed(0),
+            breakdown: `Core: ₵${breakdown.collectorCore.toFixed(0)} + Urgent: ₵${breakdown.collectorUrg.toFixed(0)} + Distance: ₵${breakdown.collectorDist.toFixed(0)}`
+          });
+        } else {
+          logger.warn('⚠️ Could not get GPS location or coordinates for payment calculation');
+        }
+      } catch (calcError) {
+        // Payment calculation is non-critical, log and continue
+        logger.warn('⚠️ Payment calculation failed:', calcError.message);
+        logger.debug('ℹ️  Falling back to legacy fee-based payment');
+        // No paymentFields - update will use existing values
+      }
+
       // Now try to accept the request with detailed logging
-      console.log('🔄 Attempting to accept request:', {
+      logger.debug('🔄 Attempting to accept request:', {
         requestId,
         collectorId: this.collectorId,
-        currentStatus: existingRequest.status
+        currentStatus: existingRequest.status,
+        hasPaymentBreakdown: Object.keys(paymentFields).length > 0
       });
 
       // Try simple update first (without RLS restrictions)
@@ -336,12 +429,13 @@ export class RequestManagementService {
           status: 'accepted',
           collector_id: this.collectorId,
           accepted_at: currentTime,
-          assignment_expires_at: assignmentExpiry
+          assignment_expires_at: assignmentExpiry,
+          ...paymentFields // Merge in calculated payment fields
         })
         .eq('id', requestId)
         .select();
 
-      console.log('📊 Update query result:', { data, error, requestId });
+      logger.debug('📊 Update query result:', { data, error, requestId });
 
       if (error) throw error;
 
@@ -353,7 +447,7 @@ export class RequestManagementService {
           .eq('id', requestId)
           .single();
         
-        console.log('🔍 Request status after failed update:', currentData);
+        logger.warn('🔍 Request status after failed update:', currentData);
         throw new Error(`Request could not be accepted - current status: ${currentData?.status || 'not found'}, collector: ${currentData?.collector_id || 'none'}`);
       }
 
@@ -379,17 +473,17 @@ export class RequestManagementService {
         }
       } catch (sessionError) {
         // Session table may not exist or no session found - this is not critical
-        console.warn('Could not update collector session:', sessionError.message);
+        logger.warn('Could not update collector session:', sessionError.message);
       }
 
-      console.log('Request accepted successfully:', data[0]);
+      logger.info('Request accepted successfully:', data[0]);
       
       // Notify the user about request acceptance
       await this.notifyUserOfAcceptance(data[0]);
       
       return { success: true, request: data[0] };
     } catch (error) {
-      console.error('Error accepting request:', error);
+      logger.error('Error accepting request:', error);
       
       // Provide more specific error messages
       let errorMessage = error.message;
@@ -412,7 +506,7 @@ export class RequestManagementService {
     try {
       // Skip if no user_id (shouldn't happen but safety check)
       if (!acceptedRequest.user_id) {
-        console.warn('No user_id found for request:', acceptedRequest.id);
+        logger.warn('No user_id found for request:', acceptedRequest.id);
         return;
       }
 
@@ -439,9 +533,9 @@ export class RequestManagementService {
         });
 
       if (notificationError) {
-        console.error('Failed to create user notification:', notificationError);
+        logger.error('Failed to create user notification:', notificationError);
       } else {
-        console.log('✅ User notification created for request:', acceptedRequest.id);
+        logger.debug('✅ User notification created for request:', acceptedRequest.id);
       }
 
       // TODO: Send push notification via external service (Firebase, OneSignal, etc.)
@@ -451,7 +545,7 @@ export class RequestManagementService {
       // });
 
     } catch (error) {
-      console.error('Error notifying user of acceptance:', error);
+      logger.error('Error notifying user of acceptance:', error);
       // Don't throw - notification failure shouldn't block request acceptance
     }
   }
@@ -499,7 +593,7 @@ export class RequestManagementService {
       
       return { success: true, requests: data || [] };
     } catch (error) {
-      console.error('Error getting requests by status:', error);
+      logger.error('Error getting requests by status:', error);
       return { success: false, error: error.message };
     }
   }
@@ -524,7 +618,7 @@ export class RequestManagementService {
       
       return { success: true, request: data };
     } catch (error) {
-      console.error('Error updating request status:', error);
+      logger.error('Error updating request status:', error);
       return { success: false, error: error.message };
     }
   }
@@ -534,7 +628,7 @@ export class RequestManagementService {
    */
   async getNotifications(unreadOnly = false) {
     if (import.meta.env.DEV) {
-      console.log('[DEV MODE] Using mock notifications');
+      logger.debug('[DEV MODE] Using mock notifications');
       return mockNotifications;
     }
 
@@ -557,10 +651,10 @@ export class RequestManagementService {
       return { success: true, notifications: data || [] };
     } catch (error) {
       if (import.meta.env.DEV) {
-        console.log('[DEV MODE] Error fetching notifications, using mock data:', error);
+        logger.debug('[DEV MODE] Error fetching notifications, using mock data:', error);
         return mockNotifications;
       }
-      console.error('Error getting notifications:', error);
+      logger.error('Error getting notifications:', error);
       throw error;
     }
   }
@@ -573,7 +667,7 @@ export class RequestManagementService {
       // Reduce logging frequency - only log every 10th cleanup
       this.reservationCleanupCount = (this.reservationCleanupCount || 0) + 1;
       if (this.reservationCleanupCount % 10 === 0) {
-        console.log(`[DEV MODE] Simulating cleanup of expired reservations (${this.reservationCleanupCount})`);
+        logger.debug(`[DEV MODE] Simulating cleanup of expired reservations (${this.reservationCleanupCount})`);
       }
       return { success: true, cleaned: 0 };
     }
@@ -591,7 +685,7 @@ export class RequestManagementService {
 
       if (error) {
         if (import.meta.env.DEV) {
-          console.log('[DEV MODE] Error cleaning up reservations:', error);
+          logger.debug('[DEV MODE] Error cleaning up reservations:', error);
           return { success: true, cleaned: 0 };
         }
         throw error;
@@ -613,16 +707,16 @@ export class RequestManagementService {
 
       if (updateError) {
         if (import.meta.env.DEV) {
-          console.log('[DEV MODE] Error updating expired reservations:', updateError);
+          logger.debug('[DEV MODE] Error updating expired reservations:', updateError);
           return { success: true, cleaned: 0 };
         }
         throw updateError;
       }
 
-      console.log(`Cleaned up ${expiredReservations.length} expired reservations`);
+      logger.info(`Cleaned up ${expiredReservations.length} expired reservations`);
       return { success: true, cleaned: expiredReservations.length };
     } catch (error) {
-      console.error('Error cleaning up expired reservations:', error);
+      logger.error('Error cleaning up expired reservations:', error);
       throw error;
     }
   }
@@ -635,7 +729,7 @@ export class RequestManagementService {
       // Reduce logging frequency - only log every 10th cleanup
       this.assignmentCleanupCount = (this.assignmentCleanupCount || 0) + 1;
       if (this.assignmentCleanupCount % 10 === 0) {
-        console.log(`[DEV MODE] Simulating cleanup of expired assignments (${this.assignmentCleanupCount})`);
+        logger.debug(`[DEV MODE] Simulating cleanup of expired assignments (${this.assignmentCleanupCount})`);
       }
       return { success: true, cleaned: 0 };
     }
@@ -650,7 +744,7 @@ export class RequestManagementService {
 
       if (error) {
         if (import.meta.env.DEV) {
-          console.log('[DEV MODE] Error cleaning up assignments:', error);
+          logger.debug('[DEV MODE] Error cleaning up assignments:', error);
           return { success: true, cleaned: 0 };
         }
         throw error;
@@ -673,7 +767,7 @@ export class RequestManagementService {
 
       if (updateError) {
         if (import.meta.env.DEV) {
-          console.log('[DEV MODE] Error updating expired assignments:', updateError);
+          logger.debug('[DEV MODE] Error updating expired assignments:', updateError);
           return { success: true, cleaned: 0 };
         }
         throw updateError;
@@ -681,7 +775,7 @@ export class RequestManagementService {
 
       return { success: true, cleaned: expiredAssignments.length };
     } catch (error) {
-      console.error('Error cleaning up expired assignments:', error);
+      logger.error('Error cleaning up expired assignments:', error);
       throw error;
     }
   }
@@ -690,7 +784,7 @@ export class RequestManagementService {
    * Start heartbeat timer to keep session alive
    */
   startHeartbeat() {
-    console.log('Starting heartbeat timer');
+    logger.debug('Starting heartbeat timer');
 
     this.heartbeatTimer = setInterval(async () => {
       if (this.collectorId) {
@@ -705,10 +799,10 @@ export class RequestManagementService {
             .eq('is_active', true);
 
           if (error) {
-            console.error('Heartbeat error:', error);
+            logger.error('Heartbeat error:', error);
           }
         } catch (error) {
-          console.error('Heartbeat failed:', error);
+          logger.error('Heartbeat failed:', error);
         }
       }
     }, this.HEARTBEAT_INTERVAL);

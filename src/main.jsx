@@ -1,11 +1,12 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
+import { logger } from './utils/logger'
 
 // CRITICAL: Performance logging and aggressive startup optimization
-console.time('🚀 App Startup Total');
-console.time('⚡ Critical Path');
-console.log('⚡ main.jsx loading started at:', Date.now());
+const startupStartTime = Date.now();
+const criticalPathStartTime = Date.now();
+logger.debug('⚡ main.jsx loading started at:', startupStartTime);
 
 // CRITICAL: Mark app as ready for immediate interaction
 if (typeof window !== 'undefined') {
@@ -39,14 +40,15 @@ setTimeout(() => {
     },
     onOfflineReady() {
       // Notify user that app is ready for offline use
-      console.log('App ready to work offline')
+      logger.info('App ready to work offline')
       // In a real app, you might want to show a toast notification  
     },
   })
 }, 2000); // Register SW after 2 seconds to not block initial startup
 
-console.log('⚡ Starting React render at:', Date.now());
-console.timeEnd('⚡ Critical Path');
+const renderStartTime = Date.now();
+logger.debug('⚡ Starting React render at:', renderStartTime);
+logger.debug(`⚡ Critical Path completed in ${renderStartTime - criticalPathStartTime}ms`);
 
 // CRITICAL: Immediate render without waiting
 const rootElement = document.getElementById('root');
@@ -56,8 +58,9 @@ const root = createRoot(rootElement);
 root.render(<App />);
 
 // Performance markers and timing
-console.log('⚡ React render initiated at:', Date.now());
-console.timeEnd('🚀 App Startup Total');
+const renderInitiatedTime = Date.now();
+logger.debug('⚡ React render initiated at:', renderInitiatedTime);
+logger.info(`🚀 App Startup Total: ${renderInitiatedTime - startupStartTime}ms`);
 
 // CRITICAL: Hide static splash screen and show React app
 if (typeof window !== 'undefined') {
@@ -69,7 +72,7 @@ if (typeof window !== 'undefined') {
     const splashElement = document.getElementById('instant-splash');
     if (splashElement) {
       splashElement.remove();
-      console.log('🗑️ Static splash screen removed');
+      logger.debug('🗑️ Static splash screen removed');
     }
   }, 100);
   
@@ -78,7 +81,7 @@ if (typeof window !== 'undefined') {
     if (window.performance && window.performance.mark) {
       window.performance.mark('app-render-complete');
     }
-    console.log('🎨 First paint completed at:', Date.now());
+    logger.debug('🎨 First paint completed at:', Date.now());
     
     // Dispatch event that app is fully interactive
     window.dispatchEvent(new Event('app-interactive'));

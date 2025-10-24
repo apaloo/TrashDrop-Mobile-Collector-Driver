@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { getCurrencyFromCoordinates, CURRENCY_MAP } from '../utils/currencyUtils';
+import { logger } from '../utils/logger';
 
 // Create the currency context
 const CurrencyContext = createContext();
@@ -20,11 +21,11 @@ export const CurrencyProvider = ({ children }) => {
         // IMMEDIATE: Start with cached currency or default to avoid blocking
         const storedCurrency = localStorage.getItem('trashdrop_currency');
         if (storedCurrency) {
-          console.log('[Currency] ⚡ Using cached currency immediately');
+          logger.debug('[Currency] ⚡ Using cached currency immediately');
           setCurrency(JSON.parse(storedCurrency));
           setIsLoading(false); // Stop loading immediately with cached data
         } else {
-          console.log('[Currency] ⚡ Using default currency immediately (Ghana)');
+          logger.debug('[Currency] ⚡ Using default currency immediately (Ghana)');
           setCurrency(CURRENCY_MAP.GH); // Default to Ghana Cedi immediately
           setIsLoading(false); // Stop loading immediately with default
         }
@@ -39,31 +40,31 @@ export const CurrencyProvider = ({ children }) => {
           
           // Set up timeout to prevent infinite waiting
           const timeoutId = setTimeout(() => {
-            console.log('[Currency] 🏃 Location timeout - keeping current currency');
+            logger.debug('[Currency] 🏃 Location timeout - keeping current currency');
           }, 2000);
           
-          console.log('[Currency] 🔍 Getting location in background (non-blocking)...');
+          logger.debug('[Currency] 🔍 Getting location in background (non-blocking)...');
           navigator.geolocation.getCurrentPosition(
             async (position) => {
               try {
                 clearTimeout(timeoutId);
-                console.log('[Currency] 📍 Background location obtained, updating currency...');
+                logger.debug('[Currency] 📍 Background location obtained, updating currency...');
                 const { latitude, longitude } = position.coords;
                 try {
                   const detectedCurrency = await getCurrencyFromCoordinates([latitude, longitude]);
                   
                   // Only update if different from current
                   if (detectedCurrency && detectedCurrency.code !== currency.code) {
-                    console.log('[Currency] 💱 Updating currency to:', detectedCurrency.code);
+                    logger.debug('[Currency] 💱 Updating currency to:', detectedCurrency.code);
                     setCurrency(detectedCurrency);
                     localStorage.setItem('trashdrop_currency', JSON.stringify(detectedCurrency));
                   } else {
-                    console.log('[Currency] ✅ Currency unchanged, keeping current');
+                    logger.debug('[Currency] ✅ Currency unchanged, keeping current');
                   }
                 } catch (currencyError) {
                   // Only log occasionally and with meaningful messages
                   if (Math.random() < 0.05) {
-                    console.warn('[Currency] ⚠️ Currency detection failed - keeping current currency');
+                    logger.warn('[Currency] ⚠️ Currency detection failed - keeping current currency');
                   }
                   // Keep current currency - don't change anything
                 }
@@ -71,7 +72,7 @@ export const CurrencyProvider = ({ children }) => {
                 clearTimeout(timeoutId);
                 // Only log occasionally to prevent spam
                 if (Math.random() < 0.05) {
-                  console.warn('[Currency] ⚠️ Background location processing failed - keeping current currency');
+                  logger.warn('[Currency] ⚠️ Background location processing failed - keeping current currency');
                 }
                 // Keep current currency - don't change anything
               }
@@ -85,7 +86,7 @@ export const CurrencyProvider = ({ children }) => {
                   2: 'Position unavailable', 
                   3: 'Timeout'
                 };
-                console.warn(`[Currency] 🚫 Background location failed (${errorMessages[error.code] || 'Unknown'}) - keeping current currency`);
+                logger.warn(`[Currency] 🚫 Background location failed (${errorMessages[error.code] || 'Unknown'}) - keeping current currency`);
                 window.currencyGeoErrorLogged = true;
               }
               // Keep current currency - don't change anything
@@ -93,10 +94,10 @@ export const CurrencyProvider = ({ children }) => {
             geolocationOptions
           );
         } else {
-          console.warn('[Currency] 🚫 Geolocation not supported - using current currency');
+          logger.warn('[Currency] 🚫 Geolocation not supported - using current currency');
         }
       } catch (error) {
-        console.error('[Currency] 💥 Error in currency detection:', error);
+        logger.error('[Currency] 💥 Error in currency detection:', error);
         // Ensure we have a currency set even if everything fails
         if (!currency) {
           setCurrency(CURRENCY_MAP.GH);

@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
 import Toast from './Toast';
+import { logger } from '../utils/logger';
 
 /**
  * Enhanced error boundary component with analytics and detailed error reporting
@@ -21,9 +22,9 @@ class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     // Enhanced error logging with more details
-    console.error('Component Error:', error.message);
-    console.error('Component Stack:', errorInfo.componentStack);
-    console.error('Error Stack:', error.stack);
+    logger.error('Component Error:', error.message);
+    logger.error('Component Stack:', errorInfo.componentStack);
+    logger.error('Error Stack:', error.stack);
     
     this.setState({
       error: error,

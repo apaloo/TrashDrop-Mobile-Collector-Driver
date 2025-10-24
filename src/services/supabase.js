@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { logger } from '../utils/logger';
 
 // Load environment variables
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -49,11 +50,19 @@ const createDevModeSession = (userId) => {
 };
 
 // Create Supabase client with anon key
-const DEV_USER_ID = '6fba1031-839f-4985-a180-9ae0a04b7812';
+const DEV_USER_ID = import.meta.env.VITE_DEV_USER_ID || '6fba1031-839f-4985-a180-9ae0a04b7812';
+
+// Security check: Warn if DEV_MODE is active in production
+if (DEV_MODE && import.meta.env.PROD) {
+  logger.error(
+    '⚠️ CRITICAL: DEV_MODE is active in production build!'
+  );
+}
+
 const devModeData = createDevModeSession(DEV_USER_ID);
 
 // Always use anon key for client operations (realtime requires it)
-console.log('🔑 Supabase initialized with: ANON_KEY for client operations');
+logger.info('🔑 Supabase initialized with: ANON_KEY for client operations');
 
 const supabase = createClient(
   supabaseUrl,
@@ -136,10 +145,10 @@ export const authService = {
       });
       
       if (error) throw error;
-      console.log('✅ OTP sent successfully to:', formattedPhone);
+      logger.info('✅ OTP sent successfully to:', formattedPhone);
       return { success: true, data };
     } catch (error) {
-      console.error('❌ Error sending OTP:', error);
+      logger.error('❌ Error sending OTP:', error);
       return { success: false, error: error.message };
     }
   },
@@ -157,33 +166,31 @@ export const authService = {
       });
       
       if (error) throw error;
-      console.log('✅ OTP verified successfully for:', formattedPhone);
+      logger.info('✅ OTP verified successfully for:', formattedPhone);
       return { success: true, session: data.session, user: data.user };
     } catch (error) {
-      console.error('❌ Error verifying OTP:', error);
+      logger.error('❌ Error verifying OTP:', error);
       return { success: false, error: error.message };
     }
   },
   
   // Get current user session - OPTIMIZED for immediate startup
   getSession: async () => {
-    console.time('[AuthService] getSession Duration');
-    console.log('[AuthService] getSession called at:', Date.now());
+    const startTime = Date.now();
+    logger.debug('[AuthService] getSession called at:', Date.now());
     
     // CRITICAL: Return immediately if in non-production mode
     if (DEV_MODE) {
-      console.log('⚡ DEV_MODE: Returning session immediately for startup optimization');
+      logger.debug('⚡ DEV_MODE: Returning session immediately for startup optimization');
       const devSession = localStorage.getItem('dev_mode_session');
       if (devSession) {
         try {
           const session = JSON.parse(devSession);
-          console.timeEnd('[AuthService] getSession Duration');
           return { session: session, user: session.user };
         } catch (e) {
           localStorage.removeItem('dev_mode_session');
         }
       }
-      console.timeEnd('[AuthService] getSession Duration');
       return { session: null, user: null };
     }
     
@@ -200,12 +207,12 @@ export const authService = {
               // Fix the token to use supabaseAnonKey
               session.access_token = supabaseAnonKey;
               localStorage.setItem('dev_mode_session', JSON.stringify(session));
-              console.log('[DEV MODE] Updated session token in localStorage');
+              logger.debug('[DEV MODE] Updated session token in localStorage');
             }
-            console.log('[DEV MODE] Retrieved session from localStorage:', session);
+            logger.debug('[DEV MODE] Retrieved session from localStorage:', session);
             return { session: session, user: session.user };
           } catch (e) {
-            console.error('Error parsing dev_mode_session:', e);
+            logger.error('Error parsing dev_mode_session:', e);
             // Clear corrupted session data
             localStorage.removeItem('dev_mode_session');
           }
@@ -219,7 +226,7 @@ export const authService = {
           token_type: 'bearer'
         };
         localStorage.setItem('dev_mode_session', JSON.stringify(newSession));
-        console.log('[DEV MODE] Created new dev session with proper token');
+        logger.debug('[DEV MODE] Created new dev session with proper token');
         return { session: newSession, user: newSession.user };
       }
       
@@ -231,14 +238,14 @@ export const authService = {
       }
       
       // If we're in DEV_MODE but somehow reached here, return null session
-      console.warn('[DEV MODE] Reached fallback case - returning null session');
+      logger.warn('[DEV MODE] Reached fallback case - returning null session');
       return { session: null, user: null };
     } catch (error) {
-      console.error('Error getting session:', error);
+      logger.error('Error getting session:', error);
       return { session: null, user: null, error: error.message };
     } finally {
-      console.timeEnd('[AuthService] getSession Duration');
-      console.log('[AuthService] getSession completed at:', Date.now());
+      const duration = Date.now() - startTime;
+      logger.debug(`[AuthService] getSession completed in ${duration}ms`);
     }
   },
   
@@ -248,7 +255,7 @@ export const authService = {
       // Handle sign out in development mode
       if (DEV_MODE) {
         localStorage.removeItem('dev_mode_session');
-        console.log('[DEV MODE] User signed out successfully');
+        logger.info('[DEV MODE] User signed out successfully');
         return { success: true };
       }
       
@@ -257,7 +264,7 @@ export const authService = {
       if (error) throw error;
       return { success: true };
     } catch (error) {
-      console.error('Error signing out:', error);
+      logger.error('Error signing out:', error);
       return { success: false, error: error.message };
     }
   },
@@ -275,7 +282,7 @@ export const authService = {
       
       if (existingProfile) {
         // Profile exists - update it
-        console.log('⚠️ Profile already exists for user, updating instead:', userId);
+        logger.warn('⚠️ Profile already exists for user, updating instead:', userId);
         const { data, error } = await supabase
           .from('collector_profiles')
           .update(profileData)
@@ -283,7 +290,7 @@ export const authService = {
           .select();
         
         if (error) throw error;
-        console.log('✅ Profile updated successfully for user:', userId);
+        logger.info('✅ Profile updated successfully for user:', userId);
         return { success: true, profile: data[0] };
       } else {
         // Profile doesn't exist - create new one
@@ -293,11 +300,11 @@ export const authService = {
           .select();
         
         if (error) throw error;
-        console.log('✅ Profile created successfully for user:', userId);
+        logger.info('✅ Profile created successfully for user:', userId);
         return { success: true, profile: data[0] };
       }
     } catch (error) {
-      console.error('❌ Error creating/updating profile:', error);
+      logger.error('❌ Error creating/updating profile:', error);
       return { success: false, error: error.message };
     }
   },
@@ -314,7 +321,7 @@ export const authService = {
       if (error) throw error;
       return { success: true, profile: data };
     } catch (error) {
-      console.error('Error getting profile:', error);
+      logger.error('Error getting profile:', error);
       return { success: false, error: error.message };
     }
   },
@@ -331,7 +338,7 @@ export const authService = {
       if (error) throw error;
       return { success: true, profile: data[0] };
     } catch (error) {
-      console.error('Error updating profile:', error);
+      logger.error('Error updating profile:', error);
       return { success: false, error: error.message };
     }
   },
@@ -345,7 +352,7 @@ export const authService = {
       const fileName = `${type}_${timestamp}.${fileExt}`;
       const filePath = `collector-documents/${fileName}`;
       
-      console.log(`📤 Uploading ${type} photo...`);
+      logger.debug(`📤 Uploading ${type} photo...`);
       
       // Upload file to Supabase Storage
       const { data, error } = await supabase.storage
@@ -362,10 +369,10 @@ export const authService = {
         .from('collector-photos')
         .getPublicUrl(filePath);
       
-      console.log(`✅ ${type} photo uploaded successfully:`, publicUrl);
+      logger.info(`✅ ${type} photo uploaded successfully:`, publicUrl);
       return { success: true, url: publicUrl };
     } catch (error) {
-      console.error(`❌ Error uploading ${type} photo:`, error);
+      logger.error(`❌ Error uploading ${type} photo:`, error);
       return { success: false, error: error.message };
     }
   }

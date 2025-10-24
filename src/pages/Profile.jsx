@@ -3,6 +3,7 @@ import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/supabase';
+import { logger } from '../utils/logger';
 
 const ProfilePage = () => {
   const { user: authUser } = useAuth();
@@ -17,14 +18,14 @@ const ProfilePage = () => {
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (!authUser?.id) {
-        console.log('⚠️ No authenticated user, cannot load profile');
+        logger.warn('⚠️ No authenticated user, cannot load profile');
         setLoading(false);
         return;
       }
       
       try {
         setLoading(true);
-        console.log('📥 Fetching profile for user:', authUser.id);
+        logger.debug('📥 Fetching profile for user:', authUser.id);
         
         const { success, profile, error: profileError } = await authService.getUserProfile(authUser.id);
         
@@ -66,9 +67,9 @@ const ProfilePage = () => {
         };
         
         setUser(userData);
-        console.log('✅ Profile loaded successfully:', userData);
+        logger.debug('✅ Profile loaded successfully:', userData);
       } catch (err) {
-        console.error('❌ Error loading profile:', err);
+        logger.error('❌ Error loading profile:', err);
         setError(err.message);
       } finally {
         setLoading(false);

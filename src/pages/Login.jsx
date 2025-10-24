@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatPhoneNumber } from '../services/supabase';
+import { logger } from '../utils/logger';
 import logo from '../assets/logo.svg';
 // Background image import removed
 
@@ -18,7 +19,7 @@ const LoginPage = () => {
   // Redirect if already authenticated
   useEffect(() => {
     if (user) {
-      console.log('User already authenticated, redirecting to map');
+      logger.debug('User already authenticated, redirecting to map');
       navigate('/map');
     }
   }, [user, navigate]);
@@ -32,7 +33,7 @@ const LoginPage = () => {
     try {
       // Format phone number using our helper
       const formattedPhone = formatPhoneNumber(phoneNumber);
-      console.log(`Sending OTP to ${formattedPhone}...`);
+      logger.info(`Sending OTP to ${formattedPhone}...`);
       
       // Use our AuthContext sendOtp method that calls Supabase
       const { success, error } = await sendOtp(formattedPhone);
@@ -43,9 +44,9 @@ const LoginPage = () => {
       
       // OTP sent successfully, move to verification step
       setOtpSent(true);
-      console.log('OTP sent successfully');
+      logger.info('OTP sent successfully');
     } catch (err) {
-      console.error('OTP send error:', err);
+      logger.error('OTP send error:', err);
       setError(err.message || 'Failed to send OTP. Please try again.');
     } finally {
       setLoading(false);
@@ -71,14 +72,14 @@ const LoginPage = () => {
       const { success, user, error } = await login(formattedPhone, otp);
       
       if (success) {
-        console.log('OTP verification successful:', user);
+        logger.info('OTP verification successful:', user);
         // Navigate to map page after successful login
         navigate('/map');
       } else if (error) {
         throw new Error(error);
       }
     } catch (err) {
-      console.error('OTP verification error:', err);
+      logger.error('OTP verification error:', err);
       setError(err.message || 'Failed to verify OTP. Please try again.');
     } finally {
       setLoading(false);

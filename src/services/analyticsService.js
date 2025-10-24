@@ -1,4 +1,5 @@
 import { supabase, DEV_MODE } from './supabase';
+import { logger } from '../utils/logger';
 
 // Mock data for dev mode
 const mockCompletedPickups = [
@@ -75,7 +76,7 @@ export class AnalyticsService {
   async getRoutePerformanceAnalytics(timeframe = '7d') {
     try {
       if (DEV_MODE) {
-        console.log('[DEV MODE] Using mock route performance data');
+        logger.debug('[DEV MODE] Using mock route performance data');
         return {
           success: true,
           data: {
@@ -182,7 +183,7 @@ export class AnalyticsService {
       };
 
     } catch (error) {
-      console.error('Error fetching route performance analytics:', error);
+      logger.error('Error fetching route performance analytics:', error);
       return {
         success: false,
         error: error.message,
@@ -197,7 +198,7 @@ export class AnalyticsService {
   async getCurrentRouteData() {
     try {
       if (DEV_MODE) {
-        console.log('[DEV MODE] Using mock route data');
+        logger.debug('[DEV MODE] Using mock route data');
         return {
           success: true,
           data: {
@@ -317,7 +318,7 @@ export class AnalyticsService {
       };
 
     } catch (error) {
-      console.error('Error fetching current route data:', error);
+      logger.error('Error fetching current route data:', error);
       return {
         success: false,
         error: error.message,
@@ -337,7 +338,7 @@ export class AnalyticsService {
   async logRouteOptimization(routeData) {
     try {
       if (DEV_MODE) {
-        console.log('[DEV MODE] Simulating route optimization logging:', {
+        logger.debug('[DEV MODE] Simulating route optimization logging:', {
           collector_id: this.collectorId,
           timestamp: new Date().toISOString(),
           ...routeData
@@ -348,8 +349,8 @@ export class AnalyticsService {
         };
       }
       // This would typically be stored in a route_optimizations table
-      // For now, we'll just console log it
-      console.log('Route optimization logged:', {
+      // For now, we'll just log it
+      logger.debug('Route optimization logged:', {
         collector_id: this.collectorId,
         timestamp: new Date().toISOString(),
         ...routeData
@@ -361,7 +362,7 @@ export class AnalyticsService {
       };
 
     } catch (error) {
-      console.error('Error logging route optimization:', error);
+      logger.error('Error logging route optimization:', error);
       return {
         success: false,
         error: error.message
@@ -375,7 +376,7 @@ export class AnalyticsService {
   async getCollectorSession() {
     try {
       if (DEV_MODE) {
-        console.log('[DEV MODE] Using mock collector session');
+        logger.debug('[DEV MODE] Using mock collector session');
         return {
           success: true,
           data: {
@@ -401,7 +402,7 @@ export class AnalyticsService {
       };
 
     } catch (error) {
-      console.error('Error fetching collector session:', error);
+      logger.error('Error fetching collector session:', error);
       return {
         success: false,
         error: error.message,

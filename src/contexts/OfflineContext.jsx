@@ -8,6 +8,7 @@ import {
   clearOfflineQueue,
   registerConnectivityListeners
 } from '../utils/offlineUtils';
+import { logger } from '../utils/logger';
 
 // Create context
 export const OfflineContext = createContext();
@@ -56,20 +57,20 @@ export const OfflineProvider = ({ children }) => {
         switch (actionType) {
           case 'completePickup':
             // Call API to complete pickup
-            console.log('Processing offline pickup completion:', payload);
+            logger.info('Processing offline pickup completion:', payload);
             // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1000));
             return { success: true };
             
           case 'disposeBag':
             // Call API to dispose bag
-            console.log('Processing offline bag disposal:', payload);
+            logger.info('Processing offline bag disposal:', payload);
             // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1000));
             return { success: true };
             
           default:
-            console.warn('Unknown action type:', actionType);
+            logger.warn('Unknown action type:', actionType);
             return { success: false };
         }
       });
@@ -78,7 +79,7 @@ export const OfflineProvider = ({ children }) => {
       setOfflineQueue(getOfflineQueue());
       
     } catch (error) {
-      console.error('Error syncing offline actions:', error);
+      logger.error('Error syncing offline actions:', error);
     } finally {
       setSyncing(false);
     }

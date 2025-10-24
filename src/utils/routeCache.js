@@ -3,6 +3,8 @@
  * Caches Google Maps route calculations in sessionStorage for better performance
  */
 
+import { logger } from './logger';
+
 const CACHE_PREFIX = 'route_cache_';
 const MAX_CACHE_SIZE = 50; // Maximum number of cached routes
 
@@ -29,7 +31,7 @@ export const getCachedRoute = (start, end) => {
       
       // Check if cache is still fresh (24 hours)
       if (now - data.timestamp < 24 * 60 * 60 * 1000) {
-        console.log('⚡ Using cached route');
+        logger.debug('⚡ Using cached route');
         return data.route;
       } else {
         // Remove expired cache
@@ -37,7 +39,7 @@ export const getCachedRoute = (start, end) => {
       }
     }
   } catch (error) {
-    console.warn('Failed to retrieve cached route:', error);
+    logger.warn('Failed to retrieve cached route:', error);
   }
   
   return null;
@@ -58,11 +60,11 @@ export const setCachedRoute = (start, end, route) => {
     cleanupCache();
     
     sessionStorage.setItem(key, JSON.stringify(data));
-    console.log('💾 Route cached for future use');
+    logger.debug('💾 Route cached for future use');
     
     return true;
   } catch (error) {
-    console.warn('Failed to cache route:', error);
+    logger.warn('Failed to cache route:', error);
     
     // If storage is full, try to make space
     if (error.name === 'QuotaExceededError') {
@@ -71,7 +73,7 @@ export const setCachedRoute = (start, end, route) => {
         sessionStorage.setItem(key, JSON.stringify(data));
         return true;
       } catch (retryError) {
-        console.warn('Failed to cache route after cleanup:', retryError);
+        logger.warn('Failed to cache route after cleanup:', retryError);
       }
     }
     
@@ -107,10 +109,10 @@ const cleanupCache = () => {
         sessionStorage.removeItem(cacheItems[i].key);
       }
       
-      console.log(`🧹 Cleaned up ${toRemove} old cached routes`);
+      logger.debug(`🧹 Cleaned up ${toRemove} old cached routes`);
     }
   } catch (error) {
-    console.warn('Failed to cleanup cache:', error);
+    logger.warn('Failed to cleanup cache:', error);
   }
 };
 
@@ -128,9 +130,9 @@ const clearOldRoutes = () => {
       sessionStorage.removeItem(keys[i]);
     }
     
-    console.log(`🧹 Emergency cleanup: removed ${toRemove} cached routes`);
+    logger.debug(`🧹 Emergency cleanup: removed ${toRemove} cached routes`);
   } catch (error) {
-    console.warn('Failed to clear old routes:', error);
+    logger.warn('Failed to clear old routes:', error);
   }
 };
 
@@ -161,11 +163,11 @@ export const clearAllRoutes = () => {
       .filter(key => key.startsWith(CACHE_PREFIX));
     
     keys.forEach(key => sessionStorage.removeItem(key));
-    console.log(`🧹 Cleared ${keys.length} cached routes`);
+    logger.debug(`🧹 Cleared ${keys.length} cached routes`);
     
     return keys.length;
   } catch (error) {
-    console.warn('Failed to clear all routes:', error);
+    logger.warn('Failed to clear all routes:', error);
     return 0;
   }
 };

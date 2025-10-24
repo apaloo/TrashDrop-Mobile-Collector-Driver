@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { logger } from '../utils/logger';
 // Simple online check since cacheUtils was removed
 const isOnline = () => navigator.onLine;
 
@@ -104,11 +105,11 @@ export const useOfflineSupport = (options = {}) => {
           if (age < locationCacheDuration) {
             setLastKnownLocation(cachedLocation.coords);
             locationCache.current = cachedLocation;
-            console.log(`📍 Using cached location (${Math.round(age / 1000)}s old)`);
+            logger.debug(`📍 Using cached location (${Math.round(age / 1000)}s old)`);
           }
         }
       } catch (err) {
-        console.error('Error loading cached location:', err);
+        logger.error('Error loading cached location:', err);
         localStorage.removeItem('lastKnownLocation');
       }
     };
@@ -141,20 +142,20 @@ export const useOfflineSupport = (options = {}) => {
           // Cache to localStorage with enhanced data
           try {
             localStorage.setItem('lastKnownLocation', JSON.stringify(locationData));
-            console.log(`📍 Location updated (accuracy: ${Math.round(position.coords.accuracy)}m)`);
+            logger.debug(`📍 Location updated (accuracy: ${Math.round(position.coords.accuracy)}m)`);
           } catch (err) {
-            console.error('Error caching location:', err);
+            logger.error('Error caching location:', err);
           }
         },
         (err) => {
           setLocationError(err);
-          console.warn('Location error:', err.message);
+          logger.warn('Location error:', err.message);
           
           // Use cached location as fallback
           if (locationCache.current) {
             const age = Date.now() - locationCache.current.timestamp;
             if (age < locationCacheDuration * 2) { // Allow older cache when GPS fails
-              console.log('📍 Using cached location due to GPS error');
+              logger.debug('📍 Using cached location due to GPS error');
               setLastKnownLocation(locationCache.current.coords);
             }
           }
@@ -218,9 +219,9 @@ export const useOfflineSupport = (options = {}) => {
     // Save to localStorage
     try {
       localStorage.setItem('pendingOfflineActions', JSON.stringify(pendingActions));
-      console.log(`📦 Queued offline action: ${action.type}`);
+      logger.debug(`📦 Queued offline action: ${action.type}`);
     } catch (err) {
-      console.error('Error saving pending actions:', err);
+      logger.error('Error saving pending actions:', err);
     }
   }, [pendingActions, enableActionQueuing]);
 
@@ -231,7 +232,7 @@ export const useOfflineSupport = (options = {}) => {
     }
     
     setSyncInProgress(true);
-    console.log(`🔄 Processing ${pendingActions.length} pending actions`);
+    logger.info(`🔄 Processing ${pendingActions.length} pending actions`);
     
     const results = {
       successful: 0,
@@ -251,7 +252,7 @@ export const useOfflineSupport = (options = {}) => {
       const batchPromises = batch.map(async (action) => {
         try {
           // Simulate action processing - replace with actual API calls
-          console.log(`Processing action: ${action.type} for ${action.resourceId}`);
+          logger.debug(`Processing action: ${action.type} for ${action.resourceId}`);
           
           // Add delay to prevent overwhelming server
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -261,7 +262,7 @@ export const useOfflineSupport = (options = {}) => {
           return { success: true, actionId: action.id };
           
         } catch (error) {
-          console.error(`Failed to process action ${action.id}:`, error);
+          logger.error(`Failed to process action ${action.id}:`, error);
           results.failed++;
           results.errors.push({ actionId: action.id, error: error.message });
           return { success: false, actionId: action.id, error };
@@ -279,7 +280,7 @@ export const useOfflineSupport = (options = {}) => {
     }
     
     setSyncInProgress(false);
-    console.log(`✅ Sync completed: ${results.successful} successful, ${results.failed} failed`);
+    logger.info(`✅ Sync completed: ${results.successful} successful, ${results.failed} failed`);
     
     return results;
   }, [isOffline, pendingActions, syncInProgress]);
@@ -309,13 +310,13 @@ export const useOfflineSupport = (options = {}) => {
       return { coords, accuracy: position.coords.accuracy, fromCache: false };
       
     } catch (error) {
-      console.warn('Failed to get current location:', error.message);
+      logger.warn('Failed to get current location:', error.message);
       
       // Fallback to cached location if allowed
       if (allowCached && locationCache.current) {
         const age = Date.now() - locationCache.current.timestamp;
         if (age < maxAge) {
-          console.log(`📍 Using cached location (${Math.round(age / 1000)}s old)`);
+          logger.debug(`📍 Using cached location (${Math.round(age / 1000)}s old)`);
           return { 
             coords: locationCache.current.coords, 
             accuracy: locationCache.current.accuracy,
@@ -337,11 +338,11 @@ export const useOfflineSupport = (options = {}) => {
         const actions = JSON.parse(savedActions);
         if (Array.isArray(actions) && actions.length > 0) {
           setPendingActions(actions);
-          console.log(`📦 Loaded ${actions.length} pending actions from storage`);
+          logger.debug(`📦 Loaded ${actions.length} pending actions from storage`);
         }
       }
     } catch (err) {
-      console.error('Error loading pending actions:', err);
+      logger.error('Error loading pending actions:', err);
       localStorage.removeItem('pendingOfflineActions');
     }
   }, []);
@@ -411,7 +412,7 @@ export const useOfflineData = (key, fetchFunction, options = {}) => {
             }
           }
         } catch (cacheError) {
-          console.warn('Cache read error:', cacheError);
+          logger.warn('Cache read error:', cacheError);
         }
       }
       
@@ -429,7 +430,7 @@ export const useOfflineData = (key, fetchFunction, options = {}) => {
               timestamp: Date.now()
             }));
           } catch (cacheError) {
-            console.warn('Cache write error:', cacheError);
+            logger.warn('Cache write error:', cacheError);
           }
         }
         
@@ -441,7 +442,7 @@ export const useOfflineData = (key, fetchFunction, options = {}) => {
       
     } catch (err) {
       setError(err);
-      console.error(`Data fetch error for ${key}:`, err);
+      logger.error(`Data fetch error for ${key}:`, err);
     } finally {
       setLoading(false);
     }

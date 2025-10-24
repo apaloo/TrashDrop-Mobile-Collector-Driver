@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import ReportModal from '../components/ReportModal';
+import { logger } from '../utils/logger';
 
 const DiagnosticPage = () => {
   const [status, setStatus] = useState('Loading...');
@@ -33,9 +34,9 @@ const DiagnosticPage = () => {
     const runDiagnostics = () => {
       try {
         setStatus('React is working!');
-        console.log('DiagnosticPage rendered successfully');
+        logger.info('DiagnosticPage rendered successfully');
       } catch (error) {
-        console.error('Diagnostic error:', error);
+        logger.error('Diagnostic error:', error);
         setStatus(`Error: ${error.message}`);
       }
     };

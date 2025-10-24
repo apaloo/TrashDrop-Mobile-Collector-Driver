@@ -19,6 +19,7 @@ import { getCurrentLocation, getLocationWithRetry, isWithinRadius } from '../uti
 import { registerConnectivityListeners } from '../utils/offlineUtils';
 import { supabase, authService } from '../services/supabase';
 import usePhotoCapture from '../hooks/usePhotoCapture';
+import { logger } from '../utils/logger';
 
 // OPTIMIZATION: Memoize RequestCard for better performance
 import { requestManager } from '../services/requestManagement';
@@ -109,7 +110,7 @@ const RequestPage = () => {
 
   // Error boundary handler
   const handleError = (error, info) => {
-    console.error('RequestPage Error:', error);
+    logger.error('RequestPage Error:', error);
     setHasError(true);
     setErrorInfo(info);
     showToast('An error occurred. Please try refreshing the page.', 'error', 5000);
@@ -126,7 +127,7 @@ const RequestPage = () => {
           accepted: { data: [], timestamp: 0 },
           picked_up: { data: [], timestamp: 0 }
         });
-        console.log('🔄 Cache reset due to force flag');
+        logger.debug('🔄 Cache reset due to force flag');
       }
       
       // SUPER-FAST: Show cached data immediately, then update in background
@@ -139,17 +140,14 @@ const RequestPage = () => {
         );
         
         if (validCachedData.length > 0) {
-          // Only log instant cache occasionally to reduce console spam
-          if (Math.random() < 0.05) { // 5% chance of logging
-            console.log('⚡ INSTANT: Showing cached data immediately');
-          }
+          logger.debug('⚡ INSTANT: Showing cached data immediately');
           setRequests(prev => ({
             ...prev,
             available: validCachedData
           }));
           setIsLoading(false);
         } else {
-          console.log('🗑️ Clearing invalid cached data');
+          logger.debug('🗑️ Clearing invalid cached data');
           setIsLoading(true);
         }
       } else {
@@ -164,10 +162,7 @@ const RequestPage = () => {
       const CACHE_DURATION = 120000; // 2 minutes for super-fast experience
       
       if (cacheAge < CACHE_DURATION && requestCache.available.data.length > 0) {
-        // Only log cache hits occasionally to reduce console spam
-        if (Math.random() < 0.1) { // 10% chance of logging
-          console.log('⚡ CACHE HIT: Using extended cache, skipping API call');
-        }
+        logger.debug('⚡ CACHE HIT: Using extended cache, skipping API call');
         setIsLoading(false);
         return;
       }
@@ -182,13 +177,13 @@ const RequestPage = () => {
           isFallback: location.isFallback
         });
         
-        // Only log fallback location usage occasionally to reduce console spam
+        // Log fallback location usage
         if (location.isFallback && (!window.lastFallbackLog || Date.now() - window.lastFallbackLog > 300000)) {
-          console.warn('[Location] Using fallback location due to GPS unavailability');
+          logger.warn('[Location] Using fallback location due to GPS unavailability');
           window.lastFallbackLog = Date.now();
         }
       } catch (error) {
-        console.error('Error getting location:', error);
+        logger.error('Error getting location:', error);
         // Set default location if location fails
         setUserLocation({
           latitude: 5.6037,
@@ -207,7 +202,7 @@ const RequestPage = () => {
         try {
           // Check if user is authenticated before making queries
           if (!user?.id) {
-            console.warn('User not authenticated, using empty data');
+            logger.warn('User not authenticated, using empty data');
             availableResult = { data: [] };
             acceptedResult = { data: [] };
             pickedUpResult = { data: [] };
@@ -235,10 +230,10 @@ const RequestPage = () => {
                       .order('created_at', { ascending: false })
                   ]).then(([pickupResult, binsResult]) => {
                     if (pickupResult.error) {
-                      console.warn('Pickup requests query failed:', pickupResult.error);
+                      logger.warn('Pickup requests query failed:', pickupResult.error);
                     }
                     if (binsResult.error) {
-                      console.warn('Digital bins query failed:', binsResult.error);
+                      logger.warn('Digital bins query failed:', binsResult.error);
                     }
                     
                     // Combine data and add source type identification
@@ -268,7 +263,7 @@ const RequestPage = () => {
                 .order('accepted_at', { ascending: false })
                 .then(result => {
                   if (result.error) {
-                    console.warn('Accepted requests query failed:', result.error);
+                    logger.warn('Accepted requests query failed:', result.error);
                     return { data: [] };
                   }
                   return result;
@@ -283,7 +278,7 @@ const RequestPage = () => {
                 .order('accepted_at', { ascending: false })
                 .then(result => {
                   if (result.error) {
-                    console.warn('Picked up requests query failed:', result.error);
+                    logger.warn('Picked up requests query failed:', result.error);
                     return { data: [] };
                   }
                   return result;
@@ -295,7 +290,7 @@ const RequestPage = () => {
             pickedUpResult = pickedUpRes;
           }
         } catch (error) {
-          console.error('Database query error:', error);
+          logger.error('Database query error:', error);
           showToast('Unable to load requests. Using offline mode.', 'error');
           
           // Fallback to empty data
@@ -305,13 +300,13 @@ const RequestPage = () => {
         }
         
         // Process results with TURBO mode
-        console.log('⚡ TURBO: Processing request data');
+        logger.debug('⚡ TURBO: Processing request data');
         let availableRequests = [];
         let acceptedRequests = [];
         let pickedUpRequests = [];
         
         if (availableResult?.data) {
-          console.log('📊 Database query result:', {
+          logger.debug('📊 Database query result:', {
             availableCount: availableResult.data.length,
             sampleData: availableResult.data.slice(0, 2),
             filteredCount: filteredRequests.available?.length || 0
@@ -319,13 +314,13 @@ const RequestPage = () => {
           
           // OPTIMIZATION: Use filtered data from Map if available
           if (filteredRequests.available && filteredRequests.available.length > 0) {
-            console.log('⚡ TURBO: Using pre-filtered requests');
+            logger.debug('⚡ TURBO: Using pre-filtered requests');
             availableRequests = filteredRequests.available;
           } else {
             availableRequests = transformRequestsData(availableResult.data);
           }
           
-          console.log('📋 Final available requests to display:', availableRequests.length);
+          logger.debug('📋 Final available requests to display:', availableRequests.length);
           
           // Update request cache for snappy UX
           requestAnimationFrame(() => {
@@ -380,7 +375,7 @@ const RequestPage = () => {
           setIsRefreshing(false);
           setLastUpdated(new Date());
           
-          console.log('⚡ INSTANT: Request page data loaded');
+          logger.debug('⚡ INSTANT: Request page data loaded');
         });
         
         // Cache removed - using direct database only
@@ -395,7 +390,7 @@ const RequestPage = () => {
       setIsInitialLoading(false);
       setIsRefreshing(false);
     } catch (error) {
-      console.error('Error fetching requests:', error);
+      logger.error('Error fetching requests:', error);
       setError('Failed to fetch requests. Please try again.');
       setIsLoading(false);
       setIsInitialLoading(false);
@@ -434,7 +429,7 @@ const RequestPage = () => {
       event.target.value = '';
       
     } catch (error) {
-      console.error('Error capturing photo:', error);
+      logger.error('Error capturing photo:', error);
       setToast({
         show: true,
         message: error.message || 'Failed to capture photo',
@@ -455,7 +450,7 @@ const RequestPage = () => {
         duration: 3000
       });
     } catch (error) {
-      console.error('Error removing photo:', error);
+      logger.error('Error removing photo:', error);
       setToast({
         show: true,
         message: 'Failed to remove photo',
@@ -471,7 +466,7 @@ const RequestPage = () => {
       // Cleanup blob URLs when component unmounts or requestId changes
       // The actual cleanup is handled by the usePhotoCapture hook
       if (process.env.NODE_ENV === 'development') {
-        console.log('🧹 Cleaning up photo resources in Request component');
+        logger.debug('🧹 Cleaning up photo resources in Request component');
       }
     };
   }, [requestId]);
@@ -515,7 +510,7 @@ const RequestPage = () => {
           
         // Check for database errors
         if (result.error) {
-          console.error('Digital bin collection failed:', result.error);
+          logger.error('Digital bin collection failed:', result.error);
           throw new Error(result.error.message || 'Failed to collect digital bin');
         }
         
@@ -523,7 +518,7 @@ const RequestPage = () => {
       } else if (isPickupRequest) {
         // Ensure requestManager is initialized
         if (!requestManager.isInitialized) {
-          console.log('Initializing requestManager before accepting request...');
+          logger.info('Initializing requestManager before accepting request...');
           await requestManager.initialize(user?.id);
         }
         
@@ -543,11 +538,11 @@ const RequestPage = () => {
 
       // Check for both success flag and error
       if (!result?.success || result?.error) {
-        console.error('Request acceptance failed:', result);
+        logger.error('Request acceptance failed:', result);
         
         // Handle specific error cases
         if (result?.error?.code === '22P02') {
-          console.error('UUID validation error:', result.error);
+          logger.error('UUID validation error:', result.error);
           showToast('Invalid request ID format. This request may be test data.', 'error');
           
           // Force a cache reset to ensure no problematic IDs persist
@@ -613,7 +608,7 @@ const RequestPage = () => {
       
       setRequests(updatedRequests);
     } catch (err) {
-      console.error('Error accepting request:', err);
+      logger.error('Error accepting request:', err);
       if (err?.message?.includes('already accepted') || err?.message?.includes('reservation expired')) {
         showToast(err.message, 'error');
         // Refresh the list to show current state
@@ -665,7 +660,7 @@ const RequestPage = () => {
     if (tab !== activeTab) {
       setActiveTab(tab);
       // Only track tab changes, don't refetch data unnecessarily
-      console.log('Tab changed to:', tab);
+      logger.debug('Tab changed to:', tab);
     }
   }, [activeTab]);
 
@@ -708,7 +703,7 @@ const RequestPage = () => {
           });
         }
       } catch (err) {
-        console.error('Error loading user profile for nav:', err);
+        logger.error('Error loading user profile for nav:', err);
       }
     };
     
@@ -720,8 +715,8 @@ const RequestPage = () => {
     // Initialize requestManager with current user ID
     if (user?.id) {
       requestManager.initialize(user.id)
-        .then(() => console.log('RequestManager initialized successfully'))
-        .catch(err => console.error('Failed to initialize RequestManager:', err));
+        .then(() => logger.info('RequestManager initialized successfully'))
+        .catch(err => logger.error('Failed to initialize RequestManager:', err));
     }
     
     // This runs when the component mounts
@@ -753,13 +748,13 @@ const RequestPage = () => {
             table: 'pickup_requests'
           }, async (payload) => {
             if (!payload) {
-              console.error('Received empty payload in real-time subscription');
+              logger.error('Received empty payload in real-time subscription');
               return;
             }
 
             const { eventType, new: newRecord } = payload;
             if (!eventType || !newRecord) {
-              console.error('Invalid payload structure in real-time subscription', { eventType, newRecord });
+              logger.error('Invalid payload structure in real-time subscription', { eventType, newRecord });
               return;
             }
 
@@ -768,7 +763,7 @@ const RequestPage = () => {
           })
           .subscribe();
       } catch (error) {
-        console.error('Error setting up subscription:', error);
+        logger.error('Error setting up subscription:', error);
         showToast('Failed to set up real-time updates', 'error');
       }
     };
@@ -783,7 +778,7 @@ const RequestPage = () => {
         try {
           supabase.removeChannel(subscription);
         } catch (error) {
-          console.error('Error removing subscription channel:', error);
+          logger.error('Error removing subscription channel:', error);
         }
       }
 
@@ -792,7 +787,7 @@ const RequestPage = () => {
         try {
           unregister();
         } catch (error) {
-          console.error('Error unregistering connectivity listeners:', error);
+          logger.error('Error unregistering connectivity listeners:', error);
         }
       }
     };
@@ -942,7 +937,7 @@ const RequestPage = () => {
               existingTransactions.push(transaction);
               updates.push(['earnings_transactions', JSON.stringify(existingTransactions)]);
             } catch (e) {
-              console.warn('Failed to update earnings transactions:', e);
+              logger.warn('Failed to update earnings transactions:', e);
             }
             
             // Update user stats
@@ -965,7 +960,7 @@ const RequestPage = () => {
               
               updates.push([statsKey, JSON.stringify(existingStats)]);
             } catch (e) {
-              console.warn('Failed to update user stats:', e);
+              logger.warn('Failed to update user stats:', e);
             }
             
             // Batch write to localStorage
@@ -973,24 +968,24 @@ const RequestPage = () => {
               try {
                 localStorage.setItem(key, value);
               } catch (e) {
-                console.warn(`Failed to write ${key} to localStorage:`, e);
+                logger.warn(`Failed to write ${key} to localStorage:`, e);
               }
             });
           }
         } catch (error) {
-          console.warn('Background processing failed:', error);
+          logger.warn('Background processing failed:', error);
         }
       });
       
       const processingTime = performance.now() - startTime;
-      console.log(`⚡ QR scan processed in ${processingTime.toFixed(2)}ms`);
+      logger.debug(`⚡ QR scan processed in ${processingTime.toFixed(2)}ms`);
       
       showToast(
         `✅ Scanned ${scannedBags.length} bag${scannedBags.length > 1 ? 's' : ''} • ${totalPoints} points • $${totalFee.toFixed(2)}`, 
         'success'
       );
     } catch (err) {
-      console.error('Error updating scanned bags:', err);
+      logger.error('Error updating scanned bags:', err);
       showToast('Failed to update scanned bags. Please try again.', 'error');
     }
   };
@@ -1039,7 +1034,7 @@ const RequestPage = () => {
       } else {
         // For non-UUID IDs (like A-42861), we'll only update the local state
         // This is for demo/test data that doesn't exist in the database
-        console.log(`Skipping database update for non-UUID request ID: ${requestId} (using local state only)`); 
+        logger.debug(`Skipping database update for non-UUID request ID: ${requestId} (using local state only)`); 
       }
       
       // Store additional data in localStorage since they don't exist in the schema
@@ -1051,7 +1046,7 @@ const RequestPage = () => {
         pickupData.total_earnings = totalEarnings;
         localStorage.setItem(`pickup_data_${requestId}`, JSON.stringify(pickupData));
       } catch (localStorageError) {
-        console.error('Error storing pickup data in localStorage:', localStorageError);
+        logger.error('Error storing pickup data in localStorage:', localStorageError);
       }
       
       // Create completion bonus transaction
@@ -1068,7 +1063,7 @@ const RequestPage = () => {
       // Note: The earnings_transactions table doesn't exist in the schema
       // Instead of trying to insert into a non-existent table, we'll store bonus transaction locally
       // Log the bonus transaction for debugging purposes
-      console.log('Bonus transaction (not saved to DB):', bonusTransaction);
+      logger.debug('Bonus transaction (not saved to DB):', bonusTransaction);
       
       // Store transaction in localStorage for persistence across sessions
       try {
@@ -1079,7 +1074,7 @@ const RequestPage = () => {
         // Save back to localStorage
         localStorage.setItem('earnings_transactions', JSON.stringify(existingTransactions));
       } catch (localStorageError) {
-        console.error('Error storing bonus transaction in localStorage:', localStorageError);
+        logger.error('Error storing bonus transaction in localStorage:', localStorageError);
       }
       
       // Note: The user_stats table exists but doesn't have the columns we're trying to update
@@ -1108,9 +1103,9 @@ const RequestPage = () => {
         localStorage.setItem(`user_stats_${user?.id}`, JSON.stringify(existingStats));
         
         // Log the updated stats for debugging
-        console.log('Updated user stats with bonus (stored in localStorage):', existingStats);
+        logger.debug('Updated user stats with bonus (stored in localStorage):', existingStats);
       } catch (statsError) {
-        console.error('Error updating user stats with bonus in localStorage:', statsError);
+        logger.error('Error updating user stats with bonus in localStorage:', statsError);
       }
       
       // Update the status
@@ -1148,7 +1143,7 @@ const RequestPage = () => {
       // Switch to picked up tab
       setActiveTab('picked_up');
     } catch (err) {
-      console.error('Error completing pickup:', err);
+      logger.error('Error completing pickup:', err);
       showToast('Failed to complete pickup. Please try again.', 'error');
     }
   };
@@ -1332,7 +1327,7 @@ const handleLocateSite = (requestId) => {
           }
         },
         (error) => {
-          console.error('Error getting location:', error);
+          logger.error('Error getting location:', error);
           setLocationError(error.message || 'Unable to get your location');
           setLocationFetchInProgress(false);
           setShowGeofenceModal(true);
@@ -1422,14 +1417,14 @@ const handleLocateSite = (requestId) => {
     try {
       // Validate input
       if (!requestId) {
-        console.error('Invalid requestId in handleDisposeBag:', requestId);
+        logger.error('Invalid requestId in handleDisposeBag:', requestId);
         showToast('Invalid request data', 'error');
         return;
       }
 
       // Ensure requests.picked_up exists and is an array
       if (!requests.picked_up || !Array.isArray(requests.picked_up)) {
-        console.error('requests.picked_up is not an array:', requests.picked_up);
+        logger.error('requests.picked_up is not an array:', requests.picked_up);
         showToast('Error accessing request data. Please refresh the page.', 'error');
         return;
       }
@@ -1452,7 +1447,7 @@ const handleLocateSite = (requestId) => {
       // Get the request with safe access
       const request = requests.picked_up[requestIndex];
       if (!request) {
-        console.error('Request at index not found:', requestIndex);
+        logger.error('Request at index not found:', requestIndex);
         showToast('Error processing request. Please try again.', 'error');
         return;
       }
@@ -1482,19 +1477,19 @@ const handleLocateSite = (requestId) => {
             .eq('id', requestId);
           
           if (error) {
-            console.error('Error updating disposal details:', error);
+            logger.error('Error updating disposal details:', error);
             showToast('Failed to update disposal details. Please try again.', 'error');
             return;
           }
         } catch (updateError) {
-          console.error('Error updating disposal details:', updateError);
+          logger.error('Error updating disposal details:', updateError);
           showToast('Failed to update disposal details. Please try again.', 'error');
           return;
         }
       } else {
         // For non-UUID IDs (like A-42861), we'll only update the local state
         // This is for demo/test data that doesn't exist in the database
-        console.log(`Skipping database update for non-UUID request ID: ${requestId} (using local state only for disposal)`); 
+        logger.debug(`Skipping database update for non-UUID request ID: ${requestId} (using local state only for disposal)`); 
       }
       
       // Update request
@@ -1520,7 +1515,7 @@ const handleLocateSite = (requestId) => {
       // Show success toast
       showToast('Successfully disposed bags!', 'success');
     } catch (err) {
-      console.error('Error disposing bags:', err);
+      logger.error('Error disposing bags:', err);
       showToast('Failed to dispose bags. Please try again.', 'error');
     }
   };
@@ -1542,7 +1537,7 @@ const handleLocateSite = (requestId) => {
       
       showToast('Viewing disposal report', 'success');
     } catch (err) {
-      console.error('Error viewing report:', err);
+      logger.error('Error viewing report:', err);
       showToast('Failed to view report', 'error');
     }
   };
@@ -1579,14 +1574,14 @@ const handleLocateSite = (requestId) => {
           }, async (payload) => {
             try {
               if (!payload) {
-                console.error('Received empty payload in real-time subscription');
+                logger.error('Received empty payload in real-time subscription');
                 return;
               }
               
               const { eventType, new: newRecord, old: oldRecord } = payload;
               
               if (!eventType || !newRecord) {
-                console.error('Invalid payload structure in real-time subscription', { eventType, newRecord });
+                logger.error('Invalid payload structure in real-time subscription', { eventType, newRecord });
                 return;
               }
               
@@ -1640,17 +1635,17 @@ const handleLocateSite = (requestId) => {
                   break;
                 
                 default:
-                  console.log(`Unhandled event type: ${eventType}`);
+                  logger.error(`Unhandled event type: ${eventType}`);
                   break;
               }
             } catch (error) {
-              console.error('Error handling subscription payload:', error);
+              logger.error('Error handling subscription payload:', error);
               showToast('Error processing real-time update', 'error');
             }
           })
           .subscribe();
       } catch (error) {
-        console.error('Error setting up subscription:', error);
+        logger.error('Error setting up subscription:', error);
         showToast('Failed to set up real-time updates', 'error');
       }
     };
@@ -1665,7 +1660,7 @@ const handleLocateSite = (requestId) => {
         try {
           supabase.removeChannel(subscription);
         } catch (error) {
-          console.error('Error removing subscription channel:', error);
+          logger.error('Error removing subscription channel:', error);
         }
       }
 
@@ -1673,7 +1668,7 @@ const handleLocateSite = (requestId) => {
         try {
           unregister();
         } catch (error) {
-          console.error('Error unregistering connectivity listeners:', error);
+          logger.error('Error unregistering connectivity listeners:', error);
         }
       }
     };
@@ -1903,7 +1898,7 @@ const handleLocateSite = (requestId) => {
             // Handle multiple scanned QR codes
             if (Array.isArray(scannedValues) && scannedValues.length > 0) {
               // Process all scanned items
-              console.log(`Received ${scannedValues.length} scanned items:`, scannedValues);
+              logger.debug(`Received ${scannedValues.length} scanned items:`, scannedValues);
               
               // Update the request with scanned items
               if (navigationRequestId) {

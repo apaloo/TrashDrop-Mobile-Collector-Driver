@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { calculateDistance } from '../utils/locationUtils';
 import { slideIn } from '../utils/animationUtils';
+import { logger } from '../utils/logger';
 
 /**
  * Component to display a list of assignments and requests with sorting and filtering options
@@ -230,7 +231,7 @@ const ItemList = ({ assignments, requests, userLocation }) => {
                       className="text-xs bg-white border border-gray-300 rounded px-2 py-1 hover:bg-gray-50 text-gray-700"
                       onClick={() => {
                         // In a real app, this would navigate to the item details
-                        console.log('View details for item:', item.id);
+                        logger.debug('View details for item:', item.id);
                       }}
                     >
                       Details

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { logger } from '../utils/logger';
 
 /**
  * Enhanced performance monitoring hook with analytics integration
@@ -29,7 +30,7 @@ export const usePerformanceMonitor = (operationName, options = {}) => {
 
   const end = useCallback((opId) => {
     if (operationStack.current.length === 0) {
-      console.warn(`⚠️ No active ${operationName} operations to end`);
+      logger.warn(`⚠️ No active ${operationName} operations to end`);
       return null;
     }
 
@@ -40,7 +41,7 @@ export const usePerformanceMonitor = (operationName, options = {}) => {
       // Find specific operation
       const index = operationStack.current.findIndex(op => op.id === opId);
       if (index === -1) {
-        console.warn(`⚠️ Operation ${opId} not found in stack`);
+        logger.warn(`⚠️ Operation ${opId} not found in stack`);
         return null;
       }
       operation = operationStack.current[index];
@@ -54,11 +55,11 @@ export const usePerformanceMonitor = (operationName, options = {}) => {
     
     // Log performance with appropriate level
     if (duration > threshold) {
-      console.warn(
+      logger.warn(
         `⚠️ Slow ${operationName} operation (${operation.label}): ${duration.toFixed(2)}ms`
       );
     } else {
-      console.log(
+      logger.debug(
         `⚡ ${operationName} (${operation.label}) completed in ${duration.toFixed(2)}ms`
       );
     }
@@ -83,7 +84,7 @@ export const usePerformanceMonitor = (operationName, options = {}) => {
     // Send to analytics if enabled
     if (reportToAnalytics) {
       // Future: Send to analytics service
-      console.log(`📊 Analytics: ${operationName} ${operation.label} - ${duration.toFixed(2)}ms`);
+      logger.debug(`📊 Analytics: ${operationName} ${operation.label} - ${duration.toFixed(2)}ms`);
     }
     
     return duration;
@@ -129,18 +130,17 @@ export const usePerformanceMonitor = (operationName, options = {}) => {
     return () => {
       const activeOps = operationStack.current;
       if (activeOps.length > 0) {
-        console.groupCollapsed(`⚠️ ${operationName} performance monitor cleanup`);
-        console.warn(`Found ${activeOps.length} unclosed operations:`);
+        logger.warn(`⚠️ ${operationName} performance monitor cleanup`);
+        logger.warn(`Found ${activeOps.length} unclosed operations:`);
         activeOps.forEach((op, index) => {
           const currentDuration = performance.now() - op.startTime;
-          console.warn(`  ${index + 1}. ${op.label} (running for ${currentDuration.toFixed(2)}ms)`);
+          logger.warn(`  ${index + 1}. ${op.label} (running for ${currentDuration.toFixed(2)}ms)`);
         });
-        console.groupEnd();
         
         // Auto-close operations
         activeOps.forEach(op => {
           const duration = performance.now() - op.startTime;
-          console.log(`🔄 Auto-closing ${op.label}: ${duration.toFixed(2)}ms`);
+          logger.debug(`🔄 Auto-closing ${op.label}: ${duration.toFixed(2)}ms`);
         });
         operationStack.current = [];
       }
@@ -253,7 +253,7 @@ class GlobalPerformanceMonitor {
       try {
         observer(category, operation, metric);
       } catch (error) {
-        console.error('Error in performance observer:', error);
+        logger.error('Error in performance observer:', error);
       }
     });
   }

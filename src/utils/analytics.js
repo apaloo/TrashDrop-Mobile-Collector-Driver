@@ -1,4 +1,5 @@
 import { globalPerformanceMonitor } from '../hooks/usePerformanceMonitor';
+import { logger } from './logger';
 
 /**
  * Analytics utility for tracking user events and performance
@@ -52,7 +53,7 @@ class Analytics {
     };
     
     this.queue.push(event);
-    console.log(`📊 Event tracked: ${eventName}`, event.properties);
+    logger.debug(`📊 Event tracked: ${eventName}`, event.properties);
     
     // Flush immediately for high priority events
     if (options.immediate) {
@@ -83,7 +84,7 @@ class Analytics {
     // Also record in global performance monitor
     globalPerformanceMonitor.record(category, operation, duration, metadata);
     
-    console.log(`⚡ Performance tracked: ${category}.${operation} - ${duration.toFixed(2)}ms`);
+    logger.debug(`⚡ Performance tracked: ${category}.${operation} - ${duration.toFixed(2)}ms`);
   }
   
   // Track navigation events
@@ -114,7 +115,7 @@ class Analytics {
     };
     
     this.queue.push(errorEvent);
-    console.error('🚨 Error tracked:', errorEvent);
+    logger.error('🚨 Error tracked:', errorEvent);
     
     // Errors should be sent immediately
     this.flush();
@@ -157,11 +158,10 @@ class Analytics {
     
     try {
       // In a real implementation, send to analytics service
-      console.groupCollapsed(`📊 Analytics flush: ${events.length} events`);
+      logger.debug(`📊 Analytics flush: ${events.length} events`);
       events.forEach(event => {
-        console.log(event);
+        logger.debug(event);
       });
-      console.groupEnd();
       
       // Mock API call - replace with actual analytics service
       // await fetch('/api/analytics', {
@@ -171,7 +171,7 @@ class Analytics {
       // });
       
     } catch (error) {
-      console.error('Failed to send analytics:', error);
+      logger.error('Failed to send analytics:', error);
       // Re-queue events for retry
       this.queue.unshift(...events);
     }

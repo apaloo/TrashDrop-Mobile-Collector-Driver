@@ -1,4 +1,5 @@
 import { calculateDistance } from './geoUtils';
+import { logger } from './logger';
 
 /**
  * Transforms raw request data into the format needed by the UI
@@ -35,7 +36,7 @@ export const transformRequestsData = (
           distanceFromUser = distance.toFixed(1);
           distanceValue = parseFloat(distance);
         } catch (error) {
-          console.warn('Error calculating distance:', error);
+          logger.warn('Error calculating distance:', error);
         }
       }
       
@@ -49,7 +50,7 @@ export const transformRequestsData = (
           );
         }
       } catch (error) {
-        console.warn('Error calculating disposal distance:', error);
+        logger.warn('Error calculating disposal distance:', error);
       }
       
       return {

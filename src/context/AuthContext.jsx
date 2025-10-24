@@ -1,5 +1,6 @@
 import { createContext, useState, useEffect, useContext } from 'react';
 import { supabase, authService } from '../services/supabase';
+import { logger } from '../utils/logger';
 
 // Create the context
 export const AuthContext = createContext();
@@ -29,8 +30,8 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      console.log('🔐 Starting authentication check at:', Date.now());
-      console.time('🔐 Auth Check Duration');
+      const startTime = Date.now();
+      logger.debug('🔐 Starting authentication check at:', startTime);
       
       // CRITICAL: Don't set loading=true for immediate checks
       // Only set loading for operations that might take time
@@ -39,7 +40,7 @@ export const AuthProvider = ({ children }) => {
         // IMMEDIATE: First check if user has explicitly logged out
         const isLoggedOut = localStorage.getItem('user_logged_out') === 'true';
         if (isLoggedOut) {
-          console.log('🚫 User is logged out, clearing any existing sessions');
+          logger.debug('🚫 User is logged out, clearing any existing sessions');
           setUser(null);
           setHasLoggedOut(true);
           setHasInitiallyChecked(true);
@@ -47,11 +48,11 @@ export const AuthProvider = ({ children }) => {
         }
 
         // Check for current Supabase session
-        console.log('🔐 Checking Supabase session...');
+        logger.debug('🔐 Checking Supabase session...');
         const { session, user, error } = await authService.getSession();
         
         if (user && !error) {
-          console.log('✅ Found existing Supabase session:', user?.id);
+          logger.debug('✅ Found existing Supabase session:', user?.id);
           setUser(user);
           setHasLoggedOut(false);
           setHasInitiallyChecked(true);
@@ -59,34 +60,79 @@ export const AuthProvider = ({ children }) => {
         }
 
         // No session found
-        console.log('🔍 No session found, user remains logged out');
+        logger.debug('🔍 No session found, user remains logged out');
         setUser(null);
         setHasInitiallyChecked(true);
         
       } catch (err) {
-        console.error('❌ Auth check error:', err);
+        logger.error('❌ Auth check error:', err);
+        
+        // Detect invalid refresh token errors and auto-cleanup
+        if (err.message?.includes('refresh_token_not_found') || 
+            err.message?.includes('Invalid Refresh Token') ||
+            err.code === 'refresh_token_not_found') {
+          logger.warn('🧹 Detected invalid refresh token, clearing auth data...');
+          
+          // Clear all Supabase auth data from localStorage
+          try {
+            Object.keys(localStorage).forEach(key => {
+              if (key.includes('supabase') || key.includes('sb-')) {
+                localStorage.removeItem(key);
+              }
+            });
+            
+            // Sign out from Supabase to clean up any lingering sessions
+            await supabase.auth.signOut();
+            
+            logger.info('✅ Invalid auth data cleared successfully');
+          } catch (cleanupError) {
+            logger.error('Failed to cleanup auth data:', cleanupError);
+          }
+        }
+        
         setError(err.message);
         setUser(null);
       } finally {
-        console.timeEnd('🔐 Auth Check Duration');
-        console.log('🔐 Auth check completed at:', Date.now());
+        const duration = Date.now() - startTime;
+        logger.debug(`🔐 Auth check completed in ${duration}ms`);
       }
     };
     
     // Check auth on load - non-blocking for cached sessions
     checkAuth();
     
-    // Set up auth state change listener
+    // Set up auth state change listener with error handling
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        console.log('Auth state changed:', _event, session ? 'session exists' : 'no session');
-        const user = session?.user || null;
-        
-        if (user) {
-          console.log('User authenticated:', user.id);
-          setUser(user);
-        } else {
-          console.log('No session found, clearing user state');
+        try {
+          logger.debug('Auth state changed:', _event, session ? 'session exists' : 'no session');
+          const user = session?.user || null;
+          
+          if (user) {
+            logger.debug('User authenticated:', user.id);
+            setUser(user);
+          } else {
+            logger.debug('No session found, clearing user state');
+            setUser(null);
+          }
+        } catch (err) {
+          // Handle invalid refresh token errors during state changes
+          if (err.message?.includes('refresh_token_not_found') || 
+              err.message?.includes('Invalid Refresh Token')) {
+            logger.warn('🧹 Auth state change error - clearing invalid tokens');
+            
+            try {
+              Object.keys(localStorage).forEach(key => {
+                if (key.includes('supabase') || key.includes('sb-')) {
+                  localStorage.removeItem(key);
+                }
+              });
+              await supabase.auth.signOut();
+            } catch (cleanupError) {
+              logger.error('Cleanup failed:', cleanupError);
+            }
+          }
+          
           setUser(null);
         }
       }
@@ -131,7 +177,7 @@ export const AuthProvider = ({ children }) => {
       setHasLoggedOut(false);
       localStorage.removeItem('user_logged_out');
       setUser(user);
-      console.log('User verified successfully, logout flag cleared');
+      logger.debug('User verified successfully, logout flag cleared');
       return { success: true, user };
     } catch (err) {
       setError(err.message);
@@ -186,10 +232,10 @@ export const AuthProvider = ({ children }) => {
       setHasLoggedOut(false);
       localStorage.removeItem('user_logged_out');
       setUser(user);
-      console.log('✅ User signup completed successfully - profile created');
+      logger.info('✅ User signup completed successfully - profile created');
       return { success: true, user };
     } catch (err) {
-      console.error('❌ Signup error:', err.message);
+      logger.error('❌ Signup error:', err.message);
       setError(err.message);
       return { success: false, error: err.message };
     } finally {
@@ -201,7 +247,7 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       setLoading(true);
-      console.log('Logging out user...');
+      logger.debug('Logging out user...');
       const { success, error } = await authService.signOut();
       
       if (!success) {
@@ -217,7 +263,7 @@ export const AuthProvider = ({ children }) => {
       // Clear user from state
       setUser(null);
       
-      console.log('✅ User logged out successfully, session cleared, logout flag set');
+      logger.info('✅ User logged out successfully, session cleared, logout flag set');
       
       // Force a small delay to ensure state changes propagate
       // before the navigation happens
@@ -225,7 +271,7 @@ export const AuthProvider = ({ children }) => {
       
       return { success: true };
     } catch (err) {
-      console.error('Logout error:', err);
+      logger.error('Logout error:', err);
       setError(err.message);
       return { success: false, error: err.message };
     } finally {
@@ -242,7 +288,8 @@ export const AuthProvider = ({ children }) => {
     signup,
     logout,
     hasLoggedOut,
-    isAuthenticated: !!user
+    isAuthenticated: !!user,
+    hasInitiallyChecked // Expose initial check status
   };
 
   return (

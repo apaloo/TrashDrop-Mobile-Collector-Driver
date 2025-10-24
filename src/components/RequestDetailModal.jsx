@@ -1,12 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { WasteType } from '../utils/types';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatCurrency } from '../utils/currencyUtils';
+import { formatLocationAsync } from '../utils/geoUtils';
 
 const RequestDetailModal = ({ request, onClose }) => {
   const [activeDetailTab, setActiveDetailTab] = useState('overview');
+  const [formattedLocation, setFormattedLocation] = useState('Loading location...');
   // Get currency from context
   const { currency } = useCurrency();
+  
+  // Format location with reverse geocoding
+  useEffect(() => {
+    const loadLocation = async () => {
+      if (request?.location) {
+        const formatted = await formatLocationAsync(request.location);
+        setFormattedLocation(formatted);
+      }
+    };
+    loadLocation();
+  }, [request?.location]);
   
   if (!request) return null;
   
@@ -90,7 +103,7 @@ const RequestDetailModal = ({ request, onClose }) => {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Address:</span>
-                    <span className="font-medium">{request.location || 'N/A'}</span>
+                    <span className="font-medium">{formattedLocation}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">City:</span>

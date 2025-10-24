@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatPhoneNumber, authService } from '../services/supabase';
+import { logger } from '../utils/logger';
 
 const SignupPage = () => {
   const navigate = useNavigate();
@@ -14,7 +15,7 @@ const SignupPage = () => {
   
   // Dedicated function to force step transition
   const goToStep = (nextStep) => {
-    console.log(`Transitioning from step ${step} to step ${nextStep}`);
+    logger.debug(`Transitioning from step ${step} to step ${nextStep}`);
     // Force update by setting state directly
     setStep(nextStep);
   };
@@ -93,7 +94,7 @@ const SignupPage = () => {
       reader.readAsDataURL(file);
       
       setError(null);
-      console.log(`📸 Photo captured for ${fieldName}`);
+      logger.debug(`📸 Photo captured for ${fieldName}`);
     }
   };
   
@@ -107,7 +108,7 @@ const SignupPage = () => {
     // Prevent any form submission
     if (e) e.preventDefault();
     
-    console.log('handleSendOtp called, current step:', step);
+    logger.debug('handleSendOtp called, current step:', step);
     setLoading(true);
     setError(null);
     
@@ -118,11 +119,11 @@ const SignupPage = () => {
       
       // Format phone number using our helper
       const formattedPhone = formatPhoneNumber(formData.phone);
-      console.log(`Sending OTP to ${formattedPhone}...`);
+      logger.debug(`Sending OTP to ${formattedPhone}...`);
       
       // Use our AuthContext sendOtp method that calls Supabase
       const { success, error } = await sendOtp(formattedPhone);
-      console.log('OTP send response:', { success, error });
+      logger.debug('OTP send response:', { success, error });
       
       if (!success) {
         throw new Error(error || 'Failed to send OTP');
@@ -132,12 +133,12 @@ const SignupPage = () => {
       setFormData(prev => ({ ...prev, phone: formattedPhone }));
       
       // Move to OTP verification step - direct state update
-      console.log('OTP sent successfully, moving to verification step');
+      logger.debug('OTP sent successfully, moving to verification step');
       setStep(2);
-      console.log('Step updated to 2');
+      logger.debug('Step updated to 2');
       
     } catch (err) {
-      console.error('OTP send error:', err);
+      logger.error('OTP send error:', err);
       setError(err.message || 'Failed to send OTP. Please try again.');
     } finally {
       setLoading(false);
@@ -158,7 +159,7 @@ const SignupPage = () => {
       // CRITICAL: Verify OTP with Supabase directly (without setting user in context)
       // This authenticates the user and creates their session in Supabase
       // BUT we don't update AuthContext yet - that happens after profile creation
-      console.log('Verifying OTP with Supabase...');
+      logger.debug('Verifying OTP with Supabase...');
       const { success, error: verifyError } = await authService.verifyOtp(formData.phone, formData.otp);
       
       if (!success) {
@@ -167,11 +168,11 @@ const SignupPage = () => {
       
       // OTP verified successfully - user is now authenticated in Supabase
       // Session exists, but we haven't set user in AuthContext yet
-      console.log('✅ OTP verified successfully - Supabase session created');
-      console.log('📝 User can now proceed to fill profile information');
+      logger.info('✅ OTP verified successfully - Supabase session created');
+      logger.debug('📝 User can now proceed to fill profile information');
       setStep(3); // Move to personal info
     } catch (err) {
-      console.error('❌ OTP verification error:', err);
+      logger.error('❌ OTP verification error:', err);
       setError(err.message || 'Failed to verify OTP. Please try again.');
     } finally {
       setLoading(false);
@@ -185,7 +186,7 @@ const SignupPage = () => {
     setError(null);
     
     try {
-      console.log('📤 Starting file uploads...');
+      logger.debug('📤 Starting file uploads...');
       
       // Upload photos to Supabase Storage
       const photoUrls = {
@@ -215,7 +216,7 @@ const SignupPage = () => {
         photoUrls.vehicle_photo_url = result.url;
       }
       
-      console.log('✅ All photos uploaded successfully');
+      logger.debug('✅ All photos uploaded successfully');
       
       // Prepare signup data (without email, with photo URLs)
       const signupData = {
@@ -238,7 +239,7 @@ const SignupPage = () => {
       
       if (success) {
         // Log success for demo purposes
-        console.log('✅ Registration successful with data:', signupData);
+        logger.info('✅ Registration successful with data:', signupData);
         
         // Redirect to welcome page
         navigate('/welcome');

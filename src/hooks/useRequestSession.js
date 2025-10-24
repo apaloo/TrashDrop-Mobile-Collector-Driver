@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { requestManager } from '../services/requestManagement.js';
+import { logger } from '../utils/logger';
 
 /**
  * Custom hook for managing collector request sessions
@@ -32,7 +33,7 @@ export const useRequestSession = (collectorId) => {
         }
       }
     } catch (error) {
-      console.error('Error loading persisted session:', error);
+      logger.error('Error loading persisted session:', error);
     }
     return null;
   }, [collectorId]);
@@ -51,7 +52,7 @@ export const useRequestSession = (collectorId) => {
       localStorage.setItem(sessionKey, JSON.stringify(sessionToStore));
       setSessionData(sessionToStore);
     } catch (error) {
-      console.error('Error persisting session:', error);
+      logger.error('Error persisting session:', error);
     }
   }, [collectorId]);
 
@@ -75,10 +76,10 @@ export const useRequestSession = (collectorId) => {
       // Load initial notifications
       await loadNotifications();
       
-      console.log('Request session initialized for collector:', collectorId);
+      logger.info('Request session initialized for collector:', collectorId);
     } catch (err) {
       setError(err.message);
-      console.error('Error initializing request session:', err);
+      logger.error('Error initializing request session:', err);
     }
   }, [collectorId, isInitialized, loadPersistedSession]);
 
@@ -167,7 +168,7 @@ export const useRequestSession = (collectorId) => {
         }
       }
     } catch (error) {
-      console.error(`Error loading ${status} requests:`, error);
+      logger.error(`Error loading ${status} requests:`, error);
     }
   }, [isInitialized]);
 
@@ -215,7 +216,7 @@ export const useRequestSession = (collectorId) => {
         setNotifications(result.notifications);
       }
     } catch (error) {
-      console.error('Error loading notifications:', error);
+      logger.error('Error loading notifications:', error);
     }
   }, [isInitialized]);
 
@@ -238,7 +239,7 @@ export const useRequestSession = (collectorId) => {
         );
       }
     } catch (error) {
-      console.error('Error marking notification as read:', error);
+      logger.error('Error marking notification as read:', error);
     }
   }, [isInitialized]);
 

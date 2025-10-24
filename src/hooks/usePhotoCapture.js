@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import ImageManager from '../utils/imageManager';
+import { logger } from '../utils/logger';
 
 /**
  * Custom hook for managing photo capture state and operations
@@ -24,11 +25,11 @@ const usePhotoCapture = (requestId) => {
           setIsInitialized(true);
           
           if (process.env.NODE_ENV === 'development') {
-            console.log(`📸 Loaded ${savedPhotos.length} saved photos for request ${requestId}`);
+            logger.debug(`📸 Loaded ${savedPhotos.length} saved photos for request ${requestId}`);
           }
         }
       } catch (err) {
-        console.error('Error loading photos:', err);
+        logger.error('Error loading photos:', err);
         if (isMounted.current) {
           setError('Failed to load saved photos');
         }
@@ -77,12 +78,12 @@ const usePhotoCapture = (requestId) => {
       setPhotos(updatedPhotos);
       
       if (process.env.NODE_ENV === 'development') {
-        console.log('📸 Captured photo:', { id: photoData.id, requestId });
+        logger.debug('📸 Captured photo:', { id: photoData.id, requestId });
       }
       
       return photoData;
     } catch (err) {
-      console.error('Error capturing photo:', err);
+      logger.error('Error capturing photo:', err);
       setError('Failed to capture photo');
       throw err;
     }
@@ -110,10 +111,10 @@ const usePhotoCapture = (requestId) => {
       setPhotos(updatedPhotos);
       
       if (process.env.NODE_ENV === 'development') {
-        console.log(`🗑️ Removed photo ${photoId} from request ${requestId}`);
+        logger.debug(`🗑️ Removed photo ${photoId} from request ${requestId}`);
       }
     } catch (err) {
-      console.error('Error removing photo:', err);
+      logger.error('Error removing photo:', err);
       setError('Failed to remove photo');
       throw err;
     }
@@ -141,10 +142,10 @@ const usePhotoCapture = (requestId) => {
       setError(null);
       
       if (process.env.NODE_ENV === 'development') {
-        console.log(`🧹 Cleared all photos for request ${requestId}`);
+        logger.debug(`🧹 Cleared all photos for request ${requestId}`);
       }
     } catch (err) {
-      console.error('Error clearing photos:', err);
+      logger.error('Error clearing photos:', err);
       setError('Failed to clear photos');
       throw err;
     }

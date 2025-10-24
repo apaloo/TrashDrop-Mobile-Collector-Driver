@@ -8,6 +8,7 @@ import RouteOptimizer from '../components/RouteOptimizer';
 import RouteStatistics from '../components/RouteStatistics';
 import ItemList from '../components/ItemList';
 import { createAnalyticsService } from '../services/analyticsService';
+import { logger } from '../utils/logger';
 
 // Part 1: Main component and state management
 const RouteOptimizationPage = () => {
@@ -31,7 +32,7 @@ const RouteOptimizationPage = () => {
     if (user?.id) {
       const service = createAnalyticsService(user.id);
       setAnalyticsService(service);
-      console.log('✅ Analytics service initialized for collector:', user.id);
+      logger.debug('✅ Analytics service initialized for collector:', user.id);
     }
   }, [user]);
   
@@ -65,12 +66,12 @@ const RouteOptimizationPage = () => {
       maximumAge: 300000         // 5 minute cache (longer cache for better performance)
     };
     
-    console.log('🌍 Attempting to get user location for route optimization...');
+    logger.debug('🌍 Attempting to get user location for route optimization...');
     
     // Enhanced success handler
     const handleLocationSuccess = (position) => {
       const { latitude, longitude, accuracy } = position.coords;
-      console.log(`✅ Location obtained: ${latitude}, ${longitude} (±${accuracy}m)`);
+      logger.debug(`✅ Location obtained: ${latitude}, ${longitude} (±${accuracy}m)`);
       
       setUserLocation({
         latitude,
@@ -90,30 +91,30 @@ const RouteOptimizationPage = () => {
       switch(error.code) {
         case error.PERMISSION_DENIED:
           errorMessage = 'Location access denied. Using approximate location for route planning.';
-          console.warn('🚫 Geolocation permission denied');
+          logger.warn('🚫 Geolocation permission denied');
           break;
         case error.POSITION_UNAVAILABLE:
           errorMessage = 'Location information unavailable. Using approximate location for route planning.';
-          console.warn('📍 Geolocation position unavailable');
+          logger.warn('📍 Geolocation position unavailable');
           break;
         case error.TIMEOUT:
           errorMessage = 'Location request timed out. Using approximate location for route planning.';
-          console.warn('⏰ Geolocation request timed out');
+          logger.warn('⏰ Geolocation request timed out');
           break;
         default:
           errorMessage = error.message || 'Failed to get location. Using approximate location for route planning.';
-          console.warn('❌ Geolocation error:', error);
+          logger.warn('❌ Geolocation error:', error);
           break;
       }
       
-      console.log('🔄 Using fallback location due to geolocation error');
+      logger.debug('🔄 Using fallback location due to geolocation error');
       // Show a non-blocking error message
       setError(errorMessage);
     };
     
     // Try to get location with timeout protection
     const locationTimeout = setTimeout(() => {
-      console.log('⏰ Location request timeout protection triggered, continuing with fallback');
+      logger.debug('⏰ Location request timeout protection triggered, continuing with fallback');
     }, 16000); // Slightly longer than geolocation timeout
     
     // Attempt to get precise location
@@ -139,7 +140,7 @@ const RouteOptimizationPage = () => {
   useEffect(() => {
     const fetchData = async () => {
       if (!analyticsService || !online) {
-        console.log('📍 Skipping data fetch - missing analytics service or offline');
+        logger.debug('📍 Skipping data fetch - missing analytics service or offline');
         return;
       }
       
@@ -147,7 +148,7 @@ const RouteOptimizationPage = () => {
       setError(null);
       
       try {
-        console.log('📊 Fetching current route data from analytics service...');
+        logger.debug('📊 Fetching current route data from analytics service...');
         
         // Use analytics service to get current route data
         const result = await analyticsService.getCurrentRouteData();
@@ -155,7 +156,7 @@ const RouteOptimizationPage = () => {
         if (result.success) {
           const { assignments, requests } = result.data;
           
-          console.log(`✅ Loaded ${assignments.length} assignments and ${requests.length} requests`);
+          logger.debug(`✅ Loaded ${assignments.length} assignments and ${requests.length} requests`);
           
           setAssignments(assignments);
           setRequests(requests);
@@ -169,11 +170,11 @@ const RouteOptimizationPage = () => {
             });
           }
         } else {
-          console.error('Failed to fetch route data:', result.error);
+          logger.error('Failed to fetch route data:', result.error);
           setError(result.error || 'Failed to load route data');
         }
       } catch (error) {
-        console.error('Error in fetchData:', error);
+        logger.error('Error in fetchData:', error);
         setError('Failed to load data. Please try again.');
       } finally {
         setIsLoading(false);
@@ -193,7 +194,7 @@ const RouteOptimizationPage = () => {
     }
     
     try {
-      console.log('🔄 Refreshing route data...');
+      logger.debug('🔄 Refreshing route data...');
       
       // Use analytics service to get fresh route data
       const result = await analyticsService.getCurrentRouteData();
@@ -201,7 +202,7 @@ const RouteOptimizationPage = () => {
       if (result.success) {
         const { assignments, requests } = result.data;
         
-        console.log(`✅ Refreshed: ${assignments.length} assignments, ${requests.length} requests`);
+        logger.debug(`✅ Refreshed: ${assignments.length} assignments, ${requests.length} requests`);
         
         setAssignments(assignments);
         setRequests(requests);
@@ -211,12 +212,12 @@ const RouteOptimizationPage = () => {
         
         return Promise.resolve();
       } else {
-        console.error('Failed to refresh route data:', result.error);
+        logger.error('Failed to refresh route data:', result.error);
         setError(result.error || 'Failed to refresh data');
         return Promise.reject(new Error(result.error));
       }
     } catch (error) {
-      console.error('Error refreshing data:', error);
+      logger.error('Error refreshing data:', error);
       setError('Failed to refresh data. Please try again.');
       return Promise.reject(error);
     }

@@ -3,6 +3,8 @@
  * Provides functions for determining currency based on location
  */
 
+import { logger } from './logger';
+
 // Map of country codes to currency details
 export const CURRENCY_MAP = {
   // Africa
@@ -25,7 +27,7 @@ export const CURRENCY_MAP = {
  */
 export const getCurrencyFromCoordinates = async (coordinates) => {
   if (!coordinates || !coordinates[0] || !coordinates[1]) {
-    console.warn('Invalid coordinates provided, using default currency');
+    logger.warn('Invalid coordinates provided, using default currency');
     return CURRENCY_MAP.GH; // Default to Ghana Cedi
   }
   
@@ -50,7 +52,7 @@ export const getCurrencyFromCoordinates = async (coordinates) => {
     clearTimeout(timeoutId);
     
     if (!response.ok) {
-      console.warn(`Geocoding API returned status ${response.status}`);
+      logger.warn(`Geocoding API returned status ${response.status}`);
       return CURRENCY_MAP.GH; // Default to Ghana Cedi
     }
     
@@ -61,18 +63,18 @@ export const getCurrencyFromCoordinates = async (coordinates) => {
       return CURRENCY_MAP[countryCode];
     }
     
-    console.warn(`No currency mapping found for country code: ${countryCode}`);
+    logger.warn(`No currency mapping found for country code: ${countryCode}`);
     return CURRENCY_MAP.GH; // Default to Ghana Cedi if country not found or not supported
   } catch (error) {
     // Reduce error logging frequency to prevent spam - only log meaningful errors
     if (Math.random() < 0.05) { // Further reduced to 5%
       // Only log if error has meaningful information
       if (error.name === 'AbortError') {
-        console.warn('[Currency] Request timeout - using Ghana Cedi fallback');
+        logger.warn('[Currency] Request timeout - using Ghana Cedi fallback');
       } else if (error.message) {
-        console.warn('[Currency] Network error:', error.message);
+        logger.warn('[Currency] Network error:', error.message);
       } else {
-        console.warn('[Currency] Location detection failed - using Ghana Cedi fallback');
+        logger.warn('[Currency] Location detection failed - using Ghana Cedi fallback');
       }
     }
     // Always default to Ghana if there's an error

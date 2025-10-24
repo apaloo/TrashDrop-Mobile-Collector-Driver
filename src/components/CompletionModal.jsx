@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { isWithinRadius } from '../utils/locationUtils';
 import usePhotoCapture from '../hooks/usePhotoCapture';
+import { logger } from '../utils/logger';
 
 /**
  * Modal component for completing an assignment
@@ -54,7 +55,7 @@ const CompletionModal = ({
   // Show error toast if photo capture fails
   useEffect(() => {
     if (photoError) {
-      console.error('Photo capture error:', photoError);
+      logger.error('Photo capture error:', photoError);
       // You might want to show this to the user via a toast or alert
     }
   }, [photoError]);
@@ -78,13 +79,13 @@ const CompletionModal = ({
   // Get user's current location with enhanced error handling and fallbacks
   const getUserLocation = () => {
     if (!navigator.geolocation) {
-      console.warn('⚠️ Geolocation not supported by this browser');
+      logger.warn('⚠️ Geolocation not supported by this browser');
       handleGeolocationFallback('Geolocation not supported');
       return;
     }
 
     setIsCheckingLocation(true);
-    console.log('🌍 Requesting user location...');
+    logger.debug('🌍 Requesting user location...');
 
     // Enhanced geolocation options for better reliability
     const options = {
@@ -96,7 +97,7 @@ const CompletionModal = ({
     // Success handler
     const handleSuccess = (position) => {
       const { latitude, longitude, accuracy } = position.coords;
-      console.log(`✅ Location obtained: ${latitude}, ${longitude} (±${accuracy}m)`);
+      logger.debug(`✅ Location obtained: ${latitude}, ${longitude} (±${accuracy}m)`);
       
       setUserCoordinates([latitude, longitude]);
       checkLocationProximity([latitude, longitude]);
@@ -110,19 +111,19 @@ const CompletionModal = ({
       switch (error.code) {
         case error.PERMISSION_DENIED:
           errorMessage = 'Location access denied by user';
-          console.warn('🚫 Geolocation permission denied');
+          logger.warn('🚫 Geolocation permission denied');
           break;
         case error.POSITION_UNAVAILABLE:
           errorMessage = 'Location information unavailable';
-          console.warn('📍 Geolocation position unavailable');
+          logger.warn('📍 Geolocation position unavailable');
           break;
         case error.TIMEOUT:
           errorMessage = 'Location request timed out';
-          console.warn('⏰ Geolocation request timed out');
+          logger.warn('⏰ Geolocation request timed out');
           break;
         default:
           errorMessage = error.message || 'Failed to get location';
-          console.warn('❌ Geolocation error:', error);
+          logger.warn('❌ Geolocation error:', error);
           break;
       }
       
@@ -135,7 +136,7 @@ const CompletionModal = ({
 
   // Handle geolocation fallback with enhanced logic
   const handleGeolocationFallback = (reason) => {
-    console.log(`🔄 Using fallback location due to: ${reason}`);
+    logger.debug(`🔄 Using fallback location due to: ${reason}`);
     
     // Use environment variables as fallback
     const fallbackCoords = [defaultLat, defaultLng];
@@ -149,7 +150,7 @@ const CompletionModal = ({
       const withinRange = isWithinRadius(fallbackCoords, coordinates, RADIUS_METERS * 2); // Double the radius for fallback
       setIsWithinRange(withinRange);
       setLocationVerified(true); // Allow completion with fallback location for better UX
-      console.log(`📍 Fallback proximity check: ${withinRange ? 'within range' : 'outside range'} (relaxed criteria)`);
+      logger.debug(`📍 Fallback proximity check: ${withinRange ? 'within range' : 'outside range'} (relaxed criteria)`);
     } else {
       setLocationVerified(true); // Allow completion if no assignment coordinates available
       setIsWithinRange(true);
@@ -188,7 +189,7 @@ const CompletionModal = ({
         await capturePhoto(file);
       }
     } catch (error) {
-      console.error('Error capturing photos:', error);
+      logger.error('Error capturing photos:', error);
       // Error is already handled by the hook
     }
   };
@@ -257,7 +258,7 @@ const CompletionModal = ({
           });
         })
         .catch(err => {
-          console.error('Camera access error:', err);
+          logger.error('Camera access error:', err);
           alert('Could not access camera. Please ensure you have given permission to use the camera.');
         });
     } else {
@@ -286,7 +287,7 @@ const CompletionModal = ({
       clearPhotos();
       setLocationVerified(false);
     } catch (error) {
-      console.error('Error submitting completion:', error);
+      logger.error('Error submitting completion:', error);
       // Show error notification
     } finally {
       setIsSubmitting(false);

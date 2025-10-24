@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { logger } from '../utils/logger';
 
 /**
  * Location Broadcasting Service
@@ -18,7 +19,7 @@ class LocationBroadcastService {
    */
   async startTracking(requestId, collectorId) {
     if (this.isTracking) {
-      console.warn('Location tracking already active');
+      logger.warn('Location tracking already active');
       return;
     }
 
@@ -26,7 +27,7 @@ class LocationBroadcastService {
     this.collectorId = collectorId;
     this.isTracking = true;
 
-    console.log('📍 Starting location tracking for request:', requestId);
+    logger.info('📍 Starting location tracking for request:', requestId);
 
     // Immediate first broadcast
     await this.broadcastLocation();
@@ -49,7 +50,7 @@ class LocationBroadcastService {
     this.isTracking = false;
     this.currentRequestId = null;
     
-    console.log('🛑 Stopped location tracking');
+    logger.info('🛑 Stopped location tracking');
   }
 
   /**
@@ -63,7 +64,7 @@ class LocationBroadcastService {
       const position = await this.getCurrentPosition();
       
       if (!position) {
-        console.warn('Could not get current position for broadcast');
+        logger.warn('Could not get current position for broadcast');
         return;
       }
 
@@ -85,11 +86,11 @@ class LocationBroadcastService {
         .eq('id', this.collectorId);
 
       if (updateError) {
-        console.error('Failed to broadcast location:', updateError);
+        logger.error('Failed to broadcast location:', updateError);
       } else {
         // Only log occasionally to reduce console spam
         if (Math.random() < 0.1) {
-          console.log('📡 Location broadcast successful');
+          logger.debug('📡 Location broadcast successful');
         }
       }
 
@@ -100,7 +101,7 @@ class LocationBroadcastService {
       }
 
     } catch (error) {
-      console.error('Error broadcasting location:', error);
+      logger.error('Error broadcasting location:', error);
     }
   }
 
@@ -125,7 +126,7 @@ class LocationBroadcastService {
           });
         },
         (error) => {
-          console.warn('Geolocation error:', error.message);
+          logger.warn('Geolocation error:', error.message);
           resolve(null);
         },
         {
@@ -173,9 +174,9 @@ class LocationBroadcastService {
           read: false
         });
 
-      console.log('✅ User notified - collector en route');
+      logger.info('✅ User notified - collector en route');
     } catch (error) {
-      console.error('Error notifying user en route:', error);
+      logger.error('Error notifying user en route:', error);
     }
   }
 
@@ -205,9 +206,9 @@ class LocationBroadcastService {
           read: false
         });
 
-      console.log(`✅ ETA update sent: ${etaMinutes} minutes`);
+      logger.info(`✅ ETA update sent: ${etaMinutes} minutes`);
     } catch (error) {
-      console.error('Error updating ETA:', error);
+      logger.error('Error updating ETA:', error);
     }
   }
 }

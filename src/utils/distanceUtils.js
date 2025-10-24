@@ -1,3 +1,5 @@
+import { logger } from './logger';
+
 /**
  * Calculate distance between two points using the Haversine formula
  * @param {Array} start - Starting coordinates [lat, lng]
@@ -6,7 +8,7 @@
  */
 export const calculateDistance = (start, end) => {
   if (!start || !end || !Array.isArray(start) || !Array.isArray(end)) {
-    console.warn('Invalid coordinates:', { start, end });
+    logger.warn('Invalid coordinates:', { start, end });
     return Infinity;
   }
 
@@ -14,7 +16,7 @@ export const calculateDistance = (start, end) => {
   const [lat2, lon2] = end;
 
   if (!lat1 || !lon1 || !lat2 || !lon2) {
-    console.warn('Invalid coordinate values:', { start, end });
+    logger.warn('Invalid coordinate values:', { start, end });
     return Infinity;
   }
 

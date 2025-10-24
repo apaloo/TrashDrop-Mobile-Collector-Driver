@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { logger } from '../utils/logger';
 
 // Google Maps configuration
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
@@ -8,7 +9,7 @@ const loadGoogleMapsAPI = () => {
   return new Promise((resolve, reject) => {
     // Check if Google Maps is already loaded
     if (window.google && window.google.maps) {
-      console.log('✅ Google Maps already loaded');
+      logger.debug('✅ Google Maps already loaded');
       resolve(window.google.maps);
       return;
     }
@@ -16,7 +17,7 @@ const loadGoogleMapsAPI = () => {
     // Check if script is already loading
     const existingScript = document.querySelector(`script[src*="maps.googleapis.com"]`);
     if (existingScript) {
-      console.log('⏳ Google Maps script already exists, waiting for load...');
+      logger.debug('⏳ Google Maps script already exists, waiting for load...');
       // Wait for the existing script to load
       const checkLoaded = () => {
         if (window.google && window.google.maps) {
@@ -29,28 +30,28 @@ const loadGoogleMapsAPI = () => {
       return;
     }
 
-    console.log('📥 Loading Google Maps API...');
+    logger.debug('📥 Loading Google Maps API...');
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=geometry&loading=async`;
     script.async = true;
     script.defer = true;
     
     script.onload = () => {
-      console.log('🔄 Google Maps script loaded, checking API availability...');
+      logger.debug('🔄 Google Maps script loaded, checking API availability...');
       // Add a small delay to ensure the API is fully initialized
       setTimeout(() => {
         if (window.google && window.google.maps) {
-          console.log('✅ Google Maps API fully loaded and ready');
+          logger.debug('✅ Google Maps API fully loaded and ready');
           resolve(window.google.maps);
         } else {
-          console.error('❌ Google Maps API loaded but not available');
+          logger.error('❌ Google Maps API loaded but not available');
           reject(new Error('Google Maps API failed to initialize'));
         }
       }, 100);
     };
     
     script.onerror = (error) => {
-      console.error('❌ Failed to load Google Maps script:', error);
+      logger.error('❌ Failed to load Google Maps script:', error);
       reject(new Error('Failed to load Google Maps API script'));
     };
     
@@ -139,29 +140,29 @@ const GoogleMapComponent = ({
   useEffect(() => {
     const initMap = async () => {
       try {
-        console.log('🗺️ Initializing Google Maps...');
+        logger.debug('🗺️ Initializing Google Maps...');
         setIsLoading(true);
         setHasError(false);
         
         await loadGoogleMapsAPI();
-        console.log('✅ Google Maps API loaded successfully');
+        logger.debug('✅ Google Maps API loaded successfully');
         
         // Wait a bit for the DOM element to be ready
         await new Promise(resolve => setTimeout(resolve, 50));
         
         if (!mapRef.current) {
-          console.log('⚠️ Map ref not ready');
+          logger.warn('⚠️ Map ref not ready');
           setIsLoading(false);
           return;
         }
         
         if (mapInstanceRef.current) {
-          console.log('⚠️ Map already initialized');
+          logger.warn('⚠️ Map already initialized');
           setIsLoading(false);
           return;
         }
 
-        console.log('🎯 Creating map instance...');
+        logger.debug('🎯 Creating map instance...');
         const map = new window.google.maps.Map(mapRef.current, {
           center,
           zoom,
@@ -179,7 +180,7 @@ const GoogleMapComponent = ({
         });
 
         mapInstanceRef.current = map;
-        console.log('🎉 Map instance created successfully!');
+        logger.debug('🎉 Map instance created successfully!');
         
         // Add click handler to center map on user location
         window.centerMapOnUser = () => {
@@ -194,7 +195,7 @@ const GoogleMapComponent = ({
         onMapLoad && onMapLoad(map);
 
       } catch (error) {
-        console.error('❌ Failed to initialize Google Maps:', error);
+        logger.error('❌ Failed to initialize Google Maps:', error);
         setHasError(true);
         setIsLoading(false);
       }

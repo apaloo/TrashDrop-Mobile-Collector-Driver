@@ -1,4 +1,5 @@
 import { calculateDistance } from './distanceUtils';
+import { logger } from './logger';
 
 /**
  * Filter requests based on current filters and user position
@@ -13,7 +14,7 @@ export const filterRequests = (requests, filters, position) => {
   return requests.filter(request => {
     // Skip invalid requests
     if (!request || !request.coordinates || !Array.isArray(request.coordinates)) {
-      console.warn('Invalid request:', request);
+      logger.warn('Invalid request:', request);
       return false;
     }
 

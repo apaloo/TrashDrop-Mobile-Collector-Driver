@@ -1,3 +1,5 @@
+import { logger } from './logger';
+
 const STORAGE_PREFIX = 'trashdrop_photos_';
 const EXPIRATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -13,7 +15,7 @@ class ImageManager {
    */
   static clearAllImages(requestId) {
     if (!requestId) {
-      console.warn('No requestId provided to clearAllImages');
+      logger.warn('No requestId provided to clearAllImages');
       return;
     }
     
@@ -25,13 +27,13 @@ class ImageManager {
         const parsed = JSON.parse(data);
         this.revokeBlobURLs(parsed.photos || []);
       } catch (error) {
-        console.error('Error revoking blob URLs during cleanup:', error);
+        logger.error('Error revoking blob URLs during cleanup:', error);
       }
       
       sessionStorage.removeItem(storageKey);
       
       if (process.env.NODE_ENV === 'development') {
-        console.log(`ℹ️ Cleared image data for request ${requestId}`);
+        logger.debug(`ℹ️ Cleared image data for request ${requestId}`);
       }
     }
   }
@@ -49,7 +51,7 @@ class ImageManager {
             this.revokeBlobURLs(data.photos);
           }
         } catch (error) {
-          console.error(`Error cleaning up ${key}:`, error);
+          logger.error(`Error cleaning up ${key}:`, error);
         }
         sessionStorage.removeItem(key);
       }
@@ -60,7 +62,7 @@ class ImageManager {
     sessionStorage.removeItem(IMAGE_KEYS.ASSIGNMENT_ID);
     
     if (process.env.NODE_ENV === 'development') {
-      console.log('ℹ️ Cleared all image data from session storage');
+      logger.debug('ℹ️ Cleared all image data from session storage');
     }
   }
 
@@ -74,10 +76,10 @@ class ImageManager {
         try {
           URL.revokeObjectURL(photo.url);
           if (process.env.NODE_ENV === 'development') {
-            console.log('ℹ️ Revoked blob URL:', photo.url.substring(0, 25) + '...');
+            logger.debug('ℹ️ Revoked blob URL:', photo.url.substring(0, 25) + '...');
           }
         } catch (error) {
-          console.warn('Failed to revoke blob URL:', error);
+          logger.warn('Failed to revoke blob URL:', error);
         }
       }
     });
@@ -95,7 +97,7 @@ class ImageManager {
     // Clear previous assignment's images if starting a new assignment
     if (currentAssignment && currentAssignment !== assignmentId) {
       if (process.env.NODE_ENV === 'development') {
-        console.log(`🔄 New assignment detected (${assignmentId}), clearing previous assignment data`);
+        logger.debug(`🔄 New assignment detected (${assignmentId}), clearing previous assignment data`);
       }
       this.clearAllImages();
     }
@@ -110,7 +112,7 @@ class ImageManager {
    */
   static getCapturedPhotos(requestId) {
     if (!requestId) {
-      console.warn('No requestId provided to getCapturedPhotos');
+      logger.warn('No requestId provided to getCapturedPhotos');
       return [];
     }
     
@@ -128,7 +130,7 @@ class ImageManager {
       }
       return parsed.photos || [];
     } catch (error) {
-      console.error('Error parsing captured photos:', error);
+      logger.error('Error parsing captured photos:', error);
       return [];
     }
   }
@@ -153,7 +155,7 @@ class ImageManager {
             }
           }
         } catch (error) {
-          console.warn(`Error parsing photo data for key ${key}:`, error);
+          logger.warn(`Error parsing photo data for key ${key}:`, error);
         }
       }
     }
@@ -170,7 +172,7 @@ class ImageManager {
    */
   static saveCapturedPhotos(requestId, photos) {
     if (!requestId || !Array.isArray(photos)) {
-      console.warn('Invalid parameters provided to saveCapturedPhotos');
+      logger.warn('Invalid parameters provided to saveCapturedPhotos');
       return;
     }
 
@@ -191,12 +193,12 @@ class ImageManager {
       sessionStorage.setItem(storageKey, JSON.stringify(data));
       
       if (process.env.NODE_ENV === 'development') {
-        console.log(`💾 Saved ${photos.length} photos for request ${requestId}`);
+        logger.debug(`💾 Saved ${photos.length} photos for request ${requestId}`);
       }
     } catch (error) {
-      console.error('Failed to save photos to session storage:', error);
+      logger.error('Failed to save photos to session storage:', error);
       if (error.name === 'QuotaExceededError') {
-        console.warn('Storage quota exceeded, cleaning up old entries');
+        logger.warn('Storage quota exceeded, cleaning up old entries');
         this.cleanup();
         // Try again after cleanup
         this.saveCapturedPhotos(requestId, photos);
@@ -212,15 +214,15 @@ class ImageManager {
    * @param {string} [photoData.timestamp] - When the photo was taken
    */
   static saveCapturedPhoto(photoData) {
-    console.warn('saveCapturedPhoto is deprecated. Use saveCapturedPhotos instead.');
+    logger.warn('saveCapturedPhoto is deprecated. Use saveCapturedPhotos instead.');
     if (!photoData?.url) {
-      console.warn('Invalid photo data provided');
+      logger.warn('Invalid photo data provided');
       return;
     }
     
     const currentAssignment = sessionStorage.getItem(IMAGE_KEYS.ASSIGNMENT_ID);
     if (!currentAssignment) {
-      console.warn('No current assignment set. Call setCurrentAssignment first.');
+      logger.warn('No current assignment set. Call setCurrentAssignment first.');
       return;
     }
     
@@ -242,7 +244,7 @@ class ImageManager {
   static removePhoto(photoId) {
     const currentAssignment = sessionStorage.getItem(IMAGE_KEYS.ASSIGNMENT_ID);
     if (!currentAssignment) {
-      console.warn('No current assignment set. Call setCurrentAssignment first.');
+      logger.warn('No current assignment set. Call setCurrentAssignment first.');
       return;
     }
     
@@ -256,7 +258,7 @@ class ImageManager {
       // Update the photos in storage
       this.saveCapturedPhotos(currentAssignment, photos);
       if (process.env.NODE_ENV === 'development') {
-        console.log(`🗑️ Removed photo ${photoId}`);
+        logger.debug(`🗑️ Removed photo ${photoId}`);
       }
     }
   }
@@ -281,7 +283,7 @@ class ImageManager {
             cleanedCount++;
           }
         } catch (error) {
-          console.error(`Error cleaning up ${key}:`, error);
+          logger.error(`Error cleaning up ${key}:`, error);
           // If we can't parse it, remove it anyway
           sessionStorage.removeItem(key);
           cleanedCount++;
@@ -290,7 +292,7 @@ class ImageManager {
     });
     
     if (process.env.NODE_ENV === 'development' && cleanedCount > 0) {
-      console.log(`🧹 Cleaned up ${cleanedCount} expired image entries`);
+      logger.debug(`🧹 Cleaned up ${cleanedCount} expired image entries`);
     }
     
     return cleanedCount;

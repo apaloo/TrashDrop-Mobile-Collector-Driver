@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { statusService, COLLECTOR_STATUS, STATUS_CONFIG } from '../services/statusService';
 import Toast from './Toast';
+import { logger } from '../utils/logger';
 
 const StatusButton = ({ className = '', showSessionInfo = false }) => {
   const [statusInfo, setStatusInfo] = useState(statusService.getStatus());
@@ -45,7 +46,7 @@ const StatusButton = ({ className = '', showSessionInfo = false }) => {
       setIsChanging(true);
       await statusService.toggleStatus();
     } catch (error) {
-      console.error('❌ Error toggling status:', error);
+      logger.error('❌ Error toggling status:', error);
       setToast({
         message: 'Failed to change status. Please try again.',
         type: 'error',
@@ -64,7 +65,7 @@ const StatusButton = ({ className = '', showSessionInfo = false }) => {
       await statusService.setStatus(newStatus);
       setShowDetails(false);
     } catch (error) {
-      console.error('❌ Error changing status:', error);
+      logger.error('❌ Error changing status:', error);
       setToast({
         message: 'Failed to change status. Please try again.',
         type: 'error',

@@ -2,6 +2,8 @@
  * Utility functions for offline support in the TrashDrop Mobile Collector Driver app
  */
 
+import { logger } from './logger';
+
 // Check if the device is online
 export const isOnline = () => {
   return navigator.onLine;
@@ -17,7 +19,7 @@ try {
     offlineQueue = JSON.parse(savedQueue);
   }
 } catch (error) {
-  console.error('Error loading offline queue from localStorage:', error);
+  logger.error('Error loading offline queue from localStorage:', error);
 }
 
 // Save queue to localStorage
@@ -25,7 +27,7 @@ const saveQueue = () => {
   try {
     localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
   } catch (error) {
-    console.error('Error saving offline queue to localStorage:', error);
+    logger.error('Error saving offline queue to localStorage:', error);
   }
 };
 

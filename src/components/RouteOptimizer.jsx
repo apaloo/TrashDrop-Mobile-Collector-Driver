@@ -15,6 +15,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.offline';
 import localforage from 'localforage';
+import { logger } from '../utils/logger';
 // Make sure Leaflet CSS is loaded
 import 'leaflet/dist/leaflet.css';
 
@@ -27,7 +28,7 @@ const OfflineTileLayer = ({ tileLayerRef, isOfflineMode }) => {
   useEffect(() => {
     // Create offline-capable layer if in offline mode and not already created
     if (isOfflineMode && (!tileLayerRef.current || !tileLayerRef.current._offlineEnabled)) {
-      console.log('Creating offline tile layer');
+      logger.debug('Creating offline tile layer');
       tileLayerRef.current = createOfflineTileLayer();
       
       // Make sure the layer is added to the map
@@ -99,17 +100,17 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
   useEffect(() => {
     // Initialize offline storage
     initOfflineMapStorage();
-    console.log('Initializing offline map storage');
+    logger.debug('Initializing offline map storage');
     
     // Check if we have cached tiles
     const checkCachedTiles = async () => {
       try {
         const keys = await localforage.keys();
-        console.log('Cached tiles found:', keys.length);
+        logger.debug('Cached tiles found:', keys.length);
         setCachedTileCount(keys.length);
         setIsOfflineMode(keys.length > 0);
       } catch (error) {
-        console.error('Error checking cached tiles:', error);
+        logger.error('Error checking cached tiles:', error);
       }
     };
     
@@ -118,7 +119,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
     // Clean up any existing tile layers when component unmounts
     return () => {
       if (mapRef.current && offlineTileLayerRef.current) {
-        console.log('Cleaning up tile layers');
+        logger.debug('Cleaning up tile layers');
         if (mapRef.current.hasLayer(offlineTileLayerRef.current)) {
           mapRef.current.removeLayer(offlineTileLayerRef.current);
         }
@@ -129,7 +130,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
   // Process route with given assignments, requests, and location
   const processRoute = (assignments, requests, location) => {
     setIsLoading(true);
-    console.log('Processing route with location:', location);
+    logger.debug('Processing route with location:', location);
     
     // Filter only accepted assignments
     const acceptedAssignments = assignments.filter(assignment => 
@@ -141,11 +142,11 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
       request.status === 'pending' || request.status === 'new'
     ) || [];
     
-    console.log('Accepted assignments:', acceptedAssignments.length);
-    console.log('Pending requests:', pendingRequests.length);
+    logger.debug('Accepted assignments:', acceptedAssignments.length);
+    logger.debug('Pending requests:', pendingRequests.length);
     
     if (acceptedAssignments.length === 0 && pendingRequests.length === 0) {
-      console.log('No accepted assignments or pending requests found');
+      logger.debug('No accepted assignments or pending requests found');
       setOptimizedRoute([]);
       setTotalDistance(0);
       setEstimatedTime(0);
@@ -161,7 +162,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
       lng: location.longitude
     };
     
-    console.log('Calculating route from:', startPosition);
+    logger.debug('Calculating route from:', startPosition);
     
     // Combine assignments and requests for route calculation
     // Prioritize assignments first, then add requests
@@ -175,19 +176,19 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
       combinedStops = [...combinedStops, ...requestsWithType];
     }
     
-    console.log('Combined stops for routing:', combinedStops.length);
+    logger.debug('Combined stops for routing:', combinedStops.length);
     
     // Calculate the optimized route with all stops
     const route = calculateNearestNeighborRoute(combinedStops, startPosition);
     const distance = calculateRouteDistance(route, startPosition);
     const time = estimateRouteTime(route, startPosition);
     
-    console.log('Route calculated with stops:', route.length);
+    logger.debug('Route calculated with stops:', route.length);
     
     // Count assignments and requests in the optimized route
     const assignmentCount = route.filter(stop => !stop.type || stop.type === 'assignment').length;
     const requestCount = route.filter(stop => stop.type === 'request').length;
-    console.log(`Route contains ${assignmentCount} assignments and ${requestCount} requests`);
+    logger.debug(`Route contains ${assignmentCount} assignments and ${requestCount} requests`);
     
     setOptimizedRoute(route);
     setTotalDistance(distance);
@@ -209,7 +210,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
     
     // Always ensure we have a valid userLocation
     if (!userLocation) {
-      console.log('No user location provided, using default');
+      logger.debug('No user location provided, using default');
       const defaultLocation = {
         latitude: import.meta.env.VITE_DEFAULT_LATITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LATITUDE) : 5.6037,
         longitude: import.meta.env.VITE_DEFAULT_LONGITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LONGITUDE) : -0.1870,
@@ -250,7 +251,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
   // Handle saving map tiles for offline use
   const handleSaveMapTiles = () => {
     if (!mapRef.current) {
-      console.error('Map reference not available');
+      logger.error('Map reference not available');
       toast.info('Map is still initializing. Please try again in a moment.', {
         position: "top-center",
         autoClose: 3000,
@@ -278,7 +279,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
     // Save tiles for offline use
     const tileLayer = offlineTileLayerRef.current;
     
-    console.log(`Saving tiles for bounds: ${bounds.toBBoxString()}, zoom: ${zoom}`);
+    logger.info(`Saving tiles for bounds: ${bounds.toBBoxString()}, zoom: ${zoom}`);
     
     // Calculate approximate tile count for better progress reporting
     const tileBounds = L.bounds(
@@ -290,7 +291,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
     const zoomLevels = Math.min(zoom + 1, 18) - Math.max(zoom - 1, 0) + 1;
     const approxTileCount = width * height * zoomLevels;
     
-    console.log(`Approximately ${approxTileCount} tiles will be saved`);
+    logger.info(`Approximately ${approxTileCount} tiles will be saved`);
     
     // Show toast notification
     toast.info(`Saving approximately ${approxTileCount} map tiles for offline use...`, {
@@ -305,10 +306,10 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
       validateTile: () => true,
       // Add progress callback
       progress: (count, total) => {
-        console.log(`Saved ${count} of ${total} tiles (${Math.round(count/total*100)}%)`);
+        logger.debug(`Saved ${count} of ${total} tiles (${Math.round(count/total*100)}%)`);
       }
     }).then(() => {
-      console.log('Tiles saved successfully');
+      logger.info('Tiles saved successfully');
       
       // Update the tile count
       return tileLayer.getTileCount();
@@ -322,7 +323,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
         mapRef.current.invalidateSize();
       }
       
-      console.log(`${count} tiles now cached`);
+      logger.info(`${count} tiles now cached`);
       
       // Show success notification
       toast.success(`Successfully saved ${count} map tiles for offline use!`, {
@@ -330,7 +331,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
         autoClose: 3000,
       });
     }).catch((error) => {
-      console.error('Error saving tiles:', error);
+      logger.error('Error saving tiles:', error);
       setIsSavingTiles(false);
       
       // Show error notification
@@ -344,7 +345,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
   // Handle clearing map tiles
   const handleClearMapTiles = () => {
     if (!offlineTileLayerRef.current) {
-      console.error('Offline tile layer not available');
+      logger.error('Offline tile layer not available');
       return;
     }
     
@@ -357,7 +358,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
     });
     
     offlineTileLayerRef.current.deleteTiles().then(() => {
-      console.log('Tiles cleared successfully');
+      logger.info('Tiles cleared successfully');
       setCachedTileCount(0);
       setIsOfflineMode(false);
       setIsClearingTiles(false);
@@ -373,7 +374,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
         autoClose: 3000,
       });
     }).catch((error) => {
-      console.error('Error clearing tiles:', error);
+      logger.error('Error clearing tiles:', error);
       setIsClearingTiles(false);
       
       // Show error notification
@@ -500,7 +501,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
               style={{ height: '100%', width: '100%' }}
               zoomControl={false}
               whenCreated={(map) => {
-                console.log('Map created with center:', mapCenter);
+                logger.debug('Map created with center:', mapCenter);
                 mapRef.current = map;
                 
                 // Apply optimizations
@@ -508,7 +509,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
                 
                 // Initialize the offline tile layer immediately if in offline mode
                 if (isOfflineMode && (!offlineTileLayerRef.current || !offlineTileLayerRef.current._offlineEnabled)) {
-                  console.log('Creating offline tile layer on map creation');
+                  logger.debug('Creating offline tile layer on map creation');
                   offlineTileLayerRef.current = createOfflineTileLayer();
                   offlineTileLayerRef.current.addTo(map);
                 }

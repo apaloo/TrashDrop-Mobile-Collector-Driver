@@ -15,6 +15,7 @@ import { supabase, DEV_MODE, authService } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
 import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, getStopIcon, digitalBinMarkerIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
+import { logger } from '../utils/logger';
 
 // Simple online status check
 const isOnline = () => navigator.onLine;
@@ -424,16 +425,16 @@ const MapPage = () => {
         const cached = localStorage.getItem('userLastPosition');
         if (cached) {
           const cachedPos = JSON.parse(cached);
-          console.log('📍 Using cached position temporarily while fetching GPS:', cachedPos);
+          logger.debug('📍 Using cached position temporarily while fetching GPS:', cachedPos);
           setPosition(cachedPos);
           setIsUsingCachedLocation(true); // Mark as using cached location
           setIsUsingFallbackLocation(false); // No longer using fallback
           return true;
         }
       } catch (e) {
-        console.warn('Failed to load cached position:', e);
+        logger.warn('Failed to load cached position:', e);
       }
-      console.log('🗺️ Using default location (Accra, Ghana) to load map immediately');
+      logger.debug('🗺️ Using default location (Accra, Ghana) to load map immediately');
       return false;
     };
 
@@ -441,9 +442,9 @@ const MapPage = () => {
     const savePositionToCache = (pos) => {
       try {
         localStorage.setItem('userLastPosition', JSON.stringify(pos));
-        console.log('💾 Position cached for next time');
+        logger.debug('💾 Position cached for next time');
       } catch (e) {
-        console.warn('Failed to cache position:', e);
+        logger.warn('Failed to cache position:', e);
       }
     };
 
@@ -472,52 +473,37 @@ const MapPage = () => {
       // Track when we achieve good accuracy (≤50m) to hide "Getting GPS..." indicator
       if (isAccurateEnough && !hasGoodAccuracy) {
         setHasGoodAccuracy(true);
-        console.log('✅ GPS accuracy achieved! ±' + Math.round(accuracy) + 'm - hiding "Getting GPS..." indicator');
+        logger.debug('✅ GPS accuracy achieved! ±' + Math.round(accuracy) + 'm - hiding "Getting GPS..." indicator');
       } else if (!isAccurateEnough && hasGoodAccuracy) {
         // Show indicator again when accuracy degrades beyond 50m
         setHasGoodAccuracy(false);
-        console.log('⚠️ GPS accuracy degraded to ±' + Math.round(accuracy) + 'm - showing "Getting GPS..." again');
+        logger.debug('⚠️ GPS accuracy degraded to ±' + Math.round(accuracy) + 'm - showing "Getting GPS..." again');
       }
       
       // Check if this is a significant location update
       if (isUsingCachedLocation) {
         if (isAccurateEnough) {
-          console.log('🎯 GPS location acquired! Updating from cached to real position:', newPos, `±${Math.round(accuracy)}m`);
+          logger.info('🎯 GPS location acquired! Updating from cached to real position:', newPos, `±${Math.round(accuracy)}m`);
           setIsUsingCachedLocation(false); // Mark as no longer using cached location
         } else {
           // Reduce low accuracy GPS logging to prevent spam
-          if (Math.random() < 0.02) {
-            console.log('📍 GPS reading too inaccurate, keeping cached location:', `±${Math.round(accuracy)}m (need ≤50m)`);
-          }
+          logger.debug('📍 GPS reading too inaccurate, keeping cached location:', `±${Math.round(accuracy)}m (need ≤50m)`);
           return; // Don't update position if accuracy is poor
         }
       } else if (isUsingFallbackLocation) {
         if (isAccurateEnough) {
-          // Reduce GPS location logging to 5% frequency to prevent spam
-          if (Math.random() < 0.05) {
-            console.log('🎯 GPS location acquired! Updating from default to real position:', newPos, `±${Math.round(accuracy)}m`);
-            console.log('💾 Position cached for next time');
-          }
+          logger.info('🎯 GPS location acquired! Updating from default to real position:', newPos, `±${Math.round(accuracy)}m`);
+          logger.debug('💾 Position cached for next time');
           setIsUsingFallbackLocation(false); // Mark as no longer using fallback
         } else {
-          // Reduce low accuracy GPS logging to prevent spam  
-          if (Math.random() < 0.02) {
-            console.log('📍 GPS reading too inaccurate, keeping fallback location:', `±${Math.round(accuracy)}m (need ≤50m)`);
-          }
+          logger.debug('📍 GPS reading too inaccurate, keeping fallback location:', `±${Math.round(accuracy)}m (need ≤50m)`);
           return; // Don't update position if accuracy is poor
         }
       } else {
-        // For live GPS updates, always update but log based on accuracy
         if (isAccurateEnough) {
-          // Reduce regular GPS update logging to 2% frequency
-          if (Math.random() < 0.02) {
-            console.log('📍 GPS location updated:', newPos, `±${Math.round(accuracy)}m`);
-          }
+          logger.debug('📍 GPS location updated:', newPos, `±${Math.round(accuracy)}m`);
         } else {
-          // Reduce low accuracy update logging
-          if (Math.random() < 0.01) {
-            console.log('📍 GPS location updated (low accuracy):', newPos, `±${Math.round(accuracy)}m`);
-          }
+          logger.debug('📍 GPS location updated (low accuracy):', newPos, `±${Math.round(accuracy)}m`);
         }
       }
       
@@ -529,16 +515,13 @@ const MapPage = () => {
     };
 
     const onError = (err) => {
-      // Reduce geolocation error logging frequency - only 10% of the time
-      if (Math.random() < 0.1) {
-        console.error('❌ Location error:', err);
-      }
+      logger.warn('❌ Location error:', err);
       setLocationAttempted(true);
       
       // Flash "Using Cached" briefly, then return to "Getting GPS..." to show continuous effort
       if (isUsingCachedLocation || isUsingFallbackLocation) {
         setShowCachedFlash(true);
-        console.log('⚠️ GPS acquisition failed, using cached/fallback location');
+        logger.debug('⚠️ GPS acquisition failed, using cached/fallback location');
         
         // Clear the flash after 1.5 seconds and return to "Getting GPS..." state
         setTimeout(() => {
@@ -563,7 +546,7 @@ const MapPage = () => {
             };
             navigator.geolocation.getCurrentPosition(onSuccess, (fallbackErr) => {
               // Even if fallback fails, keep trying - don't show permanent error
-              console.log('⚠️ Network location also failed, continuing GPS attempts...');
+              logger.debug('⚠️ Network location also failed, continuing GPS attempts...');
             }, fallbackOptions);
           }, 2000);
           break;
@@ -578,7 +561,7 @@ const MapPage = () => {
           break;
         default:
           // For unknown errors, flash cached status but keep trying
-          console.log(`⚠️ Location error: ${err.message}, continuing attempts...`);
+          logger.debug(`⚠️ Location error: ${err.message}, continuing attempts...`);
       }
     };
 
@@ -615,7 +598,7 @@ const MapPage = () => {
           });
         }
       } catch (err) {
-        console.error('Error loading user profile for nav:', err);
+        logger.error('Error loading user profile for nav:', err);
       }
     };
     
@@ -715,7 +698,7 @@ const MapPage = () => {
       
       // Use mock data in DEV_MODE to avoid API calls
       if (DEV_MODE) {
-        console.log('[DEV MODE] Using mock pickup requests data...');
+        logger.debug('[DEV MODE] Using mock pickup requests data...');
         
         // Mock data for development - mix of pickup requests and digital bins
         data = [
@@ -792,10 +775,10 @@ const MapPage = () => {
           }
         ];
       } else if (online) {
-        console.log('Fetching pickup requests and digital bins from Supabase...');
+        logger.info('Fetching pickup requests and digital bins from Supabase...');
         
         // Log Supabase configuration
-        console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
+        logger.debug('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
         
         // Fetch data from both tables in parallel
         const [pickupRequestsResult, digitalBinsResult] = await Promise.all([
@@ -821,17 +804,17 @@ const MapPage = () => {
         const { data: pickupData, error: pickupError, count: pickupCount } = pickupRequestsResult;
         const { data: binsData, error: binsError, count: binsCount } = digitalBinsResult;
         
-        console.log('Pickup requests query results:', { data: pickupData, error: pickupError, count: pickupCount });
-        console.log('Digital bins query results:', { data: binsData, error: binsError, count: binsCount });
+        logger.debug('Pickup requests query results:', { data: pickupData, error: pickupError, count: pickupCount });
+        logger.debug('Digital bins query results:', { data: binsData, error: binsError, count: binsCount });
         
         // Handle errors
         if (pickupError) {
-          console.error('Pickup requests query error:', pickupError);
+          logger.error('Pickup requests query error:', pickupError);
           throw pickupError;
         }
         
         if (binsError) {
-          console.warn('Digital bins query error (continuing with pickup requests only):', binsError);
+          logger.warn('Digital bins query error (continuing with pickup requests only):', binsError);
         }
         
         // Combine data and add source type identification
@@ -840,7 +823,7 @@ const MapPage = () => {
           source_type: 'pickup_request'
         }));
         
-        console.log('📦 Processed pickup requests:', {
+        logger.debug('📦 Processed pickup requests:', {
           count: pickupRequests.length,
           sample: pickupRequests[0],
           coordinates: pickupRequests.map(r => ({ id: r.id, coords: r.coordinates })).slice(0, 3)
@@ -854,7 +837,7 @@ const MapPage = () => {
             
             if (item.bin_locations && item.bin_locations.coordinates) {
               const binCoords = item.bin_locations.coordinates;
-              console.log('%c🔵 Digital bin coordinate data:', 'color: blue; font-weight: bold', {
+              logger.debug('🔵 Digital bin coordinate data:', {
                 id: item.id,
                 rawCoords: binCoords,
                 coordsType: typeof binCoords
@@ -863,7 +846,7 @@ const MapPage = () => {
               // Handle GeoJSON Point format (most common from Supabase PostGIS)
               if (binCoords && binCoords.type === 'Point' && Array.isArray(binCoords.coordinates)) {
                 const [lng, lat] = binCoords.coordinates;
-                console.log('%c🔵 GeoJSON Point parsing:', 'color: blue; font-weight: bold', {
+                logger.debug('🔵 GeoJSON Point parsing:', {
                   id: item.id,
                   lng: lng,
                   lat: lat
@@ -872,12 +855,12 @@ const MapPage = () => {
                 // Skip digital bins with invalid coordinates (0,0)
                 if (lng !== 0 || lat !== 0) {
                   coordinates = [lat, lng]; // Convert to [lat, lng] format
-                  console.log('%c🔵 Valid GeoJSON coordinates:', 'color: blue; font-weight: bold', {
+                  logger.debug('🔵 Valid GeoJSON coordinates:', {
                     id: item.id,
                     coordinates: coordinates
                   });
                 } else {
-                  console.log('%c🔵 Skipping GeoJSON (0,0):', 'color: blue; font-weight: bold', {
+                  logger.debug('🔵 Skipping GeoJSON (0,0):', {
                     id: item.id,
                     lng: lng,
                     lat: lat
@@ -888,7 +871,7 @@ const MapPage = () => {
               else if (typeof binCoords === 'string' && binCoords.includes('POINT(')) {
                 // Parse PostGIS POINT format: "POINT(lng lat)"
                 const pointMatch = binCoords.match(/POINT\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
-                console.log('%c🔵 POINT parsing result:', 'color: blue; font-weight: bold', {
+                logger.debug('🔵 POINT parsing result:', {
                   id: item.id,
                   binCoords: binCoords,
                   pointMatch: pointMatch
@@ -901,12 +884,12 @@ const MapPage = () => {
                   // Skip digital bins with invalid coordinates (0,0)
                   if (lng !== 0 || lat !== 0) {
                     coordinates = [lat, lng]; // Convert to [lat, lng] format
-                    console.log('%c🔵 Valid coordinates parsed:', 'color: blue; font-weight: bold', {
+                    logger.debug('🔵 Valid coordinates parsed:', {
                       id: item.id,
                       coordinates: coordinates
                     });
                   } else {
-                    console.log('%c🔵 Skipping POINT(0 0):', 'color: blue; font-weight: bold', {
+                    logger.debug('🔵 Skipping POINT(0 0):', {
                       id: item.id,
                       lng: lng,
                       lat: lat
@@ -919,7 +902,7 @@ const MapPage = () => {
                 const lng = binCoords.x;
                 const lat = binCoords.y;
                 
-                console.log('%c🔵 Object coordinate data:', 'color: blue; font-weight: bold', {
+                logger.debug('🔵 Object coordinate data:', {
                   id: item.id,
                   lng: lng,
                   lat: lat
@@ -928,12 +911,12 @@ const MapPage = () => {
                 // Skip digital bins with invalid coordinates (0,0)
                 if (lng !== 0 || lat !== 0) {
                   coordinates = [lat, lng]; // y=lat, x=lng
-                  console.log('%c🔵 Valid object coordinates:', 'color: blue; font-weight: bold', {
+                  logger.debug('🔵 Valid object coordinates:', {
                     id: item.id,
                     coordinates: coordinates
                   });
                 } else {
-                  console.log('%c🔵 Skipping object (0,0):', 'color: blue; font-weight: bold', {
+                  logger.debug('🔵 Skipping object (0,0):', {
                     id: item.id,
                     lng: lng,
                     lat: lat
@@ -953,7 +936,7 @@ const MapPage = () => {
               fee: item.fee || 0
             };
             
-            console.log('%c🔵 Digital bin result:', 'color: blue; font-weight: bold', {
+            logger.debug('🔵 Digital bin result:', {
               id: item.id,
               coordinates: digitalBinResult.coordinates,
               source_type: digitalBinResult.source_type
@@ -964,20 +947,20 @@ const MapPage = () => {
           .filter(bin => {
             // Only include digital bins with valid coordinates
             if (!bin.coordinates || !Array.isArray(bin.coordinates)) {
-              console.log('%c🔵 Skipping digital bin with invalid coordinates:', 'color: blue; font-weight: bold', {
+              logger.debug('🔵 Skipping digital bin with invalid coordinates:', {
                 id: bin.id,
                 coordinates: bin.coordinates
               });
               return false;
             }
-            console.log('%c🔵 Digital bin passed filter:', 'color: blue; font-weight: bold', {
+            logger.debug('🔵 Digital bin passed filter:', {
               id: bin.id,
               coordinates: bin.coordinates
             });
             return true;
           });
         
-        console.log('%c🔵 Final digital bins count:', 'color: blue; font-weight: bold', {
+        logger.debug('🔵 Final digital bins count:', {
           totalFromDB: binsData?.length || 0,
           afterFiltering: digitalBins.length
         });
@@ -1001,13 +984,13 @@ const MapPage = () => {
               if (!Array.isArray(coords) || coords.length !== 2 || 
                   typeof coords[0] !== 'number' || typeof coords[1] !== 'number' ||
                   isNaN(coords[0]) || isNaN(coords[1])) {
-                console.warn('Skipping item with invalid coordinates:', item.id, item.coordinates);
+                logger.warn('Skipping item with invalid coordinates:', item.id, item.coordinates);
                 return null;
               }
               
               // Skip items with missing IDs (prevents 'Cannot accept temporary requests' error)
               if (!item.id) {
-                console.warn('Skipping item with missing ID:', item);
+                logger.warn('Skipping item with missing ID:', item);
                 return null;
               }
               
@@ -1023,19 +1006,16 @@ const MapPage = () => {
                       const cached = localStorage.getItem('userLastPosition');
                       if (cached) {
                         currentPosition = JSON.parse(cached);
-                        // Reduced logging frequency - only log occasionally
-                        if (Math.random() < 0.1) {
-                          console.log('🔧 Using cached position for processing:', currentPosition);
-                        }
+                        logger.debug('🔧 Using cached position for processing:', currentPosition);
                       }
                     } catch (e) {
-                      console.warn('Failed to load cached position for processing:', e);
+                      logger.warn('Failed to load cached position for processing:', e);
                     }
                   }
                   
                   // If still no position, skip processing
                   if (!currentPosition || !Array.isArray(currentPosition) || currentPosition.length !== 2) {
-                    console.warn('⚠️ No valid position available, skipping item processing');
+                    logger.warn('⚠️ No valid position available, skipping item processing');
                     return null;
                   }
                   
@@ -1064,7 +1044,7 @@ const MapPage = () => {
                     estimated_time: item.estimated_time || 'Unknown',
                   };
                 } catch (error) {
-                  console.error('Error processing item:', error);
+                  logger.error('Error processing item:', error);
                   return null;
                 }
               };
@@ -1090,7 +1070,7 @@ const MapPage = () => {
         // Apply filters to populate the requests state with filtered data
         setTimeout(() => applyFilters(), 0);
     } catch (error) {
-      console.error('Error fetching pickup requests:', error);
+      logger.error('Error fetching pickup requests:', error);
       showToast('Failed to load pickup requests', 'error');
       
       // No cache available - show error
@@ -1113,7 +1093,7 @@ const MapPage = () => {
       await fetchRequests();
       showToast('Data refreshed', 'success');
     } catch (error) {
-      console.error('Error refreshing data:', error);
+      logger.error('Error refreshing data:', error);
       showToast('Failed to refresh data', 'error');
     } finally {
       setIsRefreshing(false);
@@ -1139,29 +1119,23 @@ const MapPage = () => {
 
   // Apply filters to requests
   const applyFilters = useCallback(async () => {
-    // Reduce console spam - only log 5% of filter applications
-    if (Math.random() < 0.05) {
-      console.log('🔍 Applying filters...', { filters, allRequestsCount: allRequests.length, position });
-    }
+    logger.debug('🔍 Applying filters...', { filters, allRequestsCount: allRequests.length, position });
     
     // Debug: Check what types of data we're processing
     const digitalBinCount = allRequests.filter(r => r.source_type === 'digital_bin').length;
     const pickupCount = allRequests.filter(r => r.source_type === 'pickup_request').length;
     const undefinedSourceCount = allRequests.filter(r => !r.source_type).length;
-    console.log('🔍 applyFilters input data:', { 
+    logger.debug('🔍 applyFilters input data:', { 
       digitalBins: digitalBinCount, 
       pickupRequests: pickupCount,
       undefinedSource: undefinedSourceCount,
-      total: allRequests.length,
-      samplePickupRequest: allRequests.find(r => r.source_type === 'pickup_request'),
-      sampleDigitalBin: allRequests.find(r => r.source_type === 'digital_bin'),
-      sampleUndefined: allRequests.find(r => !r.source_type)
-    });
+      totalItems: allRequests.length 
+    });  
     
     // Position should always be available now (fallback location ensures this)
     if (!position || !position[0] || !position[1]) {
       // This should rarely happen now that we have fallback location
-      console.warn('⚠️ Position not available even with fallback - this should not happen');
+      logger.warn('⚠️ Position not available even with fallback - this should not happen');
       setRequests([]);
       updateFilteredRequests([]);
       return;
@@ -1175,38 +1149,33 @@ const MapPage = () => {
     // Check collector status - only show requests if online (Uber-like behavior)
     const statusInfo = statusService.getStatus();
     if (!statusInfo.isOnline) {
-      // Reduce offline logging to 1% frequency to prevent spam
-      if (Math.random() < 0.01) {
-        console.log('👤 Collector is offline - hiding all requests (Uber-style)');
-      }
+      logger.debug('👤 Collector is offline - hiding all requests (Uber-style)');
       setRequests([]);
       updateFilteredRequests([]);
       return;
     }
-    // Reduce filter criteria logging to 1% frequency to prevent spam
-    if (Math.random() < 0.01) {
-      console.log('🎯 Filter criteria:', { activeFilter, radiusKm, collectorStatus: statusInfo.status });
-      console.log('DEBUG: Sample requests:', allRequests.slice(0, 2));
-      console.log('🗂️ Waste types in requests:', allRequests.map(r => r.waste_type || r.type).filter(Boolean));
-    }
+    // Filter criteria logging
+    logger.debug('🎯 Filter criteria:', { activeFilter, radiusKm, collectorStatus: statusInfo.status });
+    logger.debug('DEBUG: Sample requests:', allRequests.slice(0, 2));
+    logger.debug('🗂️ Waste types in requests:', allRequests.map(r => r.waste_type || r.type).filter(Boolean));
     
     const searchRadius = filters.searchRadius || filters.maxDistance || 5; // Use searchRadius with fallback to maxDistance
     
     const filteredRequests = allRequests.filter(req => {
       // Skip if request is invalid  
       if (!req || !req.coordinates) {
-        console.log('❌ Filtered out - invalid request or no coordinates:', req?.id);
+        logger.debug('❌ Filtered out - invalid request or no coordinates:', req?.id);
         return false;
       }
       
       // Digital bins use different filtering logic
       if (req.source_type === 'digital_bin') {
-        console.log('🟦 Processing digital bin:', req.id, 'coordinates:', req.coordinates);
+        logger.debug('🟦 Processing digital bin:', req.id, 'coordinates:', req.coordinates);
         // Digital bins are always "available" for collection, skip status check
       } else {
         // Filter by status - only show available requests (for pickup requests only)
         if (req.status !== 'available') {
-          console.log('❌ Filtered out - status not available:', req.id, 'status:', req.status);
+          logger.debug('❌ Filtered out - status not available:', req.id, 'status:', req.status);
           return false;
         }
       }
@@ -1221,9 +1190,9 @@ const MapPage = () => {
           
           // Apply distance filtering properly
           if (distance > radiusKm) {
-            // Log digital bins outside range in blue
+            // Log digital bins outside range
             if (req.source_type === 'digital_bin') {
-              console.log('%c🔵 Digital bin outside filter range:', 'color: blue; font-weight: bold', {
+              logger.debug('🔵 Digital bin outside filter range:', {
                 id: req.id,
                 location: req.location,
                 waste_type: req.waste_type,
@@ -1232,10 +1201,7 @@ const MapPage = () => {
                 coordinates: req.coordinates
               });
             } else {
-              // Reduce console spam - only log 1% of filtered out pickup requests
-              if (Math.random() < 0.01) {
-                console.log('❌ Filtered out - distance too far:', req.id, 'distance:', distance.toFixed(2) + 'km', 'limit:', radiusKm + 'km');
-              }
+              logger.debug('❌ Filtered out - distance too far:', req.id, 'distance:', distance.toFixed(2) + 'km', 'limit:', radiusKm + 'km');
             }
             return false;
           }
@@ -1243,32 +1209,30 @@ const MapPage = () => {
           // Add distance to request for sorting
           req.distance = distance;
           
-          // Log digital bins that pass filters in blue, reduce spam for pickup requests
+          // Log items that pass distance filter
           if (req.source_type === 'digital_bin') {
-            console.log('%c🟦 Digital bin passed distance filter:', 'color: blue; font-weight: bold', {
+            logger.debug('🟦 Digital bin passed distance filter:', {
               id: req.id,
               location: req.location,
               waste_type: req.waste_type,
               distance: distance.toFixed(2) + 'km',
               coordinates: req.coordinates
             });
-          } else if (Math.random() < 0.01) {
-            // Reduce console spam - only log 1% of passed pickup requests
+          } else {
             if (isUsingFallbackLocation) {
-              console.log('📍 Request passed filter (fallback location):', req.id, 'distance:', distance.toFixed(2) + 'km');
+              logger.debug('📍 Request passed filter (fallback location):', req.id, 'distance:', distance.toFixed(2) + 'km');
             } else {
-              console.log('✅ Passed distance filter:', req.id, 'distance:', distance.toFixed(2) + 'km');
+              logger.debug('✅ Passed distance filter:', req.id, 'distance:', distance.toFixed(2) + 'km');
             }
           }
         } catch (error) {
-          console.error('❌ Filtered out - distance calculation error:', {
+          logger.error('❌ Filtered out - distance calculation error:', {
             error: error.message,
             requestId: req?.id,
             sourceType: req?.source_type,
-            coordinates: req?.coordinates,
-            position: position
+            coordinates: req?.coordinates
           });
-          return false;
+          return false; // Skip items that cause distance errors
         }
       }
       
@@ -1276,9 +1240,9 @@ const MapPage = () => {
       if (activeFilter && activeFilter !== 'all') {
         const requestWasteType = req.waste_type || req.type;
         if (requestWasteType !== activeFilter) {
-          // Log digital bins filtered by waste type in blue
+          // Log digital bins filtered by waste type
           if (req.source_type === 'digital_bin') {
-            console.log('%c🔵 Digital bin filtered by waste type:', 'color: blue; font-weight: bold', {
+            logger.debug('🔵 Digital bin filtered by waste type:', {
               id: req.id,
               location: req.location,
               waste_type: requestWasteType,
@@ -1286,7 +1250,7 @@ const MapPage = () => {
               coordinates: req.coordinates
             });
           } else {
-            console.log('❌ Filtered out - waste type mismatch:', req.id, 'request type:', requestWasteType, 'filter:', activeFilter);
+            logger.debug('❌ Filtered out - waste type mismatch:', req.id, 'request type:', requestWasteType, 'filter:', activeFilter);
           }
           return false;
         }
@@ -1296,7 +1260,7 @@ const MapPage = () => {
       if (filters.wasteTypes?.length > 0 && !filters.wasteTypes.includes('All Types')) {
         const requestWasteType = req.waste_type || req.type;
         if (!filters.wasteTypes.includes(requestWasteType)) {
-          console.log('❌ Filtered out - not in wasteTypes array:', req.id, 'request type:', requestWasteType, 'allowed types:', filters.wasteTypes);
+          logger.debug('❌ Filtered out - not in wasteTypes array:', req.id, 'request type:', requestWasteType, 'allowed types:', filters.wasteTypes);
           return false;
         }
       }
@@ -1304,21 +1268,21 @@ const MapPage = () => {
       // Filter by minimum payment
       const minPayment = parseFloat(filters.minPayment) || 0;
       if (minPayment > 0 && (parseFloat(req.fee) || 0) < minPayment) {
-        console.log('❌ Filtered out - payment too low:', req.id, 'fee:', req.fee, 'minimum:', minPayment);
+        logger.debug('❌ Filtered out - payment too low:', req.id, 'fee:', req.fee, 'minimum:', minPayment);
         return false;
       }
       
       // Filter by priority
       if (filters.priority && filters.priority !== 'all' && req.priority !== filters.priority) {
-        console.log('❌ Filtered out - priority mismatch:', req.id, 'request priority:', req.priority, 'filter:', filters.priority);
+        logger.debug('❌ Filtered out - priority mismatch:', req.id, 'request priority:', req.priority, 'filter:', filters.priority);
         return false;
       }
       
       // Log success differently for digital bins vs pickup requests
       if (req.source_type === 'digital_bin') {
-        console.log('🟦 Digital bin passed all filters:', req.id, 'type:', req.waste_type || req.type, 'distance:', req.distance?.toFixed(2) + 'km');
+        logger.debug('🟦 Digital bin passed all filters:', req.id, 'type:', req.waste_type || req.type, 'distance:', req.distance?.toFixed(2) + 'km');
       } else {
-        console.log('✅ Request passed all filters:', req.id, 'type:', req.waste_type || req.type, 'distance:', req.distance?.toFixed(2) + 'km');
+        logger.debug('✅ Request passed all filters:', req.id, 'type:', req.waste_type || req.type, 'distance:', req.distance?.toFixed(2) + 'km');
       }
       return true;
     });
@@ -1331,27 +1295,21 @@ const MapPage = () => {
     // Debug: Check what types survived filtering
     const finalDigitalBins = filteredRequests.filter(r => r.source_type === 'digital_bin').length;
     const finalPickupRequests = filteredRequests.filter(r => r.source_type === 'pickup_request').length;
-    console.log('🔍 applyFilters output data:', { 
+    logger.debug('🔍 applyFilters output data:', { 
       digitalBins: finalDigitalBins, 
       pickupRequests: finalPickupRequests, 
       total: filteredRequests.length 
     });
     
-    // Reduce filtered results logging to 1% frequency
-    if (Math.random() < 0.01) {
-      console.log('Filtered requests:', filteredRequests.length, 'out of', allRequests.length);
-    }
+    logger.debug('Filtered requests:', filteredRequests.length, 'out of', allRequests.length);
     setRequests(filteredRequests);
     
     // DEBUG: Log what we're sharing with Request page
-    // Reduce logging frequency for debug sharing - only 1% of the time
-    if (Math.random() < 0.01) {
-      console.log('DEBUG: Sharing filtered requests with Request page:', {
-        available: filteredRequests,
-        count: filteredRequests.length,
-        firstRequest: filteredRequests[0] || 'none'
-      });
-    }
+    logger.debug('DEBUG: Sharing filtered requests with Request page:', {
+      available: filteredRequests,
+      count: filteredRequests.length,
+      firstRequest: filteredRequests[0] || 'none'
+    });
     
     // Update filtered requests in context
     updateFilteredRequests({ available: filteredRequests });
@@ -1365,10 +1323,7 @@ const MapPage = () => {
   // Effect to reapply filters when position becomes available
   useEffect(() => {
     if (position && position[0] && position[1] && allRequests.length > 0) {
-      // Reduce position reload logging to 1% frequency to prevent spam
-      if (Math.random() < 0.01) {
-        console.log('DEBUG: Position loaded, reapplying filters');
-      }
+      logger.debug('DEBUG: Position loaded, reapplying filters');
       setTimeout(() => applyFilters(), 100); // Small delay to ensure state is updated
     }
   }, [position, allRequests]);
@@ -1377,7 +1332,7 @@ const MapPage = () => {
   const parseCoordinates = (pointString) => {
     // Return default position if no coordinates
     if (!pointString) {
-      console.warn('No coordinates provided, using default position');
+      logger.warn('No coordinates provided, using default position');
       return position;
     }
     
@@ -1445,11 +1400,11 @@ const MapPage = () => {
           return [lat, lng];
         }
       } catch (e) {
-        console.error('Error parsing PostGIS binary format:', e);
+        logger.error('Error parsing PostGIS binary format:', e);
       }
     }
     
-    console.warn('Using default position, could not parse coordinates:', pointString);
+    logger.warn('Using default position, could not parse coordinates:', pointString);
     return position; // Fallback to default position
   };
 
@@ -1679,12 +1634,12 @@ const MapPage = () => {
           })
           .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
-              console.log('Subscribed to pickup_requests and digital_bins tables');
+              logger.info('Subscribed to pickup_requests and digital_bins tables');
               showToast('Live updates enabled', 'success', 2000);
             }
           });
       } catch (error) {
-        console.error('Error setting up real-time subscription:', error);
+        logger.error('Error setting up real-time subscription:', error);
         // Fall back to interval-based updates
         const intervalId = setInterval(() => {
           refreshData();
@@ -1749,7 +1704,7 @@ const MapPage = () => {
       // Refresh the data to ensure consistency
       await fetchAssignments();
     } catch (err) {
-      console.error('Error accepting assignment:', err);
+      logger.error('Error accepting assignment:', err);
       showToast('Failed to accept request. Please try again.', 'error');
     }
   };
@@ -1835,12 +1790,12 @@ const MapPage = () => {
   
   // Handle location errors with more context and recovery options
   const handleLocationError = useCallback((error) => {
-    console.warn('Location warning:', error);
+    logger.warn('Location warning:', error);
     
     // Don't show repeated errors to avoid spamming the user
     const now = Date.now();
     if (lastErrorRef.current && (now - lastErrorRef.current.timestamp < 30000)) {
-      console.log('Suppressing duplicate location error');
+      logger.debug('Suppressing duplicate location error');
       return;
     }
     
@@ -1948,175 +1903,133 @@ const MapPage = () => {
             <WasteLegend />
             
             {/* Request count display - shows filtered requests count */}
-            <div className="absolute top-16 left-2 z-[2000] pointer-events-auto">
-              <div className="bg-green-500 text-white rounded-full w-12 h-12 flex items-center justify-center text-lg shadow-md">
-                {(() => {
-                  // Use the filtered requests from state instead of refiltering
-                  if (!requests || !Array.isArray(requests)) {
-                    console.log('No filtered requests available');
-                    return '0';
-                  }
-                  
-                  // Show count even with fallback position (position should always be available now)
-                  if (!position || position[0] === undefined || position[1] === undefined) {
-                    console.log('No valid position, showing ? - this should not happen with fallback');
-                    return '?';
-                  }
-                  
-                  // Log the current state for debugging - reduced frequency to 1%
-                  if (Math.random() < 0.01) {
-                    console.log('Request count display:', {
-                      totalRequests: allRequests?.length || 0,
-                      filteredRequests: requests.length,
-                      position,
-                      filters: {
-                        searchRadius: filters.searchRadius,
-                        maxDistance: filters.maxDistance,
-                        wasteTypes: filters.wasteTypes,
-                        minPayment: filters.minPayment,
-                        maxPickupTime: filters.maxPickupTime,
-                        priority: filters.priority,
-                        activeFilter: filters.activeFilter,
-                        radiusKm: filters.radiusKm
-                      }
-                    });
-                  }
-                  
-                  return requests.length;
-                })()}
+            
+          {/* Enhanced Online/Offline Status Button */}
+          <div className="absolute top-2 right-0 flex flex-col items-end gap-1 z-[2000] pointer-events-auto" style={{ marginRight: '0.4rem' }}>
+            <StatusButton 
+              showSessionInfo={true}
+              className="transition-all duration-300 hover:scale-105"
+            />
+            
+            {/* GPS Status Indicator - Hide when accuracy ≤50m achieved */}
+            {(isUsingCachedLocation || isUsingFallbackLocation || error || showCachedFlash) && !hasGoodAccuracy && (
+              <div className={`text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 transition-all duration-300 ${
+                (showCachedFlash || (error && error.includes('denied'))) ? 'bg-red-500' : 'bg-orange-500 animate-pulse'
+              }`}>
+                <div className={`w-2 h-2 bg-white rounded-full ${(showCachedFlash || (error && error.includes('denied'))) ? '' : 'animate-spin'}`}></div>
+                {showCachedFlash 
+                  ? 'Using Cached' 
+                  : (error && error.includes('denied'))
+                    ? 'Location Denied'
+                    : 'Getting GPS...'
+                }
               </div>
-            </div>
-            
-            {/* Enhanced Online/Offline Status Button */}
-            <div className="absolute top-2 right-0 flex flex-col items-end gap-1 z-[2000] pointer-events-auto" style={{ marginRight: '0.4rem' }}>
-              <StatusButton 
-                showSessionInfo={true}
-                className="transition-all duration-300 hover:scale-105"
-              />
-              
-              {/* GPS Status Indicator - Hide when accuracy ≤50m achieved */}
-              {(isUsingCachedLocation || isUsingFallbackLocation || error || showCachedFlash) && !hasGoodAccuracy && (
-                <div className={`text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 transition-all duration-300 ${
-                  (showCachedFlash || (error && error.includes('denied'))) ? 'bg-red-500' : 'bg-orange-500 animate-pulse'
-                }`}>
-                  <div className={`w-2 h-2 bg-white rounded-full ${(showCachedFlash || (error && error.includes('denied'))) ? '' : 'animate-spin'}`}></div>
-                  {showCachedFlash 
-                    ? 'Using Cached' 
-                    : (error && error.includes('denied'))
-                      ? 'Location Denied'
-                      : 'Getting GPS...'
-                  }
-                </div>
-              )}
-            </div>
-            
-            <div className="relative h-full">
-              {/* Leaflet Map Container */}
-              {position ? (
-                <MapContainer
-                  center={position}
-                  zoom={13}
-                  style={{ height: '100%', width: '100%' }}
-                  className="z-0"
-                  zoomControl={false}
-                >
-                  <LocationUpdater position={position} setMap={setMap} />
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            )}
+          </div>
+          
+          <div className="relative h-full">
+            {/* Leaflet Map Container */}
+            {position ? (
+              <MapContainer
+                center={position}
+                zoom={13}
+                style={{ height: '100%', width: '100%' }}
+                className="z-0"
+                zoomControl={false}
+              >
+                <LocationUpdater position={position} setMap={setMap} />
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                
+                {/* User location marker */}
+                <Marker position={position} icon={tricycleIcon}>
+                  <Popup>
+                    <div className="text-center">
+                      <p className="font-medium text-blue-600">Your Location</p>
+                      <p className="text-sm text-gray-600">
+                        {isUsingFallbackLocation 
+                          ? 'Default Location (Acquiring GPS...)'
+                          : isUsingCachedLocation 
+                            ? 'Cached Position (Updating...)' 
+                            : hasGoodAccuracy 
+                              ? 'Live GPS Position (High Accuracy ≤50m)'
+                              : 'Live GPS Position'
+                        }
+                      </p>
+                      {lastUpdated && !isUsingCachedLocation && !isUsingFallbackLocation && (
+                        <p className="text-xs text-green-600">Updated: {lastUpdated}</p>
+                      )}
+                      {(isUsingCachedLocation || isUsingFallbackLocation) && !hasGoodAccuracy && (
+                        <p className="text-xs text-orange-600">🔄 Acquiring GPS...</p>
+                      )}
+                      {hasGoodAccuracy && (
+                        <p className="text-xs text-green-600">✅ Accuracy ≤50m achieved</p>
+                      )}
+                    </div>
+                  </Popup>
+                </Marker>
+                
+                {/* Radius circle */}
+                {(filters.searchRadius || filters.maxDistance) && (
+                  <Circle
+                    center={position}
+                    radius={(filters.searchRadius || filters.maxDistance) * 1000}
+                    pathOptions={{
+                      fillColor: '#22c55e',
+                      fillOpacity: 0.1,
+                      color: '#22c55e',
+                      weight: 2,
+                      opacity: 0.8
+                    }}
                   />
+                )}
+                
+                {/* Request markers */}
+                {requests && requests.map((request, index) => {
+                  if (!request.coordinates || !Array.isArray(request.coordinates)) return null;
                   
-                  {/* User location marker */}
-                  <Marker position={position} icon={tricycleIcon}>
-                    <Popup>
-                      <div className="text-center">
-                        <p className="font-medium text-blue-600">Your Location</p>
-                        <p className="text-sm text-gray-600">
-                          {isUsingFallbackLocation 
-                            ? 'Default Location (Acquiring GPS...)'
-                            : isUsingCachedLocation 
-                              ? 'Cached Position (Updating...)' 
-                              : hasGoodAccuracy 
-                                ? 'Live GPS Position (High Accuracy ≤50m)'
-                                : 'Live GPS Position'
-                          }
-                        </p>
-                        {lastUpdated && !isUsingCachedLocation && !isUsingFallbackLocation && (
-                          <p className="text-xs text-green-600">Updated: {lastUpdated}</p>
-                        )}
-                        {(isUsingCachedLocation || isUsingFallbackLocation) && !hasGoodAccuracy && (
-                          <p className="text-xs text-orange-600">🔄 Acquiring GPS...</p>
-                        )}
-                        {hasGoodAccuracy && (
-                          <p className="text-xs text-green-600">✅ Accuracy ≤50m achieved</p>
-                        )}
-                      </div>
-                    </Popup>
-                  </Marker>
+                  // Handle stacked markers with circular spreading pattern
+                  const baseCoords = request.coordinates;
+                  const totalMarkers = requests.length;
                   
-                  {/* Radius circle */}
-                  {(filters.searchRadius || filters.maxDistance) && (
-                    <Circle
-                      center={position}
-                      radius={(filters.searchRadius || filters.maxDistance) * 1000}
-                      pathOptions={{
-                        fillColor: '#22c55e',
-                        fillOpacity: 0.1,
-                        color: '#22c55e',
-                        weight: 2,
-                        opacity: 0.8
+                  // Circular distribution - spread markers in a circle around original point
+                  const angle = (index * 360) / totalMarkers; // Distribute evenly in circle
+                  const radiusKm = 0.002; // ~220 meters radius - clearly visible
+                  
+                  const adjustedCoords = [
+                    baseCoords[0] + (radiusKm * Math.sin(angle * Math.PI / 180)),
+                    baseCoords[1] + (radiusKm * Math.cos(angle * Math.PI / 180))
+                  ];
+                  
+                  // Add visual differentiation with different waste types
+                  const wasteTypes = ['plastic', 'organic', 'general', 'recyclable', 'paper', 'metal'];
+                  const assignedWasteType = request.waste_type || wasteTypes[index % wasteTypes.length];
+                  
+                  // Debug: Log marker coordinates and waste type
+                  logger.debug('🗺️ Rendering marker:', {
+                    id: request.id,
+                    original: request.coordinates,
+                    adjusted: adjustedCoords,
+                    waste_type: request.waste_type || request.type,
+                    source_type: request.source_type,
+                    radius: radiusKm
+                  });
+                  return (
+                    <Marker
+                      key={request.id}
+                      position={adjustedCoords}
+                      icon={createWasteTypeIcon(assignedWasteType, request.source_type)}
+                      eventHandlers={{
+                        click: () => {
+                          navigate('/request', { state: { scrollToRequest: request.id } });
+                        }
                       }}
-                    />
-                  )}
-                  
-                  {/* Request markers */}
-                  {requests && requests.map((request, index) => {
-                    if (!request.coordinates || !Array.isArray(request.coordinates)) return null;
-                    
-                    // Handle stacked markers with circular spreading pattern
-                    const baseCoords = request.coordinates;
-                    const totalMarkers = requests.length;
-                    
-                    // Circular distribution - spread markers in a circle around original point
-                    const angle = (index * 360) / totalMarkers; // Distribute evenly in circle
-                    const radiusKm = 0.002; // ~220 meters radius - clearly visible
-                    
-                    const adjustedCoords = [
-                      baseCoords[0] + (radiusKm * Math.sin(angle * Math.PI / 180)),
-                      baseCoords[1] + (radiusKm * Math.cos(angle * Math.PI / 180))
-                    ];
-                    
-                    // Add visual differentiation with different waste types
-                    const wasteTypes = ['plastic', 'organic', 'general', 'recyclable', 'paper', 'metal'];
-                    const assignedWasteType = request.waste_type || wasteTypes[index % wasteTypes.length];
-                    
-                    // Debug: Log marker coordinates and waste type
-                    // Reduced logging frequency for marker rendering - only 5% of the time
-                    if (Math.random() < 0.05) {
-                      console.log('🗺️ Rendering marker:', {
-                        id: request.id,
-                        original: request.coordinates,
-                        adjusted: adjustedCoords,
-                        angle: angle,
-                        radius: radiusKm,
-                        wasteType: request.waste_type
-                      });
-                    }
-                    
-                    return (
-                      <Marker
-                        key={request.id}
-                        position={adjustedCoords}
-                        icon={createWasteTypeIcon(assignedWasteType, request.source_type)}
-                        eventHandlers={{
-                          click: () => {
-                            navigate('/request', { state: { scrollToRequest: request.id } });
-                          }
-                        }}
-                      >
-                        <Popup>
-                          <div className="text-center max-w-xs">
-                            <h3 className="font-medium text-gray-900 mb-1">
+                    >
+                      <Popup>
+                        <div className="text-center max-w-xs">
+                          <h3 className="font-medium text-gray-900 mb-1">
                               {request.source_type === 'digital_bin' ? (
                                 <>Digital Bin - {assignedWasteType?.charAt(0).toUpperCase() + assignedWasteType?.slice(1)}</>
                               ) : (

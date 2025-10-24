@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { logger } from '../utils/logger';
 
 // Google Maps configuration
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
@@ -8,14 +9,14 @@ const loadGoogleMapsAPI = () => {
   return new Promise((resolve, reject) => {
     // Check if Google Maps is fully loaded with all required objects
     if (window.googleMapsReady && window.google && window.google.maps && window.google.maps.MapTypeId) {
-      console.log('✅ Google Maps fully loaded from preload (Modal)');
+      logger.debug('✅ Google Maps fully loaded from preload (Modal)');
       resolve(window.google.maps);
       return;
     }
     
     // Check if Google Maps is available without preload flag
     if (window.google && window.google.maps && window.google.maps.MapTypeId && window.google.maps.MapTypeId.ROADMAP) {
-      console.log('✅ Google Maps fully loaded (Modal)');
+      logger.debug('✅ Google Maps fully loaded (Modal)');
       resolve(window.google.maps);
       return;
     }
@@ -23,14 +24,14 @@ const loadGoogleMapsAPI = () => {
     // Listen for global ready event or check existing script
     const existingScript = document.querySelector(`script[src*="maps.googleapis.com"]`);
     if (existingScript || window.googleMapsReady === false) {
-      console.log('⏳ Google Maps script exists or preloaded, waiting for complete load... (Modal)');
+      logger.debug('⏳ Google Maps script exists or preloaded, waiting for complete load... (Modal)');
       // Wait for the API to be ready with enhanced validation
       let attempts = 0;
       const maxAttempts = 100; // 10 seconds timeout
       const checkReady = () => {
         if ((window.googleMapsReady && window.google && window.google.maps) ||
             (window.google && window.google.maps && window.google.maps.MapTypeId && window.google.maps.MapTypeId.ROADMAP)) {
-          console.log('✅ Google Maps API fully ready (Modal)');
+          logger.debug('✅ Google Maps API fully ready (Modal)');
           resolve(window.google.maps);
         } else if (attempts++ < maxAttempts) {
           setTimeout(checkReady, 100);
@@ -43,14 +44,14 @@ const loadGoogleMapsAPI = () => {
     }
 
     // Create new script
-    console.log('🔄 Loading Google Maps API script... (Modal)');
+    logger.debug('🔄 Loading Google Maps API script... (Modal)');
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=geometry&loading=async`;
     script.async = true;
     script.defer = true;
 
     script.onload = () => {
-      console.log('📜 Google Maps script loaded, validating complete API... (Modal)');
+      logger.debug('📜 Google Maps script loaded, validating complete API... (Modal)');
       // Poll for complete API availability with enhanced validation
       let attempts = 0;
       const maxAttempts = 100; // 10 seconds timeout
@@ -59,7 +60,7 @@ const loadGoogleMapsAPI = () => {
             window.google.maps && 
             window.google.maps.MapTypeId && 
             window.google.maps.MapTypeId.ROADMAP) {
-          console.log('✅ Google Maps API fully ready with MapTypeId (Modal)');
+          logger.debug('✅ Google Maps API fully ready with MapTypeId (Modal)');
           resolve(window.google.maps);
         } else if (attempts++ < maxAttempts) {
           setTimeout(checkFullyLoaded, 100);
@@ -71,7 +72,7 @@ const loadGoogleMapsAPI = () => {
     };
 
     script.onerror = (error) => {
-      console.error('❌ Failed to load Google Maps script (Modal):', error);
+      logger.error('❌ Failed to load Google Maps script (Modal):', error);
       // Check for common API key issues
       if (error.type === 'error' || error.message?.includes('ApiNotActivatedMapError')) {
         reject(new Error('Google Maps API key invalid or not activated. Please check your API key configuration.'));
@@ -143,13 +144,13 @@ const normalizeCoords = (coords) => {
       if (pointMatch) {
         const lng = parseFloat(pointMatch[1]);
         const lat = parseFloat(pointMatch[2]);
-        console.log('📍 Parsed PostGIS POINT coordinates:', { lat, lng });
+        logger.debug('📍 Parsed PostGIS POINT coordinates:', { lat, lng });
         return [lat, lng];
       }
       
       // Handle PostGIS binary format - extract readable coordinates
       if (coords.startsWith('0101000020')) {
-        console.warn('⚠️ PostGIS binary format detected - using fallback coordinates');
+        logger.warn('⚠️ PostGIS binary format detected - using fallback coordinates');
         // For now, return Accra coordinates as fallback
         // TODO: Implement proper PostGIS binary parsing
         return [5.6037, -0.1870]; // Accra, Ghana
@@ -165,7 +166,7 @@ const normalizeCoords = (coords) => {
         }
       }
     } catch (error) {
-      console.error('Error parsing string coordinates:', error);
+      logger.error('Error parsing string coordinates:', error);
     }
   }
   
@@ -178,7 +179,7 @@ const normalizeCoords = (coords) => {
     }
   }
   
-  console.warn('Unable to normalize coordinates:', coords);
+  logger.warn('Unable to normalize coordinates:', coords);
   return null;
 };
 
@@ -211,7 +212,7 @@ const GoogleMapModalComponent = ({
     try {
       setIsLoading(true);
       setHasError(false);
-      console.log('📍 Initializing Google Maps modal...');
+      logger.debug('📍 Initializing Google Maps modal...');
       
       // Validate API key first
       if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === 'your-api-key-here') {
@@ -256,7 +257,7 @@ const GoogleMapModalComponent = ({
         ]
       });
 
-      console.log('✅ Google Maps modal created successfully');
+      logger.debug('✅ Google Maps modal created successfully');
       
       // Store references
       mapInstanceRef.current = map;
@@ -279,7 +280,7 @@ const GoogleMapModalComponent = ({
       
       setIsLoading(false);
     } catch (error) {
-      console.error('❌ Google Maps initialization failed:', error);
+      logger.error('❌ Google Maps initialization failed:', error);
       setHasError(true);
       setErrorMessage(error.message);
       setIsLoading(false);
@@ -314,7 +315,7 @@ const GoogleMapModalComponent = ({
       }
       
       if (!mapRef.current) {
-        console.error('❌ Map container still not found after waiting');
+        logger.error('❌ Map container still not found after waiting');
         setHasError(true);
         setErrorMessage('Map container not available');
         setIsLoading(false);
@@ -324,7 +325,7 @@ const GoogleMapModalComponent = ({
       try {
         await initMap();
       } catch (error) {
-        console.error('❌ Failed to initialize Google Maps modal:', error);
+        logger.error('❌ Failed to initialize Google Maps modal:', error);
         setHasError(true);
         setErrorMessage(error.message || 'Failed to load navigation map');
         setIsLoading(false);
@@ -348,13 +349,13 @@ const GoogleMapModalComponent = ({
     const normalizedDestination = normalizeCoords(destination);
     
     if (!normalizedUserLocation || !normalizedDestination) {
-      console.error('❌ Invalid coordinates provided:', { userLocation, destination });
+      logger.error('❌ Invalid coordinates provided:', { userLocation, destination });
       return;
     }
 
     // Only log route setup occasionally to reduce console spam
     if (Math.random() < 0.1) { // 10% chance
-      console.log('🧭 Setting up navigation route from', normalizedUserLocation, 'to', normalizedDestination);
+      logger.debug('🧭 Setting up navigation route from', normalizedUserLocation, 'to', normalizedDestination);
     }
 
     // Clear existing markers (handle both modern and legacy)
@@ -455,10 +456,10 @@ const GoogleMapModalComponent = ({
           directionsRendererRef.current.setDirections(result);
           // Only log successful route calculation occasionally to reduce console spam
           if (Math.random() < 0.05) { // 5% chance
-            console.log('✅ Route calculated successfully');
+            logger.debug('✅ Route calculated successfully');
           }
         } else {
-          console.warn('⚠️ Directions request failed due to', status, '- showing markers only');
+          logger.warn('⚠️ Directions request failed due to', status, '- showing markers only');
           // Clear any existing route
           if (directionsRendererRef.current) {
             directionsRendererRef.current.setDirections({ routes: [] });

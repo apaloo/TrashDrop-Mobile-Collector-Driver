@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { logger } from '../utils/logger';
 
 /**
  * Pull-to-refresh component for mobile interfaces
@@ -63,7 +64,7 @@ const PullToRefresh = ({
         try {
           Promise.resolve(onRefresh())
             .catch(err => {
-              console.error('Error during refresh:', err);
+              logger.error('Error during refresh:', err);
               // Don't propagate the error to prevent potential auth state changes
             })
             .finally(() => {
@@ -71,7 +72,7 @@ const PullToRefresh = ({
               setIsPulling(false);
             });
         } catch (err) {
-          console.error('Error during refresh:', err);
+          logger.error('Error during refresh:', err);
           setIsRefreshing(false);
           setIsPulling(false);
         }

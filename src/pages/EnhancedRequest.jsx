@@ -7,6 +7,7 @@ import { useRequestSession } from '../hooks/useRequestSession';
 import RequestCard from '../components/RequestCard';
 import Toast from '../components/Toast';
 import { getCurrentLocation } from '../utils/geoUtils';
+import { logger } from '../utils/logger';
 
 /**
  * Enhanced Request Page with session management and real-time updates
@@ -68,7 +69,7 @@ const EnhancedRequestPage = () => {
         const location = await getCurrentLocation();
         setUserLocation(location);
       } catch (error) {
-        console.warn('Could not get user location:', error);
+        logger.warn('Could not get user location:', error);
         // Fallback to Accra, Ghana
         setUserLocation({ lat: 5.6037, lng: -0.1870 });
       }
