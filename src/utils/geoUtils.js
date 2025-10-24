@@ -329,41 +329,117 @@ const geocodeCache = new Map();
 const GEOCODE_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
- * Reverse geocodes coordinates to a human-readable address
- * @param {number} lat - Latitude
- * @param {number} lng - Longitude
- * @returns {Promise<string>} Address string or formatted coordinates as fallback
+ * Rate limiting for Nominatim API (max 1 request per second)
  */
-export const reverseGeocode = async (lat, lng) => {
-  if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
-    return 'Location unavailable';
-  }
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 1000; // 1 second between requests
+const requestQueue = [];
+let isProcessingQueue = false;
 
-  // Create cache key
-  const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+/**
+ * Circuit breaker for geocoding API
+ * Stops attempts after repeated failures to avoid console spam
+ */
+const circuitBreaker = {
+  failures: 0,
+  lastFailureTime: 0,
+  isOpen: false,
+  failureThreshold: 5, // Open circuit after 5 failures
+  resetTimeout: 60000, // Try again after 1 minute
   
-  // Check cache first
-  const cached = geocodeCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < GEOCODE_CACHE_DURATION) {
-    return cached.address;
+  recordFailure() {
+    this.failures++;
+    this.lastFailureTime = Date.now();
+    
+    if (this.failures >= this.failureThreshold) {
+      this.isOpen = true;
+      logger.warn(`🚫 Geocoding circuit breaker opened after ${this.failures} failures. Will retry in 1 minute.`);
+    }
+  },
+  
+  recordSuccess() {
+    this.failures = 0;
+    this.isOpen = false;
+  },
+  
+  shouldAllowRequest() {
+    // Check if circuit should be reset
+    if (this.isOpen && Date.now() - this.lastFailureTime > this.resetTimeout) {
+      logger.info('🔄 Geocoding circuit breaker reset - attempting new requests');
+      this.isOpen = false;
+      this.failures = 0;
+    }
+    
+    return !this.isOpen;
   }
+};
 
+const processGeocodeQueue = async () => {
+  if (isProcessingQueue || requestQueue.length === 0) return;
+  
+  isProcessingQueue = true;
+  
+  while (requestQueue.length > 0) {
+    const timeSinceLastRequest = Date.now() - lastRequestTime;
+    if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+      await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL - timeSinceLastRequest));
+    }
+    
+    const { lat, lng, resolve, reject } = requestQueue.shift();
+    lastRequestTime = Date.now();
+    
+    try {
+      const result = await performReverseGeocode(lat, lng);
+      resolve(result);
+    } catch (error) {
+      reject(error);
+    }
+  }
+  
+  isProcessingQueue = false;
+};
+
+const performReverseGeocode = async (lat, lng, retryCount = 0) => {
+  // Check circuit breaker before attempting request
+  if (!circuitBreaker.shouldAllowRequest()) {
+    logger.debug(`⚡ Geocoding blocked by circuit breaker for ${lat}, ${lng}`);
+    throw new Error('Circuit breaker open - geocoding temporarily disabled');
+  }
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+  
   try {
-    // Use OpenStreetMap Nominatim API (free, no API key required)
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=18&addressdetails=1`,
-      {
-        headers: {
-          'User-Agent': 'TrashDropCollectorApp/1.0'
-        }
+    // Use Netlify serverless function to proxy Nominatim API (avoids CORS issues)
+    // In development, this will fall back to direct API call if function not available
+    const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+    const apiUrl = isProduction 
+      ? `/.netlify/functions/geocode?lat=${lat}&lng=${lng}`
+      : `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=16&addressdetails=1`;
+    
+    const response = await fetch(apiUrl, {
+      signal: controller.signal,
+      headers: isProduction ? {
+        'Accept': 'application/json'
+      } : {
+        'User-Agent': 'TrashDropCollectorApp/1.0',
+        'Accept': 'application/json',
+        'Accept-Language': 'en'
       }
-    );
+    });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`Geocoding failed: ${response.status}`);
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
     const data = await response.json();
+    
+    // Check if we got valid data
+    if (data.error) {
+      throw new Error(data.error);
+    }
     
     // Extract meaningful address components
     let address = '';
@@ -384,6 +460,8 @@ export const reverseGeocode = async (lat, lng) => {
         parts.push(data.address.neighbourhood);
       } else if (data.address.suburb) {
         parts.push(data.address.suburb);
+      } else if (data.address.village) {
+        parts.push(data.address.village);
       }
       
       // Add city/town
@@ -391,6 +469,8 @@ export const reverseGeocode = async (lat, lng) => {
         parts.push(data.address.city);
       } else if (data.address.town) {
         parts.push(data.address.town);
+      } else if (data.address.county) {
+        parts.push(data.address.county);
       }
       
       address = parts.filter(Boolean).join(', ');
@@ -399,26 +479,93 @@ export const reverseGeocode = async (lat, lng) => {
     // Fallback to display_name if no structured address
     if (!address && data.display_name) {
       // Take first 3 parts of display_name for brevity
-      const parts = data.display_name.split(',').slice(0, 3);
-      address = parts.join(',');
+      const parts = data.display_name.split(',').slice(0, 3).map(p => p.trim());
+      address = parts.join(', ');
     }
     
-    // Final fallback to coordinates
-    if (!address) {
-      address = formatCoordinates(lat, lng);
+    if (address) {
+      logger.info(`✅ Geocoded: ${lat},${lng} → ${address.substring(0, 50)}`);
+      // Record success with circuit breaker
+      circuitBreaker.recordSuccess();
     }
     
-    // Cache the result
+    return address || null;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    // Record failure with circuit breaker
+    circuitBreaker.recordFailure();
+    
+    // Better error logging with diagnostics (but less frequent due to circuit breaker)
+    if (error.name === 'AbortError') {
+      logger.warn(`⏱️ Geocoding timeout (${lat}, ${lng})`);
+    } else if (error.message.includes('Failed to fetch')) {
+      logger.warn(`🌐 Network/CORS error geocoding (${lat}, ${lng}) - Circuit breaker at ${circuitBreaker.failures}/${circuitBreaker.failureThreshold} failures`);
+    } else if (!error.message.includes('Circuit breaker')) {
+      logger.warn(`❌ Geocoding failed (${lat}, ${lng}):`, error.message);
+    }
+    
+    // Retry once if it's a network error and we haven't retried yet
+    if (retryCount === 0 && error.message.includes('Failed to fetch') && circuitBreaker.failures < circuitBreaker.failureThreshold) {
+      logger.info(`🔄 Retrying geocode for ${lat}, ${lng}`);
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+      return performReverseGeocode(lat, lng, 1);
+    }
+    
+    throw error;
+  }
+}
+
+/**
+ * Reverse geocodes coordinates to a human-readable address
+ * @param {number} lat - Latitude
+ * @param {number} lng - Longitude
+ * @returns {Promise<string>} Address string or formatted coordinates as fallback
+ */
+export const reverseGeocode = async (lat, lng) => {
+  if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+    return 'Location unavailable';
+  }
+
+  // Create cache key
+  const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  
+  // Check cache first
+  const cached = geocodeCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < GEOCODE_CACHE_DURATION) {
+    return cached.address;
+  }
+
+  try {
+    // Add to queue for rate limiting
+    const address = await new Promise((resolve, reject) => {
+      requestQueue.push({ lat, lng, resolve, reject });
+      processGeocodeQueue();
+    });
+    
+    // If we got an address, cache it
+    if (address) {
+      geocodeCache.set(cacheKey, {
+        address,
+        timestamp: Date.now()
+      });
+      return address;
+    }
+    
+    // No address found, use coordinates
+    // Fallback to formatted coordinates
+    return formatCoordinates(lat, lng);
+  } catch (error) {
+    // Fallback to formatted coordinates on any error
+    const coords = formatCoordinates(lat, lng);
+    
+    // Cache the coordinate fallback to avoid repeated failed requests
     geocodeCache.set(cacheKey, {
-      address,
+      address: coords,
       timestamp: Date.now()
     });
     
-    return address;
-  } catch (error) {
-    logger.warn('Reverse geocoding failed:', error.message);
-    // Fallback to formatted coordinates
-    return formatCoordinates(lat, lng);
+    return coords;
   }
 };
 
