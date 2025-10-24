@@ -3,7 +3,7 @@
  * Provides Uber-like online/offline functionality for drivers
  */
 
-import { supabase, DEV_MODE } from './supabase';
+import { supabase } from './supabase';
 import { logger } from '../utils/logger';
 
 // Status constants
@@ -201,14 +201,6 @@ class CollectorStatusService {
    */
   async updateBackendStatus(status, reason, timestamp) {
     try {
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Simulating backend status update:', {
-          status,
-          reason,
-          timestamp
-        });
-        return;
-      }
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
@@ -237,10 +229,6 @@ class CollectorStatusService {
    */
   async syncStatusWithBackend() {
     try {
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Simulating status sync with backend');
-        return;
-      }
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
@@ -269,15 +257,6 @@ class CollectorStatusService {
    */
   async saveSessionToBackend(startTime, endTime, duration) {
     try {
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Simulating session save:', {
-          startTime,
-          endTime,
-          duration,
-          stats: this.sessionStats
-        });
-        return;
-      }
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 

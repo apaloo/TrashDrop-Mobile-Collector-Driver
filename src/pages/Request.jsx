@@ -268,7 +268,7 @@ const RequestPage = () => {
                   .select('*')
                   .eq('collector_id', user?.id)
                   .eq('status', 'accepted')
-                  .order('accepted_at', { ascending: false })
+                  .order('created_at', { ascending: false })
               ]).then(([pickupResult, binsResult]) => {
                 if (pickupResult.error) {
                   logger.warn('Accepted pickup requests query failed:', pickupResult.error);
@@ -305,7 +305,7 @@ const RequestPage = () => {
                   .select('*')
                   .eq('collector_id', user?.id)
                   .eq('status', 'picked_up')
-                  .order('accepted_at', { ascending: false })
+                  .order('created_at', { ascending: false })
               ]).then(([pickupResult, binsResult]) => {
                 if (pickupResult.error) {
                   logger.warn('Picked up pickup requests query failed:', pickupResult.error);

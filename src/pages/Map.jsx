@@ -11,7 +11,7 @@ import BottomNavBar from '../components/BottomNavBar';
 import Toast from '../components/Toast';
 import StatusButton from '../components/StatusButton';
 import { useAuth } from '../context/AuthContext';
-import { supabase, DEV_MODE, authService } from '../services/supabase';
+import { supabase, authService } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
 import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, getStopIcon, digitalBinMarkerIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
@@ -684,7 +684,7 @@ const MapPage = () => {
     return `${distanceKm.toFixed(1)}km`;
   };
   
-  // Fetch requests from Supabase or use mock data in DEV_MODE
+  // Fetch requests from Supabase
   const fetchRequests = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -696,85 +696,8 @@ const MapPage = () => {
       
       let data = [];
       
-      // Use mock data in DEV_MODE to avoid API calls
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Using mock pickup requests data...');
-        
-        // Mock data for development - mix of pickup requests and digital bins
-        data = [
-          {
-            id: 'mock-1',
-            waste_type: 'plastic',
-            coordinates: [5.672505, -0.280669], // Near Accra
-            location: 'East Legon, Accra',
-            fee: 50,
-            status: 'available',
-            priority: 'medium',
-            bag_count: 2,
-            special_instructions: 'Plastic bottles and containers',
-            source_type: 'pickup_request',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          {
-            id: 'mock-2',
-            waste_type: 'organic',
-            coordinates: [5.6801, -0.2874], // Accra area
-            location: 'Osu, Accra',
-            fee: 30,
-            status: 'available',
-            priority: 'high',
-            bag_count: 1,
-            special_instructions: 'Food waste and organic materials',
-            source_type: 'pickup_request',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          {
-            id: 'mock-3',
-            waste_type: 'paper',
-            coordinates: [5.6644, -0.2656], // Accra central
-            location: 'Adabraka, Accra',
-            fee: 25,
-            status: 'available',
-            priority: 'low',
-            bag_count: 3,
-            special_instructions: 'Old newspapers and cardboard',
-            source_type: 'pickup_request',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          // Digital bins
-          {
-            id: 'digital-bin-1',
-            waste_type: 'general',
-            coordinates: [5.6705, -0.2750], // Near East Legon
-            location: 'East Legon Digital Bin Station',
-            fee: 0, // Digital bins are free
-            status: 'available',
-            priority: 'medium',
-            source_type: 'digital_bin',
-            bin_capacity: '80%',
-            last_emptied: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          {
-            id: 'digital-bin-2',
-            waste_type: 'recycling',
-            coordinates: [5.6820, -0.2890], // Near Osu
-            location: 'Osu Smart Recycling Hub',
-            fee: 0,
-            status: 'available',
-            priority: 'high',
-            source_type: 'digital_bin',
-            bin_capacity: '95%',
-            last_emptied: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ];
-      } else if (online) {
+      // Fetch real data from Supabase
+      if (online) {
         logger.info('Fetching pickup requests and digital bins from Supabase...');
         
         // Log Supabase configuration
@@ -974,7 +897,7 @@ const MapPage = () => {
         return;
       }
       
-      // Transform the data to match our expected format (for DEV_MODE and online cases)
+      // Transform the data to match our expected format
       const transformedData = data
           .map(item => {
               if (!item) return null;

@@ -30,24 +30,7 @@ const EarningsPage = lazy(() => import('./pages/Earnings'));
 const ProfilePage = lazy(() => import('./pages/Profile'));
 const RouteOptimizationPage = lazy(() => import('./pages/RouteOptimization'));
 
-// Clear stale test-user-id session data
-const clearStaleSession = () => {
-    const devModeSession = localStorage.getItem('dev_mode_session');
-    if (devModeSession) {
-      const session = JSON.parse(devModeSession);
-      if (session?.user?.id === 'test-user-id') {
-        logger.debug('Clearing stale test-user-id session data');
-        localStorage.removeItem('dev_mode_session');
-      }
-    }
-  }
-  
-  // Execute cleanup on app startup
-  if (process.env.NODE_ENV === 'development') {
-    clearStaleSession();
-  }
-
-// Component to handle cleanup on route changes
+// Clean up image resources when navigating away from request pages
 const RouteCleanup = () => {
   const location = useLocation();
   
@@ -70,34 +53,16 @@ const RouteCleanup = () => {
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading, user, hasLoggedOut } = useAuth();
   
-  // Check for dev mode session in localStorage directly for extra safety
-  const hasDevModeSession = localStorage.getItem('dev_mode_session') !== null;
-  
   // Debug logging
   logger.debug('ProtectedRoute check:', { 
     isAuthenticated, 
     loading, 
     hasUser: !!user,
-    hasDevModeSession,
     hasLoggedOut
   });
   
-  // CRITICAL: Don't block UI on loading - show app immediately
-  // Only block if user has explicitly logged out
-  // if (loading) {
-  //   return (
-  //     <div className="flex h-screen items-center justify-center bg-gray-50">
-  //       <div className="text-center">
-  //         <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
-  //         <p className="mt-4 text-gray-700 font-medium">🔐 Checking access...</p>
-  //         <p className="mt-1 text-sm text-gray-500">Verifying your permissions</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
-  
-  // Allow access if authenticated OR if we have a dev mode session AND user hasn't logged out
-  if ((!isAuthenticated && !hasDevModeSession) || hasLoggedOut) {
+  // Redirect to login if not authenticated or has logged out
+  if (!isAuthenticated || hasLoggedOut) {
     logger.debug('Access denied: User not authenticated or has logged out');
     return <Navigate to="/login" replace />;
   }
@@ -108,33 +73,16 @@ const ProtectedRoute = ({ children }) => {
 const PublicRoute = ({ children }) => {
   const { isAuthenticated, loading, hasLoggedOut } = useAuth();
   
-  // Check for dev mode session in localStorage directly for extra safety
-  const hasDevModeSession = localStorage.getItem('dev_mode_session') !== null;
-  
   // Debug logging
   logger.debug('PublicRoute check:', { 
     isAuthenticated, 
     loading, 
-    hasDevModeSession,
     hasLoggedOut
   });
   
-  // CRITICAL: Don't block UI on loading - show app immediately
-  // if (loading) {
-  //   return (
-  //     <div className="flex h-screen items-center justify-center bg-gray-50">
-  //       <div className="text-center">
-  //         <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
-  //         <p className="mt-4 text-gray-700 font-medium">⚡ Loading app...</p>
-  //         <p className="mt-1 text-sm text-gray-500">Setting up your workspace</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
-  
-  // Only redirect to map if authenticated OR if we have a dev mode session AND user hasn't logged out
-  if ((isAuthenticated || hasDevModeSession) && !hasLoggedOut) {
-    logger.debug('Redirecting to map: User is authenticated or has dev mode session and has not logged out');
+  // Redirect to map if authenticated and hasn't logged out
+  if (isAuthenticated && !hasLoggedOut) {
+    logger.debug('Redirecting to map: User is authenticated');
     return <Navigate to="/map" replace />;
   }
   
@@ -272,33 +220,15 @@ function App() {
 const DefaultRedirect = () => {
   const { isAuthenticated, loading, hasLoggedOut } = useAuth();
   
-  // Check for dev mode session in localStorage directly for extra safety
-  const hasDevModeSession = localStorage.getItem('dev_mode_session') !== null;
-  
   // Debug logging
   logger.debug('DefaultRedirect check:', { 
     isAuthenticated, 
     loading, 
-    hasDevModeSession,
     hasLoggedOut
   });
   
-  // CRITICAL: Don't block UI on loading - decide immediately based on current state
-  // Background auth checks will update this later if needed
-  // if (loading) {
-  //   return (
-  //     <div className="flex h-screen items-center justify-center bg-gray-50">
-  //       <div className="text-center">
-  //         <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
-  //         <p className="mt-4 text-gray-700 font-medium">🚀 Starting up...</p>
-  //         <p className="mt-1 text-sm text-gray-500">Preparing your dashboard</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
-  
-  // Redirect based on authentication status OR dev mode session, but respect logout state
-  if ((isAuthenticated || hasDevModeSession) && !hasLoggedOut) {
+  // Redirect based on authentication status
+  if (isAuthenticated && !hasLoggedOut) {
     logger.debug('DefaultRedirect: Redirecting to map');
     return <Navigate to="/map" replace />;
   } else {

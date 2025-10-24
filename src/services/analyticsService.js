@@ -1,66 +1,5 @@
-import { supabase, DEV_MODE } from './supabase';
+import { supabase } from './supabase';
 import { logger } from '../utils/logger';
-
-// Mock data for dev mode
-const mockCompletedPickups = [
-  {
-    id: 'mock-pickup-1',
-    collector_id: 'dev-collector',
-    picked_up_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    accepted_at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
-    coordinates: [5.6037, -0.1870],
-    fee: 50,
-    waste_type: 'general',
-    location: 'Test Location 1',
-    bag_count: 2,
-    special_instructions: 'Mock pickup 1',
-    created_at: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString()
-  },
-  {
-    id: 'mock-pickup-2',
-    collector_id: 'dev-collector',
-    picked_up_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-    accepted_at: new Date(Date.now() - 49 * 60 * 60 * 1000).toISOString(),
-    coordinates: [5.6038, -0.1871],
-    fee: 75,
-    waste_type: 'recyclable',
-    location: 'Test Location 2',
-    bag_count: 3,
-    special_instructions: 'Mock pickup 2',
-    created_at: new Date(Date.now() - 50 * 60 * 60 * 1000).toISOString()
-  }
-];
-
-const mockAcceptedPickups = [
-  {
-    id: 'mock-accepted-1',
-    collector_id: 'dev-collector',
-    status: 'accepted',
-    accepted_at: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-    coordinates: [5.6039, -0.1872],
-    fee: 60,
-    waste_type: 'general',
-    location: 'Test Location 3',
-    bag_count: 1,
-    special_instructions: 'Mock accepted 1',
-    created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-  }
-];
-
-const mockAvailablePickups = [
-  {
-    id: 'mock-available-1',
-    collector_id: null,
-    status: 'available',
-    coordinates: [5.6040, -0.1873],
-    fee: 45,
-    waste_type: 'general',
-    location: 'Test Location 4',
-    bag_count: 2,
-    special_instructions: 'Mock available 1',
-    created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString()
-  }
-];
 
 /**
  * Analytics service for route optimization and performance metrics
@@ -75,27 +14,6 @@ export class AnalyticsService {
    */
   async getRoutePerformanceAnalytics(timeframe = '7d') {
     try {
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Using mock route performance data');
-        return {
-          success: true,
-          data: {
-            timeframe,
-            totalPickups: mockCompletedPickups.length,
-            totalDistance: mockCompletedPickups.length * 3.5,
-            totalTime: mockCompletedPickups.length * 25,
-            totalEarnings: mockCompletedPickups.reduce((sum, pickup) => sum + pickup.fee, 0),
-            totalFuelConsumed: (mockCompletedPickups.length * 3.5) / 10,
-            totalCo2Saved: ((mockCompletedPickups.length * 3.5) / 10) * 0.2 * 2.3,
-            avgDistancePerPickup: 3.5,
-            avgTimePerPickup: 25,
-            avgEarningsPerPickup: mockCompletedPickups.reduce((sum, pickup) => sum + pickup.fee, 0) / mockCompletedPickups.length,
-            fuelEfficiency: 10,
-            timeEfficiency: 2.4,
-            pickups: mockCompletedPickups
-          }
-        };
-      }
       // Calculate date range
       const endDate = new Date();
       const startDate = new Date();
@@ -197,18 +115,6 @@ export class AnalyticsService {
    */
   async getCurrentRouteData() {
     try {
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Using mock route data');
-        return {
-          success: true,
-          data: {
-            assignments: mockAcceptedPickups.map(this._formatPickupData),
-            requests: mockAvailablePickups.map(this._formatPickupData),
-            totalAssignments: mockAcceptedPickups.length,
-            totalRequests: mockAvailablePickups.length
-          }
-        };
-      }
       // Get accepted pickups (current assignments)
       const { data: acceptedPickups, error } = await supabase
         .from('pickup_requests')
@@ -337,17 +243,6 @@ export class AnalyticsService {
    */
   async logRouteOptimization(routeData) {
     try {
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Simulating route optimization logging:', {
-          collector_id: this.collectorId,
-          timestamp: new Date().toISOString(),
-          ...routeData
-        });
-        return {
-          success: true,
-          message: '[DEV MODE] Route optimization logged successfully'
-        };
-      }
       // This would typically be stored in a route_optimizations table
       // For now, we'll just log it
       logger.debug('Route optimization logged:', {
@@ -375,17 +270,6 @@ export class AnalyticsService {
    */
   async getCollectorSession() {
     try {
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Using mock collector session');
-        return {
-          success: true,
-          data: {
-            collector_id: this.collectorId,
-            created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        };
-      }
       const { data, error } = await supabase
         .from('collector_sessions')
         .select('*')

@@ -1,27 +1,5 @@
-import { supabase, DEV_MODE } from './supabase';
+import { supabase } from './supabase';
 import { logger } from '../utils/logger';
-
-// Mock data for dev mode
-const mockTransactions = [
-  {
-    id: 'mock-trans-1',
-    type: 'pickup',
-    amount: 50,
-    status: 'completed',
-    timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    location: 'Test Location 1',
-    customer: 'Customer #1'
-  },
-  {
-    id: 'mock-trans-2',
-    type: 'pickup',
-    amount: 75,
-    status: 'completed',
-    timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-    location: 'Test Location 2',
-    customer: 'Customer #2'
-  }
-];
 
 class EarningsService {
   constructor(collectorId) {
@@ -30,56 +8,6 @@ class EarningsService {
 
   async getEarningsData() {
     try {
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Using mock earnings data');
-        return {
-          success: true,
-          data: {
-            transactions: mockTransactions,
-            chartData: {
-              week: [
-                { label: 'Mon', amount: 20 },
-                { label: 'Tue', amount: 0 },
-                { label: 'Wed', amount: 30 },
-                { label: 'Thu', amount: 25 },
-                { label: 'Fri', amount: 50 },
-                { label: 'Sat', amount: 0 },
-                { label: 'Sun', amount: 0 }
-              ],
-              month: [
-                { label: 'W1', amount: 75 },
-                { label: 'W2', amount: 50 },
-                { label: 'W3', amount: 0 },
-                { label: 'W4', amount: 0 }
-              ],
-              year: [
-                { label: 'Jan', amount: 125 },
-                { label: 'Feb', amount: 0 },
-                { label: 'Mar', amount: 0 },
-                { label: 'Apr', amount: 0 },
-                { label: 'May', amount: 0 },
-                { label: 'Jun', amount: 0 },
-                { label: 'Jul', amount: 0 },
-                { label: 'Aug', amount: 0 },
-                { label: 'Sep', amount: 0 },
-                { label: 'Oct', amount: 0 },
-                { label: 'Nov', amount: 0 },
-                { label: 'Dec', amount: 0 }
-              ]
-            },
-            stats: {
-              totalEarnings: 125,
-              completedJobs: 2,
-              avgPerJob: 62.5,
-              rating: 4.8,
-              completionRate: 95,
-              weeklyEarnings: 125,
-              monthlyEarnings: 125
-            }
-          }
-        };
-      }
-
       // Get completed pickups
       const { data: completedPickups, error: pickupsError } = await supabase
         .from('pickup_requests')
@@ -193,17 +121,6 @@ class EarningsService {
 
   async processWithdrawal(amount, paymentDetails) {
     try {
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Simulating withdrawal:', {
-          amount,
-          paymentDetails
-        });
-        return {
-          success: true,
-          message: '[DEV MODE] Withdrawal processed successfully'
-        };
-      }
-
       // In production, this would integrate with a payment gateway
       // For now, just record the withdrawal in our database
       const { error } = await supabase
@@ -241,35 +158,6 @@ class EarningsService {
    */
   async getDetailedEarningsBreakdown() {
     try {
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Using mock detailed earnings breakdown');
-        return {
-          success: true,
-          data: {
-            buckets: {
-              core: 850,
-              urgent: 120,
-              distance: 45,
-              surge: 80,
-              tips: 35,
-              recyclables: 60,
-              loyalty: 15
-            },
-            total: 1205,
-            jobCount: 15,
-            breakdown: [
-              { type: 'core', amount: 850, percentage: 70.5 },
-              { type: 'urgent', amount: 120, percentage: 10.0 },
-              { type: 'distance', amount: 45, percentage: 3.7 },
-              { type: 'surge', amount: 80, percentage: 6.6 },
-              { type: 'tips', amount: 35, percentage: 2.9 },
-              { type: 'recyclables', amount: 60, percentage: 5.0 },
-              { type: 'loyalty', amount: 15, percentage: 1.2 }
-            ]
-          }
-        };
-      }
-
       // Get completed pickups with all fields
       const { data: completedPickups, error: pickupsError } = await supabase
         .from('pickup_requests')
@@ -343,40 +231,6 @@ class EarningsService {
    */
   async getPayoutTransactions(timeframe = '30d') {
     try {
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Using mock payout transactions');
-        return {
-          success: true,
-          data: {
-            transactions: [
-              {
-                id: 'mock-1',
-                type: 'core',
-                amount: 85,
-                description: 'Base payout - Request #123',
-                settled_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 'mock-2',
-                type: 'urgent',
-                amount: 25,
-                description: 'Urgent bonus - Request #123',
-                settled_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-              }
-            ],
-            byType: {
-              core: 850,
-              urgent: 120,
-              distance: 45,
-              surge: 80,
-              tip: 35,
-              recyclables: 60,
-              loyalty: 15
-            }
-          }
-        };
-      }
-
       // Calculate date range
       const endDate = new Date();
       const startDate = new Date();
@@ -426,23 +280,6 @@ class EarningsService {
    */
   async getLoyaltyTier() {
     try {
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Using mock loyalty tier');
-        return {
-          success: true,
-          data: {
-            tier: 'Gold',
-            cashback_rate: 0.02,
-            monthly_cap: 200,
-            cashback_earned: 45,
-            remaining: 155,
-            csat_score: 4.8,
-            completion_rate: 95,
-            recyclables_percentage: 15
-          }
-        };
-      }
-
       // Get current month (first day)
       const now = new Date();
       const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -500,22 +337,6 @@ class EarningsService {
    */
   async getTipsReceived(timeframe = '30d') {
     try {
-      if (DEV_MODE) {
-        logger.debug('[DEV MODE] Using mock tips data');
-        return {
-          success: true,
-          data: {
-            total: 35,
-            count: 5,
-            average: 7,
-            byType: {
-              pre_checkout: 15,
-              post_completion: 20
-            }
-          }
-        };
-      }
-
       const endDate = new Date();
       const startDate = new Date();
       const days = parseInt(timeframe) || 30;

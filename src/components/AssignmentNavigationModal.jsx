@@ -3,7 +3,6 @@ import GoogleMapModalComponent from './GoogleMapModalComponent';
 import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
 import Toast from './Toast';
 import { debounce } from 'lodash';
-import { DEV_MODE } from '../services/supabase';
 import { logger } from '../utils/logger';
 
 const GEOFENCE_RADIUS = 50; // 50 meters radius for auto-completion

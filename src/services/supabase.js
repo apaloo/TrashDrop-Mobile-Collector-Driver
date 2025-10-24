@@ -5,108 +5,27 @@ import { logger } from '../utils/logger';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Development mode completely disabled to use real Supabase data
-export const DEV_MODE = false;
-
-// Create dev mode session data with valid JWT claims
-const createDevModeSession = (userId) => {
-  const now = Math.floor(Date.now() / 1000); // Current time in seconds
-  const exp = now + 3600; // Expires in 1 hour
-
-  // JWT claims required by Supabase
-  const claims = {
-    aud: 'authenticated',
-    exp,
-    sub: userId,
-    email: 'dev@example.com',
-    phone: '+233123456789',
-    role: 'authenticated',
-    session_id: 'dev-session',
-    // Add required Supabase claims
-    iss: 'supabase',
-    iat: now,
-    // Add project reference from URL
-    ref: supabaseUrl.split('.')[0].split('//')[1]
-  };
-
-  const user = {
-    id: userId,
-    aud: claims.aud,
-    role: claims.role,
-    email: claims.email,
-    phone: claims.phone,
-    app_metadata: {
-      provider: 'phone',
-      providers: ['phone']
-    },
-    user_metadata: {},
-    identities: [],
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-
-  // Skip token generation - we'll generate it in getSession
-  return { user, claims };
-};
-
-// Create Supabase client with anon key
-const DEV_USER_ID = import.meta.env.VITE_DEV_USER_ID || '6fba1031-839f-4985-a180-9ae0a04b7812';
-
-// Security check: Warn if DEV_MODE is active in production
-if (DEV_MODE && import.meta.env.PROD) {
-  logger.error(
-    '⚠️ CRITICAL: DEV_MODE is active in production build!'
-  );
-}
-
-const devModeData = createDevModeSession(DEV_USER_ID);
-
-// Always use anon key for client operations (realtime requires it)
-logger.info('🔑 Supabase initialized with: ANON_KEY for client operations');
+// Initialize Supabase client with anon key for real authentication
+logger.info('🔑 Supabase initialized with real authentication');
 
 const supabase = createClient(
   supabaseUrl,
-  supabaseAnonKey, // Use anon key for all client operations
+  supabaseAnonKey,
   {
     auth: {
-      autoRefreshToken: !DEV_MODE,
-      persistSession: !DEV_MODE,
-      detectSessionInUrl: !DEV_MODE
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true
     },
     db: {
       schema: 'public'
     },
     realtime: {
-      // Disable realtime in DEV_MODE to prevent WebSocket errors
-      enabled: !DEV_MODE
+      enabled: true
     }
   }
 );
 
-// Override auth methods in dev mode
-if (DEV_MODE) {
-  // Patch the auth object to return dev mode session
-  supabase.auth.getSession = async () => {
-    // Create a session with our claims
-    const session = {
-      user: devModeData.user,
-      // Use anon key as access token since service key isn't available in client
-      access_token: supabaseAnonKey,
-      refresh_token: null,
-      token_type: 'bearer'
-    };
-
-    // Save to localStorage for consistency
-    localStorage.setItem('dev_mode_session', JSON.stringify(session));
-
-    return { data: { session }, error: null };
-  };
-
-  supabase.auth.getUser = async () => ({
-    data: { user: devModeData.user },
-    error: null
-  });
-}
 
 // Helper to format phone number to E.164 format
 export const formatPhoneNumber = (phoneNumber) => {
@@ -174,72 +93,16 @@ export const authService = {
     }
   },
   
-  // Get current user session - OPTIMIZED for immediate startup
+  // Get current user session
   getSession: async () => {
     const startTime = Date.now();
     logger.debug('[AuthService] getSession called at:', Date.now());
     
-    // CRITICAL: Return immediately if in non-production mode
-    if (DEV_MODE) {
-      logger.debug('⚡ DEV_MODE: Returning session immediately for startup optimization');
-      const devSession = localStorage.getItem('dev_mode_session');
-      if (devSession) {
-        try {
-          const session = JSON.parse(devSession);
-          return { session: session, user: session.user };
-        } catch (e) {
-          localStorage.removeItem('dev_mode_session');
-        }
-      }
-      return { session: null, user: null };
-    }
-    
     try {
-      // Check if we have a dev mode session in localStorage
-      if (DEV_MODE) {
-        // First try to get from localStorage
-        const devSession = localStorage.getItem('dev_mode_session');
-        if (devSession) {
-          try {
-            const session = JSON.parse(devSession);
-            // Ensure the session has the correct access_token
-            if (!session.access_token || session.access_token === 'dev-mode-token') {
-              // Fix the token to use supabaseAnonKey
-              session.access_token = supabaseAnonKey;
-              localStorage.setItem('dev_mode_session', JSON.stringify(session));
-              logger.debug('[DEV MODE] Updated session token in localStorage');
-            }
-            logger.debug('[DEV MODE] Retrieved session from localStorage:', session);
-            return { session: session, user: session.user };
-          } catch (e) {
-            logger.error('Error parsing dev_mode_session:', e);
-            // Clear corrupted session data
-            localStorage.removeItem('dev_mode_session');
-          }
-        }
-        
-        // If no valid dev session in localStorage, create one
-        const newSession = {
-          user: devModeData.user,
-          access_token: supabaseAnonKey,
-          refresh_token: null,
-          token_type: 'bearer'
-        };
-        localStorage.setItem('dev_mode_session', JSON.stringify(newSession));
-        logger.debug('[DEV MODE] Created new dev session with proper token');
-        return { session: newSession, user: newSession.user };
-      }
-      
-      // Real Supabase call ONLY for non-DEV_MODE (this was causing 15s delays!)
-      if (!DEV_MODE) {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        return { session: data.session, user: data.session?.user || null };
-      }
-      
-      // If we're in DEV_MODE but somehow reached here, return null session
-      logger.warn('[DEV MODE] Reached fallback case - returning null session');
-      return { session: null, user: null };
+      // Real Supabase call for authentication
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
+      return { session: data.session, user: data.session?.user || null };
     } catch (error) {
       logger.error('Error getting session:', error);
       return { session: null, user: null, error: error.message };
@@ -252,16 +115,10 @@ export const authService = {
   // Sign out user
   signOut: async () => {
     try {
-      // Handle sign out in development mode
-      if (DEV_MODE) {
-        localStorage.removeItem('dev_mode_session');
-        logger.info('[DEV MODE] User signed out successfully');
-        return { success: true };
-      }
-      
-      // Real Supabase call in production
+      // Real Supabase call for sign out
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      logger.info('User signed out successfully');
       return { success: true };
     } catch (error) {
       logger.error('Error signing out:', error);

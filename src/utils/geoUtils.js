@@ -410,23 +410,42 @@ const performReverseGeocode = async (lat, lng, retryCount = 0) => {
   const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
   
   try {
-    // Use Netlify serverless function to proxy Nominatim API (avoids CORS issues)
-    // In development, this will fall back to direct API call if function not available
-    const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-    const apiUrl = isProduction 
-      ? `/.netlify/functions/geocode?lat=${lat}&lng=${lng}`
-      : `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=16&addressdetails=1`;
+    // Try Netlify function first (works in production and with `netlify dev`)
+    // This avoids CORS issues completely
+    let response;
+    let usedNetlifyFunction = false;
     
-    const response = await fetch(apiUrl, {
-      signal: controller.signal,
-      headers: isProduction ? {
-        'Accept': 'application/json'
-      } : {
-        'User-Agent': 'TrashDropCollectorApp/1.0',
-        'Accept': 'application/json',
-        'Accept-Language': 'en'
+    try {
+      // Always try Netlify function first
+      response = await fetch(`/.netlify/functions/geocode?lat=${lat}&lng=${lng}`, {
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        usedNetlifyFunction = true;
+      } else {
+        throw new Error('Netlify function not available');
       }
-    });
+    } catch (netlifyError) {
+      // Fallback to direct Nominatim (will likely cause CORS in browser)
+      // This only works in Node.js environments or with proper CORS setup
+      logger.debug(`📡 Netlify function unavailable, trying direct API (may have CORS issues)`);
+      
+      response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=16&addressdetails=1`,
+        {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'TrashDropCollectorApp/1.0',
+            'Accept': 'application/json',
+            'Accept-Language': 'en'
+          }
+        }
+      );
+    }
 
     clearTimeout(timeoutId);
 
@@ -484,7 +503,8 @@ const performReverseGeocode = async (lat, lng, retryCount = 0) => {
     }
     
     if (address) {
-      logger.info(`✅ Geocoded: ${lat},${lng} → ${address.substring(0, 50)}`);
+      const method = usedNetlifyFunction ? 'Netlify' : 'Direct';
+      logger.info(`✅ Geocoded (${method}): ${lat},${lng} → ${address.substring(0, 50)}`);
       // Record success with circuit breaker
       circuitBreaker.recordSuccess();
     }
@@ -496,11 +516,17 @@ const performReverseGeocode = async (lat, lng, retryCount = 0) => {
     // Record failure with circuit breaker
     circuitBreaker.recordFailure();
     
-    // Better error logging with diagnostics (but less frequent due to circuit breaker)
+    // Better error logging with diagnostics and guidance
     if (error.name === 'AbortError') {
       logger.warn(`⏱️ Geocoding timeout (${lat}, ${lng})`);
-    } else if (error.message.includes('Failed to fetch')) {
-      logger.warn(`🌐 Network/CORS error geocoding (${lat}, ${lng}) - Circuit breaker at ${circuitBreaker.failures}/${circuitBreaker.failureThreshold} failures`);
+    } else if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
+      // Only log CORS errors before circuit breaker opens
+      if (circuitBreaker.failures < circuitBreaker.failureThreshold) {
+        logger.warn(`🌐 Geocoding CORS error (${lat}, ${lng}) - Circuit breaker: ${circuitBreaker.failures}/${circuitBreaker.failureThreshold}`);
+        if (circuitBreaker.failures === 1) {
+          logger.info(`💡 Tip: Run 'netlify dev' instead of 'npm run dev' to use geocoding proxy`);
+        }
+      }
     } else if (!error.message.includes('Circuit breaker')) {
       logger.warn(`❌ Geocoding failed (${lat}, ${lng}):`, error.message);
     }

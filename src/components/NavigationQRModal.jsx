@@ -3,7 +3,6 @@ import GoogleMapModalComponent from './GoogleMapModalComponent';
 import { getCurrentLocation, isWithinRadius, calculateDistance } from '../utils/geoUtils';
 import Toast from './Toast';
 import { debounce } from 'lodash';
-import { DEV_MODE } from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
 import { locationBroadcast } from '../services/locationBroadcast';
 import './navigation-modal.css'; // Custom CSS for better readability
@@ -280,10 +279,8 @@ const NavigationQRModal = ({
           // Our geoUtils response format
           coords = [locationResult.lat, locationResult.lng];
           
-          // If using fallback location in dev mode, show warning instead of error
-          if (locationResult.isFallback && DEV_MODE) {
-            logger.warn('Using fallback location (Accra, Ghana) - DEV_MODE enabled');
-          } else if (locationResult.isFallback) {
+          // If using fallback location, show warning
+          if (locationResult.isFallback) {
             setError('Using approximate location. Enable location services for accurate navigation.');
           }
         } else {
@@ -324,22 +321,14 @@ const NavigationQRModal = ({
             type: 'error',
             message: 'Unable to get your location. Please check your GPS settings.'
           });
-          
-          if (DEV_MODE) {
-            // In dev mode, return a default location
-            const defaultCoords = [5.6037, -0.1870]; // Accra
-            logger.warn('Using default location in DEV_MODE:', defaultCoords);
-            return defaultCoords;
-          } else {
-            throw err;
-          }
+          throw err;
         }
         
         // Wait before retrying (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
       }
     }
-  }, [destination, DEV_MODE]);
+  }, [destination]);
 
   // Handle retry location button
   const handleRetryLocation = useCallback(async () => {

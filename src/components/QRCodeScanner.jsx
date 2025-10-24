@@ -257,17 +257,6 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
         </div>
       )}
 
-      {/* Development Mode Manual Scan */}
-      {process.env.NODE_ENV === 'development' && (
-        <button
-          onClick={handleManualScan}
-          className="mt-4 px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors w-full"
-          disabled={!isWithinRange}
-        >
-          Simulate QR Scan (Dev Mode)
-        </button>
-      )}
-
       {/* Instructions */}
       <p className="text-center text-sm text-gray-500 mt-4">
         Position QR code within the frame to scan
