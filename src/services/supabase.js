@@ -5,8 +5,10 @@ import { logger } from '../utils/logger';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// CRITICAL: Validate environment variables
-if (!supabaseUrl || !supabaseAnonKey) {
+// CRITICAL: Validate environment variables but don't throw at module level
+const hasValidConfig = !!(supabaseUrl && supabaseAnonKey);
+
+if (!hasValidConfig) {
   const errorMsg = '❌ CRITICAL: Missing Supabase environment variables!\n' +
     `VITE_SUPABASE_URL: ${supabaseUrl ? '✅ Set' : '❌ Missing'}\n` +
     `VITE_SUPABASE_ANON_KEY: ${supabaseAnonKey ? '✅ Set' : '❌ Missing'}\n` +
@@ -14,7 +16,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   
   logger.error(errorMsg);
   
-  // Show user-friendly error in UI
+  // Show user-friendly error in UI - delayed to not block module loading
   if (typeof window !== 'undefined') {
     setTimeout(() => {
       const root = document.getElementById('root');
@@ -64,18 +66,24 @@ if (!supabaseUrl || !supabaseAnonKey) {
           </div>
         `;
       }
-    }, 100);
+    }, 500);
   }
-  
-  throw new Error('Missing required environment variables');
 }
 
-// Initialize Supabase client with anon key for real authentication
-logger.info('🔑 Supabase initialized with real authentication');
+// Initialize Supabase client - use dummy values if config missing to prevent module errors
+// The app will show error screen anyway, but this prevents "Cannot access before initialization"
+const finalUrl = supabaseUrl || 'https://placeholder.supabase.co';
+const finalKey = supabaseAnonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTI4MDAsImV4cCI6MTk2MDc2ODgwMH0.placeholder';
+
+if (hasValidConfig) {
+  logger.info('🔑 Supabase initialized with real authentication');
+} else {
+  logger.error('🚫 Supabase initialized with placeholder config - app will show error');
+}
 
 const supabase = createClient(
-  supabaseUrl,
-  supabaseAnonKey,
+  finalUrl,
+  finalKey,
   {
     auth: {
       autoRefreshToken: true,
