@@ -138,9 +138,8 @@ const RequestCard = ({
   const renderActionButtons = () => {
     switch (request.status) {
       case PickupRequestStatus.AVAILABLE:
-        // Different styling for digital bins
+        // Different styling for digital bins (but same workflow)
         const isDigitalBin = request.source_type === 'digital_bin';
-        const buttonText = isDigitalBin ? 'Collect' : 'Accept';
         const buttonClasses = isDigitalBin 
           ? "w-full bg-black hover:bg-gray-800 text-white py-3 px-4 rounded-md flex items-center justify-center"
           : "w-full bg-green-500 hover:bg-green-600 text-white py-3 px-4 rounded-md flex items-center justify-center";
@@ -154,7 +153,7 @@ const RequestCard = ({
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
               </svg>
-              {buttonText}
+              Accept
             </button>
           </div>
         );

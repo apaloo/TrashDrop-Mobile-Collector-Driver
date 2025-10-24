@@ -789,7 +789,7 @@ const MapPage = () => {
             .eq('status', 'available')
             .order('created_at', { ascending: false }),
           
-          // Fetch digital bins with location data via LEFT JOIN to see all records
+          // Fetch digital bins with location data via LEFT JOIN - only available status
           supabase
             .from('digital_bins')
             .select(`
@@ -798,6 +798,7 @@ const MapPage = () => {
                 coordinates
               )
             `, { count: 'exact' })
+            .eq('status', 'available')
             .order('created_at', { ascending: false })
         ]);
         

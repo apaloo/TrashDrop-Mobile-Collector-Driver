@@ -223,10 +223,11 @@ const RequestPage = () => {
                       .select('*')
                       .eq('status', PickupRequestStatus.AVAILABLE)
                       .order('created_at', { ascending: false }),
-                    // Fetch digital bins
+                    // Fetch available digital bins only
                     supabase
                       .from('digital_bins')
                       .select('*')
+                      .eq('status', 'available')
                       .order('created_at', { ascending: false })
                   ]).then(([pickupResult, binsResult]) => {
                     if (pickupResult.error) {
@@ -246,7 +247,7 @@ const RequestPage = () => {
                       ...item,
                       source_type: 'digital_bin',
                       // Ensure digital bins have required fields for compatibility
-                      status: 'available', // Digital bins are always available
+                      status: item.status || 'available', // Use actual status from database
                       waste_type: item.waste_type || 'general', // Default waste type if not specified
                       fee: item.fee || 0 // Default fee if not specified
                     }));
@@ -254,35 +255,79 @@ const RequestPage = () => {
                     return { data: [...pickupRequests, ...digitalBins] };
                   }),
                   
-              // Get accepted requests (pickup_requests only - digital bins don't get "accepted")
-              supabase
-                .from('pickup_requests')
-                .select('*')
-                .eq('collector_id', user?.id)
-                .eq('status', PickupRequestStatus.ACCEPTED)
-                .order('accepted_at', { ascending: false })
-                .then(result => {
-                  if (result.error) {
-                    logger.warn('Accepted requests query failed:', result.error);
-                    return { data: [] };
-                  }
-                  return result;
-                }),
+              // Get accepted requests (including digital bins)
+              Promise.all([
+                supabase
+                  .from('pickup_requests')
+                  .select('*')
+                  .eq('collector_id', user?.id)
+                  .eq('status', PickupRequestStatus.ACCEPTED)
+                  .order('accepted_at', { ascending: false }),
+                supabase
+                  .from('digital_bins')
+                  .select('*')
+                  .eq('collector_id', user?.id)
+                  .eq('status', 'accepted')
+                  .order('accepted_at', { ascending: false })
+              ]).then(([pickupResult, binsResult]) => {
+                if (pickupResult.error) {
+                  logger.warn('Accepted pickup requests query failed:', pickupResult.error);
+                }
+                if (binsResult.error) {
+                  logger.warn('Accepted digital bins query failed:', binsResult.error);
+                }
                 
-              // Get picked up requests
-              supabase
-                .from('pickup_requests')
-                .select('*')
-                .eq('collector_id', user?.id)
-                .eq('status', PickupRequestStatus.PICKED_UP)
-                .order('accepted_at', { ascending: false })
-                .then(result => {
-                  if (result.error) {
-                    logger.warn('Picked up requests query failed:', result.error);
-                    return { data: [] };
-                  }
-                  return result;
-                })
+                const pickupRequests = (pickupResult.data || []).map(item => ({
+                  ...item,
+                  source_type: 'pickup_request'
+                }));
+                
+                const digitalBins = (binsResult.data || []).map(item => ({
+                  ...item,
+                  source_type: 'digital_bin',
+                  waste_type: item.waste_type || 'general',
+                  fee: item.fee || 0
+                }));
+                
+                return { data: [...pickupRequests, ...digitalBins] };
+              }),
+                
+              // Get picked up requests (including digital bins)
+              Promise.all([
+                supabase
+                  .from('pickup_requests')
+                  .select('*')
+                  .eq('collector_id', user?.id)
+                  .eq('status', PickupRequestStatus.PICKED_UP)
+                  .order('accepted_at', { ascending: false }),
+                supabase
+                  .from('digital_bins')
+                  .select('*')
+                  .eq('collector_id', user?.id)
+                  .eq('status', 'picked_up')
+                  .order('accepted_at', { ascending: false })
+              ]).then(([pickupResult, binsResult]) => {
+                if (pickupResult.error) {
+                  logger.warn('Picked up pickup requests query failed:', pickupResult.error);
+                }
+                if (binsResult.error) {
+                  logger.warn('Picked up digital bins query failed:', binsResult.error);
+                }
+                
+                const pickupRequests = (pickupResult.data || []).map(item => ({
+                  ...item,
+                  source_type: 'pickup_request'
+                }));
+                
+                const digitalBins = (binsResult.data || []).map(item => ({
+                  ...item,
+                  source_type: 'digital_bin',
+                  waste_type: item.waste_type || 'general',
+                  fee: item.fee || 0
+                }));
+                
+                return { data: [...pickupRequests, ...digitalBins] };
+              })
             ]);
             
             availableResult = availableRes;
@@ -498,20 +543,19 @@ const RequestPage = () => {
       // Database operations for different request types
       let result;
       if (isDigitalBin) {
-        // Handle digital bin collection - update digital_bins table
+        // Handle digital bin acceptance - update digital_bins table to 'accepted' status
         result = await supabase
           .from('digital_bins')
           .update({ 
-            status: 'collected', // Change status to collected
-            collector_id: user?.id,
-            collected_at: new Date().toISOString()
+            status: 'accepted', // Change status to accepted (same workflow as pickup requests)
+            collector_id: user?.id
           })
           .eq('id', requestId);
           
         // Check for database errors
         if (result.error) {
-          logger.error('Digital bin collection failed:', result.error);
-          throw new Error(result.error.message || 'Failed to collect digital bin');
+          logger.error('Digital bin acceptance failed:', result.error);
+          throw new Error(result.error.message || 'Failed to accept digital bin');
         }
         
         result = { success: true }; // Normalize response format
@@ -565,48 +609,37 @@ const RequestPage = () => {
       // Remove from available list for all types
       const newAvailable = requests.available.filter(req => req.id !== requestId);
       
-      // Handle UI updates based on request type
-      let updatedRequests;
-      if (isDigitalBin) {
-        // Digital bins are just removed from available (they don't go to accepted tab)
-        updatedRequests = {
-          ...requests,
-          available: newAvailable
-        };
-        
-        // Show success toast
-        if (showToasts) {
-          showToast(`Successfully collected digital bin!`, 'success');
-          // Don't switch tabs for digital bins - they're completed immediately
-        }
-      } else {
-        // Update the status for pickup requests and authority assignments
-        const updatedRequest = {
-          ...requestToAccept,
-          status: isPickupRequest ? PickupRequestStatus.ACCEPTED : AssignmentStatus.ACCEPTED,
-          accepted_at: new Date().toISOString(),
-          collector_id: user?.id
-        };
-        
-        // Add to accepted list
-        const newAccepted = [...requests.accepted, updatedRequest];
-        
-        // Update state
-        updatedRequests = {
-          ...requests,
-          available: newAvailable,
-          accepted: newAccepted
-        };
-        
-        // Show success toast and switch tab
-        if (showToasts) {
-          showToast(`Successfully accepted ${requestToAccept.type || requestToAccept.waste_type} ${isPickupRequest ? 'pickup' : 'assignment'}!`, 'success');
-          // Switch to accepted tab
-          setActiveTab('accepted');
-        }
-      }
+      // Update the status for all request types (including digital bins)
+      const updatedRequest = {
+        ...requestToAccept,
+        status: isPickupRequest ? PickupRequestStatus.ACCEPTED : 
+                isDigitalBin ? 'accepted' : 
+                AssignmentStatus.ACCEPTED,
+        accepted_at: new Date().toISOString(),
+        collector_id: user?.id
+      };
+      
+      // Add to accepted list
+      const newAccepted = [...requests.accepted, updatedRequest];
+      
+      // Update state - same workflow for all request types
+      const updatedRequests = {
+        ...requests,
+        available: newAvailable,
+        accepted: newAccepted
+      };
       
       setRequests(updatedRequests);
+      
+      // Show success toast and switch tab
+      if (showToasts) {
+        const requestType = isDigitalBin ? 'digital bin' : 
+                           isPickupRequest ? 'pickup' : 
+                           'assignment';
+        showToast(`Successfully accepted ${requestType}!`, 'success');
+        // Switch to accepted tab for all request types
+        setActiveTab('accepted');
+      }
     } catch (err) {
       logger.error('Error accepting request:', err);
       if (err?.message?.includes('already accepted') || err?.message?.includes('reservation expired')) {
@@ -1020,17 +1053,32 @@ const RequestPage = () => {
       const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId);
       
       if (isValidUuid) {
-        // Update assignment in Supabase only if it's a valid UUID
-        const { error: assignmentError } = await supabase
-          .from('pickup_requests')
-          .update({ 
-            status: PickupRequestStatus.PICKED_UP,
-            picked_up_at: new Date().toISOString()
-            // Removed non-existent columns: scanned_bags, environmental_impact, completion_bonus, total_earnings
-          })
-          .eq('id', requestId);
+        // Determine if this is a digital bin or pickup request
+        const isDigitalBin = requestToComplete.source_type === 'digital_bin';
         
-        if (assignmentError) throw assignmentError;
+        if (isDigitalBin) {
+          // Update digital bin status in Supabase
+          const { error: binError } = await supabase
+            .from('digital_bins')
+            .update({ 
+              status: 'picked_up'
+            })
+            .eq('id', requestId);
+          
+          if (binError) throw binError;
+        } else {
+          // Update pickup request in Supabase
+          const { error: assignmentError } = await supabase
+            .from('pickup_requests')
+            .update({ 
+              status: PickupRequestStatus.PICKED_UP,
+              picked_up_at: new Date().toISOString()
+              // Removed non-existent columns: scanned_bags, environmental_impact, completion_bonus, total_earnings
+            })
+            .eq('id', requestId);
+          
+          if (assignmentError) throw assignmentError;
+        }
       } else {
         // For non-UUID IDs (like A-42861), we'll only update the local state
         // This is for demo/test data that doesn't exist in the database
