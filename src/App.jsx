@@ -89,19 +89,39 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
+// Auth loading guard - shows loading screen while checking authentication
+const AuthLoadingGuard = ({ children }) => {
+  const { hasInitiallyChecked } = useAuth();
+  
+  // Show loading screen while checking auth
+  if (!hasInitiallyChecked) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+          <p className="mt-4 text-gray-700 font-medium">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  return children;
+};
+
 function App() {
   const startTime = Date.now();
   logger.debug('🏁 App component rendering at:', startTime);
   
   return (
     <AuthProvider>
-      <OfflineProvider>
-        <CurrencyProvider>
-          <FilterProvider>
-            <Router>
-              <AppLayout>
-                <RouteCleanup />
-                <Routes>
+      <AuthLoadingGuard>
+        <OfflineProvider>
+          <CurrencyProvider>
+            <FilterProvider>
+              <Router>
+                <AppLayout>
+                  <RouteCleanup />
+                  <Routes>
                   <Route path="/" element={<DefaultRedirect />} />
                   <Route path="/welcome" element={<WelcomePage />} />
                   <Route path="/terms" element={<TermsPage />} />
@@ -212,6 +232,7 @@ function App() {
           </FilterProvider>
         </CurrencyProvider>
       </OfflineProvider>
+      </AuthLoadingGuard>
     </AuthProvider>
   );
 }

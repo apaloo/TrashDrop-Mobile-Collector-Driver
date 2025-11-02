@@ -92,6 +92,7 @@ export const AuthProvider = ({ children }) => {
         
         setError(err.message);
         setUser(null);
+        setHasInitiallyChecked(true); // Always mark as checked even on error
       } finally {
         const duration = Date.now() - startTime;
         logger.debug(`🔐 Auth check completed in ${duration}ms`);
