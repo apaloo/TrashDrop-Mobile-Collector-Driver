@@ -197,6 +197,8 @@ const GoogleMapModalComponent = ({
   const directionsServiceRef = useRef(null);
   const directionsRendererRef = useRef(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+  const [loadingPhase, setLoadingPhase] = useState('Initializing map...');
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const initializationAttemptedRef = useRef(false);
@@ -212,6 +214,7 @@ const GoogleMapModalComponent = ({
     try {
       setIsLoading(true);
       setHasError(false);
+      setLoadingPhase('Loading map...');
       logger.debug('📍 Initializing Google Maps modal...');
       
       // Validate API key first
@@ -219,12 +222,15 @@ const GoogleMapModalComponent = ({
         throw new Error('Google Maps API key not configured');
       }
       
+      setLoadingPhase('Loading map API...');
       const maps = await loadGoogleMapsAPI();
       
       // Validate complete API object
       if (!maps.MapTypeId || !maps.MapTypeId.ROADMAP) {
         throw new Error('Google Maps API incomplete - MapTypeId not available');
       }
+      
+      setLoadingPhase('Creating map...');
       
       if (!mapRef.current) {
         throw new Error('Map container not available');
@@ -258,6 +264,8 @@ const GoogleMapModalComponent = ({
       });
 
       logger.debug('✅ Google Maps modal created successfully');
+      
+      setLoadingPhase('Preparing navigation...');
       
       // Store references
       mapInstanceRef.current = map;
@@ -353,6 +361,10 @@ const GoogleMapModalComponent = ({
       return;
     }
 
+    // Show route calculation loading state
+    setIsCalculatingRoute(true);
+    setLoadingPhase('Calculating route...');
+    
     // Only log route setup occasionally to reduce console spam
     if (Math.random() < 0.1) { // 10% chance
       logger.debug('🧭 Setting up navigation route from', normalizedUserLocation, 'to', normalizedDestination);
@@ -454,12 +466,14 @@ const GoogleMapModalComponent = ({
       directionsServiceRef.current.route(request, (result, status) => {
         if (status === 'OK') {
           directionsRendererRef.current.setDirections(result);
+          setIsCalculatingRoute(false);
           // Only log successful route calculation occasionally to reduce console spam
           if (Math.random() < 0.05) { // 5% chance
             logger.debug('✅ Route calculated successfully');
           }
         } else {
           logger.warn('⚠️ Directions request failed due to', status, '- showing markers only');
+          setIsCalculatingRoute(false);
           // Clear any existing route
           if (directionsRendererRef.current) {
             directionsRendererRef.current.setDirections({ routes: [] });
@@ -507,12 +521,35 @@ const GoogleMapModalComponent = ({
       
       {/* Loading overlay */}
       {(!shouldInitialize || isLoading) && (
-        <div className="absolute inset-0 rounded-lg bg-gray-100 flex items-center justify-center z-10">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-2 text-gray-600 text-sm">
-              {!shouldInitialize ? 'Waiting for location...' : 'Loading Navigation...'}
+        <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-blue-50 to-white flex items-center justify-center z-10">
+          <div className="text-center bg-white p-6 rounded-xl shadow-lg">
+            <div className="relative">
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-200 border-t-blue-600 mx-auto"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-2xl">🗺️</span>
+              </div>
+            </div>
+            <p className="mt-4 text-gray-700 font-medium">
+              {!shouldInitialize ? 'Getting your location...' : loadingPhase}
             </p>
+            <div className="mt-2 flex justify-center space-x-1">
+              <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+              <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+              <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Route calculation loading overlay - shows on top of map */}
+      {!isLoading && isCalculatingRoute && (
+        <div className="absolute inset-0 rounded-lg bg-black bg-opacity-30 flex items-center justify-center z-20 backdrop-blur-sm">
+          <div className="bg-white px-6 py-4 rounded-lg shadow-xl flex items-center space-x-3">
+            <div className="animate-spin rounded-full h-6 w-6 border-3 border-blue-200 border-t-blue-600"></div>
+            <div>
+              <p className="text-gray-800 font-medium">Calculating route...</p>
+              <p className="text-xs text-gray-500">Finding the best path</p>
+            </div>
           </div>
         </div>
       )}
