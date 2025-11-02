@@ -119,10 +119,22 @@
       }
       
       /* Hide splash when React loads */
-      .react-loaded #instant-splash {
+      body.react-loaded #instant-splash {
         display: none;
       }
     </style>
+    
+    <!-- Failsafe: Force remove splash screen after 5 seconds if React fails to load -->
+    <script>
+      setTimeout(function() {
+        var splash = document.getElementById('instant-splash');
+        if (splash && splash.style.display !== 'none') {
+          console.warn('⚠️ Forcing splash screen removal after timeout');
+          document.body.classList.add('react-loaded');
+          splash.style.display = 'none';
+        }
+      }, 5000);
+    </script>
     
     <script type="module" src="/src/main.jsx"></script>
   </body>
