@@ -259,15 +259,14 @@ const RequestCard = ({
               {request.points || 100} points
             </span>
           )}
-          {request.source_type === 'digital_bin' ? (
+          {request.source_type === 'digital_bin' && (
             <span className="bg-black text-white px-3 py-1 rounded-full text-sm">
               Digital Collection
             </span>
-          ) : (
-            <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
-              {formatCurrency(request.fee || 8.55, currency)}
-            </span>
           )}
+          <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
+            {formatCurrency(request.fee || 0, currency)}
+          </span>
         </div>
         
         {/* View More Button */}
@@ -351,8 +350,10 @@ const RequestCard = ({
               }
               
               // Legacy request - show estimated breakdown
-              if (request.fee) {
+              // Check for fee existence (including 0 for digital bins)
+              if (request.fee !== undefined && request.fee !== null) {
                 const totalPayout = parseFloat(request.fee);
+                
                 // Estimate: 87% core (average deadhead), 13% potential bonuses
                 const estimatedCore = totalPayout * 0.87;
                 const estimatedBonus = totalPayout * 0.13;
