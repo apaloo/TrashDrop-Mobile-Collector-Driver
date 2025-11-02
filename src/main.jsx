@@ -23,6 +23,7 @@ if (typeof window !== 'undefined') {
 import './index.css'
 import './styles/mapStyles.css' // Global map styles for z-index management
 import App from './App.jsx' // Using real App with proper credentials
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 // import MockAuthContextApp from './MockAuthContextApp.jsx' // Mock auth no longer needed
 // import AuthContextApp from './AuthContextApp.jsx' // Testing component
 // import RouterApp from './RouterApp.jsx' // Testing component
@@ -54,8 +55,22 @@ logger.debug(`⚡ Critical Path completed in ${renderStartTime - criticalPathSta
 const rootElement = document.getElementById('root');
 const root = createRoot(rootElement);
 
-// CRITICAL: Render immediately for under 2-second startup
-root.render(<App />);
+// Add global error handler to catch unhandled errors
+window.addEventListener('error', (event) => {
+  logger.error('🚨 Global Error:', event.error?.message || event.message);
+  logger.error('Stack:', event.error?.stack);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  logger.error('🚨 Unhandled Promise Rejection:', event.reason);
+});
+
+// CRITICAL: Render immediately with error boundary
+root.render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);
 
 // Performance markers and timing
 const renderInitiatedTime = Date.now();
@@ -64,8 +79,11 @@ logger.info(`🚀 App Startup Total: ${renderInitiatedTime - startupStartTime}ms
 
 // CRITICAL: Hide static splash screen and show React app
 if (typeof window !== 'undefined') {
-  // Immediately mark body as react-loaded to hide splash
+  // IMMEDIATE: Mark body as react-loaded AND restore scrolling
   document.body.classList.add('react-loaded');
+  document.body.style.overflow = 'auto'; // CRITICAL: Restore immediately
+  
+  logger.debug('✅ Splash removed, scrolling restored');
   
   // Remove the splash screen element completely after a brief delay
   setTimeout(() => {
@@ -85,8 +103,5 @@ if (typeof window !== 'undefined') {
     
     // Dispatch event that app is fully interactive
     window.dispatchEvent(new Event('app-interactive'));
-    
-    // Reset body overflow for normal scrolling
-    document.body.style.overflow = 'auto';
   });
 }

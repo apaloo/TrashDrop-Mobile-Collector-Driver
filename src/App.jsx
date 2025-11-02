@@ -201,12 +201,15 @@ function App() {
 
 // Component to handle default route redirect based on auth state
 const DefaultRedirect = () => {
-  const { isAuthenticated, hasLoggedOut } = useAuth();
+  const { isAuthenticated, hasLoggedOut, user } = useAuth();
+  
+  // Log state for debugging
+  logger.debug('DefaultRedirect:', { isAuthenticated, hasLoggedOut, hasUser: !!user });
   
   // IMMEDIATE: Redirect without waiting for loading
-  // Default to login if not authenticated
+  // If authenticated and hasn't logged out, go to map
   if (isAuthenticated && !hasLoggedOut) {
-    logger.debug('DefaultRedirect: Redirecting to map');
+    logger.debug('DefaultRedirect: Redirecting authenticated user to map');
     return <Navigate to="/map" replace />;
   }
   

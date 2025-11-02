@@ -118,7 +118,11 @@
         overflow: hidden;
       }
       
-      /* Hide splash when React loads */
+      /* Hide splash AND restore scrolling when React loads */
+      body.react-loaded {
+        overflow: auto !important;
+      }
+      
       body.react-loaded #instant-splash {
         display: none;
       }
@@ -131,6 +135,7 @@
         if (splash && splash.style.display !== 'none') {
           console.warn('⚠️ Forcing splash screen removal after timeout');
           document.body.classList.add('react-loaded');
+          document.body.style.overflow = 'auto'; // Restore scrolling
           splash.style.display = 'none';
         }
       }, 5000);
