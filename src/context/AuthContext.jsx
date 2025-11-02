@@ -25,8 +25,9 @@ export const AuthProvider = ({ children }) => {
     localStorage.getItem('user_logged_out') === 'true'
   );
   
-  // IMMEDIATE: Track if we've done the initial auth check
-  const [hasInitiallyChecked, setHasInitiallyChecked] = useState(false);
+  // IMMEDIATE: Start with true to allow immediate rendering
+  // Auth check happens in background without blocking UI
+  const [hasInitiallyChecked, setHasInitiallyChecked] = useState(true);
 
   useEffect(() => {
     const checkAuth = async () => {

@@ -51,19 +51,10 @@ const RouteCleanup = () => {
 
 // RouteGuard components to protect routes
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading, user, hasLoggedOut } = useAuth();
+  const { isAuthenticated, hasLoggedOut } = useAuth();
   
-  // Debug logging
-  logger.debug('ProtectedRoute check:', { 
-    isAuthenticated, 
-    loading, 
-    hasUser: !!user,
-    hasLoggedOut
-  });
-  
-  // Redirect to login if not authenticated or has logged out
+  // IMMEDIATE: No loading check - redirect immediately if not authenticated
   if (!isAuthenticated || hasLoggedOut) {
-    logger.debug('Access denied: User not authenticated or has logged out');
     return <Navigate to="/login" replace />;
   }
   
@@ -71,38 +62,11 @@ const ProtectedRoute = ({ children }) => {
 };
 
 const PublicRoute = ({ children }) => {
-  const { isAuthenticated, loading, hasLoggedOut } = useAuth();
+  const { isAuthenticated, hasLoggedOut } = useAuth();
   
-  // Debug logging
-  logger.debug('PublicRoute check:', { 
-    isAuthenticated, 
-    loading, 
-    hasLoggedOut
-  });
-  
-  // Redirect to map if authenticated and hasn't logged out
+  // IMMEDIATE: No loading check - redirect immediately if authenticated
   if (isAuthenticated && !hasLoggedOut) {
-    logger.debug('Redirecting to map: User is authenticated');
     return <Navigate to="/map" replace />;
-  }
-  
-  return children;
-};
-
-// Auth loading guard - shows loading screen while checking authentication
-const AuthLoadingGuard = ({ children }) => {
-  const { hasInitiallyChecked } = useAuth();
-  
-  // Show loading screen while checking auth
-  if (!hasInitiallyChecked) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-          <p className="mt-4 text-gray-700 font-medium">Checking authentication...</p>
-        </div>
-      </div>
-    );
   }
   
   return children;
@@ -114,14 +78,13 @@ function App() {
   
   return (
     <AuthProvider>
-      <AuthLoadingGuard>
-        <OfflineProvider>
-          <CurrencyProvider>
-            <FilterProvider>
-              <Router>
-                <AppLayout>
-                  <RouteCleanup />
-                  <Routes>
+      <OfflineProvider>
+        <CurrencyProvider>
+          <FilterProvider>
+            <Router>
+              <AppLayout>
+                <RouteCleanup />
+                <Routes>
                   <Route path="/" element={<DefaultRedirect />} />
                   <Route path="/welcome" element={<WelcomePage />} />
                   <Route path="/terms" element={<TermsPage />} />
@@ -232,30 +195,24 @@ function App() {
           </FilterProvider>
         </CurrencyProvider>
       </OfflineProvider>
-      </AuthLoadingGuard>
     </AuthProvider>
   );
 }
 
 // Component to handle default route redirect based on auth state
 const DefaultRedirect = () => {
-  const { isAuthenticated, loading, hasLoggedOut } = useAuth();
+  const { isAuthenticated, hasLoggedOut } = useAuth();
   
-  // Debug logging
-  logger.debug('DefaultRedirect check:', { 
-    isAuthenticated, 
-    loading, 
-    hasLoggedOut
-  });
-  
-  // Redirect based on authentication status
+  // IMMEDIATE: Redirect without waiting for loading
+  // Default to login if not authenticated
   if (isAuthenticated && !hasLoggedOut) {
     logger.debug('DefaultRedirect: Redirecting to map');
     return <Navigate to="/map" replace />;
-  } else {
-    logger.debug('DefaultRedirect: Redirecting to login');
-    return <Navigate to="/login" replace />;
   }
+  
+  // Default to login for non-authenticated users
+  logger.debug('DefaultRedirect: Redirecting to login');
+  return <Navigate to="/login" replace />;
 }
 
 export default App;
