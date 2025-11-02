@@ -30,22 +30,45 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 // import MinimalApp from './MinimalApp.jsx' // Testing component
 // import SimpleApp from './SimpleApp.jsx' // Testing component
 
-// Register service worker for PWA functionality - DEFERRED to not block startup
-setTimeout(() => {
-  const updateSW = registerSW({
-    onNeedRefresh() {
-      // Show a notification or prompt to the user about available update
-      if (confirm('New content available. Reload?')) {
-        updateSW(true)
+// Register service worker for PWA functionality - IMMEDIATE for updates
+const updateSW = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    // CRITICAL: Force update for blank screen fix
+    logger.info('🔄 New version available with critical fixes! Updating...');
+    
+    // Auto-reload to get fixes
+    updateSW(true).then(() => {
+      window.location.reload();
+    });
+  },
+  onOfflineReady() {
+    logger.info('✅ App ready to work offline')
+  },
+  onRegisteredSW(swUrl, registration) {
+    logger.info('✅ Service Worker registered:', swUrl);
+    
+    // Check for updates every 30 seconds for the first 5 minutes
+    // This ensures users get the blank screen fix quickly
+    let checkCount = 0;
+    const maxChecks = 10; // 10 checks * 30s = 5 minutes
+    
+    const interval = setInterval(() => {
+      checkCount++;
+      if (checkCount >= maxChecks) {
+        clearInterval(interval);
+        return;
       }
-    },
-    onOfflineReady() {
-      // Notify user that app is ready for offline use
-      logger.info('App ready to work offline')
-      // In a real app, you might want to show a toast notification  
-    },
-  })
-}, 2000); // Register SW after 2 seconds to not block initial startup
+      
+      registration?.update().then(() => {
+        logger.debug(`🔄 SW update check ${checkCount}/${maxChecks}`);
+      });
+    }, 30000); // Every 30 seconds
+  },
+  onRegisterError(error) {
+    logger.error('❌ Service Worker registration error:', error);
+  }
+});
 
 const renderStartTime = Date.now();
 logger.debug('⚡ Starting React render at:', renderStartTime);

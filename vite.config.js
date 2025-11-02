@@ -76,7 +76,8 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
+      injectRegister: 'auto',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       
       // CRITICAL: PWA settings for instant mobile loading
@@ -88,7 +89,7 @@ export default defineConfig({
         background_color: '#f8f9fa',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
+        start_url: '/?v=2.0.1',
         scope: '/',
         icons: [
           {
@@ -116,6 +117,11 @@ export default defineConfig({
         ]
       },
       workbox: {
+        // CRITICAL: Force cleanup of old caches
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
+        
         // CRITICAL: Aggressive caching for instant mobile startup
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,jpg,jpeg,webp}'],
         maximumFileSizeToCacheInBytes: 5000000, // 5MB limit
