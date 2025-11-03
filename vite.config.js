@@ -185,7 +185,16 @@ export default defineConfig({
             }
           },
           
-          // CRITICAL: API calls - background sync for offline
+          // CRITICAL: Auth endpoints - NEVER cache (always fresh)
+          {
+            urlPattern: /^https:\/\/.*\.supabase\.co\/auth\/.*$/i,
+            handler: 'NetworkOnly',
+            options: {
+              cacheName: 'auth-no-cache'
+            }
+          },
+          
+          // CRITICAL: Data API calls - background sync for offline
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/.*$/i,
             handler: 'NetworkFirst',
