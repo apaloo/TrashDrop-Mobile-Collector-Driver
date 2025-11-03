@@ -34,9 +34,15 @@ const RouteOptimizationPage = () => {
       const service = createAnalyticsService(user.id);
       setAnalyticsService(service);
       logger.debug('✅ Analytics service initialized for collector:', user.id);
-      logger.debug('👤 Current user object:', user);
+      logger.debug('👤 Current user object:', {
+        id: user.id,
+        email: user.email,
+        phone: user.phone,
+        full_user: user
+      });
     } else {
       logger.warn('⚠️ User or user.id not available for analytics service');
+      logger.debug('👤 User object received:', user);
     }
   }, [user]);
   
@@ -156,6 +162,8 @@ const RouteOptimizationPage = () => {
         
         // DIAGNOSTIC: Query database directly to see what's there
         logger.debug('🔍 DIAGNOSTIC: Checking database for accepted requests...');
+        logger.debug('🔍 DIAGNOSTIC: Current user.id from RouteOptimization:', user?.id);
+        
         const { data: diagnosticData, error: diagError } = await supabase
           .from('pickup_requests')
           .select('id, status, collector_id, accepted_at, location')
@@ -164,8 +172,13 @@ const RouteOptimizationPage = () => {
         logger.debug(`🔍 DIAGNOSTIC: Total accepted requests in database: ${diagnosticData?.length || 0}`);
         if (diagnosticData && diagnosticData.length > 0) {
           diagnosticData.forEach(req => {
-            logger.debug(`  • ID: ${req.id}, Status: ${req.status}, Collector: ${req.collector_id}, Accepted: ${req.accepted_at}`);
+            const isMyRequest = req.collector_id === user?.id;
+            logger.debug(`  ${isMyRequest ? '✅' : '❌'} ID: ${req.id}, Status: ${req.status}, Collector: ${req.collector_id}, Match: ${isMyRequest}, Accepted: ${req.accepted_at}`);
           });
+          
+          // Count how many match current user
+          const myRequests = diagnosticData.filter(req => req.collector_id === user?.id);
+          logger.debug(`🔍 DIAGNOSTIC: ${myRequests.length} requests match current user ID (${user?.id})`);
         }
         
         // Use analytics service to get current route data

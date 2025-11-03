@@ -415,12 +415,15 @@ export class RequestManagementService {
       }
 
       // Now try to accept the request with detailed logging
-      logger.debug('🔄 Attempting to accept request:', {
+      logger.info('🔄 Attempting to accept request:', {
         requestId,
         collectorId: this.collectorId,
+        passedCollectorId: effectiveCollectorId,
         currentStatus: existingRequest.status,
         hasPaymentBreakdown: Object.keys(paymentFields).length > 0
       });
+      
+      logger.info(`📊 DIAGNOSTIC: Setting collector_id in database to: ${this.collectorId}`);
 
       // Try simple update first (without RLS restrictions)
       const { data, error } = await supabase

@@ -142,19 +142,80 @@ export class AnalyticsService {
         throw pickupsError;
       }
 
-      logger.debug(`📦 Found ${acceptedPickups?.length || 0} accepted pickup requests for collector ${this.collectorId}`);
+      logger.info(`📦 Found ${acceptedPickups?.length || 0} accepted pickup requests for collector ${this.collectorId}`);
       
-      // Log each accepted pickup for debugging
-      if (acceptedPickups && acceptedPickups.length > 0) {
-        acceptedPickups.forEach(pickup => {
-          logger.debug(`  ✓ Request ID: ${pickup.id}, Status: ${pickup.status}, Collector: ${pickup.collector_id}`);
-        });
+      // CRITICAL: Also get accepted digital bins (they're in a separate table!)
+      // Digital bins have coordinates in a related bin_locations table
+      // Use * to select all columns since the schema varies
+      const { data: acceptedDigitalBins, error: binsError } = await supabase
+        .from('digital_bins')
+        .select(`
+          *,
+          bin_locations!location_id(
+            coordinates
+          )
+        `)
+        .eq('collector_id', this.collectorId)
+        .eq('status', 'accepted')
+        .order('created_at', { ascending: true });
+
+      if (binsError) {
+        logger.error('❌ Error fetching accepted digital bins:', binsError);
+        throw binsError;
+      }
+
+      logger.info(`📦 Found ${acceptedDigitalBins?.length || 0} accepted digital bins for collector ${this.collectorId}`);
+      
+      // DIAGNOSTIC: Query ALL accepted items to see what collector_ids exist
+      const { data: allAcceptedPickups, error: allError } = await supabase
+        .from('pickup_requests')
+        .select('id, collector_id, status, location')
+        .eq('status', 'accepted');
+      
+      const { data: allAcceptedBins, error: allBinsError } = await supabase
+        .from('digital_bins')
+        .select('id, collector_id, status, location')
+        .eq('status', 'accepted');
+      
+      const totalAccepted = (allAcceptedPickups?.length || 0) + (allAcceptedBins?.length || 0);
+      
+      if (totalAccepted > 0) {
+        logger.info(`🔍 DIAGNOSTIC: Found ${totalAccepted} total accepted items in database:`);
+        logger.info(`  - ${allAcceptedPickups?.length || 0} pickup requests`);
+        logger.info(`  - ${allAcceptedBins?.length || 0} digital bins`);
+        
+        if (allAcceptedPickups && allAcceptedPickups.length > 0) {
+          allAcceptedPickups.forEach(req => {
+            const isMatch = req.collector_id === this.collectorId;
+            logger.info(`  ${isMatch ? '✅' : '❌'} Pickup: ${req.id}, Collector: ${req.collector_id}, Match: ${isMatch}`);
+          });
+        }
+        
+        if (allAcceptedBins && allAcceptedBins.length > 0) {
+          allAcceptedBins.forEach(bin => {
+            const isMatch = bin.collector_id === this.collectorId;
+            logger.info(`  ${isMatch ? '✅' : '❌'} Bin: ${bin.id}, Collector: ${bin.collector_id}, Match: ${isMatch}`);
+          });
+        }
+      }
+      
+      // Log each accepted item for debugging
+      const totalMyAccepted = (acceptedPickups?.length || 0) + (acceptedDigitalBins?.length || 0);
+      
+      if (totalMyAccepted > 0) {
+        if (acceptedPickups && acceptedPickups.length > 0) {
+          acceptedPickups.forEach(pickup => {
+            logger.info(`  ✓ Pickup Request: ${pickup.id}, Status: ${pickup.status}`);
+          });
+        }
+        if (acceptedDigitalBins && acceptedDigitalBins.length > 0) {
+          acceptedDigitalBins.forEach(bin => {
+            logger.info(`  ✓ Digital Bin: ${bin.id}, Status: ${bin.status}`);
+          });
+        }
       } else {
-        logger.warn(`⚠️ No accepted requests found for collector ${this.collectorId}`);
-        logger.debug('Troubleshooting tips:');
-        logger.debug('  1. Check if requests are being accepted with correct collector_id');
-        logger.debug('  2. Check if status is being set to "accepted"');
-        logger.debug('  3. Verify user.id matches this.collectorId');
+        logger.warn(`⚠️ No accepted items found for collector ${this.collectorId}`);
+        logger.info('🔍 Troubleshooting: Queried both pickup_requests and digital_bins tables');
       }
 
       // Get available pickups in the area (requests)
@@ -178,7 +239,7 @@ export class AnalyticsService {
       if (availableError) throw availableError;
 
       // Transform accepted pickup requests to assignment format
-      const assignments = (acceptedPickups || []).map(pickup => {
+      const pickupAssignments = (acceptedPickups || []).map(pickup => {
         // Parse coordinates if they're stored as JSON string
         let coords = pickup.coordinates;
         if (typeof coords === 'string') {
@@ -208,7 +269,87 @@ export class AnalyticsService {
         };
       });
 
-      logger.debug(`✅ Transformed ${assignments.length} accepted requests for route optimization`);
+      // Transform accepted digital bins to assignment format
+      const binAssignments = (acceptedDigitalBins || []).map(bin => {
+        // Extract coordinates from the nested bin_locations object
+        let coords = { lat: 0, lng: 0 };
+        
+        // DIAGNOSTIC: Log the bin structure to see what we're getting
+        logger.info(`🔍 Processing bin ${bin.id}:`, {
+          has_bin_locations: !!bin.bin_locations,
+          bin_locations_type: typeof bin.bin_locations,
+          bin_locations: bin.bin_locations,
+          coordinates: bin.bin_locations?.coordinates
+        });
+        
+        if (bin.bin_locations && bin.bin_locations.coordinates) {
+          // Coordinates come from the joined bin_locations table
+          const binCoords = bin.bin_locations.coordinates;
+          logger.info(`📍 Found coordinates for bin ${bin.id}:`, binCoords);
+          
+          // Handle GeoJSON Point format (PostGIS returns this format)
+          if (binCoords.type === 'Point' && Array.isArray(binCoords.coordinates) && binCoords.coordinates.length === 2) {
+            // GeoJSON format: coordinates are [longitude, latitude]
+            coords = { 
+              lat: binCoords.coordinates[1],  // latitude is second
+              lng: binCoords.coordinates[0]   // longitude is first
+            };
+            logger.info(`✅ Converted GeoJSON Point coordinates:`, coords);
+          } else if (typeof binCoords === 'string') {
+            try {
+              coords = JSON.parse(binCoords);
+              logger.info(`✅ Parsed string coordinates:`, coords);
+            } catch (e) {
+              logger.warn(`Failed to parse coordinates for bin ${bin.id}:`, e);
+            }
+          } else if (Array.isArray(binCoords) && binCoords.length === 2) {
+            // Handle array format [lat, lng]
+            coords = { lat: binCoords[0], lng: binCoords[1] };
+            logger.info(`✅ Converted array coordinates:`, coords);
+          } else if (binCoords.lat && binCoords.lng) {
+            // Already in object format
+            coords = binCoords;
+            logger.info(`✅ Using object coordinates:`, coords);
+          } else {
+            logger.warn(`❌ Unknown coordinate format for bin ${bin.id}:`, typeof binCoords, binCoords);
+          }
+        } else {
+          logger.warn(`❌ No bin_locations or coordinates for bin ${bin.id}`);
+        }
+        
+        // Use actual digital_bins schema fields
+        const wasteType = bin.waste_type || 'general';
+        const binSize = bin.bin_size_liters || 120;
+        const isUrgent = bin.is_urgent || false;
+        const frequency = bin.frequency || 'weekly';
+        
+        return {
+          id: bin.id,
+          type: 'assignment',
+          source_type: 'digital_bin',
+          status: bin.status,
+          location: bin.location || 'Unknown location',
+          customer_name: `Digital Bin - ${wasteType}`,
+          latitude: coords.lat || 0,
+          longitude: coords.lng || 0,
+          fee: bin.fee || 0,
+          waste_type: wasteType,
+          special_instructions: `${binSize}L bin, ${frequency} pickup${isUrgent ? ' (URGENT)' : ''}${bin.details ? `, ${bin.details}` : ''}`,
+          bag_count: bin.bag_count || 1,
+          accepted_at: bin.updated_at || bin.created_at,
+          created_at: bin.created_at
+        };
+      });
+
+      // Combine both types of assignments
+      const assignments = [...pickupAssignments, ...binAssignments].sort((a, b) => {
+        // Sort by accepted_at timestamp (oldest first), fallback to created_at
+        const timeA = new Date(a.accepted_at || a.created_at);
+        const timeB = new Date(b.accepted_at || b.created_at);
+        return timeA - timeB;
+      });
+
+      logger.info(`✅ Transformed ${assignments.length} accepted items for route optimization (${pickupAssignments.length} pickups + ${binAssignments.length} bins)`);
 
       const requests = (availablePickups || []).map(pickup => {
         // Parse coordinates if they're stored as JSON string

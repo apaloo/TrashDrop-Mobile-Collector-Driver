@@ -1459,8 +1459,8 @@ const MapPage = () => {
           .on('postgres_changes', {
             event: '*', // Listen to all events (INSERT, UPDATE, DELETE) 
             schema: 'public',
-            table: 'digital_bins',
-            filter: 'status=eq.available' // Only listen to available digital bins
+            table: 'digital_bins'
+            // Removed filter to receive UPDATE events when status changes from 'available' to 'accepted'
           }, (payload) => {
             // Handle digital bins changes
             const { eventType, new: newRecord, old: oldRecord } = payload;

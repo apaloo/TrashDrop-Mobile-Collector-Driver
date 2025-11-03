@@ -543,28 +543,55 @@ const RequestPage = () => {
       // Database operations for different request types
       let result;
       
-      logger.debug(`🔄 Accepting request ${requestId} as ${isPickupRequest ? 'pickup_request' : isDigitalBin ? 'digital_bin' : 'authority_assignment'}`);
-      logger.debug(`👤 Collector ID: ${user?.id}`);
+      logger.info(`🔄 Accepting request ${requestId} as ${isPickupRequest ? 'pickup_request' : isDigitalBin ? 'digital_bin' : 'authority_assignment'}`);
+      logger.info(`👤 DIAGNOSTIC: Collector ID from Request page: ${user?.id}`);
+      logger.info(`👤 DIAGNOSTIC: User object:`, {
+        id: user?.id,
+        email: user?.email,
+        phone: user?.phone
+      });
       
       if (isDigitalBin) {
         // Handle digital bin acceptance - update digital_bins table to 'accepted' status
-        logger.debug('📦 Updating digital_bins table...');
-        result = await supabase
+        logger.info('📦 Updating digital_bins table for request:', requestId);
+        
+        const updateData = {
+          status: 'accepted',
+          collector_id: user?.id,
+          accepted_at: new Date().toISOString()
+        };
+        
+        logger.info('📦 Update payload:', updateData);
+        
+        const { data, error } = await supabase
           .from('digital_bins')
-          .update({ 
-            status: 'accepted', // Change status to accepted (same workflow as pickup requests)
-            collector_id: user?.id
-          })
-          .eq('id', requestId);
+          .update(updateData)
+          .eq('id', requestId)
+          .select(); // CRITICAL: Must add .select() to get updated data back
+          
+        logger.info('📊 Digital bin update response:', { data, error, hasData: !!data, dataLength: data?.length });
           
         // Check for database errors
-        if (result.error) {
-          logger.error('❌ Digital bin acceptance failed:', result.error);
-          throw new Error(result.error.message || 'Failed to accept digital bin');
+        if (error) {
+          logger.error('❌ Digital bin acceptance failed:', error);
+          logger.error('❌ Error details:', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          });
+          throw new Error(error.message || 'Failed to accept digital bin');
         }
         
-        logger.debug('✅ Digital bin accepted in database');
-        result = { success: true }; // Normalize response format
+        // Verify the update actually affected a row
+        if (!data || data.length === 0) {
+          logger.error('❌ Digital bin not found or already accepted:', requestId);
+          logger.error('❌ Possible causes: RLS policy blocking update, bin already accepted, or bin does not exist');
+          throw new Error('Digital bin not found or already accepted by another collector');
+        }
+        
+        logger.info('✅ Digital bin accepted in database:', data[0]);
+        result = { success: true, data: data[0] }; // Normalize response format
       } else if (isPickupRequest) {
         // Ensure requestManager is initialized
         if (!requestManager.isInitialized) {
@@ -642,6 +669,19 @@ const RequestPage = () => {
       };
       
       setRequests(updatedRequests);
+      
+      // CRITICAL: Update cache to prevent accepted request from reappearing as available
+      setRequestCache(prev => ({
+        ...prev,
+        available: {
+          data: newAvailable,
+          timestamp: Date.now()
+        },
+        accepted: {
+          data: newAccepted,
+          timestamp: Date.now()
+        }
+      }));
       
       // Show success toast and switch tab
       if (showToasts) {

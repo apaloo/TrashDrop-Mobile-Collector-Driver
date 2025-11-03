@@ -57,18 +57,30 @@ const OfflineTileLayer = ({ tileLayerRef, isOfflineMode }) => {
 /**
  * Map optimizer component to apply performance optimizations and handle offline capabilities
  */
-const MapOptimizer = () => {
+const MapOptimizer = ({ mapRef, offlineTileLayerRef, isOfflineMode }) => {
   const map = useMap();
   
   useEffect(() => {
+    // Store map reference for parent component
+    if (mapRef) {
+      mapRef.current = map;
+      logger.debug('Map reference set in MapOptimizer');
+    }
+    
     // Apply performance optimizations
     optimizeMapPerformance(map);
     
-    // Store map reference for offline operations
+    // Initialize the offline tile layer immediately if in offline mode
+    if (isOfflineMode && offlineTileLayerRef && (!offlineTileLayerRef.current || !offlineTileLayerRef.current._offlineEnabled)) {
+      logger.debug('Creating offline tile layer on map initialization');
+      offlineTileLayerRef.current = createOfflineTileLayer();
+      offlineTileLayerRef.current.addTo(map);
+    }
+    
     return () => {
       // Cleanup if needed
     };
-  }, [map]);
+  }, [map, mapRef, offlineTileLayerRef, isOfflineMode]);
   
   return null; // This component doesn't render anything
 };
@@ -235,9 +247,23 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
     routeCoordinates.unshift([userLocation.latitude, userLocation.longitude]);
   }
   
-  // Handle navigation to Google Maps
+  // Handle navigation to OpenStreetMap
   const navigateToRoute = () => {
-    if (optimizedRoute.length === 0 || !userLocation) return;
+    if (optimizedRoute.length === 0) {
+      toast.warning('No route available to navigate. Please accept some requests first.', {
+        position: "top-center",
+        autoClose: 3000,
+      });
+      return;
+    }
+    
+    if (!userLocation) {
+      toast.warning('Your location is not available. Please enable location services.', {
+        position: "top-center",
+        autoClose: 3000,
+      });
+      return;
+    }
     
     const startPosition = {
       lat: userLocation.latitude,
@@ -245,6 +271,22 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
     };
     
     const directionsUrl = generateDirectionsUrl(optimizedRoute, startPosition);
+    
+    if (!directionsUrl) {
+      toast.error('Failed to generate navigation URL. Please try again.', {
+        position: "top-center",
+        autoClose: 3000,
+      });
+      return;
+    }
+    
+    logger.info('Opening navigation URL:', directionsUrl);
+    
+    toast.success('Opening OpenStreetMap navigation...', {
+      position: "top-center",
+      autoClose: 2000,
+    });
+    
     window.open(directionsUrl, '_blank');
   };
   
@@ -278,6 +320,17 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
     
     // Save tiles for offline use
     const tileLayer = offlineTileLayerRef.current;
+    
+    // Check if saveTiles method exists
+    if (!tileLayer || typeof tileLayer.saveTiles !== 'function') {
+      logger.error('Offline tile layer not properly initialized or saveTiles method not available');
+      setIsSavingTiles(false);
+      toast.error('Offline map functionality is not available. Please refresh the page and try again.', {
+        position: "top-center",
+        autoClose: 5000,
+      });
+      return;
+    }
     
     logger.info(`Saving tiles for bounds: ${bounds.toBBoxString()}, zoom: ${zoom}`);
     
@@ -458,7 +511,9 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
               Navigate Route
             </button>
             
-            {/* Offline map controls */}
+            {/* Offline map controls - DISABLED: Requires leaflet.offline configuration */}
+            {/* Uncomment to enable offline maps functionality after proper setup */}
+            {/*
             <div className="flex space-x-2">
               {isSavingTiles ? (
                 <div className="w-full py-2 bg-blue-100 text-blue-800 rounded-md flex items-center justify-center">
@@ -487,6 +542,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
                 </button>
               )}
             </div>
+            */}
           </div>
         )}
       </div>
@@ -500,20 +556,6 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
               zoom={mapZoom} 
               style={{ height: '100%', width: '100%' }}
               zoomControl={false}
-              whenCreated={(map) => {
-                logger.debug('Map created with center:', mapCenter);
-                mapRef.current = map;
-                
-                // Apply optimizations
-                optimizeMapPerformance(map);
-                
-                // Initialize the offline tile layer immediately if in offline mode
-                if (isOfflineMode && (!offlineTileLayerRef.current || !offlineTileLayerRef.current._offlineEnabled)) {
-                  logger.debug('Creating offline tile layer on map creation');
-                  offlineTileLayerRef.current = createOfflineTileLayer();
-                  offlineTileLayerRef.current.addTo(map);
-                }
-              }}
             >
               {/* Use appropriate tile layer based on mode */}
               {!isOfflineMode && (
@@ -523,10 +565,12 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
                 />
               )}
               
-              {/* Offline layer is added via whenCreated and not as a React component */}
-              
-              {/* Apply map optimizations */}
-              <MapOptimizer />
+              {/* Apply map optimizations and set map reference */}
+              <MapOptimizer 
+                mapRef={mapRef} 
+                offlineTileLayerRef={offlineTileLayerRef} 
+                isOfflineMode={isOfflineMode} 
+              />
               
               {/* User location marker */}
               {userLocation && (
