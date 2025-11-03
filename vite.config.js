@@ -43,13 +43,10 @@ export default defineConfig({
             './src/components/GoogleMapComponent.jsx',
             './src/components/NavigationQRModal.jsx',
             './src/components/AssignmentNavigationModal.jsx'
-          ],
-          
-          // LAZY: Services (loaded when needed)
-          'services': [
-            './src/services/requestManagement.js',
-            './src/services/supabase.js'
           ]
+          
+          // REMOVED: Manual service chunking was causing initialization order issues
+          // Let Vite handle service bundling automatically to avoid circular dependencies
         },
         
         // Optimize chunk file names for caching
