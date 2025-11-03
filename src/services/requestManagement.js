@@ -1091,5 +1091,26 @@ export class RequestManagementService {
   }
 }
 
-// Export singleton instance
-export const requestManager = new RequestManagementService();
+// Lazy singleton instance - only created when first accessed
+let _requestManagerInstance = null;
+
+function getRequestManager() {
+  if (!_requestManagerInstance) {
+    _requestManagerInstance = new RequestManagementService();
+  }
+  return _requestManagerInstance;
+}
+
+// Use Proxy to delay initialization until first property access
+export const requestManager = new Proxy({}, {
+  get(target, prop) {
+    const instance = getRequestManager();
+    const value = instance[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  },
+  set(target, prop, value) {
+    const instance = getRequestManager();
+    instance[prop] = value;
+    return true;
+  }
+});

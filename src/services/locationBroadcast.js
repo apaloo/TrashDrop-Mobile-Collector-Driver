@@ -213,5 +213,26 @@ class LocationBroadcastService {
   }
 }
 
-// Export singleton instance
-export const locationBroadcast = new LocationBroadcastService();
+// Lazy singleton instance - only created when first accessed
+let _locationBroadcastInstance = null;
+
+function getLocationBroadcast() {
+  if (!_locationBroadcastInstance) {
+    _locationBroadcastInstance = new LocationBroadcastService();
+  }
+  return _locationBroadcastInstance;
+}
+
+// Use Proxy to delay initialization until first property access
+export const locationBroadcast = new Proxy({}, {
+  get(target, prop) {
+    const instance = getLocationBroadcast();
+    const value = instance[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  },
+  set(target, prop, value) {
+    const instance = getLocationBroadcast();
+    instance[prop] = value;
+    return true;
+  }
+});

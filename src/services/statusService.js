@@ -348,14 +348,35 @@ class CollectorStatusService {
   }
 }
 
-// Create singleton instance
-export const statusService = new CollectorStatusService();
+// Lazy singleton instance - only created when first accessed
+let _statusServiceInstance = null;
 
-// Auto-cleanup on page unload
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    statusService.cleanup();
-  });
+function getStatusService() {
+  if (!_statusServiceInstance) {
+    _statusServiceInstance = new CollectorStatusService();
+    
+    // Auto-cleanup on page unload
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => {
+        _statusServiceInstance?.cleanup();
+      });
+    }
+  }
+  return _statusServiceInstance;
 }
+
+// Use Proxy to delay initialization until first property access
+export const statusService = new Proxy({}, {
+  get(target, prop) {
+    const instance = getStatusService();
+    const value = instance[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  },
+  set(target, prop, value) {
+    const instance = getStatusService();
+    instance[prop] = value;
+    return true;
+  }
+});
 
 export default statusService;
