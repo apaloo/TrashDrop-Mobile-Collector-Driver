@@ -939,12 +939,15 @@ const RequestPage = () => {
         if (coordinatesSource.type === 'Point' && Array.isArray(coordinatesSource.coordinates) && coordinatesSource.coordinates.length === 2) {
           lng = coordinatesSource.coordinates[0]; // longitude first in GeoJSON
           lat = coordinatesSource.coordinates[1]; // latitude second
-          logger.info('✅ Parsed GeoJSON Point:', { lat, lng });
+          logger.info('✅ Parsed GeoJSON Point from bin_locations:', { lat, lng });
         }
       } 
-      // For pickup requests, use the regular coordinates field
+      // Fallback: For digital bins without bin_locations, or for pickup requests, use the regular coordinates field
       else if (request.coordinates) {
         coordinatesSource = request.coordinates;
+        if (request.source_type === 'digital_bin') {
+          logger.info('📍 bin_locations not available, using direct coordinates field for digital bin:', coordinatesSource);
+        }
         
         // Handle array format [lat, lng]
         if (Array.isArray(coordinatesSource) && coordinatesSource.length >= 2) {
