@@ -226,7 +226,13 @@ const RequestPage = () => {
                     // Fetch available digital bins only
                     supabase
                       .from('digital_bins')
-                      .select('*')
+                      .select(`
+                        *,
+                        bin_locations!location_id(
+                          coordinates,
+                          location_name
+                        )
+                      `)
                       .eq('status', 'available')
                       .order('created_at', { ascending: false })
                   ]).then(([pickupResult, binsResult]) => {
@@ -249,7 +255,8 @@ const RequestPage = () => {
                       // Ensure digital bins have required fields for compatibility
                       status: item.status || 'available', // Use actual status from database
                       waste_type: item.waste_type || 'general', // Default waste type if not specified
-                      fee: item.fee || 0 // Default fee if not specified
+                      fee: item.fee || 0, // Default fee if not specified
+                      location: item.bin_locations?.location_name || 'Digital Bin Station' // Get location from joined table
                     }));
                     
                     return { data: [...pickupRequests, ...digitalBins] };
@@ -265,7 +272,13 @@ const RequestPage = () => {
                   .order('accepted_at', { ascending: false }),
                 supabase
                   .from('digital_bins')
-                  .select('*')
+                  .select(`
+                    *,
+                    bin_locations!location_id(
+                      coordinates,
+                      location_name
+                    )
+                  `)
                   .eq('collector_id', user?.id)
                   .eq('status', 'accepted')
                   .order('created_at', { ascending: false })
@@ -286,7 +299,8 @@ const RequestPage = () => {
                   ...item,
                   source_type: 'digital_bin',
                   waste_type: item.waste_type || 'general',
-                  fee: item.fee || 0
+                  fee: item.fee || 0,
+                  location: item.bin_locations?.location_name || 'Digital Bin Station' // Get location from joined table
                 }));
                 
                 return { data: [...pickupRequests, ...digitalBins] };
@@ -302,7 +316,13 @@ const RequestPage = () => {
                   .order('accepted_at', { ascending: false }),
                 supabase
                   .from('digital_bins')
-                  .select('*')
+                  .select(`
+                    *,
+                    bin_locations!location_id(
+                      coordinates,
+                      location_name
+                    )
+                  `)
                   .eq('collector_id', user?.id)
                   .eq('status', 'picked_up')
                   .order('created_at', { ascending: false })
@@ -323,7 +343,8 @@ const RequestPage = () => {
                   ...item,
                   source_type: 'digital_bin',
                   waste_type: item.waste_type || 'general',
-                  fee: item.fee || 0
+                  fee: item.fee || 0,
+                  location: item.bin_locations?.location_name || 'Digital Bin Station' // Get location from joined table
                 }));
                 
                 return { data: [...pickupRequests, ...digitalBins] };
