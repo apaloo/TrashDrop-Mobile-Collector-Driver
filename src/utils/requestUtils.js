@@ -73,7 +73,12 @@ export const transformRequestsData = (
         disposal_complete: item.disposal_complete || false,
         disposal_site: item.disposal_site || null,
         disposal_timestamp: item.disposal_timestamp || null,
-        environmental_impact: item.environmental_impact || null
+        environmental_impact: item.environmental_impact || null,
+        // CRITICAL: Preserve source_type and bin_locations for digital bins
+        source_type: item.source_type || 'pickup_request',
+        bin_locations: item.bin_locations || null, // Keep joined bin_locations data
+        waste_type: item.waste_type || null, // For digital bins
+        bag_count: item.bag_count || null // For digital bins
       };
     })
     .filter(item => {

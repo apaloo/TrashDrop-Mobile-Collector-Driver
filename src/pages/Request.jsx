@@ -916,6 +916,16 @@ const RequestPage = () => {
     }
     
     if (request) {
+      // Diagnostic logging to see what we have
+      logger.info('🔍 Request found for directions:', {
+        id: request.id,
+        source_type: request.source_type,
+        has_bin_locations: !!request.bin_locations,
+        bin_locations_keys: request.bin_locations ? Object.keys(request.bin_locations) : [],
+        has_coordinates: !!request.coordinates,
+        coordinates_type: typeof request.coordinates
+      });
+      
       // Parse coordinates from various formats
       let lat, lng;
       let coordinatesSource = null;
