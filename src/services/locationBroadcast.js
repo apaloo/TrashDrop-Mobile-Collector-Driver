@@ -69,8 +69,9 @@ class LocationBroadcastService {
       }
 
       // Update collector's current location in database
+      // NOTE: Table is collector_profiles, not collectors
       const { error: updateError } = await supabase
-        .from('collectors')
+        .from('collector_profiles')
         .update({
           current_location: {
             lat: position.latitude,
@@ -83,7 +84,7 @@ class LocationBroadcastService {
           },
           last_active: new Date().toISOString()
         })
-        .eq('id', this.collectorId);
+        .eq('user_id', this.collectorId); // Use user_id, not id
 
       if (updateError) {
         logger.error('Failed to broadcast location:', updateError);
