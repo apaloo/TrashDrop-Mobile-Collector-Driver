@@ -33,26 +33,32 @@ export const AuthProvider = ({ children }) => {
     // Helper function to check if 24-hour session has expired (at midnight)
     const isSessionExpired = () => {
       const lastLoginTime = localStorage.getItem('last_login_time');
-      if (!lastLoginTime) return true;
+      if (!lastLoginTime) {
+        logger.debug('📭 No login time found - treating as not expired for new session');
+        return false; // Don't force logout if no login time exists yet
+      }
 
       const loginDate = new Date(parseInt(lastLoginTime));
       const now = new Date();
       
-      // Calculate midnight of the login day + 24 hours
-      const loginMidnight = new Date(loginDate);
-      loginMidnight.setHours(24, 0, 0, 0); // Next day at midnight
+      // Calculate expiry: 24 hours from login time
+      const expiryTime = new Date(loginDate.getTime() + (24 * 60 * 60 * 1000));
       
-      // If current time is past login midnight + 24 hours, session expired
-      const expiryTime = new Date(loginMidnight.getTime() + (24 * 60 * 60 * 1000));
+      // Find the next midnight after expiry time
+      const midnightAfterExpiry = new Date(expiryTime);
+      midnightAfterExpiry.setHours(24, 0, 0, 0); // Set to next day at midnight
       
-      if (now >= expiryTime) {
+      if (now >= midnightAfterExpiry) {
         logger.info('⏰ 24-hour session expired at midnight');
+        logger.info(`   Login: ${loginDate.toLocaleString()}`);
+        logger.info(`   Expiry: ${midnightAfterExpiry.toLocaleString()}`);
         return true;
       }
       
-      // Calculate hours remaining
-      const hoursRemaining = Math.floor((expiryTime - now) / (60 * 60 * 1000));
-      logger.debug(`⏱️ Session valid for ${hoursRemaining} more hours`);
+      // Calculate time remaining
+      const hoursRemaining = Math.floor((midnightAfterExpiry - now) / (60 * 60 * 1000));
+      const minutesRemaining = Math.floor(((midnightAfterExpiry - now) % (60 * 60 * 1000)) / (60 * 1000));
+      logger.debug(`⏱️ Session valid for ${hoursRemaining}h ${minutesRemaining}m (expires at ${midnightAfterExpiry.toLocaleString()})`);
       return false;
     };
 
