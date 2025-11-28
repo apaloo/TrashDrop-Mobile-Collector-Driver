@@ -152,7 +152,8 @@ export class AnalyticsService {
         .select(`
           *,
           bin_locations!location_id(
-            coordinates
+            coordinates,
+            location_name
           )
         `)
         .eq('collector_id', this.collectorId)
@@ -323,12 +324,15 @@ export class AnalyticsService {
         const isUrgent = bin.is_urgent || false;
         const frequency = bin.frequency || 'weekly';
         
+        // Get location name from joined bin_locations table
+        const locationName = bin.bin_locations?.location_name || 'Digital Bin Station';
+        
         return {
           id: bin.id,
           type: 'assignment',
           source_type: 'digital_bin',
           status: bin.status,
-          location: bin.location || 'Unknown location',
+          location: locationName,
           customer_name: `Digital Bin - ${wasteType}`,
           latitude: coords.lat || 0,
           longitude: coords.lng || 0,

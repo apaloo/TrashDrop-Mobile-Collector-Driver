@@ -718,7 +718,8 @@ const MapPage = () => {
             .select(`
               *,
               bin_locations!location_id(
-                coordinates
+                coordinates,
+                location_name
               )
             `, { count: 'exact' })
             .eq('status', 'available')
@@ -943,12 +944,17 @@ const MapPage = () => {
                     return null;
                   }
                   
+                  // Get location name from bin_locations if it's a digital bin
+                  const locationName = item.source_type === 'digital_bin' && item.bin_locations?.location_name
+                    ? item.bin_locations.location_name
+                    : item.location || 'Unknown location';
+                  
                   return {
                     id: item.id,
                     type: item.waste_type || 'general',
                     waste_type: item.waste_type || 'general', // Keep both for compatibility
                     coordinates: coords,
-                    location: item.location || 'Unknown location',
+                    location: locationName,
                     fee: Number(item.fee) || 0,
                     status: item.status || 'available',
                     priority: item.priority || 'medium',
