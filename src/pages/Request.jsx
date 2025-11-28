@@ -555,10 +555,10 @@ const RequestPage = () => {
         // Handle digital bin acceptance - update digital_bins table to 'accepted' status
         logger.info('📦 Updating digital_bins table for request:', requestId);
         
+        // NOTE: digital_bins table doesn't have accepted_at column - only status and collector_id
         const updateData = {
           status: 'accepted',
-          collector_id: user?.id,
-          accepted_at: new Date().toISOString()
+          collector_id: user?.id
         };
         
         logger.info('📦 Update payload:', updateData);
