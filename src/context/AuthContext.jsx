@@ -30,6 +30,32 @@ export const AuthProvider = ({ children }) => {
   const [hasInitiallyChecked, setHasInitiallyChecked] = useState(true);
 
   useEffect(() => {
+    // Helper function to check if 24-hour session has expired (at midnight)
+    const isSessionExpired = () => {
+      const lastLoginTime = localStorage.getItem('last_login_time');
+      if (!lastLoginTime) return true;
+
+      const loginDate = new Date(parseInt(lastLoginTime));
+      const now = new Date();
+      
+      // Calculate midnight of the login day + 24 hours
+      const loginMidnight = new Date(loginDate);
+      loginMidnight.setHours(24, 0, 0, 0); // Next day at midnight
+      
+      // If current time is past login midnight + 24 hours, session expired
+      const expiryTime = new Date(loginMidnight.getTime() + (24 * 60 * 60 * 1000));
+      
+      if (now >= expiryTime) {
+        logger.info('⏰ 24-hour session expired at midnight');
+        return true;
+      }
+      
+      // Calculate hours remaining
+      const hoursRemaining = Math.floor((expiryTime - now) / (60 * 60 * 1000));
+      logger.debug(`⏱️ Session valid for ${hoursRemaining} more hours`);
+      return false;
+    };
+
     const checkAuth = async () => {
       const startTime = Date.now();
       logger.debug('🔐 Starting authentication check at:', startTime);
@@ -44,6 +70,19 @@ export const AuthProvider = ({ children }) => {
           logger.debug('🚫 User is logged out, clearing any existing sessions');
           setUser(null);
           setHasLoggedOut(true);
+          setHasInitiallyChecked(true);
+          return;
+        }
+
+        // Check if 24-hour session has expired (at midnight)
+        if (isSessionExpired()) {
+          logger.info('🕐 24-hour session expired, logging out...');
+          // Clear session and logout
+          localStorage.removeItem('last_login_time');
+          await authService.signOut();
+          setUser(null);
+          setHasLoggedOut(true);
+          localStorage.setItem('user_logged_out', 'true');
           setHasInitiallyChecked(true);
           return;
         }
@@ -175,6 +214,11 @@ export const AuthProvider = ({ children }) => {
         throw new Error(error || 'Failed to verify OTP');
       }
       
+      // Store login time for 24-hour session tracking
+      const loginTime = Date.now();
+      localStorage.setItem('last_login_time', loginTime.toString());
+      logger.info('🕐 Login time stored:', new Date(loginTime).toISOString());
+      
       // Reset logout flag and set user after successful verification
       setHasLoggedOut(false);
       localStorage.removeItem('user_logged_out');
@@ -234,6 +278,11 @@ export const AuthProvider = ({ children }) => {
         throw new Error(profileError || 'Failed to create user profile');
       }
       
+      // Store login time for 24-hour session tracking
+      const loginTime = Date.now();
+      localStorage.setItem('last_login_time', loginTime.toString());
+      logger.info('🕐 Signup login time stored:', new Date(loginTime).toISOString());
+      
       // Reset logout flag and set user
       setHasLoggedOut(false);
       localStorage.removeItem('user_logged_out');
@@ -259,6 +308,9 @@ export const AuthProvider = ({ children }) => {
       if (!success) {
         throw new Error(error || 'Failed to sign out');
       }
+      
+      // Clear login time
+      localStorage.removeItem('last_login_time');
       
       // Set logout flag to prevent automatic session restoration
       setHasLoggedOut(true);
