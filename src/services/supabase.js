@@ -151,9 +151,10 @@ export const authService = {
         return { success: true, profile: data[0] };
       } else {
         // Profile doesn't exist - create new one
+        // Note: profileData already contains user_id, so we don't duplicate it
         const { data, error } = await supabase
           .from('collector_profiles')
-          .insert([{ user_id: userId, ...profileData }])
+          .insert([profileData])
           .select();
         
         if (error) throw error;

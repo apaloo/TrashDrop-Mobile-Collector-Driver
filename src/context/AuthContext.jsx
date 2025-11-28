@@ -205,8 +205,12 @@ export const AuthProvider = ({ children }) => {
       
       const user = session.user;
       
-      // Create user profile with additional data (no email required)
+      // Create user profile with additional data
+      // IMPORTANT: Add email from authenticated user session (required by database)
+      // For phone auth, Supabase typically uses phone as email or provides a generated email
       const profileData = {
+        user_id: user.id,
+        email: user.email || user.phone || `${user.phone}@trashdrop.app`, // Required field
         first_name: userData.first_name,
         last_name: userData.last_name,
         phone: userData.phone,
@@ -214,13 +218,13 @@ export const AuthProvider = ({ children }) => {
         id_type: userData.id_type,
         id_front_photo_url: userData.id_front_photo_url,
         id_back_photo_url: userData.id_back_photo_url,
-        vehicle_type: userData.vehicle_type,
+        vehicle_type: userData.vehicle_type?.toLowerCase() || 'motorcycle', // Normalize to lowercase for CHECK constraint
         license_plate: userData.license_plate,
         vehicle_color: userData.vehicle_color,
         vehicle_photo_url: userData.vehicle_photo_url,
         company_id: userData.company_id,
         company_name: userData.company_name,
-        role: userData.role
+        role: userData.role?.toLowerCase() || 'driver' // Normalize to lowercase
       };
       
       const { success: profileSuccess, error: profileError } = 

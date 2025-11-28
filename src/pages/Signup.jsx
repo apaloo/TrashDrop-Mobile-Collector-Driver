@@ -35,7 +35,7 @@ const SignupPage = () => {
     id_back_photo: null,
     
     // Vehicle info
-    vehicle_type: 'Motorcycle',
+    vehicle_type: 'motorcycle',
     license_plate: '',
     vehicle_color: '',
     vehicle_photo: null,
@@ -43,7 +43,7 @@ const SignupPage = () => {
     // Company info
     company_id: '',
     company_name: '',
-    role: 'Driver'
+    role: 'driver'
   });
   
   // File preview URLs
@@ -623,11 +623,12 @@ const SignupPage = () => {
                 className="w-full px-3 py-2 border rounded-md"
                 required
               >
-                <option value="Motorcycle">Motorcycle</option>
-                <option value="Car">Car</option>
-                <option value="Van">Van</option>
-                <option value="Truck">Truck</option>
-                <option value="Bicycle">Bicycle</option>
+                <option value="motorcycle">Motorcycle</option>
+                <option value="truck">Truck</option>
+                <option value="van">Van</option>
+                <option value="bicycle">Bicycle</option>
+                <option value="cart">Cart</option>
+                <option value="other">Other</option>
               </select>
             </div>
             
@@ -777,9 +778,9 @@ const SignupPage = () => {
                 className="w-full px-3 py-2 border rounded-md"
                 required
               >
-                <option value="Driver">Driver</option>
-                <option value="Collector">Collector</option>
-                <option value="Supervisor">Supervisor</option>
+                <option value="driver">Driver</option>
+                <option value="collector">Collector</option>
+                <option value="supervisor">Supervisor</option>
               </select>
             </div>
             
