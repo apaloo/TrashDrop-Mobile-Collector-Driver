@@ -915,26 +915,44 @@ const RequestPage = () => {
       request = requests.picked_up.find(req => req && req.id === requestId);
     }
     
-    if (request && request.coordinates) {
+    if (request) {
       // Parse coordinates from various formats
       let lat, lng;
+      let coordinatesSource = null;
       
-      // Handle array format [lat, lng]
-      if (Array.isArray(request.coordinates) && request.coordinates.length >= 2) {
-        lat = request.coordinates[0];
-        lng = request.coordinates[1];
-      }
-      // Handle object format {lat: x, lng: y} or {latitude: x, longitude: y}
-      else if (typeof request.coordinates === 'object' && request.coordinates !== null) {
-        lat = request.coordinates.lat || request.coordinates.latitude;
-        lng = request.coordinates.lng || request.coordinates.longitude;
-      }
-      // Handle PostGIS POINT format "POINT(lng lat)"
-      else if (typeof request.coordinates === 'string') {
-        const pointMatch = request.coordinates.match(/POINT\(([+-]?\d+\.?\d*) ([+-]?\d+\.?\d*)\)/);
-        if (pointMatch) {
-          lng = parseFloat(pointMatch[1]); // longitude first in PostGIS
-          lat = parseFloat(pointMatch[2]);  // latitude second
+      // CRITICAL: For digital bins, get coordinates from bin_locations (joined table)
+      if (request.source_type === 'digital_bin' && request.bin_locations?.coordinates) {
+        coordinatesSource = request.bin_locations.coordinates;
+        logger.info('📍 Using bin_locations coordinates for digital bin:', coordinatesSource);
+        
+        // Handle GeoJSON Point format from PostGIS: {type: 'Point', coordinates: [lng, lat]}
+        if (coordinatesSource.type === 'Point' && Array.isArray(coordinatesSource.coordinates) && coordinatesSource.coordinates.length === 2) {
+          lng = coordinatesSource.coordinates[0]; // longitude first in GeoJSON
+          lat = coordinatesSource.coordinates[1]; // latitude second
+          logger.info('✅ Parsed GeoJSON Point:', { lat, lng });
+        }
+      } 
+      // For pickup requests, use the regular coordinates field
+      else if (request.coordinates) {
+        coordinatesSource = request.coordinates;
+        
+        // Handle array format [lat, lng]
+        if (Array.isArray(coordinatesSource) && coordinatesSource.length >= 2) {
+          lat = coordinatesSource[0];
+          lng = coordinatesSource[1];
+        }
+        // Handle object format {lat: x, lng: y} or {latitude: x, longitude: y}
+        else if (typeof coordinatesSource === 'object' && coordinatesSource !== null) {
+          lat = coordinatesSource.lat || coordinatesSource.latitude;
+          lng = coordinatesSource.lng || coordinatesSource.longitude;
+        }
+        // Handle PostGIS POINT format "POINT(lng lat)"
+        else if (typeof coordinatesSource === 'string') {
+          const pointMatch = coordinatesSource.match(/POINT\(([+-]?\d+\.?\d*) ([+-]?\d+\.?\d*)\)/);
+          if (pointMatch) {
+            lng = parseFloat(pointMatch[1]); // longitude first in PostGIS
+            lat = parseFloat(pointMatch[2]);  // latitude second
+          }
         }
       }
       
@@ -943,15 +961,18 @@ const RequestPage = () => {
         setNavigationDestination([lat, lng]);
         setNavigationRequestId(requestId);
         setShowNavigationModal(true);
-        showToast(`Opening in-app navigation to pickup location`, 'info');
+        showToast(`Opening in-app navigation to ${location || 'pickup location'}`, 'info');
+        logger.info('✅ Opening navigation to:', { lat, lng, location });
       } else {
         // Fallback to external navigation if coordinates are invalid
+        logger.warn('⚠️ Invalid coordinates, falling back to search:', { lat, lng, coordinatesSource });
         const fallbackUrl = `https://www.openstreetmap.org/search?query=${encodeURIComponent(location || 'pickup location')}`;
         window.open(fallbackUrl, '_blank');
         showToast(`Opening directions to ${location || 'pickup location'}`, 'info');
       }
     } else {
       // Fallback to external navigation if no request found or no coordinates
+      logger.warn('⚠️ Request not found, falling back to search');
       const fallbackUrl = `https://www.openstreetmap.org/search?query=${encodeURIComponent(location || 'pickup location')}`;
       window.open(fallbackUrl, '_blank');
       showToast(`Opening directions to ${location || 'pickup location'}`, 'info');
