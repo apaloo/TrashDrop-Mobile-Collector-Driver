@@ -86,6 +86,13 @@ class LocationBroadcastService {
 
       if (updateError) {
         logger.error('Failed to broadcast location:', updateError);
+
+        // If the database rejects our GeoJSON, stop tracking to avoid spamming errors
+        if (updateError.message && updateError.message.includes('unknown GeoJSON type')) {
+          logger.warn('Disabling location tracking due to GeoJSON type error from database');
+          this.stopTracking();
+          return;
+        }
       } else {
         // Only log occasionally to reduce console spam
         if (Math.random() < 0.1) {
