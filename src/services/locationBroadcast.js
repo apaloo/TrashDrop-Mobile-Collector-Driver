@@ -70,16 +70,13 @@ class LocationBroadcastService {
 
       // Update collector's current location in database
       // NOTE: Table is collector_profiles, not collectors
-      // CRITICAL: current_location is a GEOGRAPHY column expecting GeoJSON Point format
-      const locationGeoJSON = {
-        type: 'Point',
-        coordinates: [position.longitude, position.latitude] // [lng, lat] in GeoJSON
-      };
+      // IMPORTANT: current_location is a generic geometry column, so we send WKT POINT(lng lat)
+      const locationWKT = `POINT(${position.longitude} ${position.latitude})`;
       
       const { error: updateError } = await supabase
         .from('collector_profiles')
         .update({
-          current_location: locationGeoJSON,
+          current_location: locationWKT,
           last_active: new Date().toISOString()
         })
         .eq('user_id', this.collectorId); // Use user_id, not id
