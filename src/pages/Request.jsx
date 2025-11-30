@@ -1388,7 +1388,22 @@ const RequestPage = () => {
       let nearestCenter = null;
       let minDistance = Infinity;
       
-      if (userLocation && userLocation.lat && userLocation.lng) {
+      // Check for userLocation with either lat/lng or latitude/longitude format
+      const hasValidLocation = userLocation && 
+        ((userLocation.lat && userLocation.lng) || 
+         (userLocation.latitude && userLocation.longitude));
+      
+      if (hasValidLocation) {
+        // Normalize coordinates to lat/lng format
+        const userLat = userLocation.lat || userLocation.latitude;
+        const userLng = userLocation.lng || userLocation.longitude;
+        
+        logger.info('📍 Using user location for disposal center search:', {
+          lat: userLat,
+          lng: userLng,
+          isFallback: userLocation.isFallback || false
+        });
+        
         // Calculate distance to each disposal center
         disposalCenters.forEach(center => {
           // Parse coordinates - handle PostGIS format if needed
@@ -1403,7 +1418,7 @@ const RequestPage = () => {
           }
           
           const distance = calculateDistance(
-            { lat: userLocation.lat, lng: userLocation.lng },
+            { lat: userLat, lng: userLng },
             { lat: parseFloat(centerLat), lng: parseFloat(centerLng) }
           );
           
