@@ -793,7 +793,12 @@ const RequestPage = () => {
     return distance;
   }, []); // Empty dependency array since calculation is pure
 
-
+  // Check if user is within range of disposal center (50m = 0.05km)
+  const isWithinDisposalRange = useCallback((userCoords) => {
+    if (!userCoords) return false;
+    const distance = calculateDistance(userCoords, DISPOSAL_CENTER);
+    return distance <= 0.05; // 50 meters in km
+  }, [calculateDistance]);
 
   // OPTIMIZATION: Handle tab change with memoization to avoid unnecessary operations
   const handleTabChange = useCallback((tab) => {
@@ -1445,7 +1450,7 @@ const GeofenceErrorModal = ({
   );
 };
 
-// Handle locate site
+// Handle locate site - Simple event handler to open disposal site directions
 const handleLocateSite = (requestId) => {
   // Find the request
   const request = requests.picked_up.find(req => req.id === requestId);
@@ -1455,144 +1460,20 @@ const handleLocateSite = (requestId) => {
     return;
   }
   
-  // In a real app, this would locate the nearest disposal site
-  // For this simulation, we'll just show a toast and simulate opening Google Maps
-  const disposalSite = 'Accra Recycling Center, Ring Road';
-  
-  showToast(`Locating nearest disposal site: ${disposalSite}`, 'info');
-  
-  // Get the scanned bags from the request
-  const scannedBags = request.scanned_bags || [];
-  
-  // Calculate completion bonus (10% of total bag fees)
-  const totalBagFees = scannedBags.reduce((sum, bag) => sum + (bag.fee || 0), 0);
-  const completionBonus = totalBagFees * 0.1;
-  const totalEarnings = totalBagFees + completionBonus;
-  
-  // State for location handling
-  const [bypassLocationCheck, setBypassLocationCheck] = useState(false);
-  const [locationFetchInProgress, setLocationFetchInProgress] = useState(false);
-  const [locationFetchAttempts, setLocationFetchAttempts] = useState(0);
-  const [locationError, setLocationError] = useState(null);
-  const [showGeofenceModal, setShowGeofenceModal] = useState(false);
-
-  // Check if user is within range of disposal center
-  const isWithinDisposalRange = (userCoords) => {
-    // If bypass is enabled, always return true (for testing)
-    if (bypassLocationCheck) return true;
-    
-    if (!userCoords) return false;
-    const distance = calculateDistance(userCoords, DISPOSAL_CENTER);
-    // Convert km to meters (50m = 0.05km)
-    return distance <= 0.05;
-  };
-
-  // Update user location with improved error handling
-  const updateUserLocation = () => {
-    // Don't start another location request if one is already in progress
-    if (locationFetchInProgress) return;
-    
-    if (navigator.geolocation) {
-      setLocationFetchInProgress(true);
-      setLocationFetchAttempts(prev => prev + 1);
-      
-      // Use a less aggressive timeout for better success rate
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const userCoords = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          setUserLocation(userCoords);
-          setLocationError(null);
-          setLocationFetchInProgress(false);
-          setLocationFetchAttempts(0); // Reset attempts on success
-          
-          // Check if we're in range after getting location
-          if (isWithinDisposalRange(userCoords)) {
-            setShowGeofenceModal(false);
-          } else {
-            setShowGeofenceModal(true);
-          }
-        },
-        (error) => {
-          logger.error('Error getting location:', error);
-          setLocationError(error.message || 'Unable to get your location');
-          setLocationFetchInProgress(false);
-          setShowGeofenceModal(true);
-          
-          // Only show toast on first few errors to avoid spamming
-          if (locationFetchAttempts <= 2) {
-            let errorMsg = 'Unable to get your location.';
-            
-            if (error.code === 1) { // PERMISSION_DENIED
-              errorMsg = 'Location permission denied. Please enable location services.';
-            } else if (error.code === 2) { // POSITION_UNAVAILABLE
-              errorMsg = 'Location information is unavailable. Please try again later.';
-            } else if (error.code === 3) { // TIMEOUT
-              errorMsg = 'Location request timed out. Please try again or check your connection.';
-            }
-            
-            showToast(errorMsg, 'error', 8000);
-          }
-        },
-        { 
-          enableHighAccuracy: locationFetchAttempts < 2, // Try high accuracy first, then fall back
-          timeout: locationFetchAttempts > 2 ? 60000 : 15000, // Increase timeout after multiple attempts
-          maximumAge: locationFetchAttempts > 1 ? 60000 : 0 // Allow cached positions after first attempt
-        }
-      );
-    } else {
-      setLocationError('Geolocation is not supported by this browser');
-      showToast('Geolocation is not supported by this browser.', 'error', 8000);
-      setShowGeofenceModal(true);
-    }
-  };
-
-  // Update location periodically
-  useEffect(() => {
-    // Get location immediately on component mount
-    updateUserLocation();
-    
-    // Then update every 30 seconds
-    const locationInterval = setInterval(updateUserLocation, 30000);
-    
-    return () => clearInterval(locationInterval);
-  }, []);
-  
-  // Handle retry location
-  const handleRetryLocation = () => {
-    // Reset location fetch attempts to start fresh
-    setLocationFetchAttempts(0);
-    setLocationFetchInProgress(false);
-    // Try to get location again
-    updateUserLocation();
+  // Default disposal site location (Accra Recycling Center)
+  const disposalSite = {
+    name: 'Accra Recycling Center',
+    address: 'Ring Road, Accra',
+    lat: 5.6037,
+    lng: -0.1870
   };
   
-  // Handle bypass for testing
-  const handleBypassForTesting = () => {
-    setBypassLocationCheck(true);
-    setShowGeofenceModal(false);
-    showToast('Location check bypassed for testing', 'success');
-  };
+  // Show toast with disposal site info
+  showToast(`Opening directions to ${disposalSite.name}`, 'info');
   
-  // Handle open directions in maps
-  const handleOpenDirections = () => {
-    // Open Google Maps with directions to disposal site
-    const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${DISPOSAL_CENTER.lat},${DISPOSAL_CENTER.lng}&travelmode=driving`;
-    window.open(mapsUrl, '_blank');
-  };
-
-  return (
-    <GeofenceErrorModal 
-      isOpen={showGeofenceModal}
-      onClose={() => setShowGeofenceModal(false)}
-      onRetry={handleRetryLocation}
-      onBypass={handleBypassForTesting}
-      locationError={locationError}
-      onLocateSite={handleOpenDirections}
-    />
-  );
+  // Open OpenStreetMap with directions to disposal site
+  const mapsUrl = `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=&to=${disposalSite.lat}%2C${disposalSite.lng}`;
+  window.open(mapsUrl, '_blank');
 };
 
   // Handle dispose bag
