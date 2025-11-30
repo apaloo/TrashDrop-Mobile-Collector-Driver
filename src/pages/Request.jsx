@@ -576,6 +576,40 @@ const RequestPage = () => {
         // Handle digital bin acceptance - update digital_bins table to 'accepted' status
         logger.info('📦 Updating digital_bins table for request:', requestId);
         
+        // DUPLICATE CHECK: Verify bin is not already accepted by any collector
+        const { data: existingBin, error: checkError } = await supabase
+          .from('digital_bins')
+          .select('id, status, collector_id')
+          .eq('id', requestId)
+          .single();
+        
+        if (checkError) {
+          logger.error('❌ Error checking bin status:', checkError);
+          throw new Error('Failed to verify bin availability');
+        }
+        
+        // Check if bin is already accepted or picked up
+        if (existingBin.status === 'accepted' || existingBin.status === 'picked_up') {
+          logger.warn('⚠️ Digital bin already accepted/picked up:', {
+            binId: requestId,
+            status: existingBin.status,
+            collectorId: existingBin.collector_id,
+            currentUser: user?.id,
+            isSameCollector: existingBin.collector_id === user?.id
+          });
+          
+          if (existingBin.collector_id === user?.id) {
+            showToast('You have already accepted this bin.', 'warning');
+          } else {
+            showToast('This bin has already been accepted by another collector.', 'error');
+          }
+          
+          // Force refresh to sync UI with actual database state
+          localStorage.setItem('force_cache_reset', 'true');
+          await fetchRequests();
+          return;
+        }
+        
         // NOTE: digital_bins table doesn't have accepted_at column - only status and collector_id
         const updateData = {
           status: 'accepted',
@@ -2065,6 +2099,44 @@ const handleLocateSite = (requestId) => {
                   }
                   
                   if (request && request.source_type === 'digital_bin') {
+                    // DUPLICATE CHECK: Verify bin is not already picked up
+                    const { data: existingBin, error: checkError } = await supabase
+                      .from('digital_bins')
+                      .select('id, status, collector_id')
+                      .eq('id', navigationRequestId)
+                      .single();
+                    
+                    if (checkError) {
+                      logger.error('Error checking bin status before pickup:', checkError);
+                      showToast('Error verifying bin status. Please try again.', 'error');
+                      return;
+                    }
+                    
+                    // Check if already picked up
+                    if (existingBin.status === 'picked_up') {
+                      logger.warn('⚠️ Bin already picked up:', {
+                        binId: navigationRequestId,
+                        collectorId: existingBin.collector_id,
+                        currentUser: user?.id
+                      });
+                      showToast('This bin has already been picked up.', 'warning');
+                      
+                      // Force refresh to sync UI
+                      localStorage.setItem('force_cache_reset', 'true');
+                      await fetchRequests();
+                      return;
+                    }
+                    
+                    // Verify this collector accepted the bin
+                    if (existingBin.collector_id !== user?.id) {
+                      logger.error('❌ Collector mismatch:', {
+                        binCollector: existingBin.collector_id,
+                        currentUser: user?.id
+                      });
+                      showToast('This bin was accepted by a different collector.', 'error');
+                      return;
+                    }
+                    
                     // Update digital bin status in Supabase
                     const { error: binError } = await supabase
                       .from('digital_bins')
@@ -2072,7 +2144,8 @@ const handleLocateSite = (requestId) => {
                         status: 'picked_up'
                         // Note: digital_bins table doesn't have picked_up_at column
                       })
-                      .eq('id', navigationRequestId);
+                      .eq('id', navigationRequestId)
+                      .eq('collector_id', user?.id); // Extra safety: only update if collector matches
                     
                     if (binError) {
                       logger.error('Error updating digital bin status:', binError);

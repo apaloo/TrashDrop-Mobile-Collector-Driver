@@ -186,9 +186,81 @@ onQRScanned={async (scannedValues) => {
 
 ---
 
+## 4. Duplicate Prevention (Request.jsx)
+**Location**: `/src/pages/Request.jsx`
+
+**Problem**:
+Multiple collectors could accept the same bin, or a collector could scan the same bin multiple times.
+
+**Fix Applied**:
+
+**On Accept** - Check before allowing acceptance:
+```javascript
+// DUPLICATE CHECK: Verify bin is not already accepted by any collector
+const { data: existingBin } = await supabase
+  .from('digital_bins')
+  .select('id, status, collector_id')
+  .eq('id', requestId)
+  .single();
+
+// Check if bin is already accepted or picked up
+if (existingBin.status === 'accepted' || existingBin.status === 'picked_up') {
+  if (existingBin.collector_id === user?.id) {
+    showToast('You have already accepted this bin.', 'warning');
+  } else {
+    showToast('This bin has already been accepted by another collector.', 'error');
+  }
+  
+  // Force refresh to sync UI with actual database state
+  localStorage.setItem('force_cache_reset', 'true');
+  await fetchRequests();
+  return;
+}
+```
+
+**On QR Scan** - Check before marking as picked up:
+```javascript
+// DUPLICATE CHECK: Verify bin is not already picked up
+const { data: existingBin } = await supabase
+  .from('digital_bins')
+  .select('id, status, collector_id')
+  .eq('id', navigationRequestId)
+  .single();
+
+// Check if already picked up
+if (existingBin.status === 'picked_up') {
+  showToast('This bin has already been picked up.', 'warning');
+  localStorage.setItem('force_cache_reset', 'true');
+  await fetchRequests();
+  return;
+}
+
+// Verify this collector accepted the bin
+if (existingBin.collector_id !== user?.id) {
+  showToast('This bin was accepted by a different collector.', 'error');
+  return;
+}
+
+// Update with extra safety check
+await supabase
+  .from('digital_bins')
+  .update({ status: 'picked_up' })
+  .eq('id', navigationRequestId)
+  .eq('collector_id', user?.id); // Only update if collector matches
+```
+
+**Result**:
+- ✅ Prevents same collector from accepting a bin twice
+- ✅ Prevents multiple collectors from accepting the same bin
+- ✅ Prevents scanning a bin that's already picked up
+- ✅ Ensures only the collector who accepted the bin can mark it as picked up
+- ✅ Auto-refreshes UI to show actual database state when duplicates detected
+
+---
+
 ## Files Modified
 1. `/src/pages/Map.jsx` - Removed real-time subscription filter
-2. `/src/pages/Request.jsx` - Added cache update on acceptance + QR scan status update
+2. `/src/pages/Request.jsx` - Added cache update on acceptance + QR scan status update + duplicate prevention
 3. `/src/components/NavigationQRModal.jsx` - Fixed QR validation + modal close delay
 
 ---
