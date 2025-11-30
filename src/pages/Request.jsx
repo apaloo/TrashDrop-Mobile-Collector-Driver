@@ -2049,7 +2049,7 @@ const handleLocateSite = (requestId) => {
           onClose={() => setShowNavigationModal(false)}
           destination={navigationDestination}
           requestId={navigationRequestId}
-          onQRScanned={(scannedValues) => {
+          onQRScanned={async (scannedValues) => {
             // Handle multiple scanned QR codes
             if (Array.isArray(scannedValues) && scannedValues.length > 0) {
               // Process all scanned items
@@ -2057,23 +2057,54 @@ const handleLocateSite = (requestId) => {
               
               // Update the request with scanned items
               if (navigationRequestId) {
-                // Here we would typically update the request with the scanned items
-                // For now, we just show a success message
-                showToast(`Successfully scanned ${scannedValues.length} items!`, 'success');
-                
-                // Find the request and update its state if needed
-                let request = null;
-                if (requests.accepted) {
-                  request = requests.accepted.find(req => req && req.id === navigationRequestId);
+                try {
+                  // Find the request to determine if it's a digital bin
+                  let request = null;
+                  if (requests.accepted) {
+                    request = requests.accepted.find(req => req && req.id === navigationRequestId);
+                  }
+                  
+                  if (request && request.source_type === 'digital_bin') {
+                    // Update digital bin status in Supabase
+                    const { error: binError } = await supabase
+                      .from('digital_bins')
+                      .update({ 
+                        status: 'picked_up'
+                        // Note: digital_bins table doesn't have picked_up_at column
+                      })
+                      .eq('id', navigationRequestId);
+                    
+                    if (binError) {
+                      logger.error('Error updating digital bin status:', binError);
+                      showToast('Error updating bin status. Please try again.', 'error');
+                      return;
+                    }
+                    
+                    logger.info(`✅ Digital bin ${navigationRequestId} marked as picked up`);
+                    
+                    // Force cache reset to fetch fresh data from database
+                    localStorage.setItem('force_cache_reset', 'true');
+                    
+                    // Show success toast
+                    showToast('QR code scanned! Bin marked as picked up.', 'success');
+                    logger.info('📢 Success toast displayed');
+                    
+                    // Refresh data to move bin to "Picked Up" tab
+                    logger.info('🔄 Fetching fresh data from database...');
+                    await fetchRequests();
+                    logger.info('✅ Data refresh complete');
+                    
+                    // Modal will close automatically after 2s (handled by NavigationQRModal)
+                  } else if (request) {
+                    // Handle regular pickup request
+                    showToast(`Successfully scanned ${scannedValues.length} items!`, 'success');
+                  } else {
+                    showToast('Request not found.', 'warning');
+                  }
+                } catch (error) {
+                  logger.error('Error processing QR scan:', error);
+                  showToast('Error processing scan. Please try again.', 'error');
                 }
-                
-                if (request) {
-                  // Here you could update the request with the scanned items
-                  // For example: request.scannedItems = scannedValues;
-                }
-                
-                // Close the modal
-                setShowNavigationModal(false);
               } else {
                 showToast('Error: No request ID associated with scan.', 'error');
               }

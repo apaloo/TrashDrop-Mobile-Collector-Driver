@@ -124,8 +124,26 @@ const NavigationQRModal = ({
     const scanStartTime = Date.now();
     logger.debug(`⚡ QR scan processed in ${Date.now() - scanStartTime}ms`, decodedText);
     
-    // Validate scanned QR code
-    if (expectedQRValue && decodedText !== expectedQRValue) {
+    // Extract ID from scanned text (handles both full URLs and plain IDs)
+    const extractId = (text) => {
+      // If it's a URL like "https://trashdrop.app/bin/6fd90afb-...", extract the ID
+      const urlMatch = text.match(/\/bin\/([a-f0-9-]+)$/i);
+      if (urlMatch) {
+        return urlMatch[1];
+      }
+      // Otherwise return as-is (already an ID)
+      return text;
+    };
+    
+    const scannedId = extractId(decodedText);
+    logger.info('🔍 Validation check - expectedQRValue:', expectedQRValue);
+    logger.info('🔍 Validation check - decodedText:', decodedText);
+    logger.info('🔍 Validation check - extractedId:', scannedId);
+    logger.info('🔍 Validation check - match:', scannedId === expectedQRValue);
+    
+    // Validate scanned QR code (only if expected value is set)
+    if (expectedQRValue && scannedId !== expectedQRValue) {
+      logger.error('❌ QR code mismatch! Expected:', expectedQRValue, 'Got:', scannedId);
       showToast({
         message: 'Invalid QR code. Please scan the correct code.',
         type: 'error'
@@ -133,21 +151,22 @@ const NavigationQRModal = ({
       return;
     }
     
+    logger.info('✅ Validation passed, continuing to success logic...');
+    
     // Add to scanned items
     const newItem = { code: decodedText, timestamp: Date.now() };
     setScannedItems(prev => [...prev, newItem]);
     
-    // Show success toast
-    showToast({
-      message: 'QR code scanned successfully!',
-      type: 'success'
-    });
+    logger.info('📞 Calling onQRScanned callback first...');
+    // Call the parent callback first (so Request.jsx can update status and show toast)
+    onQRScanned([decodedText]);
     
-    // Optional: Auto-complete if expectedQRValue matches
-    if (expectedQRValue && decodedText === expectedQRValue) {
-      onQRScanned([decodedText]);
-      setTimeout(() => onClose(), 1500);
-    }
+    logger.info('⏰ Setting timer to close modal in 2s...');
+    // Close modal after 2 seconds to allow toast to show
+    setTimeout(() => {
+      logger.info('🚪 Closing modal now...');
+      onClose();
+    }, 2000);
   }, [expectedQRValue, onQRScanned, onClose]);
   
   const handleQRScanError = useCallback((error) => {
@@ -559,7 +578,7 @@ const requestCameraPermission = useCallback(async () => {
           
           // Only log geofence status occasionally
           if (consecutiveFallbackUpdates < 2) {
-            logger.debug('Within geofence (50m):', withinGeofence, `Distance: ${distance.toFixed(3)}km`);
+            logger.debug('🎯 Geofence check - Within 50m:', withinGeofence, `| Distance: ${distance.toFixed(3)}km (${Math.round(distance * 1000)}m)`);
           }
           
           setIsWithinGeofence(withinGeofence);
@@ -749,6 +768,14 @@ const requestCameraPermission = useCallback(async () => {
                       onScanError={handleQRScanError}
                       isWithinRange={isWithinGeofence}
                     />
+                    {/* Debug info */}
+                    {process.env.NODE_ENV === 'development' && (
+                      <div className="mt-2 p-2 bg-gray-800 text-white text-xs rounded">
+                        <div>Distance: {distanceToDestination ? `${Math.round(distanceToDestination * 1000)}m` : 'Calculating...'}</div>
+                        <div>Within 50m: {isWithinGeofence ? '✅ Yes' : '❌ No'}</div>
+                        <div>Mode: {mode}</div>
+                      </div>
+                    )}
                   </ErrorBoundary>
                   <div className="mt-4 text-center">
                     <p className="text-white text-sm mb-2">Position the QR code within the scanner frame</p>

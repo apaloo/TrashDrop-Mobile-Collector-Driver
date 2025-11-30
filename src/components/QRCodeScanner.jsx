@@ -11,6 +11,12 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
   const [cameraError, setCameraError] = useState('');
   const [scannerActive, setScannerActive] = useState(false);
   const [scanStartTime, setScanStartTime] = useState(Date.now());
+  const [isScanning, setIsScanning] = useState(false);
+
+  // Debug log geofence state changes
+  useEffect(() => {
+    logger.debug('🎯 QR Scanner geofence state changed - isWithinRange:', isWithinRange);
+  }, [isWithinRange]);
 
   // Cleanup function with safer DOM handling
   const cleanup = useCallback(async () => {
@@ -95,32 +101,51 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
         }
       });
 
-      // Configure camera with constraints
+      // Configure camera with optimized constraints for QR scanning
       const config = {
-        fps: 10,
+        fps: 20, // Increased for better detection
         qrbox: { width: 250, height: 250 },
         aspectRatio: 1,
+        disableFlip: false, // Allow flipping for better detection
         videoConstraints: {
           facingMode: 'environment',
           width: { min: 640, ideal: 1280, max: 1920 },
           height: { min: 480, ideal: 720, max: 1080 }
-        }
+        },
+        // Improved QR detection
+        formatsToSupport: [0], // QR_CODE only
+        supportedScanTypes: [0] // QR_CODE only
       };
 
       // Start scanning
       logger.debug('▶️ Starting QR scanner...');
+      setIsScanning(true);
       await html5QrCodeRef.current.start(
         { facingMode: 'environment' },
         config,
-        (decodedText) => {
-          logger.info('✅ QR code scanned:', decodedText);
+        async (decodedText) => {
+          logger.info('✅ QR code successfully scanned:', decodedText);
+          setIsScanning(false);
+          
+          // Stop scanner immediately to prevent duplicate scans
+          try {
+            if (html5QrCodeRef.current?.isScanning) {
+              await html5QrCodeRef.current.stop();
+              setScannerActive(false);
+              logger.debug('🛑 Scanner stopped after successful scan');
+            }
+          } catch (err) {
+            logger.error('Error stopping scanner after success:', err);
+          }
+          
+          // Call success handler
           onScanSuccess(decodedText);
         },
         (errorMessage) => {
-          // Only show errors when scanner is active (not during initialization)
-          if (scannerActive) {
-            logger.error('❌ QR Scanner Error:', errorMessage);
-            onScanError(errorMessage);
+          // Silently ignore scanning errors (they're just "no QR found" messages)
+          // Only log actual failures
+          if (errorMessage && !errorMessage.includes('No MultiFormat Readers')) {
+            logger.debug('QR Scanner:', errorMessage);
           }
         }
       );
@@ -196,26 +221,11 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
     };
   }, [isWithinRange, cleanup, startScanner]);
 
-  // Manual scan button handler
-  const handleManualScan = () => {
-    if (!isWithinRange) {
-      onScanError && onScanError('You must be within 50 meters of the pickup location to scan.');
-      return;
-    }
-    
-    if (!scannerActive) {
-      startScanner();
-    } else if (process.env.NODE_ENV === 'development') {
-      // For development testing only: simulate a successful scan
-      const demoQrData = {
-        source: 'trashdrop',
-        bagId: `bag-${Date.now().toString().slice(-6)}`,
-        type: 'plastic',
-        timestamp: new Date().toISOString()
-      };
-      logger.debug('DEV MODE: Simulating QR code scan:', demoQrData);
-      onScanSuccess && onScanSuccess(JSON.stringify(demoQrData));
-    }
+  // Manual retry button handler
+  const handleRetryScanner = () => {
+    logger.debug('🔄 Retrying scanner initialization...');
+    setCameraError('');
+    setScanStartTime(Date.now());
   };
 
   return (
@@ -262,16 +272,31 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
         Position QR code within the frame to scan
       </p>
 
-      {/* Scan Button */}
-      <button
-        onClick={handleManualScan}
-        disabled={!isWithinRange}
-        className={`w-full py-3 mt-4 rounded-lg flex items-center justify-center text-white transition-colors ${isWithinRange 
-          ? 'bg-green-500 hover:bg-green-600' 
-          : 'bg-gray-400 cursor-not-allowed'}`}
-      >
-        {cameraError ? 'Retry Camera Access' : isWithinRange ? (scannerActive ? 'Scanning...' : 'Scan Now') : 'Too Far From Pickup Location'}
-      </button>
+      {/* Status Button */}
+      {!isWithinRange && (
+        <div className="w-full py-3 mt-4 rounded-lg flex items-center justify-center bg-gray-400 text-white">
+          Too Far From Pickup Location
+        </div>
+      )}
+      
+      {isWithinRange && cameraError && (
+        <button
+          onClick={handleRetryScanner}
+          className="w-full py-3 mt-4 rounded-lg flex items-center justify-center bg-red-500 hover:bg-red-600 text-white transition-colors"
+        >
+          Retry Camera Access
+        </button>
+      )}
+      
+      {isWithinRange && !cameraError && scannerActive && (
+        <div className="w-full py-3 mt-4 rounded-lg flex items-center justify-center bg-green-500 text-white">
+          <svg className="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Scanning...
+        </div>
+      )}
     </div>
   );
 };

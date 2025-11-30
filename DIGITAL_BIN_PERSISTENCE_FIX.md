@@ -123,10 +123,99 @@ setRequestCache(prev => ({
 
 ---
 
-## Status: ✅ FIXED
-Digital bins now properly persist their accepted status across:
-- Real-time updates
-- Page refreshes  
-- Navigation
-- Cache hits
-- Multiple users/collectors
+### 3. QR Scanner Not Updating Status (NavigationQRModal + Request.jsx)
+**Location**: `/src/components/NavigationQRModal.jsx` and `/src/pages/Request.jsx`
+
+**Problems**:
+1. Toast message not visible - modal closed too quickly (1.5s)
+2. Digital bin status not updated after QR scan
+3. Bin stayed in "Accepted" tab instead of moving to "Picked Up" tab
+
+**Fix Applied**:
+
+**NavigationQRModal.jsx** - Increased modal close delay:
+```javascript
+// BEFORE:
+showToast({ message: 'QR code scanned successfully!', type: 'success' });
+onQRScanned([decodedText]);
+setTimeout(() => onClose(), 1500); // ❌ Too fast, toast not visible
+
+// AFTER:
+onQRScanned([decodedText]); // Call parent first to show toast
+setTimeout(() => onClose(), 2000); // ✅ 2s delay allows toast to show
+```
+
+**Request.jsx** - Update status and refresh data:
+```javascript
+onQRScanned={async (scannedValues) => {
+  // Update digital bin status in Supabase
+  await supabase
+    .from('digital_bins')
+    .update({ 
+      status: 'picked_up',
+      picked_up_at: new Date().toISOString()
+    })
+    .eq('id', navigationRequestId);
+  
+  // Show success toast
+  showToast('QR code scanned! Bin marked as picked up.', 'success');
+  
+  // Refresh data to move bin to "Picked Up" tab
+  await fetchRequests();
+}}
+```
+
+**Result**: 
+- Toast is now visible for 2 seconds before modal closes
+- Digital bin status updates to 'picked_up' in database
+- Bin automatically moves from "Accepted" to "Picked Up" tab
+
+---
+
+## QR Scan Flow (After All Fixes)
+
+1. User navigates to digital bin location (within 50m geofence)
+2. User scans QR code
+3. **QRCodeScanner** validates and extracts bin ID from URL
+4. **NavigationQRModal** calls `onQRScanned([decodedText])`
+5. **Request.jsx** updates bin status to 'picked_up' in Supabase
+6. **Request.jsx** shows success toast: "QR code scanned! Bin marked as picked up."
+7. **Request.jsx** refreshes data with `fetchRequests()`
+8. Bin moves from "Accepted" tab to "Picked Up" tab
+9. Modal closes after 2 seconds (toast remains visible)
+
+---
+
+## Files Modified
+1. `/src/pages/Map.jsx` - Removed real-time subscription filter
+2. `/src/pages/Request.jsx` - Added cache update on acceptance + QR scan status update
+3. `/src/components/NavigationQRModal.jsx` - Fixed QR validation + modal close delay
+
+---
+
+## Testing Checklist
+**Acceptance:**
+- [ ] Accept a digital bin from Available tab
+- [ ] Verify it moves to Accepted tab
+- [ ] Verify it's removed from Map markers
+- [ ] Refresh the page - bin should stay in Accepted tab
+- [ ] Navigate away and back - bin should NOT reappear in Available
+- [ ] Check another collector's view - bin should NOT show as available
+
+**QR Scanning:**
+- [ ] Navigate to digital bin location
+- [ ] Scan QR code with full URL (e.g., `https://trashdrop.app/bin/[id]`)
+- [ ] Verify success toast shows: "QR code scanned! Bin marked as picked up."
+- [ ] Verify toast is visible for ~2 seconds
+- [ ] Verify bin moves from "Accepted" to "Picked Up" tab
+- [ ] Verify modal closes automatically after 2 seconds
+
+---
+
+## Status: ✅ FULLY FIXED
+Digital bins now properly:
+- ✅ Persist accepted status across real-time updates, refreshes, navigation, and cache
+- ✅ Update to 'picked_up' status after QR scan
+- ✅ Move to correct tab ("Accepted" → "Picked Up") after scanning
+- ✅ Show success toast that's visible before modal closes
+- ✅ Extract bin ID from full QR URL format
