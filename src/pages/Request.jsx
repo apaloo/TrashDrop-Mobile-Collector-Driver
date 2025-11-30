@@ -11,6 +11,7 @@ import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import RequestCard from '../components/RequestCard';
 import NavigationQRModal from '../components/NavigationQRModal';
+import DisposalModal from '../components/DisposalModal';
 import Toast from '../components/Toast';
 
 import { PickupRequestStatus, WasteType, AssignmentStatus } from '../utils/types';
@@ -74,6 +75,9 @@ const RequestPage = () => {
   const [showNavigationModal, setShowNavigationModal] = useState(false);
   const [navigationDestination, setNavigationDestination] = useState(null);
   const [navigationRequestId, setNavigationRequestId] = useState(null);
+  const [showDisposalModal, setShowDisposalModal] = useState(false);
+  const [selectedDisposalCenter, setSelectedDisposalCenter] = useState(null);
+  const [currentDisposalRequestId, setCurrentDisposalRequestId] = useState(null);
 
   // Show toast notification
   const showToast = (message, type = 'info', duration = 3000) => {
@@ -1406,28 +1410,71 @@ const RequestPage = () => {
         
         // Calculate distance to each disposal center
         disposalCenters.forEach(center => {
-          // Parse coordinates - handle PostGIS format if needed
-          let centerLat = center.latitude;
-          let centerLng = center.longitude;
+          // Parse coordinates - handle multiple PostGIS formats
+          let centerLat = null;
+          let centerLng = null;
           
-          // If coordinates are in GEOGRAPHY format, they should already be parsed
-          // If they're objects, extract lat/lng
-          if (typeof centerLat === 'object' && centerLat.x !== undefined) {
-            centerLng = centerLat.x;
-            centerLat = centerLat.y;
+          // Try parsing latitude
+          if (typeof center.latitude === 'number') {
+            centerLat = center.latitude;
+          } else if (typeof center.latitude === 'object') {
+            // PostGIS POINT format: {x: lng, y: lat}
+            if (center.latitude.x !== undefined && center.latitude.y !== undefined) {
+              centerLng = center.latitude.x;
+              centerLat = center.latitude.y;
+            }
+            // PostGIS GEOGRAPHY format with coordinates array
+            else if (center.latitude.coordinates && Array.isArray(center.latitude.coordinates)) {
+              centerLng = center.latitude.coordinates[0];
+              centerLat = center.latitude.coordinates[1];
+            }
+          } else if (typeof center.latitude === 'string') {
+            // Try parsing numeric string
+            const parsed = parseFloat(center.latitude);
+            if (!isNaN(parsed)) centerLat = parsed;
+          }
+          
+          // Try parsing longitude (if not already set from latitude object)
+          if (centerLng === null) {
+            if (typeof center.longitude === 'number') {
+              centerLng = center.longitude;
+            } else if (typeof center.longitude === 'object') {
+              if (center.longitude.x !== undefined && center.longitude.y !== undefined) {
+                centerLng = center.longitude.x;
+                centerLat = center.longitude.y;
+              } else if (center.longitude.coordinates && Array.isArray(center.longitude.coordinates)) {
+                centerLng = center.longitude.coordinates[0];
+                centerLat = center.longitude.coordinates[1];
+              }
+            } else if (typeof center.longitude === 'string') {
+              const parsed = parseFloat(center.longitude);
+              if (!isNaN(parsed)) centerLng = parsed;
+            }
+          }
+          
+          // Skip if we couldn't parse coordinates
+          if (centerLat === null || centerLng === null || isNaN(centerLat) || isNaN(centerLng)) {
+            logger.warn('Could not parse disposal center coordinates:', {
+              id: center.id,
+              name: center.name,
+              latType: typeof center.latitude,
+              lngType: typeof center.longitude
+            });
+            return;
           }
           
           const distance = calculateDistance(
             { lat: userLat, lng: userLng },
-            { lat: parseFloat(centerLat), lng: parseFloat(centerLng) }
+            { lat: centerLat, lng: centerLng }
           );
           
           if (distance < minDistance) {
             minDistance = distance;
             nearestCenter = {
               ...center,
-              lat: parseFloat(centerLat),
-              lng: parseFloat(centerLng),
+              lat: centerLat,
+              lng: centerLng,
+              coordinates: [centerLat, centerLng], // Add coordinates array for DisposalModal
               distance: distance
             };
           }
@@ -1436,19 +1483,47 @@ const RequestPage = () => {
         // No user location available, use first disposal center
         logger.warn('User location not available, using first disposal center');
         const firstCenter = disposalCenters[0];
-        let centerLat = firstCenter.latitude;
-        let centerLng = firstCenter.longitude;
+        let centerLat = null;
+        let centerLng = null;
         
-        // Parse coordinates
-        if (typeof centerLat === 'object' && centerLat.x !== undefined) {
-          centerLng = centerLat.x;
-          centerLat = centerLat.y;
+        // Parse coordinates using same logic as above
+        if (typeof firstCenter.latitude === 'number') {
+          centerLat = firstCenter.latitude;
+        } else if (typeof firstCenter.latitude === 'object') {
+          if (firstCenter.latitude.x !== undefined && firstCenter.latitude.y !== undefined) {
+            centerLng = firstCenter.latitude.x;
+            centerLat = firstCenter.latitude.y;
+          } else if (firstCenter.latitude.coordinates && Array.isArray(firstCenter.latitude.coordinates)) {
+            centerLng = firstCenter.latitude.coordinates[0];
+            centerLat = firstCenter.latitude.coordinates[1];
+          }
+        } else if (typeof firstCenter.latitude === 'string') {
+          const parsed = parseFloat(firstCenter.latitude);
+          if (!isNaN(parsed)) centerLat = parsed;
+        }
+        
+        if (centerLng === null) {
+          if (typeof firstCenter.longitude === 'number') {
+            centerLng = firstCenter.longitude;
+          } else if (typeof firstCenter.longitude === 'object') {
+            if (firstCenter.longitude.x !== undefined && firstCenter.longitude.y !== undefined) {
+              centerLng = firstCenter.longitude.x;
+              centerLat = firstCenter.longitude.y;
+            } else if (firstCenter.longitude.coordinates && Array.isArray(firstCenter.longitude.coordinates)) {
+              centerLng = firstCenter.longitude.coordinates[0];
+              centerLat = firstCenter.longitude.coordinates[1];
+            }
+          } else if (typeof firstCenter.longitude === 'string') {
+            const parsed = parseFloat(firstCenter.longitude);
+            if (!isNaN(parsed)) centerLng = parsed;
+          }
         }
         
         nearestCenter = {
           ...firstCenter,
-          lat: parseFloat(centerLat),
-          lng: parseFloat(centerLng),
+          lat: centerLat,
+          lng: centerLng,
+          coordinates: [centerLat, centerLng], // Add coordinates array for DisposalModal
           distance: null
         };
       }
@@ -1459,22 +1534,23 @@ const RequestPage = () => {
       }
       
       // Log disposal center details
-      logger.info('🗺️ Opening directions to disposal center:', {
+      logger.info('🗺️ Found nearest disposal center:', {
         name: nearestCenter.name,
         address: nearestCenter.address,
         distance: nearestCenter.distance ? `${nearestCenter.distance.toFixed(2)} km` : 'unknown',
         wasteType: nearestCenter.waste_type
       });
       
+      // Store the disposal center and show modal
+      setSelectedDisposalCenter(nearestCenter);
+      setCurrentDisposalRequestId(requestId);
+      setShowDisposalModal(true);
+      
       // Show toast with disposal center info
       const distanceText = nearestCenter.distance 
         ? ` (${nearestCenter.distance.toFixed(1)} km away)` 
         : '';
-      showToast(`Opening directions to ${nearestCenter.name}${distanceText}`, 'success', 4000);
-      
-      // Open OpenStreetMap with directions to nearest disposal center
-      const mapsUrl = `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=&to=${nearestCenter.lat}%2C${nearestCenter.lng}`;
-      window.open(mapsUrl, '_blank');
+      showToast(`Found ${nearestCenter.name}${distanceText}`, 'success', 3000);
       
     } catch (error) {
       logger.error('Error in handleLocateSite:', error);
@@ -2185,6 +2261,31 @@ const GeofenceErrorModal = ({
       )}
       
       {/* Report Modal will be implemented separately */}
+      
+      {/* Disposal Center Modal */}
+      {showDisposalModal && selectedDisposalCenter && (
+        <DisposalModal
+          assignment={{ id: currentDisposalRequestId }}
+          isOpen={showDisposalModal}
+          onClose={() => {
+            setShowDisposalModal(false);
+            setSelectedDisposalCenter(null);
+            setCurrentDisposalRequestId(null);
+          }}
+          onDispose={(assignmentId, site) => {
+            logger.info('Disposal confirmed:', { assignmentId, site });
+            showToast(`Disposal confirmed at ${site.name}`, 'success');
+            setShowDisposalModal(false);
+          }}
+          onGetDirections={(site) => {
+            logger.info('Opening directions to disposal site:', site);
+            // Open OpenStreetMap with directions
+            const mapsUrl = `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=&to=${site.coordinates[0]}%2C${site.coordinates[1]}`;
+            window.open(mapsUrl, '_blank');
+            showToast(`Opening directions to ${site.name}`, 'info');
+          }}
+        />
+      )}
     </div>
   );
 };

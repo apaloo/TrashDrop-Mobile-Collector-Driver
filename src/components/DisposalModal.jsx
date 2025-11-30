@@ -60,16 +60,71 @@ const DisposalModal = ({
           
           if (data && data.length > 0) {
             // Transform data to match our component's expected format
-            const centers = data.map(center => ({
-              id: center.id,
-              name: center.name,
-              address: center.address,
-              coordinates: [center.latitude, center.longitude],
-              openHours: center.operating_hours || '8:00 AM - 6:00 PM',
-              rating: center.rating || 4.0,
-              // We'll calculate distance dynamically based on user location
-              distance: '...' // Will be calculated when user location is available
-            }));
+            const centers = data.map(center => {
+              // Parse PostGIS GEOGRAPHY coordinates
+              let centerLat = null;
+              let centerLng = null;
+              
+              // Try parsing latitude
+              if (typeof center.latitude === 'number') {
+                centerLat = center.latitude;
+              } else if (typeof center.latitude === 'object') {
+                // PostGIS POINT format: {x: lng, y: lat}
+                if (center.latitude.x !== undefined && center.latitude.y !== undefined) {
+                  centerLng = center.latitude.x;
+                  centerLat = center.latitude.y;
+                }
+                // PostGIS GEOGRAPHY format with coordinates array
+                else if (center.latitude.coordinates && Array.isArray(center.latitude.coordinates)) {
+                  centerLng = center.latitude.coordinates[0];
+                  centerLat = center.latitude.coordinates[1];
+                }
+              } else if (typeof center.latitude === 'string') {
+                const parsed = parseFloat(center.latitude);
+                if (!isNaN(parsed)) centerLat = parsed;
+              }
+              
+              // Try parsing longitude (if not already set from latitude object)
+              if (centerLng === null) {
+                if (typeof center.longitude === 'number') {
+                  centerLng = center.longitude;
+                } else if (typeof center.longitude === 'object') {
+                  if (center.longitude.x !== undefined && center.longitude.y !== undefined) {
+                    centerLng = center.longitude.x;
+                    centerLat = center.longitude.y;
+                  } else if (center.longitude.coordinates && Array.isArray(center.longitude.coordinates)) {
+                    centerLng = center.longitude.coordinates[0];
+                    centerLat = center.longitude.coordinates[1];
+                  }
+                } else if (typeof center.longitude === 'string') {
+                  const parsed = parseFloat(center.longitude);
+                  if (!isNaN(parsed)) centerLng = parsed;
+                }
+              }
+              
+              // Skip centers with invalid coordinates
+              if (centerLat === null || centerLng === null || isNaN(centerLat) || isNaN(centerLng)) {
+                logger.warn('Could not parse disposal center coordinates:', {
+                  id: center.id,
+                  name: center.name,
+                  latType: typeof center.latitude,
+                  lngType: typeof center.longitude
+                });
+                return null;
+              }
+              
+              return {
+                id: center.id,
+                name: center.name,
+                address: center.address,
+                coordinates: [centerLat, centerLng],
+                openHours: center.operating_hours || '8:00 AM - 6:00 PM',
+                rating: center.rating || 4.0,
+                waste_type: center.waste_type || '',
+                // We'll calculate distance dynamically based on user location
+                distance: '...' // Will be calculated when user location is available
+              };
+            }).filter(center => center !== null); // Remove invalid centers
             
             setDisposalCenters(centers);
           }
