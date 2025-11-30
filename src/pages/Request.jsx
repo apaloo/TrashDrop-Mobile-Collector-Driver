@@ -1342,6 +1342,131 @@ const RequestPage = () => {
     }
   };
 
+  // Handle locate site - Fetch nearest disposal center and open directions
+  const handleLocateSite = async (requestId) => {
+    try {
+      // Find the request
+      const request = requests.picked_up.find(req => req.id === requestId);
+      
+      if (!request) {
+        showToast('Request not found', 'error');
+        return;
+      }
+      
+      // Show loading state
+      showToast('Finding nearest disposal center...', 'info');
+      
+      // Fetch all disposal centers from Supabase
+      const { data: disposalCenters, error: fetchError } = await supabase
+        .from('disposal_centers')
+        .select('id, name, address, latitude, longitude, waste_type, center_type')
+        .order('name');
+      
+      if (fetchError) {
+        logger.error('Error fetching disposal centers:', fetchError);
+        showToast('Unable to fetch disposal centers. Using default location.', 'warning');
+        
+        // Fallback to default location
+        const defaultSite = {
+          name: 'Accra Recycling Center',
+          address: 'Ring Road, Accra',
+          lat: 5.6037,
+          lng: -0.1870
+        };
+        
+        const mapsUrl = `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=&to=${defaultSite.lat}%2C${defaultSite.lng}`;
+        window.open(mapsUrl, '_blank');
+        return;
+      }
+      
+      if (!disposalCenters || disposalCenters.length === 0) {
+        showToast('No disposal centers found in the database.', 'error');
+        return;
+      }
+      
+      // Find nearest disposal center based on user location
+      let nearestCenter = null;
+      let minDistance = Infinity;
+      
+      if (userLocation && userLocation.lat && userLocation.lng) {
+        // Calculate distance to each disposal center
+        disposalCenters.forEach(center => {
+          // Parse coordinates - handle PostGIS format if needed
+          let centerLat = center.latitude;
+          let centerLng = center.longitude;
+          
+          // If coordinates are in GEOGRAPHY format, they should already be parsed
+          // If they're objects, extract lat/lng
+          if (typeof centerLat === 'object' && centerLat.x !== undefined) {
+            centerLng = centerLat.x;
+            centerLat = centerLat.y;
+          }
+          
+          const distance = calculateDistance(
+            { lat: userLocation.lat, lng: userLocation.lng },
+            { lat: parseFloat(centerLat), lng: parseFloat(centerLng) }
+          );
+          
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestCenter = {
+              ...center,
+              lat: parseFloat(centerLat),
+              lng: parseFloat(centerLng),
+              distance: distance
+            };
+          }
+        });
+      } else {
+        // No user location available, use first disposal center
+        logger.warn('User location not available, using first disposal center');
+        const firstCenter = disposalCenters[0];
+        let centerLat = firstCenter.latitude;
+        let centerLng = firstCenter.longitude;
+        
+        // Parse coordinates
+        if (typeof centerLat === 'object' && centerLat.x !== undefined) {
+          centerLng = centerLat.x;
+          centerLat = centerLat.y;
+        }
+        
+        nearestCenter = {
+          ...firstCenter,
+          lat: parseFloat(centerLat),
+          lng: parseFloat(centerLng),
+          distance: null
+        };
+      }
+      
+      if (!nearestCenter) {
+        showToast('Unable to find a suitable disposal center.', 'error');
+        return;
+      }
+      
+      // Log disposal center details
+      logger.info('🗺️ Opening directions to disposal center:', {
+        name: nearestCenter.name,
+        address: nearestCenter.address,
+        distance: nearestCenter.distance ? `${nearestCenter.distance.toFixed(2)} km` : 'unknown',
+        wasteType: nearestCenter.waste_type
+      });
+      
+      // Show toast with disposal center info
+      const distanceText = nearestCenter.distance 
+        ? ` (${nearestCenter.distance.toFixed(1)} km away)` 
+        : '';
+      showToast(`Opening directions to ${nearestCenter.name}${distanceText}`, 'success', 4000);
+      
+      // Open OpenStreetMap with directions to nearest disposal center
+      const mapsUrl = `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=&to=${nearestCenter.lat}%2C${nearestCenter.lng}`;
+      window.open(mapsUrl, '_blank');
+      
+    } catch (error) {
+      logger.error('Error in handleLocateSite:', error);
+      showToast('An error occurred while locating the disposal site.', 'error');
+    }
+  };
+
 // Geofence Error Modal Component
 const GeofenceErrorModal = ({ 
   isOpen, 
@@ -1448,131 +1573,6 @@ const GeofenceErrorModal = ({
       </div>
     </div>
   );
-};
-
-// Handle locate site - Fetch nearest disposal center and open directions
-const handleLocateSite = async (requestId) => {
-  try {
-    // Find the request
-    const request = requests.picked_up.find(req => req.id === requestId);
-    
-    if (!request) {
-      showToast('Request not found', 'error');
-      return;
-    }
-    
-    // Show loading state
-    showToast('Finding nearest disposal center...', 'info');
-    
-    // Fetch all disposal centers from Supabase
-    const { data: disposalCenters, error: fetchError } = await supabase
-      .from('disposal_centers')
-      .select('id, name, address, latitude, longitude, waste_type, center_type')
-      .order('name');
-    
-    if (fetchError) {
-      logger.error('Error fetching disposal centers:', fetchError);
-      showToast('Unable to fetch disposal centers. Using default location.', 'warning');
-      
-      // Fallback to default location
-      const defaultSite = {
-        name: 'Accra Recycling Center',
-        address: 'Ring Road, Accra',
-        lat: 5.6037,
-        lng: -0.1870
-      };
-      
-      const mapsUrl = `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=&to=${defaultSite.lat}%2C${defaultSite.lng}`;
-      window.open(mapsUrl, '_blank');
-      return;
-    }
-    
-    if (!disposalCenters || disposalCenters.length === 0) {
-      showToast('No disposal centers found in the database.', 'error');
-      return;
-    }
-    
-    // Find nearest disposal center based on user location
-    let nearestCenter = null;
-    let minDistance = Infinity;
-    
-    if (userLocation && userLocation.lat && userLocation.lng) {
-      // Calculate distance to each disposal center
-      disposalCenters.forEach(center => {
-        // Parse coordinates - handle PostGIS format if needed
-        let centerLat = center.latitude;
-        let centerLng = center.longitude;
-        
-        // If coordinates are in GEOGRAPHY format, they should already be parsed
-        // If they're objects, extract lat/lng
-        if (typeof centerLat === 'object' && centerLat.x !== undefined) {
-          centerLng = centerLat.x;
-          centerLat = centerLat.y;
-        }
-        
-        const distance = calculateDistance(
-          { lat: userLocation.lat, lng: userLocation.lng },
-          { lat: parseFloat(centerLat), lng: parseFloat(centerLng) }
-        );
-        
-        if (distance < minDistance) {
-          minDistance = distance;
-          nearestCenter = {
-            ...center,
-            lat: parseFloat(centerLat),
-            lng: parseFloat(centerLng),
-            distance: distance
-          };
-        }
-      });
-    } else {
-      // No user location available, use first disposal center
-      logger.warn('User location not available, using first disposal center');
-      const firstCenter = disposalCenters[0];
-      let centerLat = firstCenter.latitude;
-      let centerLng = firstCenter.longitude;
-      
-      // Parse coordinates
-      if (typeof centerLat === 'object' && centerLat.x !== undefined) {
-        centerLng = centerLat.x;
-        centerLat = centerLat.y;
-      }
-      
-      nearestCenter = {
-        ...firstCenter,
-        lat: parseFloat(centerLat),
-        lng: parseFloat(centerLng),
-        distance: null
-      };
-    }
-    
-    if (!nearestCenter) {
-      showToast('Unable to find a suitable disposal center.', 'error');
-      return;
-    }
-    
-    // Log disposal center details
-    logger.info('🗺️ Opening directions to disposal center:', {
-      name: nearestCenter.name,
-      address: nearestCenter.address,
-      distance: nearestCenter.distance ? `${nearestCenter.distance.toFixed(2)} km` : 'unknown',
-      wasteType: nearestCenter.waste_type
-    });
-    
-    // Show toast with disposal center info
-    const distanceText = nearestCenter.distance 
-      ? ` (${nearestCenter.distance.toFixed(1)} km away)` 
-      : '';
-    showToast(`Opening directions to ${nearestCenter.name}${distanceText}`, 'success', 4000);
-    
-    // Open OpenStreetMap with directions to nearest disposal center
-    const mapsUrl = `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=&to=${nearestCenter.lat}%2C${nearestCenter.lng}`;
-    window.open(mapsUrl, '_blank');
-    
-  } catch (error) {
-    logger.error('Error in handleLocateSite:', error);
-    showToast('An error occurred while locating the disposal site.', 'error');
-  }
 };
 
   // Handle dispose bag
