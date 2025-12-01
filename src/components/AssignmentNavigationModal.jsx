@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import GoogleMapModalComponent from './GoogleMapModalComponent';
+import OSMNavigationMap from './OSMNavigationMap';
 import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
 import Toast from './Toast';
 import { debounce } from 'lodash';
@@ -521,28 +521,29 @@ const AssignmentNavigationModal = ({
           </button>
         </div>
 
-        {/* Content Area - Google Maps */}
+        {/* Content Area - OpenStreetMap */}
         <div className="flex-1 relative overflow-hidden">
           <div className="relative w-full h-[60vh] bg-gray-100 rounded-lg overflow-hidden">
             {userLocation && parseDestination(destination) ? (
-              <GoogleMapModalComponent
+              <OSMNavigationMap
                 userLocation={userLocation}
                 destination={parseDestination(destination)}
                 onMapReady={(map) => {
-                  logger.debug(`✅ Google Maps loaded for ${assignmentTitle} navigation`);
+                  logger.debug(`✅ OpenStreetMap loaded for ${assignmentTitle} navigation`);
                   mapRef.current = map;
-                  
-                  // Initialize directions API when map is ready
-                  initializeDirectionsAPI();
-                  
-                  // Connect directions renderer to map if navigation is active
-                  if (directionsRenderer.current && navigationRoute) {
-                    directionsRenderer.current.setMap(map);
-                    directionsRenderer.current.setDirections(navigationRoute);
-                  }
                 }}
-                className="w-full h-full"
-                shouldInitialize={true}
+                onRouteCalculated={(routeInfo) => {
+                  logger.debug('Route calculated:', routeInfo);
+                  // Store route info if needed
+                  setNavigationRoute(routeInfo);
+                }}
+                onError={(error) => {
+                  logger.warn('Map error:', error);
+                  showToast({
+                    message: 'Map loading issue. You can still navigate externally.',
+                    type: 'warning'
+                  });
+                }}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import GoogleMapModalComponent from './GoogleMapModalComponent';
+import OSMNavigationMap from './OSMNavigationMap';
 import { getCurrentLocation, isWithinRadius, calculateDistance } from '../utils/geoUtils';
 import Toast from './Toast';
 import { debounce } from 'lodash';
@@ -724,15 +724,23 @@ const requestCameraPermission = useCallback(async () => {
               {/* Debug logging for navigation conditions - reduced frequency */}
               {Math.random() < 0.05 && logger.debug('Navigation render check:', { userLocation: !!userLocation, destination: !!destination, userLocationData: userLocation, destinationData: destination })}
               {userLocation && destination ? (
-                <GoogleMapModalComponent
+                <OSMNavigationMap
                   userLocation={userLocation}
                   destination={destination}
                   onMapReady={(map) => {
-                    logger.debug('Google Maps loaded in modal');
+                    logger.debug('OpenStreetMap loaded in modal');
                     mapRef.current = map;
                   }}
-                  className="w-full h-full"
-                  shouldInitialize={true}
+                  onRouteCalculated={(routeInfo) => {
+                    logger.debug('Route calculated:', routeInfo);
+                  }}
+                  onError={(error) => {
+                    logger.warn('Map error:', error);
+                    showToast({
+                      message: 'Map loading issue. You can still navigate externally.',
+                      type: 'warning'
+                    });
+                  }}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
