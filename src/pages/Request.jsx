@@ -969,6 +969,39 @@ const RequestPage = () => {
         coordinates_type: typeof request.coordinates
       });
       
+      // Helper function to parse PostGIS binary format (WKB - Well-Known Binary)
+      const parsePostGISBinary = (hexString) => {
+        try {
+          // PostGIS binary format: 0101000020E6100000 + 16 hex chars (lng) + 16 hex chars (lat)
+          if (!hexString || typeof hexString !== 'string' || !hexString.startsWith('0101000020')) {
+            return null;
+          }
+          
+          // Extract the coordinate bytes (skip the header)
+          const coordStart = 18; // After "0101000020E6100000"
+          const lngHex = hexString.substring(coordStart, coordStart + 16);
+          const latHex = hexString.substring(coordStart + 16, coordStart + 32);
+          
+          // Convert hex to IEEE 754 double (little-endian)
+          const hexToDouble = (hex) => {
+            const bytes = new Uint8Array(8);
+            for (let i = 0; i < 8; i++) {
+              bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+            }
+            return new DataView(bytes.buffer).getFloat64(0, true); // true = little-endian
+          };
+          
+          const lng = hexToDouble(lngHex);
+          const lat = hexToDouble(latHex);
+          
+          logger.info('✅ Parsed PostGIS binary coordinates:', { lat, lng, source: hexString.substring(0, 20) + '...' });
+          return { lat, lng };
+        } catch (error) {
+          logger.warn('⚠️ Failed to parse PostGIS binary:', error.message);
+          return null;
+        }
+      };
+      
       // Parse coordinates from various formats
       let lat, lng;
       let coordinatesSource = null;
@@ -1002,12 +1035,23 @@ const RequestPage = () => {
           lat = coordinatesSource.lat || coordinatesSource.latitude;
           lng = coordinatesSource.lng || coordinatesSource.longitude;
         }
-        // Handle PostGIS POINT format "POINT(lng lat)"
+        // Handle PostGIS formats (string-based)
         else if (typeof coordinatesSource === 'string') {
-          const pointMatch = coordinatesSource.match(/POINT\(([+-]?\d+\.?\d*) ([+-]?\d+\.?\d*)\)/);
-          if (pointMatch) {
-            lng = parseFloat(pointMatch[1]); // longitude first in PostGIS
-            lat = parseFloat(pointMatch[2]);  // latitude second
+          // Try PostGIS binary format first (WKB hex string)
+          if (coordinatesSource.startsWith('0101000020')) {
+            const parsed = parsePostGISBinary(coordinatesSource);
+            if (parsed) {
+              lat = parsed.lat;
+              lng = parsed.lng;
+            }
+          }
+          // Try PostGIS text format "POINT(lng lat)"
+          else {
+            const pointMatch = coordinatesSource.match(/POINT\(([+-]?\d+\.?\d*) ([+-]?\d+\.?\d*)\)/);
+            if (pointMatch) {
+              lng = parseFloat(pointMatch[1]); // longitude first in PostGIS
+              lat = parseFloat(pointMatch[2]);  // latitude second
+            }
           }
         }
       }
