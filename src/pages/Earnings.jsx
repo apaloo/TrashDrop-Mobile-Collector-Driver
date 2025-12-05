@@ -53,26 +53,24 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, onWithdrawalSuccess }) =
     setError('');
     
     try {
-      // Simulate API call to payment gateway
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // In a real implementation, this would be an API call to the payment gateway
-      // const response = await fetch('/api/cashout', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ amount, paymentMethod, momoNumber, momoProvider })
-      // });
-      // const data = await response.json();
-      // if (!response.ok) throw new Error(data.message);
-      
-      // Update the total earnings by subtracting the withdrawn amount
       const withdrawnAmount = parseFloat(amount);
-      onWithdrawalSuccess(withdrawnAmount);
+      
+      // Call the onWithdrawalSuccess callback which handles the disbursement
+      const result = await onWithdrawalSuccess(withdrawnAmount, {
+        momoNumber,
+        momoProvider,
+        accountName: 'Collector' // Could be fetched from profile
+      });
+      
+      if (result && !result.success) {
+        throw new Error(result.error || 'Failed to process withdrawal');
+      }
       
       setSuccess(true);
       setTimeout(() => {
         onClose();
         setSuccess(false);
+        setAmount('');
       }, 3000);
     } catch (err) {
       setError(err.message || 'Failed to process withdrawal. Please try again.');
@@ -379,30 +377,39 @@ const EarningsPage = () => {
     }
   };
 
-  const handleWithdrawalSuccess = async (amount) => {
+  const handleWithdrawalSuccess = async (amount, paymentDetails) => {
     try {
       if (!user?.id) {
         throw new Error('User not authenticated');
       }
 
       const earningsService = createEarningsService(user.id);
-      const { success, error } = await earningsService.processWithdrawal(amount, {
-        method: 'momo', // Default to mobile money for now
-        timestamp: new Date().toISOString()
-      });
+      
+      // **NEW: Process digital bin disbursement with validation**
+      const { success, error, message, binsIncluded } = await earningsService.processDigitalBinDisbursement(
+        amount,
+        paymentDetails
+      );
 
       if (!success || error) {
-        throw new Error(error || 'Failed to process withdrawal');
+        return {
+          success: false,
+          error: error || 'Failed to process withdrawal'
+        };
       }
 
-      // Update total earnings
-      setTotalEarnings(prev => prev - amount);
-      
+      logger.info('Disbursement successful:', { amount, binsIncluded, message });
+
       // Refresh data to reflect the withdrawal
       await fetchEarningsData();
+      
+      return { success: true, message, binsIncluded };
     } catch (error) {
       logger.error('Error processing withdrawal:', error);
-      // You might want to show an error toast here
+      return {
+        success: false,
+        error: error.message || 'Failed to process withdrawal'
+      };
     }
   };
 

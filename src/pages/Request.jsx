@@ -12,6 +12,7 @@ import BottomNavBar from '../components/BottomNavBar';
 import RequestCard from '../components/RequestCard';
 import NavigationQRModal from '../components/NavigationQRModal';
 import DisposalModal from '../components/DisposalModal';
+import DigitalBinPaymentModal from '../components/DigitalBinPaymentModal';
 import Toast from '../components/Toast';
 
 import { PickupRequestStatus, WasteType, AssignmentStatus } from '../utils/types';
@@ -21,6 +22,8 @@ import { registerConnectivityListeners } from '../utils/offlineUtils';
 import { supabase, authService } from '../services/supabase';
 import usePhotoCapture from '../hooks/usePhotoCapture';
 import { logger } from '../utils/logger';
+import { initiateCollection } from '../services/paymentService';
+import { disposeDigitalBin } from '../services/disposalService';
 
 // OPTIMIZATION: Memoize RequestCard for better performance
 import { requestManager } from '../services/requestManagement';
@@ -41,7 +44,14 @@ const RequestPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [userProfile, setUserProfile] = useState(null);
-  const { filters, filteredRequests = [], updateFilteredRequests } = useFilters() || {};
+  
+  // Access filter context - hooks must be called unconditionally
+  const filterContext = useFilters();
+  const { 
+    filters = { searchRadius: 5, wasteTypes: ['All Types'], minPayment: 0, priority: 'all', activeFilter: 'all' }, 
+    filteredRequests = { available: [], accepted: [], picked_up: [] }, 
+    updateFilteredRequests = () => {} 
+  } = filterContext || {};
   
   // Photo capture management
   const {
@@ -78,6 +88,10 @@ const RequestPage = () => {
   const [showDisposalModal, setShowDisposalModal] = useState(false);
   const [selectedDisposalCenter, setSelectedDisposalCenter] = useState(null);
   const [currentDisposalRequestId, setCurrentDisposalRequestId] = useState(null);
+  
+  // Payment modal state (for digital bin client collection)
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [currentPaymentBinId, setCurrentPaymentBinId] = useState(null);
 
   // Show toast notification
   const showToast = (message, type = 'info', duration = 3000) => {
@@ -392,65 +406,53 @@ const RequestPage = () => {
           
           logger.debug('📋 Final available requests to display:', availableRequests.length);
           
-          // Update request cache for snappy UX
-          requestAnimationFrame(() => {
-            setRequestCache(prev => ({
-              ...prev,
-              available: {
-                data: availableRequests,
-                timestamp: Date.now()
-              }
-            }));
-          });
+          // Update request cache for snappy UX - immediate update
+          setRequestCache(prev => ({
+            ...prev,
+            available: {
+              data: availableRequests,
+              timestamp: Date.now()
+            }
+          }));
         }
         
         if (acceptedResult?.data) {
           acceptedRequests = transformRequestsData(acceptedResult.data);
-          // Update accepted requests cache
-          requestAnimationFrame(() => {
-            setRequestCache(prev => ({
-              ...prev,
-              accepted: {
-                data: acceptedRequests,
-                timestamp: Date.now()
-              }
-            }));
-          });
+          // Update accepted requests cache - immediate update
+          setRequestCache(prev => ({
+            ...prev,
+            accepted: {
+              data: acceptedRequests,
+              timestamp: Date.now()
+            }
+          }));
         }
         
         if (pickedUpResult?.data) {
           pickedUpRequests = transformRequestsData(pickedUpResult.data);
-          // Update picked-up requests cache
-          requestAnimationFrame(() => {
-            setRequestCache(prev => ({
-              ...prev,
-              completed: {
-                data: pickedUpRequests,
-                timestamp: Date.now()
-              }
-            }));
-          });
+          // Update picked-up requests cache - immediate update
+          setRequestCache(prev => ({
+            ...prev,
+            completed: {
+              data: pickedUpRequests,
+              timestamp: Date.now()
+            }
+          }));
         }
 
-        // OPTIMIZATION: Batch state updates for better performance
-        requestAnimationFrame(() => {
-          setRequests({
-            available: availableRequests,
-            accepted: acceptedRequests,
-            picked_up: pickedUpRequests
-          });
-          
-          setIsLoading(false);
-          setIsInitialLoading(false);
-          setIsRefreshing(false);
-          setLastUpdated(new Date());
-          
-          logger.debug('⚡ INSTANT: Request page data loaded');
+        // Update all state immediately to prevent race conditions
+        setRequests({
+          available: availableRequests,
+          accepted: acceptedRequests,
+          picked_up: pickedUpRequests
         });
         
-        // Cache removed - using direct database only
-        // Update timestamp
+        setIsLoading(false);
+        setIsInitialLoading(false);
+        setIsRefreshing(false);
         setLastUpdated(new Date());
+        
+        logger.debug('⚡ INSTANT: Request page data loaded');
       } else {
         // Offline: show error message
         setError('No internet connection. Please connect to the internet.');
@@ -466,7 +468,7 @@ const RequestPage = () => {
       setIsInitialLoading(false);
       setIsRefreshing(false);
     }
-  }, [user?.id, filteredRequests, requestCache]);
+  }, [user?.id]);
 
   // Handle file upload for photo capture
   const handleFileChange = useCallback(async (event) => {
@@ -1741,20 +1743,51 @@ const GeofenceErrorModal = ({
         return;
       }
       
-      // Show processing toast
-      showToast('Processing disposal...', 'info');
-      
-      // Generate disposal details
-      const disposalSite = 'Accra Recycling Center, Ring Road';
-      const disposalTimestamp = new Date().toISOString();
-      
-      // Get the request with safe access
       const request = requests.picked_up[requestIndex];
       if (!request) {
         logger.error('Request at index not found:', requestIndex);
         showToast('Error processing request. Please try again.', 'error');
         return;
       }
+      
+      // **NEW: Check if this is a digital bin**
+      if (request.source_type === 'digital_bin') {
+        logger.info('Disposing digital bin with sharing model:', requestId);
+        
+        // Show processing toast
+        showToast('Processing disposal and calculating earnings...', 'info');
+        
+        // Call disposal service with sharing model
+        const result = await disposeDigitalBin(requestId, user?.id);
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to dispose bin');
+        }
+        
+        logger.info('Digital bin disposed successfully:', result);
+        
+        // Show earnings info
+        const earnings = result.payoutBreakdown?.collector_total_payout || 0;
+        showToast(
+          `Bin disposed! Your earnings: GHS ${earnings.toFixed(2)}`,
+          'success',
+          5000
+        );
+        
+        // Refresh requests to update UI
+        await fetchRequests();
+        
+        return; // Exit early for digital bins
+      }
+      
+      // **EXISTING: Regular pickup request disposal logic**
+      
+      // Show processing toast
+      showToast('Processing disposal...', 'info');
+      
+      // Generate disposal details
+      const disposalSite = 'Accra Recycling Center, Ring Road';
+      const disposalTimestamp = new Date().toISOString();
       
       // Update environmental impact with safe access
       const existingImpact = request.environmental_impact || {};
@@ -1843,6 +1876,54 @@ const GeofenceErrorModal = ({
     } catch (err) {
       logger.error('Error viewing report:', err);
       showToast('Failed to view report', 'error');
+    }
+  };
+
+  // Handle payment submission (digital bin client collection)
+  const handlePaymentSubmit = async (paymentData) => {
+    try {
+      logger.info('Processing payment submission:', paymentData);
+      
+      // Get collector profile ID
+      const { data: collectorProfile, error: profileError } = await supabase
+        .from('collector_profiles')
+        .select('id')
+        .eq('user_id', user?.id)
+        .single();
+      
+      if (profileError || !collectorProfile) {
+        throw new Error('Collector profile not found');
+      }
+      
+      // Update payment data with collector profile ID
+      const completePaymentData = {
+        ...paymentData,
+        collectorId: collectorProfile.id
+      };
+      
+      // Initiate collection
+      const result = await initiateCollection(completePaymentData);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Payment failed');
+      }
+      
+      logger.info('Payment initiated successfully:', result);
+      
+      // Show appropriate message based on payment mode
+      if (paymentData.paymentMode === 'cash') {
+        showToast('Cash payment recorded successfully', 'success');
+      } else {
+        showToast('Payment initiated. Awaiting client approval.', 'info');
+      }
+      
+      // Refresh requests to update UI
+      await fetchRequests();
+      
+    } catch (error) {
+      logger.error('Error processing payment:', error);
+      showToast(error.message || 'Failed to process payment', 'error');
+      throw error; // Re-throw to let modal handle it
     }
   };
 
@@ -2079,15 +2160,15 @@ const GeofenceErrorModal = ({
                 Try Again
               </button>
             </div>
-          ) : activeTab === 'available' && requests.available.length === 0 ? (
+          ) : activeTab === 'available' && (!requests.available || requests.available.length === 0) ? (
             <div className="text-center py-8">
               <p className="text-gray-600">No available requests at the moment.</p>
             </div>
-          ) : activeTab === 'accepted' && requests.accepted.length === 0 ? (
+          ) : activeTab === 'accepted' && (!requests.accepted || requests.accepted.length === 0) ? (
             <div className="text-center py-8">
               <p className="text-gray-600">You haven't accepted any requests yet.</p>
             </div>
-          ) : activeTab === 'picked_up' && requests.picked_up.length === 0 ? (
+          ) : activeTab === 'picked_up' && (!requests.picked_up || requests.picked_up.length === 0) ? (
             <div className="text-center py-8">
               <p className="text-gray-600">You haven't picked up any requests yet.</p>
             </div>
@@ -2157,21 +2238,39 @@ const GeofenceErrorModal = ({
               {activeTab === 'picked_up' && (
                 <div>
                   {Array.isArray(requests.picked_up) && requests.picked_up.length > 0 ? (
-                    requests.picked_up.map(request => (
-                      request && (
-                        <RequestCard 
-                          key={request.id || Math.random().toString()} 
-                          request={request} 
-                          onAccept={handleAcceptRequest}
-                          onOpenDirections={handleOpenDirections}
-                          onScanQR={handleScanQR}
-                          onCompletePickup={handleCompletePickup}
-                          onLocateSite={handleLocateSite}
-                          onDisposeBag={handleDisposeBag}
-                          onViewReport={handleViewReport}
-                        />
-                      )
-                    ))
+                    // Sort: non-disposed digital bins first, then others, then disposed
+                    requests.picked_up
+                      .slice() // Create copy to avoid mutating original
+                      .sort((a, b) => {
+                        const aIsDigitalBin = a.source_type === 'digital_bin';
+                        const bIsDigitalBin = b.source_type === 'digital_bin';
+                        const aIsDisposed = aIsDigitalBin && a.status === 'disposed';
+                        const bIsDisposed = bIsDigitalBin && b.status === 'disposed';
+                        
+                        // Non-disposed items first
+                        if (aIsDisposed && !bIsDisposed) return 1;
+                        if (!aIsDisposed && bIsDisposed) return -1;
+                        
+                        // Within same disposal status, sort by pickup time (most recent first)
+                        const aTime = new Date(a.picked_up_at || a.accepted_at || a.created_at).getTime();
+                        const bTime = new Date(b.picked_up_at || b.accepted_at || b.created_at).getTime();
+                        return bTime - aTime;
+                      })
+                      .map(request => (
+                        request && (
+                          <RequestCard 
+                            key={request.id || Math.random().toString()} 
+                            request={request} 
+                            onAccept={handleAcceptRequest}
+                            onOpenDirections={handleOpenDirections}
+                            onScanQR={handleScanQR}
+                            onCompletePickup={handleCompletePickup}
+                            onLocateSite={handleLocateSite}
+                            onDisposeBag={handleDisposeBag}
+                            onViewReport={handleViewReport}
+                          />
+                        )
+                      ))
                   ) : (
                     <div className="p-4 text-center text-gray-500">
                       No picked up requests found
@@ -2282,6 +2381,11 @@ const GeofenceErrorModal = ({
                     await fetchRequests();
                     logger.info('✅ Data refresh complete');
                     
+                    // Open payment modal for client collection
+                    logger.info('💰 Opening payment modal for digital bin:', navigationRequestId);
+                    setCurrentPaymentBinId(navigationRequestId);
+                    setShowPaymentModal(true);
+                    
                     // Modal will close automatically after 2s (handled by NavigationQRModal)
                   } else if (request) {
                     // Handle regular pickup request
@@ -2321,13 +2425,21 @@ const GeofenceErrorModal = ({
             showToast(`Disposal confirmed at ${site.name}`, 'success');
             setShowDisposalModal(false);
           }}
-          onGetDirections={(site) => {
-            logger.info('Opening directions to disposal site:', site);
-            // Open OpenStreetMap with directions
-            const mapsUrl = `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=&to=${site.coordinates[0]}%2C${site.coordinates[1]}`;
-            window.open(mapsUrl, '_blank');
-            showToast(`Opening directions to ${site.name}`, 'info');
+          // onGetDirections is NOT provided - let DisposalModal handle in-app navigation internally
+        />
+      )}
+      
+      {/* Digital Bin Payment Modal (Client Collection) */}
+      {showPaymentModal && currentPaymentBinId && (
+        <DigitalBinPaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => {
+            setShowPaymentModal(false);
+            setCurrentPaymentBinId(null);
           }}
+          digitalBinId={currentPaymentBinId}
+          collectorId={user?.id}
+          onSubmit={handlePaymentSubmit}
         />
       )}
     </div>

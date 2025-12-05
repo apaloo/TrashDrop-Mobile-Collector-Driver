@@ -1,5 +1,9 @@
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
+import * as TrendiPayService from './trendiPayService';
+
+// Feature flag for TrendiPay integration
+const ENABLE_TRENDIPAY = import.meta.env.VITE_ENABLE_TRENDIPAY === 'true';
 
 class EarningsService {
   constructor(collectorId) {
@@ -8,7 +12,7 @@ class EarningsService {
 
   async getEarningsData() {
     try {
-      // Get completed pickups
+      // Get completed pickups (regular requests)
       const { data: completedPickups, error: pickupsError } = await supabase
         .from('pickup_requests')
         .select('*')
@@ -17,10 +21,23 @@ class EarningsService {
 
       if (pickupsError) throw pickupsError;
 
+      // **NEW: Get digital bin earnings (using RPC function)**
+      const { data: digitalBinEarnings, error: digitalBinError } = await supabase
+        .rpc('get_collector_available_earnings', { 
+          p_collector_id: this.collectorId 
+        });
+
+      if (digitalBinError) {
+        logger.warn('Error fetching digital bin earnings:', digitalBinError);
+      }
+
       // Calculate earnings stats
-      const totalEarnings = completedPickups?.reduce((sum, pickup) => sum + (pickup.fee || 0), 0) || 0;
+      const regularEarnings = completedPickups?.reduce((sum, pickup) => sum + (pickup.fee || 0), 0) || 0;
+      const digitalEarnings = digitalBinEarnings || 0;
+      const totalEarnings = regularEarnings + digitalEarnings;
+      
       const completedJobs = completedPickups?.length || 0;
-      const avgPerJob = completedJobs > 0 ? totalEarnings / completedJobs : 0;
+      const avgPerJob = completedJobs > 0 ? regularEarnings / completedJobs : 0;
 
       // Calculate weekly and monthly earnings
       const now = new Date();
@@ -99,6 +116,8 @@ class EarningsService {
           chartData,
           stats: {
             totalEarnings,
+            regularEarnings, // **NEW: Regular pickup earnings**
+            digitalBinEarnings: digitalEarnings, // **NEW: Digital bin earnings**
             completedJobs,
             avgPerJob,
             rating: 4.8, // Placeholder until rating system is implemented
@@ -385,6 +404,192 @@ class EarningsService {
         success: false,
         error: error.message,
         data: { total: 0, count: 0, average: 0, byType: {}, tips: [] }
+      };
+    }
+  }
+
+  /**
+   * Process digital bin disbursement (cashout)
+   * Phase 3: Records disbursement, validates against available balance
+   * Phase 4: Will integrate TrendiPay API call
+   * 
+   * @param {number} amount - Amount to disburse in GHS
+   * @param {Object} paymentDetails - MoMo details {momoNumber, momoProvider}
+   * @returns {Promise<Object>} Result with success status
+   */
+  async processDigitalBinDisbursement(amount, paymentDetails) {
+    try {
+      logger.info('Processing digital bin disbursement:', { collectorId: this.collectorId, amount });
+
+      // Step 1: Validate amount
+      if (!amount || amount <= 0) {
+        throw new Error('Invalid withdrawal amount');
+      }
+
+      // Step 2: Get collector profile ID
+      const { data: collectorProfile, error: profileError } = await supabase
+        .from('collector_profiles')
+        .select('id')
+        .eq('user_id', this.collectorId)
+        .single();
+
+      if (profileError || !collectorProfile) {
+        throw new Error('Collector profile not found');
+      }
+
+      // Step 3: Validate cashout amount using RPC function
+      const { data: validation, error: validationError } = await supabase
+        .rpc('validate_cashout', {
+          p_collector_id: this.collectorId,
+          p_amount: amount
+        });
+
+      if (validationError) {
+        throw new Error(`Validation error: ${validationError.message}`);
+      }
+
+      if (!validation.valid) {
+        throw new Error(validation.error || 'Insufficient balance');
+      }
+
+      logger.info('Cashout validation passed:', validation);
+
+      // Step 4: Get all undisbursed bins for this collector
+      const { data: undisbursedBins, error: binsError } = await supabase
+        .from('digital_bins')
+        .select('id, collector_total_payout')
+        .eq('collector_id', this.collectorId)
+        .eq('status', 'disposed')
+        .not('id', 'in', `(
+          SELECT digital_bin_id 
+          FROM bin_payments 
+          WHERE type='disbursement' 
+            AND status='success'
+        )`);
+
+      if (binsError) {
+        throw new Error(`Error fetching bins: ${binsError.message}`);
+      }
+
+      logger.info(`Found ${undisbursedBins?.length || 0} undisbursed bins`);
+
+      // Step 5: Create disbursement record(s)
+      // For simplicity, create one disbursement record representing the aggregated payout
+      // Link it to the first bin (or create a separate tracking mechanism)
+      
+      const disbursementRecord = {
+        digital_bin_id: undisbursedBins?.[0]?.id || null, // Representative bin
+        collector_id: collectorProfile.id,
+        type: 'disbursement',
+        collector_share: amount,
+        platform_share: 0, // Platform already took their share during disposal
+        payment_mode: 'momo',
+        collector_account_number: paymentDetails.momoNumber,
+        collector_account_name: paymentDetails.accountName || 'Collector',
+        client_rswitch: paymentDetails.momoProvider || 'mtn',
+        currency: 'GHS',
+        status: 'pending', // Phase 4: will become 'success' after TrendiPay confirms
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const { data: disbursement, error: disbursementError } = await supabase
+        .from('bin_payments')
+        .insert([disbursementRecord])
+        .select()
+        .single();
+
+      if (disbursementError) {
+        throw new Error(`Failed to create disbursement: ${disbursementError.message}`);
+      }
+
+      logger.info('Disbursement record created:', disbursement.id);
+
+      // Phase 4: Call TrendiPay disbursement API
+      if (ENABLE_TRENDIPAY) {
+        logger.info('Calling TrendiPay disbursement API...');
+        
+        const gatewayResult = await TrendiPayService.initiateDisbursement({
+          reference: disbursement.id,
+          accountNumber: paymentDetails.momoNumber,
+          rSwitch: paymentDetails.momoProvider,
+          amount: amount,
+          description: `TrashDrop collector payout (${undisbursedBins?.length || 0} bins)`,
+          currency: 'GHS'
+        });
+
+        if (!gatewayResult.success) {
+          // Update disbursement record with error
+          await supabase
+            .from('bin_payments')
+            .update({ 
+              status: 'failed',
+              gateway_error: gatewayResult.error
+            })
+            .eq('id', disbursement.id);
+
+          throw new Error(gatewayResult.error || 'Disbursement gateway error');
+        }
+
+        // Update disbursement record with gateway details
+        const { error: updateError } = await supabase
+          .from('bin_payments')
+          .update({ 
+            status: gatewayResult.status, // Will be 'pending' initially
+            gateway_reference: gatewayResult.gatewayReference,
+            gateway_transaction_id: gatewayResult.transactionId
+          })
+          .eq('id', disbursement.id);
+
+        if (updateError) {
+          logger.warn('Failed to update gateway reference:', updateError);
+        }
+
+        logger.info('TrendiPay disbursement initiated:', {
+          disbursementId: disbursement.id,
+          transactionId: gatewayResult.transactionId,
+          status: gatewayResult.status
+        });
+
+        return {
+          success: true,
+          disbursementId: disbursement.id,
+          transactionId: gatewayResult.transactionId,
+          amount: amount,
+          message: gatewayResult.message || 'Withdrawal initiated successfully',
+          status: gatewayResult.status,
+          binsIncluded: undisbursedBins?.length || 0
+        };
+      } else {
+        // Stub mode: Mark as success immediately for testing
+        logger.warn('TrendiPay disabled - using stub mode');
+        
+        const { error: updateError } = await supabase
+          .from('bin_payments')
+          .update({ 
+            status: 'success',
+            gateway_reference: `stub_${Date.now()}`
+          })
+          .eq('id', disbursement.id);
+
+        if (updateError) {
+          logger.warn('Failed to update disbursement status:', updateError);
+        }
+
+        return {
+          success: true,
+          disbursementId: disbursement.id,
+          amount: amount,
+          message: 'Withdrawal processed successfully (stub mode)',
+          binsIncluded: undisbursedBins?.length || 0
+        };
+      }
+
+    } catch (error) {
+      logger.error('Error processing digital bin disbursement:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to process withdrawal'
       };
     }
   }

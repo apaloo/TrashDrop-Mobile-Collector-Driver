@@ -703,6 +703,8 @@ const AssignPage = () => {
   
   // Handle get directions to dumping site with GPS coordinates
   const handleGetDirections = (site) => {
+    logger.info('Opening directions for site:', site);
+    
     let googleMapsUrl = '';
     
     // Parse GPS coordinates from disposal site
@@ -718,19 +720,25 @@ const AssignPage = () => {
         lng = site.coordinates.lng || site.coordinates.longitude;
       }
       
+      logger.info('Parsed coordinates:', { lat, lng });
+      
       // Use GPS coordinates if valid
       if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
         googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+        logger.info('Google Maps URL:', googleMapsUrl);
       } else {
+        logger.warn('Invalid coordinates, using address fallback');
         // Fallback to address search
         googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.address || site.name || 'disposal site')}`;
       }
     } else {
+      logger.warn('No coordinates found, using address fallback');
       // Fallback to address search
       googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.address || site.name || 'disposal site')}`;
     }
     
     // Open Google Maps
+    logger.info('Opening URL:', googleMapsUrl);
     window.open(googleMapsUrl, '_blank');
   };
   
@@ -978,7 +986,7 @@ const AssignPage = () => {
         isOpen={disposalModalOpen}
         onClose={() => setDisposalModalOpen(false)}
         onDispose={handleDispose}
-        onGetDirections={handleGetDirections}
+        // onGetDirections is NOT provided - let DisposalModal handle in-app navigation internally
       />
       
       <ReportModal

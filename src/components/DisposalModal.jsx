@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { isWithinRadius } from '../utils/locationUtils';
 import { logger } from '../utils/logger';
+import AssignmentNavigationModal from './AssignmentNavigationModal';
 
 /**
  * Modal component for disposal process
@@ -24,6 +25,9 @@ const DisposalModal = ({
   const [userLocation, setUserLocation] = useState([defaultLat, defaultLng]); // Default user location
   const [isWithinRange, setIsWithinRange] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const [isNavigationOpen, setIsNavigationOpen] = useState(false);
+  const [navigationDestination, setNavigationDestination] = useState(null);
+  const [navigationTitle, setNavigationTitle] = useState('');
   const RADIUS_METERS = 50; // 50 meter radius requirement
   
   // Fix Leaflet icon issues with Webpack/Vite
@@ -157,18 +161,24 @@ const DisposalModal = ({
               try {
                 const distanceCalc = await calculateDistance();
                 const updatedCenters = disposalCenters.map(center => {
-                  const distance = distanceCalc(
-                    latitude,
-                    longitude,
-                    center.coordinates[0],
-                    center.coordinates[1]
+                  // Pass coordinates as arrays: [lat, lng]
+                  const distanceMeters = distanceCalc(
+                    [latitude, longitude],
+                    center.coordinates
                   );
+                  // Convert meters to kilometers
+                  const distanceKm = distanceMeters / 1000;
                   return {
                     ...center,
-                    distance: `${distance.toFixed(1)} km`
+                    distance: `${distanceKm.toFixed(1)} km`,
+                    distanceValue: distanceKm // Store numeric value for sorting
                   };
                 });
-                setDisposalCenters(updatedCenters);
+                
+                // Sort by distance (closest first)
+                const sortedCenters = updatedCenters.sort((a, b) => a.distanceValue - b.distanceValue);
+                
+                setDisposalCenters(sortedCenters);
               } catch (err) {
                 logger.error('Error calculating distances:', err);
               }
@@ -231,18 +241,61 @@ const DisposalModal = ({
     setShowLocationModal(false);
   };
   
-  // Handle get directions
-  const handleGetDirections = () => {
-    if (!selectedSite) {
+  // Handle get directions - Open in-app navigation
+  const handleGetDirections = (site, e) => { // Add event parameter
+    logger.info('🔹 handleGetDirections called', { site: site?.name, hasEvent: !!e });
+    
+    if (!site) {
       alert('Please select a dumping site');
       return;
     }
     
-    onGetDirections(selectedSite);
+    // Prevent default action and event propagation to avoid any link behavior
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.nativeEvent?.stopImmediatePropagation?.();
+      logger.info('🔹 Event propagation stopped');
+    }
+    
+    logger.info('🔹 Opening in-app navigation to disposal site:', site);
+    
+    // Set navigation details
+    const siteCoordinates = site.coordinates;
+    const siteName = site.name;
+    
+    logger.info('🔹 Navigation details:', { coordinates: siteCoordinates, name: siteName });
+    
+    try {
+      // Set navigation state and open the navigation modal
+      setNavigationDestination(siteCoordinates);
+      setNavigationTitle(siteName);
+      setIsNavigationOpen(true);
+      
+      logger.info('🔹 Navigation modal state set to open, disposal modal will hide');
+      
+      // DO NOT call onClose() here - let the component stay mounted but hidden
+      // The navigation modal will handle cleanup when it closes
+      
+    } catch (err) {
+      logger.error('❌ Error opening navigation:', err);
+      // Show error message
+      alert('Error opening navigation. Please try again.');
+    }
+  };
+  
+  // Close navigation modal
+  const handleCloseNavigation = () => {
+    setIsNavigationOpen(false);
+    setNavigationDestination(null);
+    setNavigationTitle('');
   };
   
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" style={{ paddingTop: '4rem', paddingBottom: '5rem' }}>
+    <>
+      {/* Disposal Modal */}
+      {!isNavigationOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" style={{ paddingTop: '4rem', paddingBottom: '5rem' }}>
       {/* Location Restriction Modal */}
       {showLocationModal && (
         <div className="fixed inset-0 bg-black bg-opacity-75 z-[60] flex items-center justify-center p-4" style={{ paddingTop: '4rem', paddingBottom: '5rem' }}>
@@ -269,9 +322,9 @@ const DisposalModal = ({
         </div>
       )}
       
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-full flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+        <div className="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
           <h2 className="text-xl font-bold text-gray-800">Nearest Dumping Sites</h2>
           <button 
             onClick={onClose}
@@ -283,8 +336,8 @@ const DisposalModal = ({
           </button>
         </div>
         
-        {/* Content */}
-        <div className="overflow-y-auto p-4 max-h-[calc(90vh-12rem)]">
+        {/* Scrollable Sites List */}
+        <div className="overflow-y-auto p-4 flex-shrink-0" style={{ maxHeight: '35vh' }}>
           <p className="text-sm text-gray-500 mb-4">
             Select a dumping site to dispose of waste from assignment #{assignment.id}.
           </p>
@@ -321,9 +374,15 @@ const DisposalModal = ({
                 {selectedSite?.id === site.id && (
                   <div className="mt-2 pt-2 border-t border-gray-100 flex justify-end">
                     <button
+                      type="button"
                       onClick={(e) => {
+                        // Ensure we prevent default behavior and stop event propagation
+                        e.preventDefault();
                         e.stopPropagation();
-                        handleGetDirections();
+                        e.nativeEvent.stopImmediatePropagation();
+                        // Pass the event to handleGetDirections
+                        handleGetDirections(site, e);
+                        return false;
                       }}
                       className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
                     >
@@ -337,79 +396,88 @@ const DisposalModal = ({
               </div>
             ))}
           </div>
-          
-          {/* Interactive Map */}
-          <div className="mt-4 bg-gray-100 rounded-lg overflow-hidden">
-            <div className="h-48 w-full">
-              <MapContainer 
-                center={mapCenter} 
-                zoom={12} 
-                style={{ height: '100%', width: '100%' }}
-                zoomControl={true}
-              >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                
-                {/* Markers for all dumping sites */}
-                {disposalCenters.map(site => (
-                  <React.Fragment key={site.id}>
-                    <Marker 
-                      position={site.coordinates}
-                      opacity={selectedSite?.id === site.id ? 1 : 0.7}
-                    >
-                      <Popup>
-                        <div>
-                          <strong>{site.name}</strong><br />
-                          {site.address}<br />
-                          <span className="text-xs">{site.openHours}</span>
-                        </div>
-                      </Popup>
-                    </Marker>
-                    
-                    {/* Show 50m radius circle for selected site */}
-                    {selectedSite?.id === site.id && (
-                      <Circle 
-                        center={site.coordinates}
-                        radius={RADIUS_METERS}
-                        pathOptions={{
-                          color: isWithinRange ? 'green' : 'red',
-                          fillColor: isWithinRange ? 'green' : 'red',
-                          fillOpacity: 0.2
-                        }}
-                      />
-                    )}
-                  </React.Fragment>
-                ))}
-                
-                {/* User location marker */}
+        </div>
+        
+        {/* Fixed Map Area */}
+        <div className="bg-gray-100 flex-shrink-0" style={{ height: '200px', position: 'relative' }}>
+          {/* CSS to disable all links in the map */}
+          <style>{`
+            .leaflet-container a {
+              pointer-events: none !important;
+              cursor: default !important;
+            }
+            .leaflet-control-attribution {
+              display: none !important;
+            }
+          `}</style>
+          <MapContainer 
+            center={mapCenter} 
+            zoom={12} 
+            style={{ height: '100%', width: '100%' }}
+            zoomControl={true}
+            attributionControl={false} /* Disable attribution control to prevent external links */
+          >
+            <TileLayer
+              attribution='&copy; OpenStreetMap contributors' /* Remove hyperlink */
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            
+            {/* Markers for all dumping sites */}
+            {disposalCenters.map(site => (
+              <React.Fragment key={site.id}>
                 <Marker 
-                  position={userLocation} // Real or simulated user location
-                  icon={new L.Icon({
-                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41],
-                    popupAnchor: [1, -34],
-                    shadowSize: [41, 41]
-                  })}
+                  position={site.coordinates}
+                  opacity={selectedSite?.id === site.id ? 1 : 0.7}
                 >
                   <Popup>
-                    Your Location
-                    {selectedSite && (
-                      <div className="text-xs mt-1">
-                        {isWithinRange 
-                          ? <span className="text-green-600">Within 50m range ✓</span>
-                          : <span className="text-red-600">Outside 50m range ✗</span>
-                        }
-                      </div>
-                    )}
+                    <div>
+                      <strong>{site.name}</strong><br />
+                      {site.address}<br />
+                      <span className="text-xs">{site.openHours}</span>
+                    </div>
                   </Popup>
                 </Marker>
-              </MapContainer>
-            </div>
-          </div>
+                
+                {/* Show 50m radius circle for selected site */}
+                {selectedSite?.id === site.id && (
+                  <Circle 
+                    center={site.coordinates}
+                    radius={RADIUS_METERS}
+                    pathOptions={{
+                      color: isWithinRange ? 'green' : 'red',
+                      fillColor: isWithinRange ? 'green' : 'red',
+                      fillOpacity: 0.2
+                    }}
+                  />
+                )}
+              </React.Fragment>
+            ))}
+            
+            {/* User location marker - Green for easy identification */}
+            <Marker 
+              position={userLocation} // Real or simulated user location
+              icon={new L.Icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
+              })}
+            >
+              <Popup>
+                <strong>📍 Your Location</strong>
+                {selectedSite && (
+                  <div className="text-xs mt-1">
+                    {isWithinRange 
+                      ? <span className="text-green-600">Within 50m range ✓</span>
+                      : <span className="text-red-600">Outside 50m range ✗</span>
+                    }
+                  </div>
+                )}
+              </Popup>
+            </Marker>
+          </MapContainer>
         </div>
         
         {/* Footer with Action Buttons */}
@@ -438,7 +506,24 @@ const DisposalModal = ({
           </button>
         </div>
       </div>
-    </div>
+        </div>
+      )}
+      
+      {/* In-App Navigation Modal - Only render when isNavigationOpen is true */}
+      {isNavigationOpen && (
+        <AssignmentNavigationModal
+          isOpen={true}
+          onClose={() => {
+            handleCloseNavigation();
+            // Close the disposal modal as well after navigation modal closes
+            onClose();
+          }}
+          destination={navigationDestination}
+          assignmentId={assignment?.id}
+          assignmentTitle={`Navigate to ${navigationTitle}`}
+        />
+      )}
+    </>
   );
 };
 

@@ -28,6 +28,8 @@ const OSMNavigationMap = ({
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [useSatellite, setUseSatellite] = useState(false);
+  const tileLayerRef = useRef(null);
 
   useEffect(() => {
     if (!mapRef.current || !userLocation || !destination) {
@@ -43,12 +45,13 @@ const OSMNavigationMap = ({
           center: [userLocation.lat, userLocation.lng],
           zoom: 15,
           zoomControl: true,
+          attributionControl: false, // Disable attribution control to prevent external links
         });
 
-        // Add OpenStreetMap tiles
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap contributors',
-          maxZoom: 19,
+        // Add default OpenStreetMap tiles without clickable attribution
+        tileLayerRef.current = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors', // No hyperlinks
+          maxZoom: 19
         }).addTo(map);
 
         mapInstanceRef.current = map;
@@ -118,43 +121,226 @@ const OSMNavigationMap = ({
         title: 'Destination'
       }).addTo(map);
 
-      // Add routing
-      logger.info('🛣️ Calculating route with OpenStreetMap...');
+      // Add routing with multiple fallback options
+      logger.info('🛣️ Calculating route with enhanced navigation...');
       
+      // Custom router with fallback to direct path
+      const customRouter = L.Routing.osrmv1({
+        serviceUrl: 'https://router.project-osrm.org/route/v1',
+        profile: 'driving',
+        timeout: 5000
+      });
+      
+      // Wrap the original route method to add fallback
+      const originalRoute = customRouter.route.bind(customRouter);
+      customRouter.route = function(waypoints, callback, context) {
+        // Validate waypoints first
+        if (!waypoints || !Array.isArray(waypoints) || waypoints.length < 2) {
+          logger.error('❌ Invalid waypoints provided to router:', waypoints);
+          callback.call(context || this, new Error('Invalid waypoints'), []);
+          return;
+        }
+        
+        // Ensure each waypoint has valid lat/lng
+        const validatedWaypoints = waypoints.filter(wp => {
+          return wp && wp.latLng && typeof wp.latLng.lat === 'function' && 
+                 typeof wp.latLng.lng === 'function';
+        });
+        
+        if (validatedWaypoints.length < 2) {
+          logger.error('❌ Not enough valid waypoints for routing, using direct path');
+          // Use fallback direct path below
+          useDirectPath(waypoints, callback, context);
+          return;
+        }
+        
+        const start = validatedWaypoints[0];
+        const end = validatedWaypoints[validatedWaypoints.length - 1];
+        let callbackInvoked = false; // Prevent duplicate callbacks
+        let routeSucceeded = false; // Track if route succeeded
+        
+        // Wrap callback to ensure it's only called once
+        const safeCallback = function(err, routes) {
+          if (callbackInvoked) {
+            logger.warn('⚠️ Preventing duplicate callback invocation');
+            return;
+          }
+          callbackInvoked = true;
+          callback.call(context, err, routes);
+        };
+        
+        // Try original OSRM routing first
+        try {
+          originalRoute.call(this, validatedWaypoints, (err, routes) => {
+            if (!err && routes && routes.length > 0) {
+              // Success! Use the real route
+              logger.info('✅ OSRM route calculated successfully');
+              routeSucceeded = true;
+              safeCallback(null, routes);
+            } else if (!callbackInvoked) {
+              // OSRM failed, use direct path fallback
+              useDirectPath(validatedWaypoints, safeCallback, context);
+            }
+          }, context);
+        } catch (error) {
+          // If OSRM completely fails and we haven't already succeeded, use direct path
+          if (routeSucceeded || callbackInvoked) {
+            logger.info('Route already processed, skipping catch block');
+            return;
+          }
+          logger.warn('⚠️ OSRM router error, using direct path:', error.message);
+          
+          useDirectPath(validatedWaypoints, safeCallback, context);
+        }
+      };
+      
+      // Helper function for direct path creation to avoid code duplication
+      const useDirectPath = (waypoints, callback, context) => {
+        logger.info('📍 Showing direct path as fallback');
+        
+        if (!waypoints || waypoints.length < 2) {
+          logger.error('❌ Cannot create direct path - invalid waypoints');
+          callback.call(context || this, new Error('Invalid waypoints'), []);
+          return;
+        }
+        
+        try {
+          // Get start and end coordinates
+          const start = waypoints[0];
+          const end = waypoints[waypoints.length - 1];
+          
+          // Safely extract coordinates from L.LatLng objects
+          // L.LatLng objects have .lat and .lng as properties
+          const startLat = start?.lat ?? 0;
+          const startLng = start?.lng ?? 0;
+          const endLat = end?.lat ?? 0;
+          const endLng = end?.lng ?? 0;
+          
+          // Validate coordinates
+          if (isNaN(startLat) || isNaN(startLng) || isNaN(endLat) || isNaN(endLng) ||
+              (startLat === 0 && startLng === 0) || (endLat === 0 && endLng === 0)) {
+            throw new Error('Invalid coordinates for direct path');
+          }
+          
+          // Calculate distance using Haversine formula
+          const R = 6371000; // Earth's radius in meters
+          const dLat = (endLat - startLat) * Math.PI / 180;
+          const dLon = (endLng - startLng) * Math.PI / 180;
+          const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(startLat * Math.PI / 180) * Math.cos(endLat * Math.PI / 180) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          const distance = R * c; // Distance in meters
+              
+          // Create a proper route structure that matches OSRM format
+          const directRoute = {
+            name: 'Direct Path',
+            coordinates: [
+              L.latLng(startLat, startLng),
+              L.latLng(endLat, endLng)
+            ],
+            waypoints: [
+              { latLng: L.latLng(startLat, startLng), name: 'Start' },
+              { latLng: L.latLng(endLat, endLng), name: 'Destination' }
+            ],
+            inputWaypoints: waypoints,
+            summary: {
+              totalDistance: distance,
+              totalTime: Math.round(distance / 1000 * 3) * 60 // Estimate: 3 min per km
+            },
+            instructions: [
+              { 
+                text: `Head towards destination`, 
+                distance: distance, 
+                time: Math.round(distance / 1000 * 3) * 60,
+                index: 0,
+                type: 'Straight',
+                modifier: undefined,
+                road: 'Direct route'
+              }
+            ]
+          };
+          
+          logger.info('📍 Showing direct path:', {
+            distance: `${(distance / 1000).toFixed(2)} km (straight line)`
+          });
+          
+          // Return success with direct route
+          callback.call(context || this, null, [directRoute]);
+        } catch (error) {
+          logger.error('❌ Failed to create direct path:', error);
+          callback.call(context || this, error, []);
+        }
+      };
+      
+      // Create validated waypoints to prevent issues
+      const waypointsArray = [];
+      
+      // Add user location waypoint with validation
+      if (userLocation && typeof userLocation.lat === 'number' && typeof userLocation.lng === 'number' &&
+          !isNaN(userLocation.lat) && !isNaN(userLocation.lng)) {
+        waypointsArray.push(L.latLng(userLocation.lat, userLocation.lng));
+      } else {
+        logger.warn('⚠️ Invalid user location coordinates, using fallback');
+        waypointsArray.push(L.latLng(5.6037, -0.1870)); // Accra fallback
+      }
+      
+      // Add destination waypoint with validation
+      if (typeof destLat === 'number' && typeof destLng === 'number' && 
+          !isNaN(destLat) && !isNaN(destLng)) {
+        waypointsArray.push(L.latLng(destLat, destLng));
+      } else {
+        logger.warn('⚠️ Invalid destination coordinates, using fallback');
+        waypointsArray.push(L.latLng(5.6037, -0.1870)); // Accra fallback
+      }
+      
+      // Create routing control with validated waypoints
       routingControlRef.current = L.Routing.control({
-        waypoints: [
-          L.latLng(userLocation.lat, userLocation.lng),
-          L.latLng(destLat, destLng)
-        ],
-        router: L.Routing.osrmv1({
-          serviceUrl: 'https://router.project-osrm.org/route/v1',
-          profile: 'driving'
-        }),
+        waypoints: waypointsArray,
+        router: customRouter,
         routeWhileDragging: false,
         showAlternatives: false,
         addWaypoints: false,
         fitSelectedRoutes: true,
+        show: false, // CRITICAL: Suppress UI panel to prevent appendChild errors
         lineOptions: {
-          styles: [{ color: '#4285F4', opacity: 0.8, weight: 6 }]
+          styles: [{ 
+            color: '#1E88E5', 
+            opacity: 0.9, 
+            weight: 7,
+            dashArray: null // Will be set dynamically based on route type
+          }],
+          extendToWaypoints: false, // Prevent the extendToWaypoints issue causing the error
+          missingRouteTolerance: 100 // Increase tolerance for missing route points
         },
-        createMarker: () => null, // Don't create default markers (we have custom ones)
+        createMarker: () => null,
       }).addTo(map);
 
       // Handle route calculation
       routingControlRef.current.on('routesfound', (e) => {
         const routes = e.routes;
         const summary = routes[0].summary;
+        const isDirect = routes[0].name === 'Direct Path';
         
-        logger.info('✅ Route calculated:', {
-          distance: `${(summary.totalDistance / 1000).toFixed(2)} km`,
-          duration: `${Math.round(summary.totalTime / 60)} min`
-        });
+        if (isDirect) {
+          logger.info('📍 Showing direct path:', {
+            distance: `${(summary.totalDistance / 1000).toFixed(2)} km (straight line)`
+          });
+          setHasError(true);
+          setErrorMessage('🧭 Showing direct path - road routing unavailable');
+        } else {
+          logger.info('✅ Route calculated:', {
+            distance: `${(summary.totalDistance / 1000).toFixed(2)} km`,
+            duration: `${Math.round(summary.totalTime / 60)} min`
+          });
+        }
 
         if (onRouteCalculated) {
           onRouteCalculated({
             distance: summary.totalDistance,
             duration: summary.totalTime,
-            route: routes[0]
+            route: routes[0],
+            isDirect
           });
         }
 
@@ -162,29 +348,12 @@ const OSMNavigationMap = ({
       });
 
       routingControlRef.current.on('routingerror', (e) => {
-        logger.warn('⚠️ Route calculation failed:', e.error);
-        setHasError(true);
-        setErrorMessage('Could not calculate route. Showing direct path.');
+        // Only show error if it's a real error (not our direct path fallback)
+        logger.warn('⚠️ Routing error occurred:', e.error);
         setIsLoading(false);
-
-        // Draw a straight line as fallback
-        L.polyline([
-          [userLocation.lat, userLocation.lng],
-          [destLat, destLng]
-        ], {
-          color: '#EA4335',
-          weight: 4,
-          opacity: 0.6,
-          dashArray: '10, 10'
-        }).addTo(map);
-
-        // Fit bounds to show both markers
-        const bounds = L.latLngBounds([
-          [userLocation.lat, userLocation.lng],
-          [destLat, destLng]
-        ]);
-        map.fitBounds(bounds, { padding: [50, 50] });
-
+        
+        // Note: The custom router now handles direct path fallback internally
+        // This error handler is just for catastrophic failures
         if (onError) {
           onError(e.error);
         }
@@ -213,6 +382,33 @@ const OSMNavigationMap = ({
     };
   }, [userLocation, destination, onMapReady, onRouteCalculated, onError]);
 
+  // Handle satellite layer toggle
+  useEffect(() => {
+    if (!mapInstanceRef.current || !tileLayerRef.current) return;
+    
+    const map = mapInstanceRef.current;
+    
+    // Remove current tile layer
+    map.removeLayer(tileLayerRef.current);
+    
+    // Add new tile layer based on useSatellite state
+    if (useSatellite) {
+      // Google Satellite imagery without clickable attribution
+      tileLayerRef.current = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+        attribution: '© Google', // No hyperlinks
+        maxZoom: 20,
+      }).addTo(map);
+      logger.info('🛰️ Switched to satellite view');
+    } else {
+      // OpenStreetMap without clickable attribution
+      tileLayerRef.current = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors', // No hyperlinks
+        maxZoom: 19,
+      }).addTo(map);
+      logger.info('🗺️ Switched to map view');
+    }
+  }, [useSatellite]);
+  
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -229,24 +425,57 @@ const OSMNavigationMap = ({
 
   return (
     <div className="relative w-full h-full">
+      {/* CSS to disable all links in the Leaflet map */}
+      <style>{`
+        .leaflet-container a {
+          pointer-events: none !important;
+          cursor: default !important;
+        }
+        .leaflet-control-attribution {
+          display: none !important;
+        }
+      `}</style>
       <div 
         ref={mapRef} 
         className="w-full h-full rounded-lg"
         style={{ minHeight: '400px' }}
       />
       
+      {/* Satellite Toggle Button */}
+      <button
+        onClick={() => setUseSatellite(!useSatellite)}
+        className="absolute top-4 right-4 bg-white hover:bg-gray-50 text-gray-800 px-4 py-2 rounded-lg shadow-lg border border-gray-200 flex items-center gap-2 font-medium transition-all z-[1000]"
+        title={useSatellite ? "Switch to Map View" : "Switch to Satellite View"}
+      >
+        {useSatellite ? (
+          <>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+            </svg>
+            Map
+          </>
+        ) : (
+          <>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Satellite
+          </>
+        )}
+      </button>
+      
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80 rounded-lg">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-2"></div>
-            <p className="text-gray-600">Loading route...</p>
+            <p className="text-gray-600 font-medium">🚀 Finding best route...</p>
           </div>
         </div>
       )}
 
       {hasError && errorMessage && (
-        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-2 rounded-lg shadow-lg">
-          <p className="text-sm">{errorMessage}</p>
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-yellow-50 border-2 border-yellow-400 text-yellow-900 px-4 py-2 rounded-lg shadow-lg">
+          <p className="text-sm font-medium">{errorMessage}</p>
         </div>
       )}
     </div>
