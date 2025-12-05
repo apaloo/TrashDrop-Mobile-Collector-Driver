@@ -2,7 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { logger } from '../utils/logger';
 
 // Google Maps configuration
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+if (!GOOGLE_MAPS_API_KEY) {
+  logger.error('❌ VITE_GOOGLE_MAPS_API_KEY environment variable is not set');
+}
 
 // Load Google Maps API
 const loadGoogleMapsAPI = () => {
