@@ -14,11 +14,18 @@
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
-// Initialize Supabase client (server-side)
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY // Use service role for webhooks
-);
+// Lazy-load Supabase client (initialized after env vars are loaded)
+let supabase = null;
+
+function getSupabaseClient() {
+  if (!supabase) {
+    supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY // Use service role for webhooks
+    );
+  }
+  return supabase;
+}
 
 /**
  * Verify TrendiPay webhook signature
@@ -71,7 +78,7 @@ export async function handleCollectionWebhook(req, res) {
     });
     
     // 3. Update bin_payments record
-    const { data: payment, error: fetchError } = await supabase
+    const { data: payment, error: fetchError } = await getSupabaseClient()
       .from('bin_payments')
       .select('*')
       .eq('id', reference)
@@ -82,44 +89,83 @@ export async function handleCollectionWebhook(req, res) {
       return res.status(404).json({ error: 'Payment not found' });
     }
     
-    // 4. Update status based on webhook
+    // 4. Map TrendiPay status to our system
+    let systemStatus;
+    switch(status) {
+      case 'successful':
+      case 'success':
+        systemStatus = 'success';
+        break;
+      case 'failed':
+      case 'declined':
+        systemStatus = 'failed';
+        break;
+      case 'pending':
+      case 'processing':
+        systemStatus = 'initiated';
+        break;
+      default:
+        systemStatus = 'failed';
+    }
+    
+    // 5. Update status based on webhook
     const updateData = {
-      status: status, // 'success', 'failed', 'expired'
-      gateway_transaction_id: transactionId,
+      status: systemStatus,
       gateway_reference: transactionId,
+      raw_gateway_response: payload, // Store full webhook payload
       updated_at: new Date().toISOString()
     };
     
-    if (status === 'failed' || status === 'expired') {
+    if (systemStatus === 'failed') {
       updateData.gateway_error = message || `Payment ${status}`;
     }
     
-    const { error: updateError } = await supabase
+    const { data: updatedPayment, error: updateError } = await getSupabaseClient()
       .from('bin_payments')
       .update(updateData)
-      .eq('id', reference);
+      .eq('id', reference)
+      .select()
+      .single();
     
     if (updateError) {
       console.error('Failed to update payment:', updateError);
       return res.status(500).json({ error: 'Database update failed' });
     }
     
-    console.log(`✅ Collection payment ${reference} updated to: ${status}`);
+    console.log(`✅ Collection payment ${reference} updated to: ${systemStatus}`);
     
-    // 5. Optional: Send notification to collector (success/failure)
-    if (status === 'success') {
+    // 6. Update digital_bin status if payment successful
+    if (systemStatus === 'success' && updatedPayment) {
+      const { error: binError } = await getSupabaseClient()
+        .from('digital_bins')
+        .update({ 
+          status: 'picked_up',
+          collected_at: new Date().toISOString()
+        })
+        .eq('id', payment.digital_bin_id);
+      
+      if (binError) {
+        console.error('Failed to update digital_bin status:', binError);
+      } else {
+        console.log('✅ Digital bin marked as picked_up');
+      }
+    }
+    
+    // 7. Optional: Send notification to collector (success/failure)
+    if (systemStatus === 'success') {
       // TODO: Send push notification or email to collector
       console.log('💰 Payment successful - notify collector');
-    } else {
+    } else if (systemStatus === 'failed') {
       console.log('⚠️ Payment failed - notify collector to retry');
     }
     
-    // 6. Acknowledge webhook
+    // 8. Acknowledge webhook
     return res.status(200).json({
       success: true,
       message: 'Webhook processed',
       reference,
-      status
+      status: systemStatus,
+      originalStatus: status
     });
     
   } catch (error) {
@@ -167,7 +213,7 @@ export async function handleDisbursementWebhook(req, res) {
     });
     
     // 3. Update bin_payments disbursement record
-    const { data: disbursement, error: fetchError } = await supabase
+    const { data: disbursement, error: fetchError } = await getSupabaseClient()
       .from('bin_payments')
       .select('*')
       .eq('id', reference)
@@ -179,19 +225,38 @@ export async function handleDisbursementWebhook(req, res) {
       return res.status(404).json({ error: 'Disbursement not found' });
     }
     
-    // 4. Update status
+    // 4. Map TrendiPay status to our system
+    let systemStatus;
+    switch(status) {
+      case 'successful':
+      case 'success':
+        systemStatus = 'success';
+        break;
+      case 'failed':
+      case 'declined':
+        systemStatus = 'failed';
+        break;
+      case 'pending':
+      case 'processing':
+        systemStatus = 'initiated';
+        break;
+      default:
+        systemStatus = 'failed';
+    }
+    
+    // 5. Update status
     const updateData = {
-      status: status,
-      gateway_transaction_id: transactionId,
+      status: systemStatus,
       gateway_reference: transactionId,
+      raw_gateway_response: payload, // Store full webhook payload
       updated_at: new Date().toISOString()
     };
     
-    if (status === 'failed') {
+    if (systemStatus === 'failed') {
       updateData.gateway_error = message || 'Disbursement failed';
     }
     
-    const { error: updateError } = await supabase
+    const { error: updateError } = await getSupabaseClient()
       .from('bin_payments')
       .update(updateData)
       .eq('id', reference);
@@ -201,23 +266,24 @@ export async function handleDisbursementWebhook(req, res) {
       return res.status(500).json({ error: 'Database update failed' });
     }
     
-    console.log(`✅ Disbursement ${reference} updated to: ${status}`);
+    console.log(`✅ Disbursement ${reference} updated to: ${systemStatus}`);
     
-    // 5. Optional: Send notification to collector
-    if (status === 'success') {
+    // 6. Optional: Send notification to collector
+    if (systemStatus === 'success') {
       // TODO: Send push notification - "Your payout of GHS X.XX has been sent!"
-      console.log('💸 Disbursement successful - notify collector');
-    } else if (status === 'failed') {
+      console.log(`💸 Disbursement successful - GHS ${amount} sent to ${accountNumber}`);
+    } else if (systemStatus === 'failed') {
       // TODO: Send alert - "Payout failed - contact support"
       console.log('⚠️ Disbursement failed - notify collector');
     }
     
-    // 6. Acknowledge webhook
+    // 7. Acknowledge webhook
     return res.status(200).json({
       success: true,
       message: 'Webhook processed',
       reference,
-      status
+      status: systemStatus,
+      originalStatus: status
     });
     
   } catch (error) {

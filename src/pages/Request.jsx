@@ -2381,12 +2381,17 @@ const GeofenceErrorModal = ({
                     await fetchRequests();
                     logger.info('✅ Data refresh complete');
                     
+                    // Close navigation modal first before opening payment modal
+                    setShowNavigationModal(false);
+                    
+                    // Wait a moment for navigation modal to close
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    
                     // Open payment modal for client collection
                     logger.info('💰 Opening payment modal for digital bin:', navigationRequestId);
                     setCurrentPaymentBinId(navigationRequestId);
                     setShowPaymentModal(true);
-                    
-                    // Modal will close automatically after 2s (handled by NavigationQRModal)
+                    logger.info('✅ Payment modal state set to open');
                   } else if (request) {
                     // Handle regular pickup request
                     showToast(`Successfully scanned ${scannedValues.length} items!`, 'success');

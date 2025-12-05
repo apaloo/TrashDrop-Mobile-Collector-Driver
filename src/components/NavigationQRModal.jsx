@@ -111,7 +111,7 @@ const NavigationQRModal = ({
     }
   }, []);
 
-  const handleQRScanSuccess = useCallback((decodedText) => {
+  const handleQRScanSuccess = useCallback(async (decodedText) => {
     // Handle scan success with rate limiting
     if (isQRScanRateLimited()) {
       return;
@@ -157,16 +157,10 @@ const NavigationQRModal = ({
     const newItem = { code: decodedText, timestamp: Date.now() };
     setScannedItems(prev => [...prev, newItem]);
     
-    logger.info('📞 Calling onQRScanned callback first...');
-    // Call the parent callback first (so Request.jsx can update status and show toast)
-    onQRScanned([decodedText]);
-    
-    logger.info('⏰ Setting timer to close modal in 2s...');
-    // Close modal after 2 seconds to allow toast to show
-    setTimeout(() => {
-      logger.info('🚪 Closing modal now...');
-      onClose();
-    }, 2000);
+    logger.info('📞 Calling onQRScanned callback...');
+    // Call the parent callback - Request.jsx will handle closing this modal and opening payment modal
+    await onQRScanned([decodedText]);
+    logger.info('✅ QR scan callback completed - parent component will handle modal transitions');
   }, [expectedQRValue, onQRScanned, onClose]);
   
   const handleQRScanError = useCallback((error) => {

@@ -14,8 +14,9 @@ import { logger } from '../utils/logger';
 const TRENDIPAY_CONFIG = {
   // These should be environment variables in production
   // Vite uses import.meta.env, not process.env
-  apiUrl: import.meta.env.VITE_TRENDIPAY_API_URL || 'https://api.trendipay.com/v1',
+  apiUrl: import.meta.env.VITE_TRENDIPAY_API_URL || 'https://api.trendipay.com',
   apiKey: import.meta.env.VITE_TRENDIPAY_API_KEY || '',
+  terminalId: import.meta.env.VITE_TRENDIPAY_TERMINAL_ID || '',
   merchantId: import.meta.env.VITE_TRENDIPAY_MERCHANT_ID || '',
   callbackBaseUrl: import.meta.env.VITE_API_URL || 'http://localhost:3000',
   
@@ -143,7 +144,7 @@ export async function initiateCollection({
     };
     
     // Call TrendiPay API
-    const result = await makeApiRequest('/collections/initiate', 'POST', payload);
+    const result = await makeApiRequest(`/v1/terminals/${TRENDIPAY_CONFIG.terminalId}/collections`, 'POST', payload);
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to initiate collection');
@@ -188,7 +189,7 @@ export async function checkCollectionStatus(transactionId, reference) {
     logger.info('Checking collection status:', { transactionId, reference });
     
     const result = await makeApiRequest(
-      `/collections/status/${transactionId}`,
+      `/v1/terminals/${TRENDIPAY_CONFIG.terminalId}/collections/${transactionId}`,
       'GET'
     );
     
@@ -270,7 +271,7 @@ export async function initiateDisbursement({
     };
     
     // Call TrendiPay API
-    const result = await makeApiRequest('/disbursements/initiate', 'POST', payload);
+    const result = await makeApiRequest(`/v1/terminals/${TRENDIPAY_CONFIG.terminalId}/disbursements`, 'POST', payload);
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to initiate disbursement');
@@ -315,7 +316,7 @@ export async function checkDisbursementStatus(transactionId, reference) {
     logger.info('Checking disbursement status:', { transactionId, reference });
     
     const result = await makeApiRequest(
-      `/disbursements/status/${transactionId}`,
+      `/v1/terminals/${TRENDIPAY_CONFIG.terminalId}/disbursements/${transactionId}`,
       'GET'
     );
     
