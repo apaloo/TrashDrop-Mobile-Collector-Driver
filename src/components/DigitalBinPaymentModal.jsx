@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { logger } from '../utils/logger';
+import { checkPaymentStatus } from '../services/paymentService';
 
 /**
  * Digital Bin Payment Modal
@@ -12,6 +13,9 @@ import { logger } from '../utils/logger';
  * - MoMo: Requires client MoMo number and network
  * - e-cash: Requires client e-cash number and network
  * - cash: No additional fields required
+ * 
+ * Persists until payment succeeds or user cancels.
+ * Allows resubmission on payment failure.
  */
 const DigitalBinPaymentModal = ({
   isOpen,
@@ -28,6 +32,12 @@ const DigitalBinPaymentModal = ({
   const [clientRSwitch, setClientRSwitch] = useState('mtn');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  
+  // Payment processing state
+  const [paymentId, setPaymentId] = useState(null);
+  const [paymentStatus, setPaymentStatus] = useState(null); // 'pending', 'processing', 'success', 'failed'
+  const [processingMessage, setProcessingMessage] = useState('');
+  const pollingIntervalRef = useRef(null);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -38,8 +48,74 @@ const DigitalBinPaymentModal = ({
       setClientMomo('');
       setClientRSwitch('mtn');
       setErrors({});
+      setPaymentId(null);
+      setPaymentStatus(null);
+      setProcessingMessage('');
     }
   }, [isOpen]);
+
+  // Poll payment status when payment is processing
+  useEffect(() => {
+    if (!paymentId || !paymentStatus || paymentStatus === 'success' || paymentStatus === 'failed') {
+      // Clear any existing polling interval
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // Start polling for payment status updates
+    logger.info('Starting payment status polling for:', paymentId);
+    
+    const pollStatus = async () => {
+      try {
+        const result = await checkPaymentStatus(paymentId);
+        
+        if (result.success) {
+          logger.info('Payment status update:', result.status);
+          setPaymentStatus(result.status);
+          
+          if (result.status === 'success') {
+            setProcessingMessage('Payment successful! 🎉');
+            // Clear polling interval
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current);
+              pollingIntervalRef.current = null;
+            }
+            // Close modal after a brief delay to show success message
+            setTimeout(() => {
+              onClose();
+            }, 2000);
+          } else if (result.status === 'failed') {
+            setProcessingMessage('Payment failed. Please try again.');
+            setErrors({ submit: result.payment?.gateway_error || 'Payment failed. Please try again.' });
+            // Clear polling interval
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current);
+              pollingIntervalRef.current = null;
+            }
+          } else if (result.status === 'processing') {
+            setProcessingMessage('Processing payment... Please wait.');
+          }
+        }
+      } catch (error) {
+        logger.error('Error polling payment status:', error);
+      }
+    };
+
+    // Poll immediately, then every 3 seconds
+    pollStatus();
+    pollingIntervalRef.current = setInterval(pollStatus, 3000);
+
+    // Cleanup on unmount
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [paymentId, paymentStatus, onClose]);
 
   // Validate form
   const validate = () => {
@@ -78,6 +154,7 @@ const DigitalBinPaymentModal = ({
     }
 
     setIsSubmitting(true);
+    setErrors({}); // Clear previous errors
 
     try {
       const paymentData = {
@@ -92,16 +169,38 @@ const DigitalBinPaymentModal = ({
 
       logger.info('Submitting payment data:', paymentData);
 
-      await onSubmit(paymentData);
+      const result = await onSubmit(paymentData);
 
-      // Close modal after successful submission
-      onClose();
+      // Capture payment ID and status from result
+      if (result && result.paymentId) {
+        setPaymentId(result.paymentId);
+        setPaymentStatus(result.status);
+        
+        if (result.status === 'success') {
+          // Cash payment - immediate success
+          setProcessingMessage('Payment successful! 🎉');
+          setTimeout(() => {
+            onClose();
+          }, 2000);
+        } else if (result.status === 'pending' || result.status === 'processing') {
+          // MoMo/e-cash - start polling
+          setProcessingMessage('Awaiting client approval... Please wait.');
+        }
+      }
     } catch (error) {
       logger.error('Error submitting payment:', error);
       setErrors({ submit: error.message || 'Failed to process payment' });
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Handle retry after failure
+  const handleRetry = () => {
+    setPaymentId(null);
+    setPaymentStatus(null);
+    setProcessingMessage('');
+    setErrors({});
   };
 
   if (!isOpen) return null;
@@ -114,12 +213,39 @@ const DigitalBinPaymentModal = ({
           <h2 className="text-xl font-bold text-gray-900">Client Payment</h2>
           <button
             onClick={onClose}
-            disabled={isSubmitting}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            disabled={isSubmitting || paymentStatus === 'pending' || paymentStatus === 'processing'}
+            className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            title={paymentStatus === 'pending' || paymentStatus === 'processing' ? 'Please wait for payment to complete' : 'Close'}
           >
             <X size={24} />
           </button>
         </div>
+
+        {/* Payment Processing Status */}
+        {paymentStatus && (
+          <div className="p-4 border-b">
+            <div className="flex items-center justify-center space-x-2">
+              {paymentStatus === 'success' && (
+                <>
+                  <CheckCircle className="text-green-600" size={24} />
+                  <span className="text-green-600 font-medium">{processingMessage}</span>
+                </>
+              )}
+              {(paymentStatus === 'pending' || paymentStatus === 'processing') && (
+                <>
+                  <Loader2 className="text-blue-600 animate-spin" size={24} />
+                  <span className="text-blue-600 font-medium">{processingMessage}</span>
+                </>
+              )}
+              {paymentStatus === 'failed' && (
+                <>
+                  <XCircle className="text-red-600" size={24} />
+                  <span className="text-red-600 font-medium">{processingMessage}</span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
@@ -137,7 +263,7 @@ const DigitalBinPaymentModal = ({
               className={`w-full px-3 py-2 border rounded-md ${
                 errors.bagsCollected ? 'border-red-500' : 'border-gray-300'
               }`}
-              disabled={isSubmitting}
+              disabled={isSubmitting || (paymentStatus && paymentStatus !== 'failed')}
               required
             />
             {errors.bagsCollected && (
@@ -160,7 +286,7 @@ const DigitalBinPaymentModal = ({
               className={`w-full px-3 py-2 border rounded-md ${
                 errors.totalBill ? 'border-red-500' : 'border-gray-300'
               }`}
-              disabled={isSubmitting}
+              disabled={isSubmitting || (paymentStatus && paymentStatus !== 'failed')}
               required
             />
             {errors.totalBill && (
@@ -182,7 +308,7 @@ const DigitalBinPaymentModal = ({
                   checked={paymentMode === 'momo'}
                   onChange={(e) => setPaymentMode(e.target.value)}
                   className="mr-2"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || (paymentStatus && paymentStatus !== 'failed')}
                 />
                 <span className="text-gray-700">Mobile Money (MoMo)</span>
               </label>
@@ -194,7 +320,7 @@ const DigitalBinPaymentModal = ({
                   checked={paymentMode === 'e_cash'}
                   onChange={(e) => setPaymentMode(e.target.value)}
                   className="mr-2"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || (paymentStatus && paymentStatus !== 'failed')}
                 />
                 <span className="text-gray-700">e-Cash</span>
               </label>
@@ -206,7 +332,7 @@ const DigitalBinPaymentModal = ({
                   checked={paymentMode === 'cash'}
                   onChange={(e) => setPaymentMode(e.target.value)}
                   className="mr-2"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || (paymentStatus && paymentStatus !== 'failed')}
                 />
                 <span className="text-gray-700">Cash</span>
               </label>
@@ -228,7 +354,7 @@ const DigitalBinPaymentModal = ({
                   className={`w-full px-3 py-2 border rounded-md ${
                     errors.clientMomo ? 'border-red-500' : 'border-gray-300'
                   }`}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || (paymentStatus && paymentStatus !== 'failed')}
                   required
                 />
                 {errors.clientMomo && (
@@ -245,7 +371,7 @@ const DigitalBinPaymentModal = ({
                   value={clientRSwitch}
                   onChange={(e) => setClientRSwitch(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || (paymentStatus && paymentStatus !== 'failed')}
                   required
                 >
                   <option value="mtn">MTN</option>
@@ -264,23 +390,50 @@ const DigitalBinPaymentModal = ({
           )}
 
           {/* Action Buttons */}
-          <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50"
-            >
-              {isSubmitting ? 'Processing...' : 'Complete Transaction'}
-            </button>
-          </div>
+          {paymentStatus === 'failed' ? (
+            // Show retry button when payment fails
+            <div className="flex gap-3 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRetry}
+                className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+              >
+                Retry Payment
+              </button>
+            </div>
+          ) : paymentStatus === 'success' || paymentStatus === 'pending' || paymentStatus === 'processing' ? (
+            // Hide buttons during processing or success
+            <div className="pt-4 text-center text-gray-600 text-sm">
+              {paymentStatus === 'success' && 'Closing modal...'}
+              {(paymentStatus === 'pending' || paymentStatus === 'processing') && 'Please wait while we process your payment...'}
+            </div>
+          ) : (
+            // Show normal submit button when no payment in progress
+            <div className="flex gap-3 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                {isSubmitting ? 'Processing...' : 'Complete Transaction'}
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>

@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrendiPay Debug Tool</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Monaco', 'Courier New', monospace;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+      padding: 20px;
+      background: #252526;
+      border-radius: 8px;
+    }
+
+    .header h1 {
+      color: #4ec9b0;
+      margin-bottom: 10px;
+    }
+
+    .section {
+      background: #252526;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .section h2 {
+      color: #569cd6;
+      margin-bottom: 15px;
+      border-bottom: 2px solid #569cd6;
+      padding-bottom: 10px;
+    }
+
+    .config-item {
+      display: flex;
+      margin-bottom: 10px;
+      padding: 10px;
+      background: #1e1e1e;
+      border-radius: 4px;
+    }
+
+    .config-label {
+      color: #9cdcfe;
+      min-width: 200px;
+      font-weight: bold;
+    }
+
+    .config-value {
+      color: #ce9178;
+      word-break: break-all;
+    }
+
+    .status-ok {
+      color: #4ec9b0;
+    }
+
+    .status-error {
+      color: #f48771;
+    }
+
+    .status-warning {
+      color: #dcdcaa;
+    }
+
+    .endpoint {
+      background: #1e1e1e;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 10px 0;
+      border-left: 3px solid #569cd6;
+    }
+
+    .endpoint-url {
+      color: #4ec9b0;
+      font-size: 1.1em;
+      margin-bottom: 5px;
+    }
+
+    .endpoint-method {
+      color: #dcdcaa;
+      font-weight: bold;
+    }
+
+    .test-button {
+      padding: 10px 20px;
+      background: #0e639c;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 5px;
+      font-family: inherit;
+    }
+
+    .test-button:hover {
+      background: #1177bb;
+    }
+
+    .test-button:disabled {
+      background: #3c3c3c;
+      cursor: not-allowed;
+    }
+
+    .response-box {
+      background: #1e1e1e;
+      padding: 15px;
+      border-radius: 4px;
+      margin-top: 15px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .response-box pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .log-entry {
+      padding: 8px;
+      margin: 5px 0;
+      background: #1e1e1e;
+      border-radius: 4px;
+      border-left: 3px solid #569cd6;
+    }
+
+    .log-time {
+      color: #858585;
+      font-size: 0.9em;
+    }
+
+    .log-info { border-left-color: #569cd6; }
+    .log-success { border-left-color: #4ec9b0; }
+    .log-error { border-left-color: #f48771; }
+    .log-warning { border-left-color: #dcdcaa; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔍 TrendiPay Debug Tool</h1>
+      <p>Diagnose TrendiPay API Configuration and Connectivity</p>
+    </div>
+
+    <div class="section">
+      <h2>📋 Configuration Status</h2>
+      <div id="configStatus"></div>
+    </div>
+
+    <div class="section">
+      <h2>🎯 Generated Endpoints</h2>
+      <div id="endpoints"></div>
+    </div>
+
+    <div class="section">
+      <h2>🧪 API Tests</h2>
+      <div style="margin-bottom: 15px;">
+        <button class="test-button" onclick="testEndpoint('collection')">Test Collection Endpoint</button>
+        <button class="test-button" onclick="testEndpoint('disbursement')">Test Disbursement Endpoint</button>
+        <button class="test-button" onclick="testAuth()">Test Authentication</button>
+        <button class="test-button" onclick="clearLogs()">Clear Logs</button>
+      </div>
+      <div id="logs"></div>
+    </div>
+
+    <div class="section">
+      <h2>💡 Recommendations</h2>
+      <div id="recommendations"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Load configuration
+    const config = {
+      apiUrl: import.meta.env.VITE_TRENDIPAY_API_URL || '',
+      apiKey: import.meta.env.VITE_TRENDIPAY_API_KEY || '',
+      terminalId: import.meta.env.VITE_TRENDIPAY_TERMINAL_ID || '',
+      merchantId: import.meta.env.VITE_TRENDIPAY_MERCHANT_ID || '',
+      enabled: import.meta.env.VITE_ENABLE_TRENDIPAY === 'true'
+    };
+
+    let logs = [];
+
+    function addLog(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      logs.unshift({ timestamp, message, type });
+      updateLogs();
+    }
+
+    function updateLogs() {
+      const logsDiv = document.getElementById('logs');
+      logsDiv.innerHTML = logs.map(log => `
+        <div class="log-entry log-${log.type}">
+          <span class="log-time">[${log.timestamp}]</span> ${log.message}
+        </div>
+      `).join('');
+    }
+
+    window.clearLogs = function() {
+      logs = [];
+      updateLogs();
+    };
+
+    // Display configuration
+    function displayConfig() {
+      const checks = [
+        {
+          label: 'TrendiPay Enabled',
+          value: config.enabled ? 'true' : 'false',
+          status: config.enabled ? 'ok' : 'error'
+        },
+        {
+          label: 'API URL',
+          value: config.apiUrl || 'NOT SET',
+          status: config.apiUrl ? 'ok' : 'error'
+        },
+        {
+          label: 'Terminal ID',
+          value: config.terminalId || 'NOT SET',
+          status: config.terminalId && config.terminalId !== 'your_terminal_id_here' ? 'ok' : 'error'
+        },
+        {
+          label: 'Merchant ID',
+          value: config.merchantId || 'NOT SET',
+          status: config.merchantId ? 'ok' : 'error'
+        },
+        {
+          label: 'API Key',
+          value: config.apiKey ? `${config.apiKey.substring(0, 25)}...` : 'NOT SET',
+          status: config.apiKey ? 'ok' : 'error'
+        }
+      ];
+
+      const html = checks.map(check => `
+        <div class="config-item">
+          <div class="config-label">${check.label}:</div>
+          <div class="config-value status-${check.status}">${check.value}</div>
+        </div>
+      `).join('');
+
+      document.getElementById('configStatus').innerHTML = html;
+    }
+
+    // Display endpoints
+    function displayEndpoints() {
+      if (!config.apiUrl || !config.terminalId) {
+        document.getElementById('endpoints').innerHTML = 
+          '<p class="status-error">⚠️ Cannot generate endpoints - API URL or Terminal ID missing</p>';
+        return;
+      }
+
+      const endpoints = [
+        {
+          name: 'Collection (Initiate)',
+          method: 'POST',
+          url: `${config.apiUrl}/v1/terminals/${config.terminalId}/collections`
+        },
+        {
+          name: 'Collection (Status Check)',
+          method: 'GET',
+          url: `${config.apiUrl}/v1/terminals/${config.terminalId}/collections/{transactionId}`
+        },
+        {
+          name: 'Disbursement (Initiate)',
+          method: 'POST',
+          url: `${config.apiUrl}/v1/terminals/${config.terminalId}/disbursements`
+        },
+        {
+          name: 'Disbursement (Status Check)',
+          method: 'GET',
+          url: `${config.apiUrl}/v1/terminals/${config.terminalId}/disbursements/{transactionId}`
+        }
+      ];
+
+      const html = endpoints.map(ep => `
+        <div class="endpoint">
+          <div><strong>${ep.name}</strong></div>
+          <div class="endpoint-method">${ep.method}</div>
+          <div class="endpoint-url">${ep.url}</div>
+        </div>
+      `).join('');
+
+      document.getElementById('endpoints').innerHTML = html;
+    }
+
+    // Test endpoint connectivity
+    window.testEndpoint = async function(type) {
+      if (!config.apiUrl || !config.terminalId || !config.apiKey) {
+        addLog('❌ Configuration incomplete - cannot test', 'error');
+        return;
+      }
+
+      const endpoint = type === 'collection' ? 'collections' : 'disbursements';
+      const url = `${config.apiUrl}/v1/terminals/${config.terminalId}/${endpoint}`;
+      
+      addLog(`🔵 Testing ${type} endpoint...`, 'info');
+      addLog(`📍 URL: ${url}`, 'info');
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${config.apiKey}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Merchant-ID': config.merchantId
+          },
+          body: JSON.stringify({
+            reference: 'test-' + Date.now(),
+            accountNumber: '0241234567',
+            rSwitch: 'mtn',
+            amount: 100,
+            description: 'Connectivity test (1.00 GHS)',
+            callbackUrl: 'http://localhost:3000/test',
+            type: type === 'collection' ? 'purchase' : undefined,
+            currency: 'GHS'
+          })
+        });
+
+        addLog(`📡 Response Status: ${response.status} ${response.statusText}`, 
+          response.ok ? 'success' : 'error');
+
+        const data = await response.json();
+        addLog(`📦 Response: ${JSON.stringify(data, null, 2)}`, 
+          response.ok ? 'success' : 'error');
+
+        if (response.status === 404) {
+          addLog('⚠️ 404 Error - Terminal ID may not exist in TrendiPay system', 'error');
+          addLog('💡 Verify Terminal ID in your TrendiPay dashboard', 'warning');
+        } else if (response.status === 401) {
+          addLog('⚠️ 401 Error - Authentication failed', 'error');
+          addLog('💡 Check API Key and Merchant ID', 'warning');
+        } else if (response.ok) {
+          addLog('✅ Endpoint is accessible and responding!', 'success');
+        }
+      } catch (error) {
+        addLog(`❌ Request failed: ${error.message}`, 'error');
+        addLog('💡 Check network connection and API URL', 'warning');
+      }
+    };
+
+    // Test authentication
+    window.testAuth = async function() {
+      if (!config.apiKey || !config.merchantId) {
+        addLog('❌ API Key or Merchant ID not configured', 'error');
+        return;
+      }
+
+      addLog('🔑 Testing authentication headers...', 'info');
+      addLog(`Authorization: Bearer ${config.apiKey.substring(0, 25)}...`, 'info');
+      addLog(`X-Merchant-ID: ${config.merchantId}`, 'info');
+      
+      addLog('✅ Headers configured correctly', 'success');
+      addLog('💡 If you still get 401 errors, verify credentials in TrendiPay dashboard', 'warning');
+    };
+
+    // Generate recommendations
+    function displayRecommendations() {
+      const recs = [];
+
+      if (!config.enabled) {
+        recs.push('🔴 Enable TrendiPay: Set VITE_ENABLE_TRENDIPAY=true in .env');
+      }
+
+      if (!config.apiUrl) {
+        recs.push('🔴 Set API URL: Add VITE_TRENDIPAY_API_URL to .env');
+      }
+
+      if (!config.terminalId || config.terminalId === 'your_terminal_id_here') {
+        recs.push('🔴 Critical: Set your actual Terminal ID in .env');
+        recs.push('   → Login to TrendiPay dashboard');
+        recs.push('   → Go to Terminals section');
+        recs.push('   → Copy Terminal ID');
+        recs.push('   → Update VITE_TRENDIPAY_TERMINAL_ID in .env');
+      }
+
+      if (!config.apiKey) {
+        recs.push('🔴 Set API Key: Add VITE_TRENDIPAY_API_KEY to .env');
+      }
+
+      if (!config.merchantId) {
+        recs.push('🔴 Set Merchant ID: Add VITE_TRENDIPAY_MERCHANT_ID to .env');
+      }
+
+      if (config.apiUrl && config.terminalId && config.apiKey && config.merchantId) {
+        recs.push('✅ Configuration looks complete!');
+        recs.push('');
+        recs.push('If you\'re still getting 404 errors:');
+        recs.push('1. Verify Terminal ID exists in TrendiPay dashboard');
+        recs.push('2. Check if Terminal ID is active/enabled');
+        recs.push('3. Confirm you\'re using the correct environment (test vs production)');
+        recs.push('4. Contact TrendiPay support to verify Terminal ID');
+      }
+
+      const html = recs.map(rec => `<div style="padding: 5px 0;">${rec}</div>`).join('');
+      document.getElementById('recommendations').innerHTML = html || '<div class="status-ok">✅ No issues detected</div>';
+    }
+
+    // Initialize
+    displayConfig();
+    displayEndpoints();
+    displayRecommendations();
+    addLog('🚀 Debug tool initialized', 'success');
+    addLog('Click "Test Collection Endpoint" to diagnose 404 error', 'info');
+  </script>
+</body>
+</html>

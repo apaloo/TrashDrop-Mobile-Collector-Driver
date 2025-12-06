@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import OSMNavigationMap from './OSMNavigationMap';
+import GoogleMapsNavigation from './GoogleMapsNavigation';
 import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
 import Toast from './Toast';
 import { debounce } from 'lodash';
@@ -521,15 +521,15 @@ const AssignmentNavigationModal = ({
           </button>
         </div>
 
-        {/* Content Area - OpenStreetMap */}
+        {/* Content Area - Google Maps Navigation */}
         <div className="flex-1 relative overflow-hidden">
           <div className="relative w-full h-[60vh] bg-gray-100 rounded-lg overflow-hidden">
             {userLocation && parseDestination(destination) ? (
-              <OSMNavigationMap
+              <GoogleMapsNavigation
                 userLocation={userLocation}
                 destination={parseDestination(destination)}
                 onMapReady={(map) => {
-                  logger.debug(`✅ OpenStreetMap loaded for ${assignmentTitle} navigation`);
+                  logger.debug(`✅ Google Maps loaded for ${assignmentTitle} navigation`);
                   mapRef.current = map;
                 }}
                 onRouteCalculated={(routeInfo) => {

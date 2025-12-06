@@ -49,6 +49,7 @@ async function makeApiRequest(endpoint, method = 'POST', body = null, retryCount
       headers: {
         'Authorization': `Bearer ${TRENDIPAY_CONFIG.apiKey}`,
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         'X-Merchant-ID': TRENDIPAY_CONFIG.merchantId
       },
       timeout: TRENDIPAY_CONFIG.timeout
@@ -128,6 +129,13 @@ export async function initiateCollection({
       throw new Error('Amount must be greater than zero');
     }
     
+    // Convert amount from GHS to pesewas (TrendiPay requires amount in pesewas, minimum 100)
+    const amountInPesewas = Math.round(parseFloat(amount) * 100);
+    
+    if (amountInPesewas < 100) {
+      throw new Error('Amount must be at least 1.00 GHS (100 pesewas)');
+    }
+    
     // Map network to TrendiPay format
     const networkCode = NETWORK_CODES[rSwitch.toLowerCase()] || rSwitch.toUpperCase();
     
@@ -136,7 +144,7 @@ export async function initiateCollection({
       reference,
       accountNumber,
       rSwitch: networkCode,
-      amount: parseFloat(amount).toFixed(2),
+      amount: amountInPesewas, // Amount in pesewas (integer, no decimals)
       description: description || `Digital bin payment ${reference}`,
       callbackUrl: `${TRENDIPAY_CONFIG.callbackBaseUrl}/api/webhooks/trendipay/collection`,
       type: 'purchase', // TrendiPay transaction type for collections
@@ -255,6 +263,13 @@ export async function initiateDisbursement({
       throw new Error('Amount must be greater than zero');
     }
     
+    // Convert amount from GHS to pesewas (TrendiPay requires amount in pesewas, minimum 100)
+    const amountInPesewas = Math.round(parseFloat(amount) * 100);
+    
+    if (amountInPesewas < 100) {
+      throw new Error('Amount must be at least 1.00 GHS (100 pesewas)');
+    }
+    
     // Map network to TrendiPay format
     const networkCode = NETWORK_CODES[rSwitch.toLowerCase()] || rSwitch.toUpperCase();
     
@@ -263,7 +278,7 @@ export async function initiateDisbursement({
       reference,
       accountNumber,
       rSwitch: networkCode,
-      amount: parseFloat(amount).toFixed(2),
+      amount: amountInPesewas, // Amount in pesewas (integer, no decimals)
       description: description || `TrashDrop collector payout ${reference}`,
       callbackUrl: `${TRENDIPAY_CONFIG.callbackBaseUrl}/api/webhooks/trendipay/disbursement`,
       type: 'payment', // TrendiPay transaction type for disbursements

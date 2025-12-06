@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import OSMNavigationMap from './OSMNavigationMap';
+import GoogleMapsNavigation from './GoogleMapsNavigation';
 import { getCurrentLocation, isWithinRadius, calculateDistance } from '../utils/geoUtils';
 import Toast from './Toast';
 import { debounce } from 'lodash';
@@ -718,11 +718,11 @@ const requestCameraPermission = useCallback(async () => {
               {/* Debug logging for navigation conditions - reduced frequency */}
               {Math.random() < 0.05 && logger.debug('Navigation render check:', { userLocation: !!userLocation, destination: !!destination, userLocationData: userLocation, destinationData: destination })}
               {userLocation && destination ? (
-                <OSMNavigationMap
+                <GoogleMapsNavigation
                   userLocation={userLocation}
                   destination={destination}
                   onMapReady={(map) => {
-                    logger.debug('OpenStreetMap loaded in modal');
+                    logger.debug('Google Maps loaded in modal');
                     mapRef.current = map;
                   }}
                   onRouteCalculated={(routeInfo) => {

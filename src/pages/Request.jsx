@@ -1920,6 +1920,9 @@ const GeofenceErrorModal = ({
       // Refresh requests to update UI
       await fetchRequests();
       
+      // Return result to modal for status tracking
+      return result;
+      
     } catch (error) {
       logger.error('Error processing payment:', error);
       showToast(error.message || 'Failed to process payment', 'error');

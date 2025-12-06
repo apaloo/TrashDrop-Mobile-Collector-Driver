@@ -10,7 +10,7 @@
 ✅ TrendiPay Enabled: true
 ✅ API URL: https://test-api.trendipay.com
 ✅ API Key: 739|TtSlRwlbwzk... (masked)
-✅ Terminal ID: TM20251205151519714089
+✅ Terminal ID: 73f3ba0f-7f70-4baf-8e46-f31e50bdb697
 ✅ Merchant ID: 37408274-8fa7-4c78-a05f-3a5238148bcc
 ⚠️ Webhook Secret: Recommended (not critical for testing)
 ```
@@ -18,10 +18,10 @@
 ### Generated API Endpoints ✅
 ```
 Collection:
-https://test-api.trendipay.com/v1/terminals/TM20251205151519714089/collections
+https://test-api.trendipay.com/v1/terminals/73f3ba0f-7f70-4baf-8e46-f31e50bdb697/collections
 
 Disbursement:
-https://test-api.trendipay.com/v1/terminals/TM20251205151519714089/disbursements
+https://test-api.trendipay.com/v1/terminals/73f3ba0f-7f70-4baf-8e46-f31e50bdb697/disbursements
 ```
 
 ### Backend Webhook Server ✅
