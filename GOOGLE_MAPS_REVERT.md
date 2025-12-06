@@ -37,30 +37,26 @@ Routing error: TypeError: Cannot read properties of undefined (reading 'appendCh
 
 ## Google Maps API Configuration
 
-### Current Setup
-The Google Maps API key is hardcoded in the component:
-```javascript
-const GOOGLE_MAPS_API_KEY = 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
-```
+### Recommended Setup (No Hard-Coded Keys)
+The Google Maps API key should **never** be hardcoded in the repository. Instead, load it from an environment variable.
 
-### Optional: Move to Environment Variable
-If you prefer to use environment variables, follow these steps:
-
-1. **Add to `.env` file**:
+1. **Add to `.env` file (local only, not committed)**:
 ```bash
-VITE_GOOGLE_MAPS_API_KEY=AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA
+VITE_GOOGLE_MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 ```
 
-2. **Add to `.env.example`**:
+2. **Add placeholder to `.env.example`**:
 ```bash
 # Google Maps API Key (for navigation modals)
 VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
 ```
 
-3. **Update GoogleMapsNavigation.jsx**:
+3. **Use env var in `GoogleMapsNavigation.jsx`**:
 ```javascript
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 ```
+
+This keeps the real key out of the repo so Netlify’s secret scanner passes.
 
 ## Benefits of This Change
 

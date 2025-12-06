@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { logger } from '../utils/logger';
 
-// Google Maps API Key - you can also move this to .env if preferred
-const GOOGLE_MAPS_API_KEY = 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
+// Google Maps API Key is provided via environment variable
+// Define once here to avoid hard-coding secrets in the repo
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 const GoogleMapsNavigation = ({ 
   userLocation, 
@@ -50,7 +51,17 @@ const GoogleMapsNavigation = ({
           return;
         }
 
-        // Load new script
+        // Ensure the API key is present before loading the script
+        if (!GOOGLE_MAPS_API_KEY) {
+          const error = 'Missing VITE_GOOGLE_MAPS_API_KEY. Please set it in your environment.';
+          logger.error(error);
+          setHasError(true);
+          setErrorMessage(error);
+          if (onError) onError(error);
+          return;
+        }
+
+        // Load new script with env-provided key
         const script = document.createElement('script');
         script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=geometry&loading=async`;
         script.async = true;
