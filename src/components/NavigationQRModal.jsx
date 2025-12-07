@@ -43,6 +43,7 @@ const NavigationQRModal = ({
   const routingControlRef = useRef(null);
   const qrScanner = useRef(null);
   const mapContainerKey = useRef(`map-${Date.now()}`).current; // Unique key for map container to prevent reuse
+  const navigationControlRef = useRef(null);
 
   // Rate limiting for QR scans
   const qrScanAttempts = useRef([]);
@@ -721,6 +722,7 @@ const requestCameraPermission = useCallback(async () => {
                 <GoogleMapsNavigation
                   userLocation={userLocation}
                   destination={destination}
+                  navigationControlRef={navigationControlRef}
                   onMapReady={(map) => {
                     logger.debug('Google Maps loaded in modal');
                     mapRef.current = map;
@@ -734,6 +736,9 @@ const requestCameraPermission = useCallback(async () => {
                       message: 'Map loading issue. You can still navigate externally.',
                       type: 'warning'
                     });
+                  }}
+                  onNavigationStop={() => {
+                    logger.info('Navigation stopped from GoogleMapsNavigation');
                   }}
                 />
               ) : (

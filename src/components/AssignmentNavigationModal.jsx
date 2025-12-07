@@ -35,6 +35,7 @@ const AssignmentNavigationModal = ({
   const arrivalTimeout = useRef(null);
   const directionsService = useRef(null);
   const directionsRenderer = useRef(null);
+  const navigationControlRef = useRef(null);
 
   // Toast management
   const showToast = useCallback(({ message, type = 'info' }) => {
@@ -528,6 +529,7 @@ const AssignmentNavigationModal = ({
               <GoogleMapsNavigation
                 userLocation={userLocation}
                 destination={parseDestination(destination)}
+                navigationControlRef={navigationControlRef}
                 onMapReady={(map) => {
                   logger.debug(`✅ Google Maps loaded for ${assignmentTitle} navigation`);
                   mapRef.current = map;
@@ -543,6 +545,10 @@ const AssignmentNavigationModal = ({
                     message: 'Map loading issue. You can still navigate externally.',
                     type: 'warning'
                   });
+                }}
+                onNavigationStop={() => {
+                  setIsNavigating(false);
+                  logger.info('Navigation stopped from GoogleMapsNavigation');
                 }}
               />
             ) : (
@@ -719,17 +725,29 @@ const AssignmentNavigationModal = ({
                   </button>
                 )}
                 
-                {/* In-App Navigation Button */}
+                {/* Automated Voice Navigation Button */}
                 <button
-                  onClick={startInAppNavigation}
+                  onClick={() => {
+                    if (navigationControlRef.current?.startNavigation) {
+                      setIsNavigating(true);
+                      navigationControlRef.current.startNavigation();
+                      showToast({
+                        message: 'Starting hands-free navigation with voice guidance...',
+                        type: 'success'
+                      });
+                    } else {
+                      // Fallback to old method
+                      startInAppNavigation();
+                    }
+                  }}
                   className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-all duration-200 font-medium text-sm"
                   disabled={isLoading}
                 >
                   <div className="flex items-center justify-center space-x-2">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                     </svg>
-                    <span>In-App Navigation</span>
+                    <span>Voice Navigation</span>
                   </div>
                 </button>
               </div>
@@ -778,14 +796,19 @@ const AssignmentNavigationModal = ({
           {isNavigating && (
             <div className="mt-3">
               <button
-                onClick={stopNavigation}
+                onClick={() => {
+                  if (navigationControlRef.current?.stopNavigation) {
+                    navigationControlRef.current.stopNavigation();
+                  }
+                  stopNavigation();
+                }}
                 className="w-full px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 active:bg-red-800 transition-all duration-200 font-medium text-sm"
               >
                 <div className="flex items-center justify-center space-x-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
-                  <span>Stop Navigation</span>
+                  <span>Stop Voice Navigation</span>
                 </div>
               </button>
             </div>
