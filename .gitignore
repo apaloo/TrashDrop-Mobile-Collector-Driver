@@ -17,6 +17,8 @@ dist-ssr
 .env.local
 .env.production
 .env.development
+**/.env
+**/.env.local
 
 # Editor directories and files
 .vscode/*
@@ -38,3 +40,9 @@ dist-ssr
 *.temp.*
 *.backup
 *~
+
+# Development documentation with sensitive data
+TRENDIPAY*.md
+TERMINAL_ID*.md
+verify-config.js
+DIGITAL_BIN_QR_SCAN_VERIFICATION.md

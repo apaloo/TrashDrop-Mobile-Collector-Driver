@@ -16,6 +16,7 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.offline';
 import localforage from 'localforage';
 import { logger } from '../utils/logger';
+import GoogleMapsNavigation from './GoogleMapsNavigation';
 // Make sure Leaflet CSS is loaded
 import 'leaflet/dist/leaflet.css';
 
@@ -100,6 +101,10 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
   const [isClearingTiles, setIsClearingTiles] = useState(false);
   const [savingProgress, setSavingProgress] = useState(0);
   const [cachedTileCount, setCachedTileCount] = useState(0);
+  const [showNavigationModal, setShowNavigationModal] = useState(false);
+  const [navigationWaypoints, setNavigationWaypoints] = useState([]);
+  const [isInTurnByTurn, setIsInTurnByTurn] = useState(false);
+  const navigationControlRef = useRef(null);
   
   // Refs for map and tile layer
   const mapRef = useRef(null);
@@ -202,9 +207,34 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
     const requestCount = route.filter(stop => stop.type === 'request').length;
     logger.debug(`Route contains ${assignmentCount} assignments and ${requestCount} requests`);
     
-    setOptimizedRoute(route);
-    setTotalDistance(distance);
-    setEstimatedTime(time);
+    // Data validation: Detect unrealistic calculations
+    const maxReasonableDistance = 100; // 100 km max for daily collection routes
+    const maxReasonableTime = 600; // 600 minutes (10 hours) max for a workday
+    
+    if (distance > maxReasonableDistance || time > maxReasonableTime || isNaN(distance) || isNaN(time)) {
+      logger.error('⚠️ Unrealistic route detected:', { 
+        distance: `${distance.toFixed(1)} km`, 
+        time: `${time} min`,
+        routeLength: route.length,
+        isNaN: isNaN(distance) || isNaN(time)
+      });
+      
+      // Show warning with actual values
+      toast.warning(`⚠️ Route spans ${distance.toFixed(1)} km (${time} min). This may be too far for a single day. Consider accepting nearby requests only.`, {
+        position: "top-center",
+        autoClose: 7000,
+        style: { fontSize: '14px' }
+      });
+      
+      // Still show the route but warn user
+      setOptimizedRoute(route);
+      setTotalDistance(distance);
+      setEstimatedTime(time);
+    } else {
+      setOptimizedRoute(route);
+      setTotalDistance(distance);
+      setEstimatedTime(time);
+    }
     
     // Set map center to user location
     setMapCenter([location.latitude, location.longitude]);
@@ -247,7 +277,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
     routeCoordinates.unshift([userLocation.latitude, userLocation.longitude]);
   }
   
-  // Handle navigation to OpenStreetMap
+  // Handle navigation with Google Maps modal
   const navigateToRoute = () => {
     if (optimizedRoute.length === 0) {
       toast.warning('No route available to navigate. Please accept some requests first.', {
@@ -265,29 +295,106 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
       return;
     }
     
-    const startPosition = {
-      lat: userLocation.latitude,
-      lng: userLocation.longitude
-    };
+    // Prepare waypoints for Google Maps
+    const waypoints = optimizedRoute.map(stop => ({
+      location: stop.location || 'Stop',
+      position: {
+        lat: stop.latitude,
+        lng: stop.longitude
+      }
+    }));
     
-    const directionsUrl = generateDirectionsUrl(optimizedRoute, startPosition);
+    logger.info('Opening in-app navigation for', waypoints.length, 'waypoints');
     
-    if (!directionsUrl) {
-      toast.error('Failed to generate navigation URL. Please try again.', {
+    // Set waypoints and show modal
+    setNavigationWaypoints(waypoints);
+    setShowNavigationModal(true);
+    
+    toast.success('Loading route navigation...', {
+      position: "top-center",
+      autoClose: 2000,
+    });
+  };
+  
+  // Handle route export/share
+  const exportRoute = async () => {
+    if (optimizedRoute.length === 0) {
+      toast.warning('No route to export. Please accept some requests first.', {
         position: "top-center",
         autoClose: 3000,
       });
       return;
     }
     
-    logger.info('Opening navigation URL:', directionsUrl);
+    const routeData = {
+      timestamp: new Date().toISOString(),
+      stops: optimizedRoute.length,
+      distance: `${totalDistance.toFixed(1)} km`,
+      estimatedTime: `${estimatedTime} min`,
+      waypoints: optimizedRoute.map((stop, index) => ({
+        order: index + 1,
+        location: stop.location || 'Unknown',
+        type: stop.type || 'assignment',
+        wasteType: stop.waste_type || 'N/A',
+        coordinates: [stop.latitude, stop.longitude]
+      }))
+    };
     
-    toast.success('Opening OpenStreetMap navigation...', {
-      position: "top-center",
-      autoClose: 2000,
-    });
+    const routeText = `TrashDrop Route Plan
+Generated: ${new Date().toLocaleString()}
+
+📍 ${routeData.stops} stops
+📏 ${routeData.distance}
+⏱️ ${routeData.estimatedTime}
+
+Stops:
+${routeData.waypoints.map(w => `${w.order}. ${w.location} (${w.wasteType})`).join('\n')}
+
+View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude, lng: userLocation.longitude})}`;
     
-    window.open(directionsUrl, '_blank');
+    // Try Web Share API first (mobile)
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'TrashDrop Route Plan',
+          text: routeText,
+        });
+        
+        toast.success('Route shared successfully!', {
+          position: "top-center",
+          autoClose: 2000,
+        });
+        
+        logger.info('Route shared via Web Share API');
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          logger.error('Error sharing route:', error);
+          // Fallback to clipboard
+          copyToClipboard(routeText);
+        }
+      }
+    } else {
+      // Fallback: Copy to clipboard
+      copyToClipboard(routeText);
+    }
+  };
+  
+  // Helper function to copy text to clipboard
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Route details copied to clipboard!', {
+        position: "top-center",
+        autoClose: 3000,
+      });
+      logger.info('Route copied to clipboard');
+    } catch (error) {
+      logger.error('Error copying to clipboard:', error);
+      toast.error('Failed to copy route. Please try again.', {
+        position: "top-center",
+        autoClose: 3000,
+      });
+    }
   };
   
   // Handle saving map tiles for offline use
@@ -472,6 +579,23 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
         </div>
       </div>
       
+      {/* GPS Fallback Warning Banner */}
+      {userLocation?.isFallback && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mx-4 mt-3 rounded-r-md">
+          <div className="flex items-start">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-yellow-600 mr-2 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div>
+              <p className="text-yellow-800 text-sm font-medium">Using Approximate Location</p>
+              <p className="text-yellow-700 text-xs mt-1">
+                Enable GPS for accurate route optimization. Current routes are calculated from a default starting point.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Fixed position container for route info and navigation button */}
       <div className="sticky top-0 z-[1000] bg-white shadow-md border-b border-gray-200 mb-2">
         {isLoading ? (
@@ -480,9 +604,17 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
             <span className="ml-2 text-gray-600">Calculating optimal route...</span>
           </div>
         ) : optimizedRoute.length === 0 ? (
-          <div className="py-4 text-center text-gray-600">
-            <p>No accepted requests to optimize.</p>
-            <p className="text-sm mt-1">Accept requests to plan your route.</p>
+          <div className="py-6 text-center">
+            <div className="flex justify-center mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+            </div>
+            <p className="text-gray-700 font-medium mb-1">No Route to Optimize</p>
+            <p className="text-sm text-gray-500 mb-3">Accept pickup requests or assignments to plan an optimized route</p>
+            <div className="text-xs text-gray-400 bg-gray-50 px-4 py-2 rounded-md inline-block">
+              💡 Tip: Go to <span className="font-semibold text-green-600">Request</span> or <span className="font-semibold text-blue-600">Assign</span> tab to accept items
+            </div>
           </div>
         ) : (
           <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
@@ -501,15 +633,27 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
               </div>
             </div>
             
-            <button
-              onClick={navigateToRoute}
-              className="w-full py-2.5 bg-green-500 text-white rounded-md flex items-center justify-center hover:bg-green-600 transition-colors mb-2 font-medium shadow-sm"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-              </svg>
-              Navigate Route
-            </button>
+            <div className="flex space-x-2 mb-2">
+              <button
+                onClick={navigateToRoute}
+                className="flex-1 py-2.5 bg-green-500 text-white rounded-md flex items-center justify-center hover:bg-green-600 transition-colors font-medium shadow-sm"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                </svg>
+                Navigate Route
+              </button>
+              
+              <button
+                onClick={exportRoute}
+                className="px-4 py-2.5 bg-blue-500 text-white rounded-md flex items-center justify-center hover:bg-blue-600 transition-colors font-medium shadow-sm"
+                title="Share or export route details"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+              </button>
+            </div>
             
             {/* Offline map controls - DISABLED: Requires leaflet.offline configuration */}
             {/* Uncomment to enable offline maps functionality after proper setup */}
@@ -662,6 +806,111 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
       </div>
       
       {/* Route details card removed as requested */}
+      
+      {/* Google Maps Navigation Modal */}
+      {showNavigationModal && userLocation && navigationWaypoints.length > 0 && (
+        <div 
+          className={`fixed inset-0 z-[9999] flex items-center justify-center ${
+            isInTurnByTurn ? 'bg-black' : 'bg-black bg-opacity-50'
+          }`}
+          style={isInTurnByTurn ? {} : { paddingTop: '4rem', paddingBottom: '5rem' }}
+        >
+          <div className={`relative w-full h-full bg-white overflow-hidden flex flex-col ${
+            isInTurnByTurn ? '' : 'max-w-4xl mx-4 rounded-lg shadow-2xl'
+          }`}>
+            {/* Modal Header - Hidden during turn-by-turn */}
+            {!isInTurnByTurn && (
+              <div className="bg-green-600 text-white p-4 flex justify-between items-center flex-shrink-0">
+                <div>
+                  <h3 className="text-lg font-bold">Route Navigation</h3>
+                  <p className="text-sm opacity-90">{navigationWaypoints.length} stops</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowNavigationModal(false);
+                    setIsInTurnByTurn(false);
+                  }}
+                  className="p-2 hover:bg-green-700 rounded-full transition-colors"
+                  aria-label="Close navigation"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
+            
+            {/* Google Maps Navigation Component */}
+            <div className="flex-1 overflow-hidden">
+              <GoogleMapsNavigation
+                userLocation={{
+                  lat: userLocation.latitude,
+                  lng: userLocation.longitude
+                }}
+                destination={navigationWaypoints[navigationWaypoints.length - 1].position}
+                waypoints={navigationWaypoints.slice(0, -1).map(wp => wp.position)}
+                navigationControlRef={navigationControlRef}
+                onMapReady={(map) => {
+                  logger.info('Route navigation map ready');
+                }}
+                onRouteCalculated={(routeInfo) => {
+                  logger.info('Multi-stop route calculated:', routeInfo);
+                  toast.success(`Route loaded: ${routeInfo.distance}, ${routeInfo.duration}`, {
+                    position: "top-center",
+                    autoClose: 3000,
+                  });
+                }}
+                onError={(error) => {
+                  logger.error('Navigation error:', error);
+                  toast.error(`Navigation error: ${error}`, {
+                    position: "top-center",
+                    autoClose: 5000,
+                  });
+                }}
+                onNavigationStop={() => {
+                  // Exit fullscreen mode
+                  setIsInTurnByTurn(false);
+                  logger.info('Navigation stopped, exiting fullscreen mode');
+                }}
+              />
+            </div>
+            
+            {/* Modal Footer - Hidden during turn-by-turn */}
+            {!isInTurnByTurn && (
+              <div className="bg-gray-50 p-3 flex justify-between items-center flex-shrink-0 border-t">
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">{totalDistance.toFixed(1)} km</span> · 
+                  <span className="ml-1 font-medium">{estimatedTime} min</span>
+                </div>
+                <button
+                  onClick={() => {
+                    // Start in-app turn-by-turn navigation
+                    if (navigationControlRef.current?.startNavigation) {
+                      setIsInTurnByTurn(true);
+                      navigationControlRef.current.startNavigation();
+                      toast.success('Starting hands-free navigation with voice guidance...', {
+                        position: "top-center",
+                        autoClose: 3000,
+                      });
+                    } else {
+                      toast.warning('Navigation not ready. Please wait...', {
+                        position: "top-center",
+                        autoClose: 2000,
+                      });
+                    }
+                  }}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm font-medium flex items-center shadow-sm"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                  Start Turn-by-Turn
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

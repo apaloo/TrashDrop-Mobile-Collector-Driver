@@ -104,7 +104,7 @@ export const calculateNearestNeighborRoute = (assignments, startPosition) => {
  * @param {Object} startPosition - Starting position with lat/lng coordinates
  * @param {number} startPosition.lat - Latitude of starting position
  * @param {number} startPosition.lng - Longitude of starting position
- * @returns {number} - Total distance in kilometers
+ * @returns {number} - Total distance in kilometers (converted from meters)
  * @example
  * const route = [
  *   { id: '1', latitude: 37.7749, longitude: -122.4194 },
@@ -112,7 +112,7 @@ export const calculateNearestNeighborRoute = (assignments, startPosition) => {
  * ];
  * const startPosition = { lat: 37.7749, lng: -122.4194 };
  * const distance = calculateRouteDistance(route, startPosition);
- * // Returns: distance in kilometers
+ * // Returns: distance in kilometers (e.g., 5.2 km)
  */
 export const calculateRouteDistance = (route, startPosition) => {
   if (!route || route.length === 0) {
@@ -135,7 +135,8 @@ export const calculateRouteDistance = (route, startPosition) => {
     };
   }
   
-  return totalDistance;
+  // Convert meters to kilometers
+  return totalDistance / 1000;
 };
 
 /**
