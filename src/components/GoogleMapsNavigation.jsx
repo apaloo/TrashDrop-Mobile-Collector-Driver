@@ -27,6 +27,7 @@ const GoogleMapsNavigation = ({
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isNavigating, setIsNavigating] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(null);
+  const [isOfflineMode, setIsOfflineMode] = useState(!navigator.onLine);
   const gpsWatchIdRef = useRef(null);
   const speechSynthesisRef = useRef(null);
 
@@ -143,6 +144,56 @@ const GoogleMapsNavigation = ({
 
     loadGoogleMaps();
   }, [onError]);
+
+  // Monitor online/offline status
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOfflineMode(false);
+      logger.info('🌐 Back online');
+    };
+    
+    const handleOffline = () => {
+      setIsOfflineMode(true);
+      logger.info('📵 Gone offline');
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Load cached route if offline
+  useEffect(() => {
+    if (!isOfflineMode || navigationSteps.length > 0) return;
+    
+    try {
+      const cachedData = localStorage.getItem('cachedNavigationRoute');
+      if (cachedData) {
+        const parsedData = JSON.parse(cachedData);
+        
+        // Check if cache is expired (24 hours)
+        if (parsedData.expiresAt > Date.now()) {
+          logger.info('📦 Loading cached route for offline navigation');
+          setNavigationSteps(parsedData.steps || []);
+          setIsLoading(false);
+          setHasError(false);
+          
+          if (onRouteCalculated && parsedData.routeInfo) {
+            onRouteCalculated(parsedData.routeInfo);
+          }
+        } else {
+          logger.info('⚠️ Cached route expired');
+          localStorage.removeItem('cachedNavigationRoute');
+        }
+      }
+    } catch (error) {
+      logger.error('Error loading cached route:', error);
+    }
+  }, [isOfflineMode, navigationSteps.length, onRouteCalculated]);
 
   // Initialize map when API is ready
   useEffect(() => {
@@ -294,6 +345,20 @@ const GoogleMapsNavigation = ({
               steps: totalSteps,
               legs: route.legs.length
             };
+            
+            // Cache route data for offline use
+            try {
+              const offlineRouteData = {
+                steps: allSteps,
+                routeInfo,
+                timestamp: Date.now(),
+                expiresAt: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
+              };
+              localStorage.setItem('cachedNavigationRoute', JSON.stringify(offlineRouteData));
+              logger.info('💾 Route cached for offline navigation');
+            } catch (error) {
+              logger.warn('Failed to cache route:', error);
+            }
             
             logger.info('✅ Route calculated successfully:', routeInfo);
             logger.info(`📍 Extracted ${allSteps.length} navigation steps`);
@@ -558,12 +623,20 @@ const GoogleMapsNavigation = ({
             </button>
           </div>
           
-          {/* Auto-Advance Indicator */}
-          <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-4 py-2 rounded-full shadow-lg pointer-events-auto flex items-center space-x-2">
+          {/* Auto-Advance Indicator with Offline Status */}
+          <div className={`absolute bottom-20 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-full shadow-lg pointer-events-auto flex items-center space-x-2 ${
+            isOfflineMode ? 'bg-orange-500' : 'bg-green-500'
+          } text-white`}>
             <div className="h-2 w-2 bg-white rounded-full animate-pulse"></div>
-            <span className="text-sm font-medium">Auto-Navigation Active</span>
+            <span className="text-sm font-medium">
+              {isOfflineMode ? 'Offline Navigation Active' : 'Auto-Navigation Active'}
+            </span>
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              {isOfflineMode ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              )}
             </svg>
           </div>
         </div>
