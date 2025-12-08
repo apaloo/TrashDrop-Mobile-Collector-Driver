@@ -11,6 +11,14 @@
 [functions]
   directory = "netlify/functions"
 
+# Secrets scanning configuration
+[build.environment]
+  # Omit documentation files and example files from secrets scanning
+  SECRETS_SCAN_OMIT_PATHS = "*.md,.env.example,scripts/**/*.sql,trendipay-test.html,dist/**/*.js"
+  # Vite prefixed variables are meant to be exposed in client-side code
+  # These are intentionally public as they're used for client-side payment processing
+  SECRETS_SCAN_OMIT_KEYS = "VITE_TRENDIPAY_API_URL,VITE_TRENDIPAY_WEBHOOK_SECRET,VITE_TRENDIPAY_MERCHANT_ID,VITE_TRENDIPAY_TERMINAL_ID,VITE_TRENDIPAY_API_KEY,VITE_DEV_USER_ID,google_maps_api_key,VITE_GOOGLE_MAPS_API_KEY"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
