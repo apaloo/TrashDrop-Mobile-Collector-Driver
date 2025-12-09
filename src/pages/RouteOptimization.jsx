@@ -43,6 +43,9 @@ const RouteOptimizationPage = () => {
     } else {
       logger.warn('⚠️ User or user.id not available for analytics service');
       logger.debug('👤 User object received:', user);
+      // Set error to inform user they need to be logged in
+      setError('Unable to load route data. Please ensure you are logged in.');
+      setIsLoading(false);
     }
   }, [user]);
   
@@ -164,10 +167,22 @@ const RouteOptimizationPage = () => {
         logger.debug('🔍 DIAGNOSTIC: Checking database for accepted requests...');
         logger.debug('🔍 DIAGNOSTIC: Current user.id from RouteOptimization:', user?.id);
         
+        // Validate user ID before proceeding
+        if (!user?.id) {
+          logger.error('❌ Cannot fetch data: user.id is undefined');
+          setError('Unable to load route data. Please log in again.');
+          setIsLoading(false);
+          return;
+        }
+        
         const { data: diagnosticData, error: diagError } = await supabase
           .from('pickup_requests')
           .select('id, status, collector_id, accepted_at, location')
           .eq('status', 'accepted');
+        
+        if (diagError) {
+          logger.error('❌ Database query error:', diagError);
+        }
         
         logger.debug(`🔍 DIAGNOSTIC: Total accepted requests in database: ${diagnosticData?.length || 0}`);
         if (diagnosticData && diagnosticData.length > 0) {
@@ -192,6 +207,9 @@ const RouteOptimizationPage = () => {
           setAssignments(assignments);
           setRequests(requests);
           
+          // Clear any previous errors
+          setError(null);
+          
           // Log route optimization for analytics
           if (assignments.length > 0) {
             await analyticsService.logRouteOptimization({
@@ -202,20 +220,48 @@ const RouteOptimizationPage = () => {
           }
         } else {
           logger.error('Failed to fetch route data:', result.error);
-          setError(result.error || 'Failed to load route data');
+          // Show user-friendly error message
+          const errorMsg = result.error?.includes('bin_locations') 
+            ? 'Database configuration issue. Some features may be unavailable.'
+            : result.error || 'Failed to load route data';
+          setError(errorMsg);
+          // Still set empty arrays so UI can render
+          setAssignments([]);
+          setRequests([]);
         }
       } catch (error) {
         logger.error('Error in fetchData:', error);
-        setError('Failed to load data. Please try again.');
+        // Provide more specific error messages
+        let errorMsg = 'Failed to load data. Please try again.';
+        if (error.message?.includes('location_id')) {
+          errorMsg = 'Database configuration issue. Please contact support.';
+        } else if (error.message?.includes('JWT')) {
+          errorMsg = 'Session expired. Please log in again.';
+        }
+        setError(errorMsg);
+        // Set empty arrays to prevent undefined errors
+        setAssignments([]);
+        setRequests([]);
       } finally {
         setIsLoading(false);
       }
     };
     
-    if (userLocation && analyticsService) {
+    // Only fetch if we have user ID, location, and analytics service
+    if (user?.id && userLocation && analyticsService && online) {
       fetchData();
+    } else if (!online) {
+      setError('You are currently offline. Route optimization requires an internet connection.');
+      setIsLoading(false);
+    } else if (!user?.id) {
+      // User ID is required but missing
+      logger.warn('⚠️ Cannot fetch data: missing user ID');
+      setIsLoading(false);
+    } else {
+      // Just waiting for dependencies
+      logger.debug('⏳ Waiting for dependencies:', { hasUser: !!user?.id, hasLocation: !!userLocation, hasService: !!analyticsService, online });
     }
-  }, [userLocation, analyticsService, online]);
+  }, [userLocation, analyticsService, online, user]);
   
   // Handle refresh using analytics service
   const handleRefresh = async () => {

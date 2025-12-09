@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { logger } from '../utils/logger';
 
-// Google Maps API Key from environment variables
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+// Google Maps API Key from environment variables with fallback to .env.example value
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
 
 const GoogleMapsNavigation = ({ 
   userLocation, 

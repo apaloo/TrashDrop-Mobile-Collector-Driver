@@ -217,6 +217,13 @@ class CollectorStatusService {
         });
 
       if (error) {
+        // Foreign key constraint error - collector_profiles record missing
+        if (error.code === '23503' && error.message?.includes('collector_profiles')) {
+          logger.warn('⚠️ Collector profile not found. Please complete signup to enable status tracking.');
+          logger.debug('💡 Status changes will work after completing the signup process.');
+          // Don't throw - allow app to continue functioning
+          return;
+        }
         logger.error('❌ Error updating backend status:', error);
       }
     } catch (error) {

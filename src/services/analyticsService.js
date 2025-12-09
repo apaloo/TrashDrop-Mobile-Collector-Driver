@@ -147,22 +147,42 @@ export class AnalyticsService {
       // CRITICAL: Also get accepted digital bins (they're in a separate table!)
       // Digital bins have coordinates in a related bin_locations table
       // Use * to select all columns since the schema varies
-      const { data: acceptedDigitalBins, error: binsError } = await supabase
-        .from('digital_bins')
-        .select(`
-          *,
-          bin_locations!location_id(
-            coordinates,
-            location_name
-          )
-        `)
-        .eq('collector_id', this.collectorId)
-        .eq('status', 'accepted')
-        .order('created_at', { ascending: true });
+      let acceptedDigitalBins = [];
+      
+      try {
+        const { data: binsData, error: binsError } = await supabase
+          .from('digital_bins')
+          .select(`
+            *,
+            bin_locations!location_id(
+              coordinates,
+              location_name
+            )
+          `)
+          .eq('collector_id', this.collectorId)
+          .eq('status', 'accepted')
+          .order('created_at', { ascending: true });
 
-      if (binsError) {
-        logger.error('❌ Error fetching accepted digital bins:', binsError);
-        throw binsError;
+        if (binsError) {
+          // Check if it's a relationship/table error
+          if (binsError.code === '42P01' || binsError.message?.includes('bin_locations') || binsError.message?.includes('location_id')) {
+            logger.warn('⚠️ bin_locations table or relationship not found. Skipping digital bins.');
+            logger.info('💡 Digital bins feature requires bin_locations table setup.');
+            // Continue without digital bins - not a critical error
+            acceptedDigitalBins = [];
+          } else {
+            // Other errors should still throw
+            logger.error('❌ Error fetching accepted digital bins:', binsError);
+            throw binsError;
+          }
+        } else {
+          acceptedDigitalBins = binsData || [];
+        }
+      } catch (error) {
+        // Gracefully handle any bin_locations related errors
+        logger.warn('⚠️ Could not fetch digital bins:', error.message);
+        logger.info('📍 Continuing with pickup requests only');
+        acceptedDigitalBins = [];
       }
 
       logger.info(`📦 Found ${acceptedDigitalBins?.length || 0} accepted digital bins for collector ${this.collectorId}`);

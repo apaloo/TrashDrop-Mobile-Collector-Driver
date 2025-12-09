@@ -231,10 +231,9 @@ const RequestPage = () => {
               acceptedRes, 
               pickedUpRes
             ] = await Promise.all([
-              // PERFORMANCE: Skip available requests query if we have filtered data from Map
-              filteredRequests.available && filteredRequests.available.length > 0 
-                ? { data: filteredRequests.available } 
-                : Promise.all([
+              // TEMPORARY FIX: Always fetch from database to debug pickup request issue
+              // TODO: Re-enable Map filtering optimization after fixing root cause
+              Promise.all([
                     // Fetch pickup requests
                     supabase
                       .from('pickup_requests')
@@ -261,6 +260,14 @@ const RequestPage = () => {
                       logger.warn('Digital bins query failed:', binsResult.error);
                     }
                     
+                    // DEBUG: Log raw data from database
+                    logger.info('📊 DATABASE FETCH RESULTS:', {
+                      pickupRequestsCount: pickupResult.data?.length || 0,
+                      digitalBinsCount: binsResult.data?.length || 0,
+                      pickupRequestsSample: pickupResult.data?.[0] || 'none',
+                      digitalBinsSample: binsResult.data?.[0] || 'none'
+                    });
+                    
                     // Combine data and add source type identification
                     const pickupRequests = (pickupResult.data || []).map(item => ({
                       ...item,
@@ -276,6 +283,12 @@ const RequestPage = () => {
                       fee: item.fee || 0, // Default fee if not specified
                       location: item.bin_locations?.location_name || 'Digital Bin Station' // Get location from joined table
                     }));
+                    
+                    logger.info('📦 PROCESSED DATA FOR REQUEST PAGE:', {
+                      pickupRequestsCount: pickupRequests.length,
+                      digitalBinsCount: digitalBins.length,
+                      totalAvailable: pickupRequests.length + digitalBins.length
+                    });
                     
                     return { data: [...pickupRequests, ...digitalBins] };
                   }),

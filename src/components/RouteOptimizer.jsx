@@ -149,9 +149,22 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
     setIsLoading(true);
     logger.debug('Processing route with location:', location);
     
+    // Validate inputs to prevent crashes
+    if (!location || typeof location.latitude !== 'number' || typeof location.longitude !== 'number') {
+      logger.error('⚠️ Invalid location provided to processRoute:', location);
+      setIsLoading(false);
+      return;
+    }
+    
+    if (!Array.isArray(assignments)) {
+      logger.error('⚠️ Invalid assignments provided to processRoute:', assignments);
+      setIsLoading(false);
+      return;
+    }
+    
     // Filter only accepted assignments
     const acceptedAssignments = assignments.filter(assignment => 
-      assignment.status === 'accepted'
+      assignment && assignment.status === 'accepted'
     );
     
     // Filter only pending requests (those that need attention)
