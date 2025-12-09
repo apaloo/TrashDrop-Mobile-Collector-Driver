@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { logger } from '../utils/logger';
 
-// Google Maps API Key from environment variables with fallback to .env.example value
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
+// Google Maps API Key from environment variables
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+if (!GOOGLE_MAPS_API_KEY) {
+  logger.error('❌ VITE_GOOGLE_MAPS_API_KEY is not set. Please add it to your .env file or Netlify environment variables.');
+}
 
 const GoogleMapsNavigation = ({ 
   userLocation, 

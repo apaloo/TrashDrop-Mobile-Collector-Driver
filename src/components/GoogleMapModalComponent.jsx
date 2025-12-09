@@ -1,13 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { logger } from '../utils/logger';
 
-// Google Maps configuration with fallback to .env.example value
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
+// Google Maps configuration
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 if (!GOOGLE_MAPS_API_KEY) {
-  logger.error('❌ VITE_GOOGLE_MAPS_API_KEY environment variable is not set');
-} else if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY) {
-  logger.debug('💡 Using fallback Google Maps API key from .env.example');
+  logger.error('❌ VITE_GOOGLE_MAPS_API_KEY is not set. Please add it to your .env file or Netlify environment variables.');
 }
 
 // Load Google Maps API with enhanced validation and preload support
