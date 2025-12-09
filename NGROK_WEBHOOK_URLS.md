@@ -1,14 +1,13 @@
 # ngrok Webhook URLs for TrendiPay Configuration
 
-**Date**: December 5, 2024  
+**Date**: December 9, 2024  
 **Status**: 🟢 **ACTIVE**
 
 ## 📡 ngrok Tunnel Information
 
-**Public URL**: `https://9cc4dfcd4830.ngrok-free.app`  
+**Public URL**: `https://1cb1f843e0b5.ngrok-free.app`  
 **Local Port**: `3000`  
 **Status**: Running  
-**Region**: Europe (eu)  
 **Web Interface**: http://127.0.0.1:4040
 
 ---
@@ -17,12 +16,12 @@
 
 ### Collection Webhook URL
 ```
-https://9cc4dfcd4830.ngrok-free.app/api/webhooks/trendipay/collection
+https://1cb1f843e0b5.ngrok-free.app/api/webhooks/trendipay/collection
 ```
 
 ### Disbursement Webhook URL
 ```
-https://9cc4dfcd4830.ngrok-free.app/api/webhooks/trendipay/disbursement
+https://1cb1f843e0b5.ngrok-free.app/api/webhooks/trendipay/disbursement
 ```
 
 ---
@@ -36,11 +35,11 @@ Navigate to your TrendiPay merchant portal.
 
 **For Collection Webhooks**:
 - Setting: Collection Callback URL
-- Value: `https://9cc4dfcd4830.ngrok-free.app/api/webhooks/trendipay/collection`
+- Value: `https://1cb1f843e0b5.ngrok-free.app/api/webhooks/trendipay/collection`
 
 **For Disbursement Webhooks**:
 - Setting: Disbursement Callback URL  
-- Value: `https://9cc4dfcd4830.ngrok-free.app/api/webhooks/trendipay/disbursement`
+- Value: `https://1cb1f843e0b5.ngrok-free.app/api/webhooks/trendipay/disbursement`
 
 ### 3. Save Configuration
 Click "Save" or "Update" in the TrendiPay dashboard.
@@ -51,7 +50,7 @@ Click "Save" or "Update" in the TrendiPay dashboard.
 
 ### Test Collection Webhook
 ```bash
-curl -X POST https://9cc4dfcd4830.ngrok-free.app/api/webhooks/trendipay/collection \
+curl -X POST https://1cb1f843e0b5.ngrok-free.app/api/webhooks/trendipay/collection \
   -H "Content-Type: application/json" \
   -H "X-TrendiPay-Signature: test-signature" \
   -d '{
@@ -67,7 +66,7 @@ curl -X POST https://9cc4dfcd4830.ngrok-free.app/api/webhooks/trendipay/collecti
 
 ### Test Disbursement Webhook
 ```bash
-curl -X POST https://9cc4dfcd4830.ngrok-free.app/api/webhooks/trendipay/disbursement \
+curl -X POST https://1cb1f843e0b5.ngrok-free.app/api/webhooks/trendipay/disbursement \
   -H "Content-Type: application/json" \
   -H "X-TrendiPay-Signature: test-signature" \
   -d '{
@@ -83,7 +82,7 @@ curl -X POST https://9cc4dfcd4830.ngrok-free.app/api/webhooks/trendipay/disburse
 
 ### Test Health Endpoint
 ```bash
-curl https://9cc4dfcd4830.ngrok-free.app/health
+curl https://1cb1f843e0b5.ngrok-free.app/health
 ```
 
 ---
@@ -167,4 +166,4 @@ ngrok http 3000
 
 **Status**: 🟢 Active and ready for webhooks!  
 **Expires**: When ngrok process is terminated  
-**Last Updated**: December 5, 2024 at 4:38 PM UTC
+**Last Updated**: December 9, 2024 at 11:12 PM UTC

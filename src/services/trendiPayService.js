@@ -129,6 +129,24 @@ export async function initiateCollection({
       throw new Error('Amount must be greater than zero');
     }
     
+    // Validate callback URL is properly configured
+    const callbackUrl = `${TRENDIPAY_CONFIG.callbackBaseUrl}/api/webhooks/trendipay/collection`;
+    const urlPattern = /^https?:\/\/.+/;
+    
+    if (!TRENDIPAY_CONFIG.callbackBaseUrl || 
+        TRENDIPAY_CONFIG.callbackBaseUrl === 'http://localhost:3000' ||
+        TRENDIPAY_CONFIG.callbackBaseUrl.includes('your-') ||
+        !urlPattern.test(callbackUrl)) {
+      logger.error('Invalid callback URL configuration:', { 
+        callbackBaseUrl: TRENDIPAY_CONFIG.callbackBaseUrl,
+        callbackUrl 
+      });
+      throw new Error(
+        'Payment system not configured. Please contact support. ' +
+        '(VITE_API_URL environment variable must be set to a valid publicly accessible URL)'
+      );
+    }
+    
     // Convert amount from GHS to pesewas (TrendiPay requires amount in pesewas, minimum 100)
     const amountInPesewas = Math.round(parseFloat(amount) * 100);
     
