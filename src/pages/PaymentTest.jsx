@@ -45,26 +45,27 @@ export default function PaymentTest() {
         }
         
         // Get a valid collector from collector_profiles table
-        let collectorId = null;
+        // Note: bin_payments.collector_id references collector_profiles.id (not user_id)
+        let collectorProfileId = null;
         
         // First try to use authenticated user if they have a collector profile
         if (user?.id) {
           const { data: userProfile } = await supabase
             .from('collector_profiles')
-            .select('user_id')
+            .select('id')
             .eq('user_id', user.id)
             .single();
           
           if (userProfile) {
-            collectorId = user.id;
+            collectorProfileId = userProfile.id;
           }
         }
         
         // If no authenticated collector, get any collector from database
-        if (!collectorId) {
+        if (!collectorProfileId) {
           const { data: collectors, error: collectorError } = await supabase
             .from('collector_profiles')
-            .select('user_id')
+            .select('id')
             .limit(1);
           
           if (collectorError) {
@@ -78,20 +79,20 @@ export default function PaymentTest() {
             return;
           }
           
-          collectorId = collectors[0].user_id;
+          collectorProfileId = collectors[0].id;
         }
         
         setCollectionForm(prev => ({
           ...prev,
           digitalBinId: bins[0].id,
-          collectorId: collectorId
+          collectorId: collectorProfileId
         }));
         
         console.log('✅ Loaded test data:', { 
           digitalBinId: bins[0].id, 
-          collectorId,
+          collectorProfileId,
           binStatus: bins[0].status,
-          isAuthenticatedCollector: collectorId === user?.id
+          note: 'Using collector_profiles.id for bin_payments.collector_id'
         });
         
       } catch (err) {
