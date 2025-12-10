@@ -7,13 +7,22 @@ export default function PaymentTest() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   
+  // Generate valid UUIDs for testing
+  const generateUUID = () => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+  
   // Collection form state
   const [collectionForm, setCollectionForm] = useState({
     amount: '5.00',
     clientMomo: '0245724489',
     clientRSwitch: 'MTN',
-    digitalBinId: 'test-bin-' + Date.now(),
-    collectorId: 'test-collector-123'
+    digitalBinId: generateUUID(),
+    collectorId: generateUUID()
   });
   
   // Status check form
@@ -135,7 +144,19 @@ export default function PaymentTest() {
       const apiUrl = import.meta.env.VITE_API_URL;
       console.log('🧪 Checking webhook server:', apiUrl);
       
-      const response = await fetch(`${apiUrl}/health`);
+      const response = await fetch(`${apiUrl}/health`, {
+        headers: {
+          'ngrok-skip-browser-warning': 'true' // Skip ngrok interstitial page
+        }
+      });
+      
+      const contentType = response.headers.get('content-type');
+      
+      // Check if we got JSON (expected) or HTML (ngrok interstitial)
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Received HTML instead of JSON - ngrok may be showing interstitial page. Try accessing ' + apiUrl + '/health in a browser first.');
+      }
+      
       const data = await response.json();
       
       console.log('📊 Webhook server status:', data);
@@ -149,7 +170,7 @@ export default function PaymentTest() {
       setError(err.message || 'Webhook server not reachable');
       setResult({
         success: false,
-        error: 'Webhook server not reachable. Make sure backend_webhooks/server.js and ngrok are running.'
+        error: err.message || 'Webhook server not reachable. Make sure backend_webhooks/server.js and ngrok are running.'
       });
     } finally {
       setLoading(false);
