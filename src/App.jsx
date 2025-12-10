@@ -21,6 +21,7 @@ import PrivacyPage from './pages/Privacy';
 import LoginPage from './pages/Login';
 import SignupPage from './pages/Signup';
 import DiagnosticPage from './pages/DiagnosticPage';
+import PaymentTest from './pages/PaymentTest';
 
 // LAZY: Heavy pages loaded on demand to reduce initial bundle
 const MapPage = lazy(() => import('./pages/Map'));
@@ -164,6 +165,7 @@ function App() {
                     </ProtectedRoute>
                   } />
                   <Route path="/diagnostic" element={<DiagnosticPage />} />
+                  <Route path="/payment-test" element={<PaymentTest />} />
                   <Route path="/route-optimization" element={
                     <ProtectedRoute>
                       <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">

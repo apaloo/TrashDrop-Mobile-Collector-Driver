@@ -395,6 +395,23 @@ const ProfilePage = () => {
           </div>
         )}
       </div>
+
+      {/* Developer Tools Section */}
+      {import.meta.env.DEV && (
+        <div className="card bg-orange-50 border-2 border-orange-200 mt-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-bold text-orange-900">🛠️ Developer Tools</h2>
+            <span className="text-xs bg-orange-200 text-orange-800 px-2 py-1 rounded">DEV MODE</span>
+          </div>
+          <p className="text-sm text-orange-700 mb-4">Testing utilities for development</p>
+          <a 
+            href="/payment-test" 
+            className="btn btn-primary w-full"
+          >
+            💳 Payment Testing Interface
+          </a>
+        </div>
+      )}
       
       <BottomNavBar />
     </div>
