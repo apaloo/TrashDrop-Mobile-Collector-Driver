@@ -1,11 +1,11 @@
 # ngrok Webhook URLs for TrendiPay Configuration
 
-**Date**: December 9, 2024  
+**Date**: December 10, 2024  
 **Status**: 🟢 **ACTIVE**
 
 ## 📡 ngrok Tunnel Information
 
-**Public URL**: `https://1cb1f843e0b5.ngrok-free.app`  
+**Public URL**: `https://7d54e65126db.ngrok-free.app`  
 **Local Port**: `3000`  
 **Status**: Running  
 **Web Interface**: http://127.0.0.1:4040
@@ -16,12 +16,12 @@
 
 ### Collection Webhook URL
 ```
-https://1cb1f843e0b5.ngrok-free.app/api/webhooks/trendipay/collection
+https://7d54e65126db.ngrok-free.app/api/webhooks/trendipay/collection
 ```
 
 ### Disbursement Webhook URL
 ```
-https://1cb1f843e0b5.ngrok-free.app/api/webhooks/trendipay/disbursement
+https://7d54e65126db.ngrok-free.app/api/webhooks/trendipay/disbursement
 ```
 
 ---

@@ -129,18 +129,14 @@ export async function initiateCollection({
       throw new Error('Amount must be greater than zero');
     }
     
-    // For mobile apps, use a placeholder callback URL since we'll poll for status instead
-    // TrendiPay requires a callback URL but mobile apps can't receive webhooks
-    const isMobileApp = TRENDIPAY_CONFIG.callbackBaseUrl === 'http://localhost:3000' || 
-                        !TRENDIPAY_CONFIG.callbackBaseUrl;
+    // Validate callback URL is properly configured
+    const callbackUrl = `${TRENDIPAY_CONFIG.callbackBaseUrl}/api/webhooks/trendipay/collection`;
     
-    const callbackUrl = isMobileApp 
-      ? 'https://trashdrop.app/api/webhooks/trendipay/collection' // Placeholder for mobile
-      : `${TRENDIPAY_CONFIG.callbackBaseUrl}/api/webhooks/trendipay/collection`;
-    
-    if (isMobileApp) {
-      logger.info('Using mobile app mode - will poll for payment status instead of webhooks');
+    if (!TRENDIPAY_CONFIG.callbackBaseUrl) {
+      throw new Error('Payment system not configured. VITE_API_URL must be set to your ngrok URL');
     }
+    
+    logger.info('Using callback URL:', callbackUrl);
     
     // Convert amount from GHS to pesewas (TrendiPay requires amount in pesewas, minimum 100)
     const amountInPesewas = Math.round(parseFloat(amount) * 100);
@@ -276,18 +272,6 @@ export async function initiateDisbursement({
       throw new Error('Amount must be greater than zero');
     }
     
-    // For mobile apps, use a placeholder callback URL since we'll poll for status instead
-    const isMobileApp = TRENDIPAY_CONFIG.callbackBaseUrl === 'http://localhost:3000' || 
-                        !TRENDIPAY_CONFIG.callbackBaseUrl;
-    
-    const callbackUrl = isMobileApp 
-      ? 'https://trashdrop.app/api/webhooks/trendipay/disbursement' // Placeholder for mobile
-      : `${TRENDIPAY_CONFIG.callbackBaseUrl}/api/webhooks/trendipay/disbursement`;
-    
-    if (isMobileApp) {
-      logger.info('Using mobile app mode - will poll for disbursement status instead of webhooks');
-    }
-    
     // Convert amount from GHS to pesewas (TrendiPay requires amount in pesewas, minimum 100)
     const amountInPesewas = Math.round(parseFloat(amount) * 100);
     
@@ -305,7 +289,7 @@ export async function initiateDisbursement({
       rSwitch: networkCode,
       amount: amountInPesewas, // Amount in pesewas (integer, no decimals)
       description: description || `TrashDrop collector payout ${reference}`,
-      callbackUrl,
+      callbackUrl: `${TRENDIPAY_CONFIG.callbackBaseUrl}/api/webhooks/trendipay/disbursement`,
       type: 'payment', // TrendiPay transaction type for disbursements
       currency
     };
