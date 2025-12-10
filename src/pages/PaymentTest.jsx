@@ -29,7 +29,7 @@ export default function PaymentTest() {
         // Get a real digital bin from database (status: available)
         const { data: bins, error: binError } = await supabase
           .from('digital_bins')
-          .select('id, client_id, status')
+          .select('id, user_id, status')
           .eq('status', 'available')
           .limit(1);
         
@@ -44,8 +44,8 @@ export default function PaymentTest() {
           return;
         }
         
-        // Use logged in user's ID if available, otherwise use client_id from bin
-        const collectorId = user?.id || bins[0].client_id;
+        // Use logged in user's ID if available, otherwise use user_id from bin
+        const collectorId = user?.id || bins[0].user_id;
         
         setCollectionForm(prev => ({
           ...prev,
