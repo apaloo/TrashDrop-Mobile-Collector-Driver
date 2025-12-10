@@ -85,15 +85,42 @@ export default function PaymentTest() {
     setResult(null);
 
     try {
-      console.log('🧪 Testing TrendiPay connection...');
+      console.log('🧪 Checking TrendiPay configuration...');
       
-      const response = await testConnection();
+      // Check if credentials are configured
+      const apiUrl = import.meta.env.VITE_TRENDIPAY_API_URL;
+      const apiKey = import.meta.env.VITE_TRENDIPAY_API_KEY;
+      const terminalId = import.meta.env.VITE_TRENDIPAY_TERMINAL_ID;
+      const merchantId = import.meta.env.VITE_TRENDIPAY_MERCHANT_ID;
+      const enabled = import.meta.env.VITE_ENABLE_TRENDIPAY;
       
-      console.log('📊 Connection result:', response);
-      setResult(response);
+      const hasCredentials = apiUrl && apiKey && terminalId && merchantId;
+      
+      const configResult = {
+        success: hasCredentials,
+        message: hasCredentials 
+          ? '✅ TrendiPay credentials configured' 
+          : '⚠️ Missing TrendiPay credentials',
+        data: {
+          enabled: enabled === 'true',
+          apiUrl,
+          hasApiKey: !!apiKey,
+          apiKeyLength: apiKey?.length || 0,
+          hasTerminalId: !!terminalId,
+          hasMerchantId: !!merchantId,
+          note: 'API connection will be tested when initiating a payment'
+        }
+      };
+      
+      console.log('📊 Configuration check:', configResult);
+      setResult(configResult);
+      
+      if (!hasCredentials) {
+        setError('TrendiPay credentials not fully configured in .env file');
+      }
     } catch (err) {
-      console.error('❌ Connection test failed:', err);
-      setError(err.message || 'Connection test failed');
+      console.error('❌ Configuration check failed:', err);
+      setError(err.message || 'Configuration check failed');
     } finally {
       setLoading(false);
     }
@@ -158,7 +185,7 @@ export default function PaymentTest() {
               disabled={loading}
               className="bg-purple-600 text-white py-3 px-4 rounded-lg hover:bg-purple-700 disabled:bg-gray-400 font-medium text-sm"
             >
-              🔌 Test API Connection
+              🔧 Check Configuration
             </button>
             <button
               onClick={handleCheckWebhookServer}
