@@ -208,6 +208,39 @@ export async function checkPaymentStatus(paymentId) {
 }
 
 /**
+ * Check TrendiPay collection status directly
+ * 
+ * @param {string} transactionId - TrendiPay transaction ID
+ * @param {string} reference - Original payment reference
+ * @returns {Promise<Object>} TrendiPay status
+ */
+export async function checkCollectionStatus(transactionId, reference) {
+  try {
+    if (!ENABLE_TRENDIPAY) {
+      return {
+        success: false,
+        error: 'TrendiPay is not enabled'
+      };
+    }
+
+    logger.info('Checking TrendiPay collection status:', { transactionId, reference });
+    
+    const result = await TrendiPayService.checkCollectionStatus(transactionId, reference);
+    
+    logger.info('TrendiPay status result:', result);
+    
+    return result;
+
+  } catch (error) {
+    logger.error('Error checking collection status:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
  * Simulate client payment approval (Phase 1 testing only)
  * Remove this in Phase 4 when real webhooks are implemented
  */
