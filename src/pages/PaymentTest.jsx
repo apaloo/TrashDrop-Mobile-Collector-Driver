@@ -1,29 +1,74 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { initiateCollection, checkCollectionStatus } from '../services/paymentService';
 import { testConnection } from '../services/trendiPayService';
+import { supabase } from '../services/supabase';
+import { useAuth } from '../context/AuthContext';
 
 export default function PaymentTest() {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  
-  // Generate valid UUIDs for testing
-  const generateUUID = () => {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  };
+  const [loadingBin, setLoadingBin] = useState(true);
   
   // Collection form state
   const [collectionForm, setCollectionForm] = useState({
     amount: '5.00',
     clientMomo: '0245724489',
     clientRSwitch: 'MTN',
-    digitalBinId: generateUUID(),
-    collectorId: generateUUID()
+    digitalBinId: '',
+    collectorId: ''
   });
+  
+  // Fetch real digital bin and collector ID from database
+  useEffect(() => {
+    const fetchTestData = async () => {
+      try {
+        setLoadingBin(true);
+        
+        // Get a real digital bin from database (status: available)
+        const { data: bins, error: binError } = await supabase
+          .from('digital_bins')
+          .select('id, client_id, status')
+          .eq('status', 'available')
+          .limit(1);
+        
+        if (binError) {
+          console.error('Error fetching digital bin:', binError);
+          setError('Could not fetch test digital bin. Make sure digital_bins table has available bins.');
+          return;
+        }
+        
+        if (!bins || bins.length === 0) {
+          setError('No available digital bins in database. Create a test bin first.');
+          return;
+        }
+        
+        // Use logged in user's ID if available, otherwise use client_id from bin
+        const collectorId = user?.id || bins[0].client_id;
+        
+        setCollectionForm(prev => ({
+          ...prev,
+          digitalBinId: bins[0].id,
+          collectorId: collectorId
+        }));
+        
+        console.log('✅ Loaded test data:', { 
+          digitalBinId: bins[0].id, 
+          collectorId,
+          binStatus: bins[0].status 
+        });
+        
+      } catch (err) {
+        console.error('Error in fetchTestData:', err);
+        setError(err.message);
+      } finally {
+        setLoadingBin(false);
+      }
+    };
+    
+    fetchTestData();
+  }, [user]);
   
   // Status check form
   const [transactionId, setTransactionId] = useState('');
@@ -217,6 +262,21 @@ export default function PaymentTest() {
             </button>
           </div>
 
+          {/* Loading State */}
+          {loadingBin && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-yellow-800">⏳ Loading test data from database...</p>
+            </div>
+          )}
+
+          {/* No Bins Available */}
+          {!loadingBin && !collectionForm.digitalBinId && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-red-800 mb-2">❌ No available digital bins found</p>
+              <p className="text-xs text-red-600">Create a test digital bin in the database with status='available' first.</p>
+            </div>
+          )}
+
           {/* Collection Payment Form */}
           <form onSubmit={handleTestCollection} className="mb-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
@@ -272,19 +332,31 @@ export default function PaymentTest() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Digital Bin ID (auto-generated)
+                  Digital Bin ID (from database)
                 </label>
                 <input
                   type="text"
-                  value={collectionForm.digitalBinId}
+                  value={collectionForm.digitalBinId || 'Loading...'}
                   readOnly
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Collector ID (from auth or bin)
+                </label>
+                <input
+                  type="text"
+                  value={collectionForm.collectorId || 'Loading...'}
+                  readOnly
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs"
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || loadingBin || !collectionForm.digitalBinId}
                 className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-medium"
               >
                 {loading ? '⏳ Processing...' : '🚀 Initiate Collection Payment'}
