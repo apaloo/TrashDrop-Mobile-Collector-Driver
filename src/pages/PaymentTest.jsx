@@ -28,7 +28,20 @@ export default function PaymentTest() {
     try {
       console.log('🧪 Testing collection payment:', collectionForm);
       
-      const response = await initiateCollection(collectionForm);
+      // Map form data to payment service expected format
+      const paymentData = {
+        digitalBinId: collectionForm.digitalBinId,
+        collectorId: collectionForm.collectorId,
+        bagsCollected: 1, // Default for testing
+        totalBill: parseFloat(collectionForm.amount),
+        paymentMode: 'momo', // Default to MoMo for testing
+        clientMomo: collectionForm.clientMomo,
+        clientRSwitch: collectionForm.clientRSwitch.toLowerCase()
+      };
+      
+      console.log('📤 Sending payment data:', paymentData);
+      
+      const response = await initiateCollection(paymentData);
       
       console.log('📊 Collection result:', response);
       setResult(response);
