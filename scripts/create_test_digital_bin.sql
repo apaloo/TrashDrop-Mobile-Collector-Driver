@@ -61,7 +61,7 @@ SELECT
   new_location.id,
   'https://example.com/qr/test-bin-' || gen_random_uuid()::text,
   'weekly',
-  'recyclable',
+  'recycling',  -- Valid values: 'general', 'recycling', 'organic'
   1,
   'Test digital bin for payment testing',
   true,
