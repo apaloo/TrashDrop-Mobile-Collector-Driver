@@ -1,0 +1,5 @@
+[functions.trendipay-collection]
+verify_jwt = false
+
+[functions.trendipay-disbursement]
+verify_jwt = false

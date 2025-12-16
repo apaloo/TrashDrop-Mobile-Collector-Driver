@@ -18,7 +18,7 @@ const TRENDIPAY_CONFIG = {
   apiKey: import.meta.env.VITE_TRENDIPAY_API_KEY || '',
   terminalId: import.meta.env.VITE_TRENDIPAY_TERMINAL_ID || '',
   merchantId: import.meta.env.VITE_TRENDIPAY_MERCHANT_ID || '',
-  callbackBaseUrl: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  callbackBaseUrl: import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000',
   
   // Timeouts and retries
   timeout: 30000, // 30 seconds
@@ -130,7 +130,7 @@ export async function initiateCollection({
     }
     
     // Validate callback URL is properly configured
-    const callbackUrl = `${TRENDIPAY_CONFIG.callbackBaseUrl}/api/webhooks/trendipay/collection`;
+    const callbackUrl = `${TRENDIPAY_CONFIG.callbackBaseUrl}/trendipay-collection`;
     
     if (!TRENDIPAY_CONFIG.callbackBaseUrl) {
       throw new Error('Payment system not configured. VITE_API_URL must be set to your ngrok URL');
@@ -155,7 +155,7 @@ export async function initiateCollection({
       rSwitch: networkCode,
       amount: amountInPesewas, // Amount in pesewas (integer, no decimals)
       description: description || `Digital bin payment ${reference}`,
-      callbackUrl: `${TRENDIPAY_CONFIG.callbackBaseUrl}/api/webhooks/trendipay/collection`,
+      callbackUrl,
       type: 'purchase', // TrendiPay transaction type for collections
       currency
     };
@@ -283,13 +283,15 @@ export async function initiateDisbursement({
     const networkCode = NETWORK_CODES[rSwitch.toLowerCase()] || rSwitch.toUpperCase();
     
     // Prepare request payload
+    const callbackUrl = `${TRENDIPAY_CONFIG.callbackBaseUrl}/trendipay-disbursement`;
+
     const payload = {
       reference,
       accountNumber,
       rSwitch: networkCode,
       amount: amountInPesewas, // Amount in pesewas (integer, no decimals)
       description: description || `TrashDrop collector payout ${reference}`,
-      callbackUrl: `${TRENDIPAY_CONFIG.callbackBaseUrl}/api/webhooks/trendipay/disbursement`,
+      callbackUrl,
       type: 'payment', // TrendiPay transaction type for disbursements
       currency
     };
