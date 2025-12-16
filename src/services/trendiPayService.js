@@ -26,6 +26,46 @@ const TRENDIPAY_CONFIG = {
   retryDelay: 2000, // 2 seconds
 };
 
+function normalizePublicBaseUrl(rawBaseUrl) {
+  const raw = (rawBaseUrl || '').trim();
+
+  if (!raw) return '';
+
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  const withoutTrailingSlash = withScheme.replace(/\/+$/, '');
+
+  try {
+    const u = new URL(withoutTrailingSlash);
+    if (u.protocol !== 'https:') {
+      throw new Error('Callback base URL must use https');
+    }
+    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+      throw new Error('Callback base URL cannot be localhost');
+    }
+    return u.toString();
+  } catch (e) {
+    logger.error('Invalid callback base URL:', { rawBaseUrl, error: e?.message });
+    return '';
+  }
+}
+
+function buildCallbackUrl(path) {
+  const base = normalizePublicBaseUrl(TRENDIPAY_CONFIG.callbackBaseUrl);
+  if (!base) {
+    throw new Error(
+      'Payment system not configured. Set VITE_SUPABASE_FUNCTIONS_URL to https://<project-ref>.functions.supabase.co'
+    );
+  }
+  const full = `${base}${path.startsWith('/') ? '' : '/'}${path}`;
+  // Ensure the final callback is a valid absolute URL
+  try {
+    new URL(full);
+  } catch {
+    throw new Error('Payment system not configured. Callback URL is invalid.');
+  }
+  return full;
+}
+
 /**
  * Network code mapping (TrendiPay rSwitch format)
  */
@@ -130,11 +170,7 @@ export async function initiateCollection({
     }
     
     // Validate callback URL is properly configured
-    const callbackUrl = `${TRENDIPAY_CONFIG.callbackBaseUrl}/trendipay-collection`;
-    
-    if (!TRENDIPAY_CONFIG.callbackBaseUrl) {
-      throw new Error('Payment system not configured. VITE_API_URL must be set to your ngrok URL');
-    }
+    const callbackUrl = buildCallbackUrl('/trendipay-collection');
     
     logger.info('Using callback URL:', callbackUrl);
     
@@ -283,7 +319,7 @@ export async function initiateDisbursement({
     const networkCode = NETWORK_CODES[rSwitch.toLowerCase()] || rSwitch.toUpperCase();
     
     // Prepare request payload
-    const callbackUrl = `${TRENDIPAY_CONFIG.callbackBaseUrl}/trendipay-disbursement`;
+    const callbackUrl = buildCallbackUrl('/trendipay-disbursement');
 
     const payload = {
       reference,
