@@ -185,6 +185,16 @@ const GoogleMapsNavigation = ({
   const directionsRendererRef = useRef(null);
   const userMarkerRef = useRef(null);
   const destMarkerRef = useRef(null);
+  
+  // Store callbacks in refs to avoid infinite loops in useEffect
+  const onMapReadyRef = useRef(onMapReady);
+  const onRouteCalculatedRef = useRef(onRouteCalculated);
+  const onErrorRef = useRef(onError);
+  
+  // Keep refs updated with latest callbacks
+  onMapReadyRef.current = onMapReady;
+  onRouteCalculatedRef.current = onRouteCalculated;
+  onErrorRef.current = onError;
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -196,6 +206,7 @@ const GoogleMapsNavigation = ({
   const [isOfflineMode, setIsOfflineMode] = useState(!navigator.onLine);
   const gpsWatchIdRef = useRef(null);
   const speechSynthesisRef = useRef(null);
+  const routeCalculatedForRef = useRef(null); // Track destination for which route was calculated
 
   // Helper function to check if Google Maps API is fully loaded
   const isGoogleMapsFullyLoaded = () => {
@@ -268,7 +279,7 @@ const GoogleMapsNavigation = ({
               const error = 'Google Maps API failed to load';
               setHasError(true);
               setErrorMessage(error);
-              if (onError) onError(error);
+              if (onErrorRef.current) onErrorRef.current(error);
             }
           }, 100);
           return;
@@ -295,7 +306,7 @@ const GoogleMapsNavigation = ({
           const error = 'Failed to load Google Maps API';
           setHasError(true);
           setErrorMessage(error);
-          if (onError) onError(error);
+          if (onErrorRef.current) onErrorRef.current(error);
           logger.error('❌ Google Maps API loading error');
         };
 
@@ -304,12 +315,12 @@ const GoogleMapsNavigation = ({
         logger.error('❌ Error loading Google Maps:', error);
         setHasError(true);
         setErrorMessage(error.message);
-        if (onError) onError(error.message);
+        if (onErrorRef.current) onErrorRef.current(error.message);
       }
     };
 
     loadGoogleMaps();
-  }, [onError]);
+  }, []);
 
   // Monitor online/offline status
   useEffect(() => {
@@ -367,6 +378,14 @@ const GoogleMapsNavigation = ({
       return;
     }
 
+    // Create a destination key to check if we've already calculated this route
+    const destLat = Array.isArray(destination) ? destination[0] : destination.lat;
+    const destLng = Array.isArray(destination) ? destination[1] : destination.lng;
+    const destinationKey = `${destLat.toFixed(6)},${destLng.toFixed(6)}`;
+    
+    // Skip if route already calculated for this destination
+    const shouldCalculateRoute = routeCalculatedForRef.current !== destinationKey;
+
     try {
       // Initialize map if not already done
       if (!mapInstanceRef.current) {
@@ -383,8 +402,8 @@ const GoogleMapsNavigation = ({
 
         mapInstanceRef.current = map;
         
-        if (onMapReady) {
-          onMapReady(map);
+        if (onMapReadyRef.current) {
+          onMapReadyRef.current(map);
         }
 
         logger.info('✅ Google Maps initialized successfully');
@@ -441,6 +460,17 @@ const GoogleMapsNavigation = ({
         });
       }
 
+      // Only calculate route if destination changed (prevents infinite loop)
+      if (!shouldCalculateRoute) {
+        logger.debug('📍 Skipping route calculation - already calculated for this destination');
+        // Just update user marker position
+        if (userMarkerRef.current) {
+          userMarkerRef.current.setPosition({ lat: userLocation.lat, lng: userLocation.lng });
+        }
+        setIsLoading(false);
+        return;
+      }
+
       // Calculate and display route
       const directionsService = new window.google.maps.DirectionsService();
       
@@ -464,6 +494,9 @@ const GoogleMapsNavigation = ({
         directionsRequest.waypoints = formattedWaypoints;
         directionsRequest.optimizeWaypoints = false; // Use our optimized order
       }
+      
+      // Mark that we're calculating for this destination
+      routeCalculatedForRef.current = destinationKey;
       
       directionsService.route(
         directionsRequest,
@@ -529,8 +562,8 @@ const GoogleMapsNavigation = ({
             logger.info('✅ Route calculated successfully:', routeInfo);
             logger.info(`📍 Extracted ${allSteps.length} navigation steps`);
             
-            if (onRouteCalculated) {
-              onRouteCalculated(routeInfo);
+            if (onRouteCalculatedRef.current) {
+              onRouteCalculatedRef.current(routeInfo);
             }
             
             setIsLoading(false);
@@ -539,7 +572,7 @@ const GoogleMapsNavigation = ({
             logger.error('❌ Routing error:', error);
             setHasError(true);
             setErrorMessage(error);
-            if (onError) onError(error);
+            if (onErrorRef.current) onErrorRef.current(error);
             setIsLoading(false);
           }
         }
@@ -549,10 +582,10 @@ const GoogleMapsNavigation = ({
       logger.error('❌ Error initializing Google Maps:', error);
       setHasError(true);
       setErrorMessage(error.message);
-      if (onError) onError(error.message);
+      if (onErrorRef.current) onErrorRef.current(error.message);
       setIsLoading(false);
     }
-  }, [isInitialized, userLocation, destination, waypoints, onMapReady, onRouteCalculated, onError]);
+  }, [isInitialized, userLocation, destination, waypoints, wasteType, sourceType]);
 
   // GPS tracking for auto-advance navigation
   useEffect(() => {

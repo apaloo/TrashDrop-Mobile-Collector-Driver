@@ -520,7 +520,7 @@ const DisposalModal = ({
           }}
           destination={navigationDestination}
           assignmentId={assignment?.id}
-          assignmentTitle={`Navigate to ${navigationTitle}`}
+          assignmentTitle={navigationTitle}
         />
       )}
     </>

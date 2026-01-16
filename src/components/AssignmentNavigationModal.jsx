@@ -523,8 +523,8 @@ const AssignmentNavigationModal = ({
         </div>
 
         {/* Content Area - Google Maps Navigation */}
-        <div className="flex-1 relative overflow-hidden">
-          <div className="relative w-full h-full min-h-[300px] bg-gray-100 rounded-lg overflow-hidden">
+        <div className="flex-1 relative overflow-hidden" style={{ minHeight: '350px' }}>
+          <div className="absolute inset-0 bg-gray-100 rounded-lg overflow-hidden">
             {userLocation && parseDestination(destination) ? (
               <GoogleMapsNavigation
                 userLocation={userLocation}

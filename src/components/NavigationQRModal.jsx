@@ -714,10 +714,10 @@ const requestCameraPermission = useCallback(async () => {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 relative overflow-hidden">
+        <div className="flex-1 relative overflow-hidden" style={{ minHeight: '350px' }}>
           {/* Map or QR Scanner based on mode */}
           {mode === 'navigation' ? (
-            <div className="relative w-full h-full min-h-[300px] bg-gray-100 rounded-lg overflow-hidden">
+            <div className="absolute inset-0 bg-gray-100 rounded-lg overflow-hidden">
               {/* Debug logging for navigation conditions - reduced frequency */}
               {Math.random() < 0.05 && logger.debug('Navigation render check:', { userLocation: !!userLocation, destination: !!destination, userLocationData: userLocation, destinationData: destination })}
               {userLocation && destination ? (
