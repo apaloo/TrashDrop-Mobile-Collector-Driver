@@ -4,6 +4,166 @@ import { logger } from '../utils/logger';
 // Google Maps API Key from environment variables
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
+// ============================================
+// Custom SVG Icon Generators for Google Maps
+// (Matching the Request map icons from markerIcons.js)
+// ============================================
+
+// Create tricycle SVG icon for user location (matches Leaflet tricycleIcon)
+const createTricycleSvgUrl = () => {
+  const svgTemplate = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60" width="60" height="36">
+      <!-- Shadow effect -->
+      <ellipse cx="50" cy="55" rx="30" ry="5" fill="rgba(0,0,0,0.2)"/>
+      
+      <!-- Main tricycle -->
+      <g>
+        <!-- Cargo area with 3D effect -->
+        <path d="M65,40 L90,40 Q95,40 95,35 L95,30 Q95,25 90,25 L65,25 Q60,25 60,30 L60,35 Q60,40 65,40 Z" 
+              fill="#1d4ed8" stroke="#1e40af" stroke-width="1.5" stroke-linejoin="round"/>
+        <!-- Side panel for 3D effect -->
+        <path d="M90,40 L95,35 L95,30 L90,25 L90,40 Z" fill="#1e40af" stroke="#1e40af" stroke-width="1"/>
+        
+        <!-- Front wheel -->
+        <circle cx="20" cy="45" r="12" fill="#1f2937" stroke="#111827" stroke-width="2.5"/>
+        <circle cx="20" cy="45" r="10" fill="none" stroke="#4b5563" stroke-width="1" stroke-dasharray="1,3"/>
+        
+        <!-- Back wheel -->
+        <circle cx="80" cy="45" r="10" fill="#1f2937" stroke="#111827" stroke-width="2.5"/>
+        <circle cx="80" cy="45" r="8" fill="none" stroke="#4b5563" stroke-width="1" stroke-dasharray="1,3"/>
+        
+        <!-- Frame -->
+        <path d="M30,25 L40,40 L60,40" stroke="#1f2937" stroke-width="4" fill="none" stroke-linecap="round"/>
+        
+        <!-- Handlebar -->
+        <path d="M20,25 L20,35 Q20,20 30,25 L35,25" stroke="#1f2937" stroke-width="4" fill="none" stroke-linecap="round"/>
+        
+        <!-- Seat -->
+        <rect x="40" y="25" width="10" height="5" rx="1" fill="#1f2937" stroke="#111827" stroke-width="1"/>
+        
+        <!-- Driver indicator -->
+        <circle cx="45" cy="20" r="6" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>
+        <circle cx="45" cy="20" r="3" fill="#fff"/>
+      </g>
+    </svg>
+  `;
+  
+  const svgBase64 = btoa(unescape(encodeURIComponent(svgTemplate)));
+  return `data:image/svg+xml;base64,${svgBase64}`;
+};
+
+// Create dustbin SVG icon for destination (matches Leaflet dustbin icons)
+const createDustbinSvgUrl = (wasteType, sourceType) => {
+  // Determine color based on waste type (same logic as Map.jsx)
+  const typeColorMap = {
+    recyclable: 'request',
+    organic: 'assignment',
+    hazardous: 'request',
+    electronic: 'assignment',
+    general: 'assignment',
+    plastic: 'request',
+    paper: 'assignment',
+    metal: 'request',
+    glass: 'assignment'
+  };
+  
+  // Digital bins are always black
+  if (sourceType === 'digital_bin') {
+    return createDigitalBinSvgUrl();
+  }
+  
+  const iconType = typeColorMap[wasteType?.toLowerCase()] || 'assignment';
+  
+  const colors = {
+    request: {
+      main: '#EF4444', // Red-500
+      dark: '#DC2626', // Red-600
+      badge: 'R'
+    },
+    assignment: {
+      main: '#3B82F6', // Blue-500
+      dark: '#2563EB', // Blue-600
+      badge: 'A'
+    }
+  };
+  
+  const currentColor = colors[iconType];
+  
+  const svgTemplate = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 64" width="48" height="64">
+      <!-- Wheels -->
+      <circle cx="12" cy="56" r="4" fill="#1F2937" stroke="#111827" stroke-width="1.5"/>
+      <circle cx="36" cy="56" r="4" fill="#1F2937" stroke="#111827" stroke-width="1.5"/>
+      
+      <!-- Wheel highlights -->
+      <circle cx="12" cy="56" r="2" fill="#4B5563" opacity="0.7"/>
+      <circle cx="36" cy="56" r="2" fill="#4B5563" opacity="0.7"/>
+      
+      <!-- Bin body -->
+      <path fill="${currentColor.main}" stroke="${currentColor.dark}" stroke-width="1.5" 
+            d="M40,16h-4v-2c0-1.1-0.9-2-2-2H14c-1.1,0-2,0.9-2,2v2H8v32c0,4.4,3.6,8,8,8h16c4.4,0,8-3.6,8-8V16H40z M18,16v-2h12v2H18z"/>
+      
+      <!-- Bin lid -->
+      <path fill="${currentColor.dark}" stroke="${currentColor.dark}" stroke-width="1.5" 
+            d="M40,16H8c-1.1,0-2-0.9-2-2v-2c0-1.1,0.9-2,2-2h32c1.1,0,2,0.9,2,2v2C42,15.1,41.1,16,40,16z"/>
+      
+      <!-- Lid handle -->
+      <rect x="20" y="10" width="8" height="2" rx="1" fill="#9CA3AF"/>
+      
+      <!-- Recycling symbol -->
+      <path fill="#FFFFFF" d="M24,24c-0.3,0-0.5,0.1-0.7,0.3l-4,4c-0.4,0.4-0.4,1,0,1.4l4,4c0.2,0.2,0.4,0.3,0.7,0.3s0.5-0.1,0.7-0.3l4-4c0.4-0.4,0.4-1,0-1.4l-4-4C24.5,24.1,24.3,24,24,24z M24,30.6L21.4,28l2.6-2.6l2.6,2.6L24,30.6z"/>
+      
+      <!-- Type indicator -->
+      <circle cx="38" cy="12" r="6" fill="white" stroke="${currentColor.dark}" stroke-width="1.5"/>
+      <text x="38" y="15" font-size="8" text-anchor="middle" fill="${currentColor.dark}" font-weight="bold" font-family="Arial, sans-serif">
+        ${currentColor.badge}
+      </text>
+    </svg>
+  `;
+  
+  const svgBase64 = btoa(unescape(encodeURIComponent(svgTemplate)));
+  return `data:image/svg+xml;base64,${svgBase64}`;
+};
+
+// Create black dustbin SVG for digital bins
+const createDigitalBinSvgUrl = () => {
+  const svgTemplate = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 64" width="48" height="64">
+      <!-- Wheels -->
+      <circle cx="12" cy="56" r="4" fill="#1F2937" stroke="#111827" stroke-width="1.5"/>
+      <circle cx="36" cy="56" r="4" fill="#1F2937" stroke="#111827" stroke-width="1.5"/>
+      
+      <!-- Wheel highlights -->
+      <circle cx="12" cy="56" r="2" fill="#4B5563" opacity="0.7"/>
+      <circle cx="36" cy="56" r="2" fill="#4B5563" opacity="0.7"/>
+      
+      <!-- Bin body - Black -->
+      <path fill="#000000" stroke="#1F2937" stroke-width="1.5" 
+            d="M40,16h-4v-2c0-1.1-0.9-2-2-2H14c-1.1,0-2,0.9-2,2v2H8v32c0,4.4,3.6,8,8,8h16c4.4,0,8-3.6,8-8V16H40z M18,16v-2h12v2H18z"/>
+      
+      <!-- Bin lid -->
+      <path fill="#1F2937" stroke="#1F2937" stroke-width="1.5" 
+            d="M40,16H8c-1.1,0-2-0.9-2-2v-2c0-1.1,0.9-2,2-2h32c1.1,0,2,0.9,2,2v2C42,15.1,41.1,16,40,16z"/>
+      
+      <!-- Lid handle -->
+      <rect x="20" y="10" width="8" height="2" rx="1" fill="#9CA3AF"/>
+      
+      <!-- Digital indicator -->
+      <path fill="#FFFFFF" d="M18,24 L30,24 Q32,24 32,26 L32,34 Q32,36 30,36 L18,36 Q16,36 16,34 L16,26 Q16,24 18,24 Z"/>
+      <text x="24" y="32" font-size="8" text-anchor="middle" fill="#000000" font-weight="bold" font-family="Arial, sans-serif">D</text>
+      
+      <!-- Type indicator -->
+      <circle cx="38" cy="12" r="6" fill="white" stroke="#1F2937" stroke-width="1.5"/>
+      <text x="38" y="15" font-size="8" text-anchor="middle" fill="#1F2937" font-weight="bold" font-family="Arial, sans-serif">
+        D
+      </text>
+    </svg>
+  `;
+  
+  const svgBase64 = btoa(unescape(encodeURIComponent(svgTemplate)));
+  return `data:image/svg+xml;base64,${svgBase64}`;
+};
+
 if (!GOOGLE_MAPS_API_KEY) {
   logger.error('❌ VITE_GOOGLE_MAPS_API_KEY is not set. Please add it to your .env file or Netlify environment variables.');
 }
@@ -16,7 +176,9 @@ const GoogleMapsNavigation = ({
   onMapReady,
   onRouteCalculated,
   onError,
-  onNavigationStop // Callback when navigation ends
+  onNavigationStop, // Callback when navigation ends
+  wasteType = 'general', // Waste type for destination icon color
+  sourceType = 'pickup_request' // Source type (pickup_request or digital_bin)
 }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -238,18 +400,15 @@ const GoogleMapsNavigation = ({
         destMarkerRef.current.setMap(null);
       }
 
-      // Add user location marker (blue dot)
+      // Add user location marker (tricycle icon - matching Request map)
       userMarkerRef.current = new window.google.maps.Marker({
         position: { lat: userLocation.lat, lng: userLocation.lng },
         map: map,
         title: 'Your Location',
         icon: {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 8,
-          fillColor: '#4285F4',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 3,
+          url: createTricycleSvgUrl(),
+          scaledSize: new window.google.maps.Size(60, 36),
+          anchor: new window.google.maps.Point(30, 18),
         },
       });
 
@@ -257,12 +416,15 @@ const GoogleMapsNavigation = ({
       const destLat = Array.isArray(destination) ? destination[0] : destination.lat;
       const destLng = Array.isArray(destination) ? destination[1] : destination.lng;
       
+      // Add destination marker (dustbin icon - matching Request map)
       destMarkerRef.current = new window.google.maps.Marker({
         position: { lat: destLat, lng: destLng },
         map: map,
         title: 'Destination',
         icon: {
-          url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
+          url: createDustbinSvgUrl(wasteType, sourceType),
+          scaledSize: new window.google.maps.Size(48, 64),
+          anchor: new window.google.maps.Point(24, 64),
         },
       });
 

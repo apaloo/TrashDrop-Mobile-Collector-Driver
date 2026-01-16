@@ -524,12 +524,14 @@ const AssignmentNavigationModal = ({
 
         {/* Content Area - Google Maps Navigation */}
         <div className="flex-1 relative overflow-hidden">
-          <div className="relative w-full h-[60vh] bg-gray-100 rounded-lg overflow-hidden">
+          <div className="relative w-full h-full min-h-[300px] bg-gray-100 rounded-lg overflow-hidden">
             {userLocation && parseDestination(destination) ? (
               <GoogleMapsNavigation
                 userLocation={userLocation}
                 destination={parseDestination(destination)}
                 navigationControlRef={navigationControlRef}
+                wasteType="general"
+                sourceType="assignment"
                 onMapReady={(map) => {
                   logger.debug(`✅ Google Maps loaded for ${assignmentTitle} navigation`);
                   mapRef.current = map;

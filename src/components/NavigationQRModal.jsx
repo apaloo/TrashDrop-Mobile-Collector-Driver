@@ -22,7 +22,9 @@ const NavigationQRModal = ({
   destination,
   requestId,
   onQRScanned,
-  expectedQRValue
+  expectedQRValue,
+  wasteType = 'general', // Waste type for destination icon color
+  sourceType = 'pickup_request' // Source type (pickup_request or digital_bin)
 }) => {
   const { user } = useAuth();
   const [mode, setMode] = useState('navigation'); // 'navigation' or 'qr'
@@ -715,7 +717,7 @@ const requestCameraPermission = useCallback(async () => {
         <div className="flex-1 relative overflow-hidden">
           {/* Map or QR Scanner based on mode */}
           {mode === 'navigation' ? (
-            <div className="relative w-full h-[60vh] bg-gray-100 rounded-lg overflow-hidden">
+            <div className="relative w-full h-full min-h-[300px] bg-gray-100 rounded-lg overflow-hidden">
               {/* Debug logging for navigation conditions - reduced frequency */}
               {Math.random() < 0.05 && logger.debug('Navigation render check:', { userLocation: !!userLocation, destination: !!destination, userLocationData: userLocation, destinationData: destination })}
               {userLocation && destination ? (
@@ -723,6 +725,8 @@ const requestCameraPermission = useCallback(async () => {
                   userLocation={userLocation}
                   destination={destination}
                   navigationControlRef={navigationControlRef}
+                  wasteType={wasteType}
+                  sourceType={sourceType}
                   onMapReady={(map) => {
                     logger.debug('Google Maps loaded in modal');
                     mapRef.current = map;

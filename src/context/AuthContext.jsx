@@ -30,7 +30,7 @@ export const AuthProvider = ({ children }) => {
   const [hasInitiallyChecked, setHasInitiallyChecked] = useState(true);
 
   useEffect(() => {
-    // Helper function to check if 24-hour session has expired (at midnight)
+    // Helper function to check if 1-month session has expired
     const isSessionExpired = () => {
       const lastLoginTime = localStorage.getItem('last_login_time');
       if (!lastLoginTime) {
@@ -41,24 +41,21 @@ export const AuthProvider = ({ children }) => {
       const loginDate = new Date(parseInt(lastLoginTime));
       const now = new Date();
       
-      // Calculate expiry: 24 hours from login time
-      const expiryTime = new Date(loginDate.getTime() + (24 * 60 * 60 * 1000));
+      // Calculate expiry: 30 days (1 month) from login time
+      const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+      const expiryTime = new Date(loginDate.getTime() + SESSION_DURATION_MS);
       
-      // Find the next midnight after expiry time
-      const midnightAfterExpiry = new Date(expiryTime);
-      midnightAfterExpiry.setHours(24, 0, 0, 0); // Set to next day at midnight
-      
-      if (now >= midnightAfterExpiry) {
-        logger.info('⏰ 24-hour session expired at midnight');
+      if (now >= expiryTime) {
+        logger.info('⏰ 1-month session expired');
         logger.info(`   Login: ${loginDate.toLocaleString()}`);
-        logger.info(`   Expiry: ${midnightAfterExpiry.toLocaleString()}`);
+        logger.info(`   Expiry: ${expiryTime.toLocaleString()}`);
         return true;
       }
       
       // Calculate time remaining
-      const hoursRemaining = Math.floor((midnightAfterExpiry - now) / (60 * 60 * 1000));
-      const minutesRemaining = Math.floor(((midnightAfterExpiry - now) % (60 * 60 * 1000)) / (60 * 1000));
-      logger.debug(`⏱️ Session valid for ${hoursRemaining}h ${minutesRemaining}m (expires at ${midnightAfterExpiry.toLocaleString()})`);
+      const daysRemaining = Math.floor((expiryTime - now) / (24 * 60 * 60 * 1000));
+      const hoursRemaining = Math.floor(((expiryTime - now) % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+      logger.debug(`⏱️ Session valid for ${daysRemaining}d ${hoursRemaining}h (expires at ${expiryTime.toLocaleString()})`);
       return false;
     };
 
@@ -80,9 +77,9 @@ export const AuthProvider = ({ children }) => {
           return;
         }
 
-        // Check if 24-hour session has expired (at midnight)
+        // Check if 1-month session has expired
         if (isSessionExpired()) {
-          logger.info('🕐 24-hour session expired, logging out...');
+          logger.info('🕐 1-month session expired, logging out...');
           // Clear session and logout
           localStorage.removeItem('last_login_time');
           await authService.signOut();

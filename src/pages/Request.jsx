@@ -85,6 +85,8 @@ const RequestPage = () => {
   const [showNavigationModal, setShowNavigationModal] = useState(false);
   const [navigationDestination, setNavigationDestination] = useState(null);
   const [navigationRequestId, setNavigationRequestId] = useState(null);
+  const [navigationWasteType, setNavigationWasteType] = useState('general');
+  const [navigationSourceType, setNavigationSourceType] = useState('pickup_request');
   const [showDisposalModal, setShowDisposalModal] = useState(false);
   const [selectedDisposalCenter, setSelectedDisposalCenter] = useState(null);
   const [currentDisposalRequestId, setCurrentDisposalRequestId] = useState(null);
@@ -1075,9 +1077,11 @@ const RequestPage = () => {
       if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
         setNavigationDestination([lat, lng]);
         setNavigationRequestId(requestId);
+        setNavigationWasteType(request.waste_type || 'general');
+        setNavigationSourceType(request.source_type || 'pickup_request');
         setShowNavigationModal(true);
         showToast(`Opening in-app navigation to ${location || 'pickup location'}`, 'info');
-        logger.info('✅ Opening navigation to:', { lat, lng, location });
+        logger.info('✅ Opening navigation to:', { lat, lng, location, wasteType: request.waste_type, sourceType: request.source_type });
       } else {
         // Fallback to external navigation if coordinates are invalid
         logger.warn('⚠️ Invalid coordinates, falling back to search:', { lat, lng, coordinatesSource });
@@ -2313,6 +2317,8 @@ const GeofenceErrorModal = ({
           onClose={() => setShowNavigationModal(false)}
           destination={navigationDestination}
           requestId={navigationRequestId}
+          wasteType={navigationWasteType}
+          sourceType={navigationSourceType}
           onQRScanned={async (scannedValues) => {
             // Handle multiple scanned QR codes
             if (Array.isArray(scannedValues) && scannedValues.length > 0) {
