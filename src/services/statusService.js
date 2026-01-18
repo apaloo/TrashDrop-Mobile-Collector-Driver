@@ -52,6 +52,7 @@ class CollectorStatusService {
       requestsAccepted: 0,
       requestsCompleted: 0
     };
+    this.profileErrorLogged = false; // Prevent console spam for missing profile
     
     // Initialize from localStorage
     this.initializeStatus();
@@ -219,8 +220,10 @@ class CollectorStatusService {
       if (error) {
         // Foreign key constraint error - collector_profiles record missing
         if (error.code === '23503' && error.message?.includes('collector_profiles')) {
-          logger.warn('⚠️ Collector profile not found. Please complete signup to enable status tracking.');
-          logger.debug('💡 Status changes will work after completing the signup process.');
+          if (!this.profileErrorLogged) {
+            logger.warn('⚠️ Collector profile not found. Status tracking will be available after completing signup.');
+            this.profileErrorLogged = true;
+          }
           // Don't throw - allow app to continue functioning
           return;
         }

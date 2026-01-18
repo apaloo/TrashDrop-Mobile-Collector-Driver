@@ -70,25 +70,47 @@ class LocationBroadcastService {
 
       // Update collector's current location in database
       // NOTE: Table is collector_profiles, not collectors
-      // IMPORTANT: current_location is a generic geometry column, so we send WKT POINT(lng lat)
-      const locationWKT = `POINT(${position.longitude} ${position.latitude})`;
-      
-      const { error: updateError } = await supabase
-        .from('collector_profiles')
-        .update({
-          current_location: locationWKT,
-          last_active: new Date().toISOString()
-        })
-        .eq('user_id', this.collectorId); // Use user_id, not id
+      // Use raw SQL via rpc to handle PostGIS geometry with explicit casting
+      const { error: updateError } = await supabase.rpc('update_collector_location', {
+        p_user_id: this.collectorId,
+        p_longitude: position.longitude,
+        p_latitude: position.latitude
+      });
 
       if (updateError) {
-        logger.error('Failed to broadcast location:', updateError);
-
-        // If the database rejects our GeoJSON, stop tracking to avoid spamming errors
-        if (updateError.message && updateError.message.includes('unknown GeoJSON type')) {
-          logger.warn('Disabling location tracking due to GeoJSON type error from database');
-          this.stopTracking();
+        // Handle specific PostGIS ambiguity error gracefully
+        if (updateError.code === '42725' || updateError.message?.includes('operator is not unique')) {
+          // PostGIS geometry operator ambiguity - try fallback approach
+          if (!this.geometryErrorLogged) {
+            logger.warn('⚠️ Location broadcast: PostGIS geometry operator issue. Using fallback.');
+            this.geometryErrorLogged = true;
+          }
+          // Fallback: Update only last_active timestamp
+          await supabase
+            .from('collector_profiles')
+            .update({ last_active: new Date().toISOString() })
+            .eq('user_id', this.collectorId);
           return;
+        }
+        
+        // Handle RPC not found - function doesn't exist yet
+        if (updateError.code === '42883' || updateError.message?.includes('function') || updateError.message?.includes('does not exist')) {
+          if (!this.rpcErrorLogged) {
+            logger.warn('⚠️ Location broadcast RPC not available. Falling back to simple update.');
+            this.rpcErrorLogged = true;
+          }
+          // Fallback: Just update last_active
+          await supabase
+            .from('collector_profiles')
+            .update({ last_active: new Date().toISOString() })
+            .eq('user_id', this.collectorId);
+          return;
+        }
+
+        // Log other errors but don't spam
+        if (!this.otherErrorLogged) {
+          logger.error('Failed to broadcast location:', updateError);
+          this.otherErrorLogged = true;
         }
       } else {
         // Only log occasionally to reduce console spam

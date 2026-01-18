@@ -204,9 +204,12 @@ const GoogleMapsNavigation = ({
   const [isNavigating, setIsNavigating] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(null);
   const [isOfflineMode, setIsOfflineMode] = useState(!navigator.onLine);
+  const [isFollowMode, setIsFollowMode] = useState(true); // Auto-follow user by default
+  const [mapInitialized, setMapInitialized] = useState(false); // Track if map has been initialized
   const gpsWatchIdRef = useRef(null);
   const speechSynthesisRef = useRef(null);
   const routeCalculatedForRef = useRef(null); // Track destination for which route was calculated
+  const lastUserLocationRef = useRef(null); // Track last user location for smooth updates
 
   // Helper function to check if Google Maps API is fully loaded
   const isGoogleMapsFullyLoaded = () => {
@@ -463,10 +466,6 @@ const GoogleMapsNavigation = ({
       // Only calculate route if destination changed (prevents infinite loop)
       if (!shouldCalculateRoute) {
         logger.debug('📍 Skipping route calculation - already calculated for this destination');
-        // Just update user marker position
-        if (userMarkerRef.current) {
-          userMarkerRef.current.setPosition({ lat: userLocation.lat, lng: userLocation.lng });
-        }
         setIsLoading(false);
         return;
       }
@@ -586,6 +585,53 @@ const GoogleMapsNavigation = ({
       setIsLoading(false);
     }
   }, [isInitialized, userLocation, destination, waypoints, wasteType, sourceType]);
+
+  // Real-time marker position update (separate from route calculation)
+  useEffect(() => {
+    if (!mapInstanceRef.current || !userMarkerRef.current || !userLocation) {
+      return;
+    }
+
+    // Check if location actually changed significantly (>5m) to avoid jitter
+    const lastLoc = lastUserLocationRef.current;
+    if (lastLoc) {
+      const distance = calculateGPSDistance(
+        lastLoc.lat, lastLoc.lng,
+        userLocation.lat, userLocation.lng
+      );
+      if (distance < 5) {
+        return; // Skip tiny movements
+      }
+    }
+
+    // Update marker position smoothly
+    userMarkerRef.current.setPosition({ 
+      lat: userLocation.lat, 
+      lng: userLocation.lng 
+    });
+    
+    // Store last location
+    lastUserLocationRef.current = { lat: userLocation.lat, lng: userLocation.lng };
+
+    // Auto-pan map to follow user in follow mode
+    if (isFollowMode && mapInstanceRef.current) {
+      const map = mapInstanceRef.current;
+      
+      // Use higher zoom for navigation mode (better for parallel roads)
+      const navigationZoom = 17;
+      const currentZoom = map.getZoom();
+      
+      // Only adjust zoom if significantly different or first time
+      if (currentZoom < navigationZoom - 1) {
+        map.setZoom(navigationZoom);
+      }
+      
+      // Smoothly pan to user location
+      map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
+    }
+
+    logger.debug(`📍 Marker updated to: ${userLocation.lat.toFixed(6)}, ${userLocation.lng.toFixed(6)}`);
+  }, [userLocation, isFollowMode]);
 
   // GPS tracking for auto-advance navigation
   useEffect(() => {
@@ -838,6 +884,79 @@ const GoogleMapsNavigation = ({
               )}
             </svg>
           </div>
+        </div>
+      )}
+      
+      {/* Map Control Buttons - Positioned to avoid Google Maps native controls */}
+      {!isLoading && (
+        <div className="absolute bottom-4 left-4 z-10 flex flex-col space-y-2">
+          {/* Recenter / Follow Mode Toggle */}
+          <button
+            onClick={() => {
+              if (!isFollowMode) {
+                // Switching to follow mode - recenter and zoom in
+                setIsFollowMode(true);
+                if (mapInstanceRef.current && userLocation) {
+                  mapInstanceRef.current.setZoom(17);
+                  mapInstanceRef.current.panTo({ lat: userLocation.lat, lng: userLocation.lng });
+                }
+              } else {
+                // Switching to overview mode - fit bounds to show entire route
+                setIsFollowMode(false);
+                if (mapInstanceRef.current && userLocation && destination) {
+                  const bounds = new window.google.maps.LatLngBounds();
+                  bounds.extend({ lat: userLocation.lat, lng: userLocation.lng });
+                  const destLat = Array.isArray(destination) ? destination[0] : destination.lat;
+                  const destLng = Array.isArray(destination) ? destination[1] : destination.lng;
+                  bounds.extend({ lat: destLat, lng: destLng });
+                  mapInstanceRef.current.fitBounds(bounds, { padding: 50 });
+                }
+              }
+            }}
+            className={`p-3 rounded-full shadow-lg transition-all ${
+              isFollowMode 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-white text-gray-700 hover:bg-gray-100'
+            }`}
+            title={isFollowMode ? 'Show full route (Overview)' : 'Follow my location'}
+          >
+            {isFollowMode ? (
+              // Crosshairs icon - currently following
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <circle cx="12" cy="12" r="3" fill="currentColor" />
+              </svg>
+            ) : (
+              // Location arrow icon - click to follow
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            )}
+          </button>
+          
+          {/* Overview button - quick access to see full route */}
+          {isFollowMode && (
+            <button
+              onClick={() => {
+                if (mapInstanceRef.current && userLocation && destination) {
+                  const bounds = new window.google.maps.LatLngBounds();
+                  bounds.extend({ lat: userLocation.lat, lng: userLocation.lng });
+                  const destLat = Array.isArray(destination) ? destination[0] : destination.lat;
+                  const destLng = Array.isArray(destination) ? destination[1] : destination.lng;
+                  bounds.extend({ lat: destLat, lng: destLng });
+                  mapInstanceRef.current.fitBounds(bounds, { padding: 50 });
+                  setIsFollowMode(false);
+                }
+              }}
+              className="p-3 rounded-full shadow-lg bg-white text-gray-700 hover:bg-gray-100 transition-all"
+              title="View full route"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+            </button>
+          )}
         </div>
       )}
       
