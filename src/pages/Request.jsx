@@ -91,6 +91,12 @@ const RequestPage = () => {
   const [selectedDisposalCenter, setSelectedDisposalCenter] = useState(null);
   const [currentDisposalRequestId, setCurrentDisposalRequestId] = useState(null);
   
+  // Visual guidance state for low-literacy users
+  const [locatedSiteRequests, setLocatedSiteRequests] = useState(new Set()); // Track which requests have had sites located
+  const [highlightRequestId, setHighlightRequestId] = useState(null); // Which request needs "Locate Site" highlight
+  const [navigationStartedRequests, setNavigationStartedRequests] = useState(new Set()); // Track which requests have started navigation
+  const [highlightDirectionsId, setHighlightDirectionsId] = useState(null); // Which request needs "Directions" highlight
+  
   // Payment modal state (for digital bin client collection)
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [currentPaymentBinId, setCurrentPaymentBinId] = useState(null);
@@ -790,12 +796,6 @@ const RequestPage = () => {
 
   // Format date to show in the format shown in screenshots
 
-  // Default disposal center coordinates
-  const DISPOSAL_CENTER = {
-    lat: -1.2921, // Example coordinates for Accra Recycling Center
-    lng: 36.8219
-  };
-
   // OPTIMIZATION: Memoized distance calculator to avoid redundant calculations
   const calculateDistance = useCallback((coord1, coord2) => {
     if (!coord1 || !coord2 || !coord1.lat || !coord1.lng || !coord2.lat || !coord2.lng) {
@@ -814,10 +814,27 @@ const RequestPage = () => {
     return distance;
   }, []); // Empty dependency array since calculation is pure
 
-  // Check if user is within range of disposal center (50m = 0.05km)
-  const isWithinDisposalRange = useCallback((userCoords) => {
-    if (!userCoords) return false;
-    const distance = calculateDistance(userCoords, DISPOSAL_CENTER);
+  // Check if user is within range of a specific disposal site (50m = 0.05km)
+  const checkWithinDisposalRange = useCallback((userCoords, site) => {
+    if (!userCoords || !site) return false;
+    
+    // Get site coordinates in the right format
+    const siteCoords = {
+      lat: site.lat || site.coordinates?.[0],
+      lng: site.lng || site.coordinates?.[1]
+    };
+    
+    if (!siteCoords.lat || !siteCoords.lng) {
+      logger.warn('Invalid disposal site coordinates:', site);
+      return false;
+    }
+    
+    const distance = calculateDistance(userCoords, siteCoords);
+    logger.info('📍 Distance to disposal site:', {
+      siteName: site.name,
+      distance: `${(distance * 1000).toFixed(0)}m`,
+      withinRange: distance <= 0.05
+    });
     return distance <= 0.05; // 50 meters in km
   }, [calculateDistance]);
 
@@ -1080,6 +1097,15 @@ const RequestPage = () => {
         setNavigationWasteType(request.waste_type || 'general');
         setNavigationSourceType(request.source_type || 'pickup_request');
         setShowNavigationModal(true);
+        
+        // Mark this request as having navigation started (for visual-first UX)
+        setNavigationStartedRequests(prev => new Set([...prev, requestId]));
+        
+        // Clear any highlight on this request
+        if (highlightDirectionsId === requestId) {
+          setHighlightDirectionsId(null);
+        }
+        
         showToast(`Opening in-app navigation to ${location || 'pickup location'}`, 'info');
         logger.info('✅ Opening navigation to:', { lat, lng, location, wasteType: request.waste_type, sourceType: request.source_type });
       } else {
@@ -1431,18 +1457,7 @@ const RequestPage = () => {
       
       if (fetchError) {
         logger.error('Error fetching disposal centers:', fetchError);
-        showToast('Unable to fetch disposal centers. Using default location.', 'warning');
-        
-        // Fallback to default location
-        const defaultSite = {
-          name: 'Accra Recycling Center',
-          address: 'Ring Road, Accra',
-          lat: 5.6037,
-          lng: -0.1870
-        };
-        
-        const mapsUrl = `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=&to=${defaultSite.lat}%2C${defaultSite.lng}`;
-        window.open(mapsUrl, '_blank');
+        showToast('Unable to fetch disposal centers. Please check your connection and try again.', 'error');
         return;
       }
       
@@ -1609,6 +1624,14 @@ const RequestPage = () => {
       setCurrentDisposalRequestId(requestId);
       setShowDisposalModal(true);
       
+      // Mark this request as having its site located (for visual-first UX)
+      setLocatedSiteRequests(prev => new Set([...prev, requestId]));
+      
+      // Clear any highlight on this request
+      if (highlightRequestId === requestId) {
+        setHighlightRequestId(null);
+      }
+      
       // Show toast with disposal center info
       const distanceText = nearestCenter.distance 
         ? ` (${nearestCenter.distance.toFixed(1)} km away)` 
@@ -1628,7 +1651,8 @@ const GeofenceErrorModal = ({
   onRetry, 
   onBypass, 
   locationError,
-  onLocateSite
+  onLocateSite,
+  targetSite // The disposal site user should be at
 }) => {
   if (!isOpen) return null;
   
@@ -1641,6 +1665,10 @@ const GeofenceErrorModal = ({
   const handleBypass = () => {
     if (onBypass) onBypass();
   };
+  
+  // Get site name and address to display
+  const siteName = targetSite?.name || 'Disposal Center';
+  const siteAddress = targetSite?.address || '';
   
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1694,7 +1722,7 @@ const GeofenceErrorModal = ({
           
           <div className="bg-blue-50 border border-blue-200 rounded p-3">
             <p className="text-sm text-blue-600">Please move closer to the disposal center and try again.</p>
-            <p className="text-sm text-gray-600 mt-1">The disposal center is located at: <strong>Accra Recycling Center, Ring Road</strong></p>
+            <p className="text-sm text-gray-600 mt-1">The disposal center is located at: <strong>{siteName}{siteAddress ? `, ${siteAddress}` : ''}</strong></p>
           </div>
         </div>
         
@@ -1731,9 +1759,32 @@ const GeofenceErrorModal = ({
 
   // Handle dispose bag
   const handleDisposeBag = async (requestId) => {
-    // Check if user is within range of disposal center
-    if (!isWithinDisposalRange(userLocation)) {
-      // Show modal instead of toast for better visibility
+    // Get the selected disposal center for this request
+    // Use selectedDisposalCenter if it matches this request, otherwise we need to find it
+    let targetSite = selectedDisposalCenter;
+    
+    // If no disposal site has been selected yet, trigger visual highlight instead of text
+    if (!targetSite || !targetSite.lat || !targetSite.lng) {
+      // Haptic feedback - attention pattern
+      if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 100]);
+      
+      // Highlight the "Locate Site" button for this request
+      setHighlightRequestId(requestId);
+      
+      // Auto-remove highlight after 3 seconds
+      setTimeout(() => {
+        setHighlightRequestId(null);
+      }, 3000);
+      
+      return;
+    }
+    
+    // Check if user is within range of the SELECTED disposal center (not hardcoded one)
+    const isWithinRange = checkWithinDisposalRange(userLocation, targetSite);
+    
+    if (!isWithinRange) {
+      // Set the target site before showing modal so it displays the correct name
+      setTargetDisposalSite(targetSite);
       setGeofenceModalOpen(true);
       return;
     }
@@ -1802,8 +1853,8 @@ const GeofenceErrorModal = ({
       // Show processing toast
       showToast('Processing disposal...', 'info');
       
-      // Generate disposal details
-      const disposalSite = 'Accra Recycling Center, Ring Road';
+      // Generate disposal details using the selected disposal center
+      const disposalSite = targetSite?.name ? `${targetSite.name}${targetSite.address ? ', ' + targetSite.address : ''}` : 'Disposal Center';
       const disposalTimestamp = new Date().toISOString();
       
       // Update environmental impact with safe access
@@ -1951,6 +2002,7 @@ const GeofenceErrorModal = ({
   
   // State for geofence modal
   const [geofenceModalOpen, setGeofenceModalOpen] = useState(false);
+  const [targetDisposalSite, setTargetDisposalSite] = useState(null); // Track the disposal site user should be at
 
   // Add real-time subscription for assignments and connectivity listeners
   useEffect(() => {
@@ -2148,7 +2200,17 @@ const GeofenceErrorModal = ({
         {/* Geofence Error Modal */}
         <GeofenceErrorModal 
           isOpen={geofenceModalOpen} 
-          onClose={() => setGeofenceModalOpen(false)} 
+          onClose={() => {
+            setGeofenceModalOpen(false);
+            setTargetDisposalSite(null);
+          }}
+          targetSite={targetDisposalSite}
+          onLocateSite={() => {
+            setGeofenceModalOpen(false);
+            if (currentDisposalRequestId) {
+              handleLocateSite(currentDisposalRequestId);
+            }
+          }}
         />
         
         {/* Requests List */}
@@ -2244,6 +2306,10 @@ const GeofenceErrorModal = ({
                           onLocateSite={handleLocateSite}
                           onDisposeBag={handleDisposeBag}
                           onViewReport={handleViewReport}
+                          siteLocated={locatedSiteRequests.has(request.id)}
+                          highlightLocateSite={highlightRequestId === request.id}
+                          navigationStarted={navigationStartedRequests.has(request.id)}
+                          highlightDirections={highlightDirectionsId === request.id}
                         />
                       )
                     ))
@@ -2276,8 +2342,14 @@ const GeofenceErrorModal = ({
                         const bTime = new Date(b.picked_up_at || b.accepted_at || b.created_at).getTime();
                         return bTime - aTime;
                       })
-                      .map(request => (
-                        request && (
+                      .map(request => {
+                        // Smart siteLocated: If user is already at ANY disposal center, allow disposing ALL requests
+                        // This enables disposing multiple bags without re-navigating
+                        const isAtDisposalSite = selectedDisposalCenter?.lat && selectedDisposalCenter?.lng && 
+                          checkWithinDisposalRange(userLocation, selectedDisposalCenter);
+                        const siteLocatedForRequest = locatedSiteRequests.has(request.id) || isAtDisposalSite;
+                        
+                        return request && (
                           <RequestCard 
                             key={request.id || Math.random().toString()} 
                             request={request} 
@@ -2288,9 +2360,13 @@ const GeofenceErrorModal = ({
                             onLocateSite={handleLocateSite}
                             onDisposeBag={handleDisposeBag}
                             onViewReport={handleViewReport}
+                            siteLocated={siteLocatedForRequest}
+                            highlightLocateSite={highlightRequestId === request.id}
+                            navigationStarted={navigationStartedRequests.has(request.id)}
+                            highlightDirections={highlightDirectionsId === request.id}
                           />
-                        )
-                      ))
+                        );
+                      })
                   ) : (
                     <div className="p-4 text-center text-gray-500">
                       No picked up requests found

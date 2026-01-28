@@ -19,7 +19,11 @@ const RequestCard = ({
   onViewDetails,
   selectable = false,
   selected = false,
-  onSelect
+  onSelect,
+  siteLocated = false,  // Whether disposal site has been located
+  highlightLocateSite = false,  // Visual cue to highlight Locate Site button
+  navigationStarted = false,  // Whether navigation to pickup has been started
+  highlightDirections = false  // Visual cue to highlight Directions button
 }) => {
   // Get currency from context
   const { currency } = useCurrency();
@@ -160,19 +164,87 @@ const RequestCard = ({
           </div>
         );
       case PickupRequestStatus.ACCEPTED:
+        // Visual-first pickup flow for low-literacy users
+        // Step 1: Directions (navigate to pickup location)
+        // Step 2: Scan QR (only active after navigation started)
         return (
           <div className="flex flex-col gap-2 w-full">
+            {/* Step 1: Directions - with pulsing animation when highlighted */}
             <button 
-              onClick={() => onOpenDirections && onOpenDirections(request.id, request.location)}
-              className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 px-4 rounded-md flex items-center justify-center"
+              onClick={() => {
+                // Haptic feedback
+                if (navigator.vibrate) navigator.vibrate(50);
+                onOpenDirections && onOpenDirections(request.id, request.location);
+              }}
+              className={`w-full py-3 px-4 rounded-md flex items-center justify-center transition-all duration-300 ${
+                highlightDirections 
+                  ? 'bg-blue-600 animate-pulse ring-4 ring-blue-300 scale-105' 
+                  : navigationStarted 
+                    ? 'bg-green-500 text-white' 
+                    : 'bg-blue-500 hover:bg-blue-600 text-white'
+              }`}
             >
-              Directions
+              {/* Step number circle */}
+              <span className={`w-7 h-7 rounded-full flex items-center justify-center mr-2 text-sm font-bold ${
+                navigationStarted ? 'bg-white text-green-600' : 'bg-white/30 text-white'
+              }`}>
+                {navigationStarted ? '✓' : '1'}
+              </span>
+              {/* Navigation icon */}
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path>
+              </svg>
+              {navigationStarted ? 'On My Way ✓' : 'Directions'}
+              {/* Animated pointer when highlighted */}
+              {highlightDirections && (
+                <span className="ml-2 animate-bounce">👆</span>
+              )}
             </button>
+            
+            {/* Visual arrow between steps when navigation not started */}
+            {!navigationStarted && (
+              <div className="flex justify-center text-gray-400">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+                </svg>
+              </div>
+            )}
+            
+            {/* Step 2: Scan QR - grayed out until navigation started */}
             <button 
-              onClick={() => setShowQRScanner(true)}
-              className="w-full bg-purple-500 hover:bg-purple-600 text-white py-3 px-4 rounded-md flex items-center justify-center"
+              onClick={() => {
+                if (!navigationStarted) {
+                  // Haptic feedback - error pattern
+                  if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                  return;
+                }
+                // Success haptic
+                if (navigator.vibrate) navigator.vibrate(50);
+                setShowQRScanner(true);
+              }}
+              className={`w-full py-3 px-4 rounded-md flex items-center justify-center transition-all duration-300 ${
+                navigationStarted 
+                  ? 'bg-purple-500 hover:bg-purple-600 text-white' 
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
             >
+              {/* Step number circle */}
+              <span className={`w-7 h-7 rounded-full flex items-center justify-center mr-2 text-sm font-bold ${
+                navigationStarted ? 'bg-white/30 text-white' : 'bg-gray-400 text-gray-200'
+              }`}>
+                2
+              </span>
+              {/* QR scan icon */}
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path>
+              </svg>
               Scan QR
+              {/* Lock icon when disabled */}
+              {!navigationStarted && (
+                <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                </svg>
+              )}
             </button>
             {/* Complete Pickup button moved to inside the QR scan modal */}
           </div>
@@ -206,20 +278,89 @@ const RequestCard = ({
             </div>
           );
         } else {
+          // Visual-first disposal flow for low-literacy users
+          // Step 1: Locate Site (with map icon)
+          // Step 2: Dispose Bag (with checkmark icon) - only active after step 1
           return (
             <div className="flex flex-col gap-2 w-full">
+              {/* Step 1: Locate Site - with pulsing animation when highlighted */}
               <button 
-                onClick={() => onLocateSite && onLocateSite(request.id)}
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 px-4 rounded-md flex items-center justify-center"
+                onClick={() => {
+                  // Haptic feedback
+                  if (navigator.vibrate) navigator.vibrate(50);
+                  onLocateSite && onLocateSite(request.id);
+                }}
+                className={`w-full py-3 px-4 rounded-md flex items-center justify-center transition-all duration-300 ${
+                  highlightLocateSite 
+                    ? 'bg-blue-600 animate-pulse ring-4 ring-blue-300 scale-105' 
+                    : siteLocated 
+                      ? 'bg-green-500 text-white' 
+                      : 'bg-blue-500 hover:bg-blue-600 text-white'
+                }`}
               >
-                Locate Site
+                {/* Step number circle */}
+                <span className={`w-7 h-7 rounded-full flex items-center justify-center mr-2 text-sm font-bold ${
+                  siteLocated ? 'bg-white text-green-600' : 'bg-white/30 text-white'
+                }`}>
+                  {siteLocated ? '✓' : '1'}
+                </span>
+                {/* Map pin icon */}
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                {siteLocated ? 'Site Found ✓' : 'Locate Site'}
+                {/* Animated arrow pointing down when highlighted */}
+                {highlightLocateSite && (
+                  <span className="ml-2 animate-bounce">👆</span>
+                )}
               </button>
+              
+              {/* Visual arrow between steps when site not located */}
+              {!siteLocated && (
+                <div className="flex justify-center text-gray-400">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+                  </svg>
+                </div>
+              )}
+              
+              {/* Step 2: Dispose Bag - grayed out until site located */}
               <button 
-                onClick={() => onDisposeBag && onDisposeBag(request.id)}
-                className="w-full bg-green-500 hover:bg-green-600 text-white py-3 px-4 rounded-md flex items-center justify-center"
+                onClick={() => {
+                  if (!siteLocated) {
+                    // Haptic feedback - error pattern
+                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                    return;
+                  }
+                  // Success haptic
+                  if (navigator.vibrate) navigator.vibrate(50);
+                  onDisposeBag && onDisposeBag(request.id);
+                }}
+                className={`w-full py-3 px-4 rounded-md flex items-center justify-center transition-all duration-300 ${
+                  siteLocated 
+                    ? 'bg-green-500 hover:bg-green-600 text-white' 
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
                 id="disposeBagButton"
               >
+                {/* Step number circle */}
+                <span className={`w-7 h-7 rounded-full flex items-center justify-center mr-2 text-sm font-bold ${
+                  siteLocated ? 'bg-white/30 text-white' : 'bg-gray-400 text-gray-200'
+                }`}>
+                  2
+                </span>
+                {/* Checkmark/dispose icon */}
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                </svg>
                 Dispose Bag
+                {/* Lock icon when disabled */}
+                {!siteLocated && (
+                  <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                  </svg>
+                )}
               </button>
             </div>
           );
