@@ -17,6 +17,7 @@ const QR_SCAN_RATE_LIMIT = 10; // per minute
 const LOCATION_RETRY_MAX_ATTEMPTS = 3;
 const CAMERA_INIT_TIMEOUT = 2000;
 const GEOFENCE_RADIUS = 50; // 50 meters radius for geofence
+const LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
 
 const NavigationQRModal = ({
   isOpen,
@@ -45,6 +46,14 @@ const NavigationQRModal = ({
   const [isScanning, setIsScanning] = useState(false);
   const [locationRetryCount, setLocationRetryCount] = useState(0);
   
+  // Turn-by-turn navigation state (adopted from AssignmentNavigationModal)
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [navigationRoute, setNavigationRoute] = useState(null);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [navigationInstructions, setNavigationInstructions] = useState([]);
+  const [isInstructionsCollapsed, setIsInstructionsCollapsed] = useState(false);
+  const [hasAnnouncedArrival, setHasAnnouncedArrival] = useState(false);
+  
   // Keep screen on during navigation
   const { isEnabled: isScreenOn, toggle: toggleScreenOn } = useWakeLock(true); // Auto-enable
   
@@ -59,6 +68,12 @@ const NavigationQRModal = ({
   const watchId = useRef(null);
   const cameraInitTimer = useRef(null);
   const toastTimeout = useRef(null);
+  
+  // Voice navigation refs
+  const directionsService = useRef(null);
+  const directionsRenderer = useRef(null);
+  const speechSynthesis = useRef(window.speechSynthesis);
+  const currentUtterance = useRef(null);
 
   // Toast management
   const showToast = useCallback(({ message, type = 'info' }) => {
@@ -75,6 +90,267 @@ const NavigationQRModal = ({
       toastTimeout.current = null;
     }, 3000);
   }, []);
+
+  // Voice announcement function using Web Speech API
+  const speak = useCallback((text, priority = 'normal') => {
+    if (!speechSynthesis.current) {
+      logger.warn('Speech synthesis not available');
+      return;
+    }
+    
+    // Cancel current speech if high priority
+    if (priority === 'high' && currentUtterance.current) {
+      speechSynthesis.current.cancel();
+    }
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    utterance.lang = 'en-US';
+    
+    utterance.onend = () => {
+      currentUtterance.current = null;
+    };
+    
+    utterance.onerror = (event) => {
+      logger.error('Speech synthesis error:', event);
+      currentUtterance.current = null;
+    };
+    
+    currentUtterance.current = utterance;
+    speechSynthesis.current.speak(utterance);
+    logger.debug(`🔊 Speaking: "${text}"`);
+  }, []);
+
+  // Stop voice announcements
+  const stopSpeaking = useCallback(() => {
+    if (speechSynthesis.current) {
+      speechSynthesis.current.cancel();
+      currentUtterance.current = null;
+    }
+  }, []);
+
+  // Format distance for display
+  const formatDistance = useCallback((distance) => {
+    if (distance < 1) {
+      return `${Math.round(distance * 1000)}m`;
+    }
+    return `${distance.toFixed(1)}km`;
+  }, []);
+
+  // Initialize Google Maps Directions API
+  const initializeDirectionsAPI = useCallback(() => {
+    if (window.google && window.google.maps) {
+      directionsService.current = new window.google.maps.DirectionsService();
+      directionsRenderer.current = new window.google.maps.DirectionsRenderer({
+        suppressMarkers: false,
+        suppressInfoWindows: true,
+        polylineOptions: {
+          strokeColor: '#4F46E5',
+          strokeWeight: 5,
+          strokeOpacity: 0.8
+        }
+      });
+      return true;
+    }
+    return false;
+  }, []);
+
+  // Get navigation route from Google Maps Directions API
+  const getNavigationRoute = useCallback(async (origin, dest) => {
+    if (!directionsService.current) {
+      if (!initializeDirectionsAPI()) {
+        logger.error('Google Maps not loaded');
+        return null;
+      }
+    }
+
+    // Convert destination array to object if needed
+    const destinationObj = Array.isArray(dest) 
+      ? { lat: dest[0], lng: dest[1] }
+      : dest;
+    
+    const originObj = Array.isArray(origin)
+      ? { lat: origin[0], lng: origin[1] }
+      : origin;
+
+    return new Promise((resolve, reject) => {
+      directionsService.current.route({
+        origin: new window.google.maps.LatLng(originObj.lat, originObj.lng),
+        destination: new window.google.maps.LatLng(destinationObj.lat, destinationObj.lng),
+        travelMode: window.google.maps.TravelMode.DRIVING,
+        unitSystem: window.google.maps.UnitSystem.METRIC,
+        avoidHighways: false,
+        avoidTolls: false
+      }, (result, status) => {
+        if (status === window.google.maps.DirectionsStatus.OK) {
+          logger.debug('🗺️ Navigation route calculated:', result);
+          resolve(result);
+        } else {
+          logger.error('❌ Directions request failed:', status);
+          reject(new Error(`Directions request failed: ${status}`));
+        }
+      });
+    });
+  }, [initializeDirectionsAPI]);
+
+  // Start voice navigation with turn-by-turn instructions
+  const startVoiceNavigation = useCallback(async () => {
+    if (!userLocation) {
+      showToast({
+        message: 'Unable to get your current location for navigation',
+        type: 'error'
+      });
+      return;
+    }
+
+    if (!destination) {
+      showToast({
+        message: 'Invalid destination coordinates',
+        type: 'error'
+      });
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      logger.debug('🧭 Starting voice navigation...');
+      
+      const route = await getNavigationRoute(userLocation, destination);
+      if (!route) {
+        throw new Error('Could not calculate route');
+      }
+
+      setNavigationRoute(route);
+      setCurrentStep(0);
+      
+      // Extract step-by-step instructions
+      const steps = route.routes[0].legs[0].steps.map((step, index) => ({
+        index,
+        instruction: step.instructions.replace(/<[^>]*>/g, ''), // Remove HTML tags
+        distance: step.distance.text,
+        duration: step.duration.text,
+        maneuver: step.maneuver || 'straight',
+        startLocation: {
+          lat: step.start_location.lat(),
+          lng: step.start_location.lng()
+        },
+        endLocation: {
+          lat: step.end_location.lat(),
+          lng: step.end_location.lng()
+        }
+      }));
+      
+      setNavigationInstructions(steps);
+      setIsNavigating(true);
+      setNavigationStarted(true);
+      
+      // Announce first instruction
+      if (steps.length > 0) {
+        speak(`Starting navigation to ${destinationName}. ${steps[0].instruction}`, 'high');
+      }
+      
+      // Display route on map if available
+      if (directionsRenderer.current && mapRef.current) {
+        directionsRenderer.current.setMap(mapRef.current);
+        directionsRenderer.current.setDirections(route);
+      }
+      
+      showToast({
+        message: `Voice navigation started! ${steps.length} steps to destination.`,
+        type: 'success'
+      });
+      
+    } catch (error) {
+      logger.error('❌ Voice navigation setup failed:', error);
+      showToast({
+        message: 'Failed to start voice navigation. Please try again.',
+        type: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userLocation, destination, destinationName, getNavigationRoute, showToast, speak]);
+
+  // Stop voice navigation
+  const stopVoiceNavigation = useCallback(() => {
+    setIsNavigating(false);
+    setNavigationRoute(null);
+    setCurrentStep(0);
+    setNavigationInstructions([]);
+    stopSpeaking();
+    
+    // Clear route from map
+    if (directionsRenderer.current) {
+      directionsRenderer.current.setMap(null);
+    }
+    
+    logger.debug('🛑 Voice navigation stopped');
+    showToast({
+      message: 'Voice navigation stopped',
+      type: 'info'
+    });
+  }, [showToast, stopSpeaking]);
+
+  // Calculate distance to next navigation step
+  const getDistanceToNextStep = useCallback(() => {
+    if (!navigationInstructions.length || !userLocation || currentStep >= navigationInstructions.length) {
+      return null;
+    }
+    
+    const nextStep = navigationInstructions[currentStep];
+    const userPos = Array.isArray(userLocation) 
+      ? { lat: userLocation[0], lng: userLocation[1] }
+      : userLocation;
+    
+    return calculateDistance(userPos, nextStep.startLocation);
+  }, [navigationInstructions, userLocation, currentStep]);
+
+  // Update navigation progress and announce next step
+  const updateNavigationProgress = useCallback(() => {
+    if (!isNavigating || !navigationInstructions.length || !userLocation) return;
+    
+    const distanceToNextStep = getDistanceToNextStep();
+    
+    // If user is within 50m of next step, advance to next instruction
+    if (distanceToNextStep && distanceToNextStep <= 0.05 && currentStep < navigationInstructions.length - 1) {
+      setCurrentStep(prev => prev + 1);
+      logger.debug(`📍 Advanced to step ${currentStep + 1}/${navigationInstructions.length}`);
+      
+      // Announce next instruction via voice
+      const nextInstruction = navigationInstructions[currentStep + 1];
+      if (nextInstruction) {
+        speak(nextInstruction.instruction, 'high');
+        showToast({
+          message: nextInstruction.instruction,
+          type: 'info'
+        });
+      }
+    }
+  }, [isNavigating, navigationInstructions, userLocation, currentStep, getDistanceToNextStep, speak, showToast]);
+
+  // Voice announcement for arrival within geofence
+  const announceArrival = useCallback(() => {
+    if (hasAnnouncedArrival) return;
+    
+    setHasAnnouncedArrival(true);
+    
+    // Haptic feedback for arrival
+    if (navigator.vibrate) {
+      navigator.vibrate([200, 100, 200, 100, 200]); // Triple vibration pattern
+    }
+    
+    // Voice announcement
+    speak(`You have arrived at ${destinationName}. You can now scan the QR code.`, 'high');
+    
+    // Stop voice navigation if active
+    if (isNavigating) {
+      stopVoiceNavigation();
+    }
+    
+    logger.info(`🎯 Arrival announced for ${destinationName}`);
+  }, [hasAnnouncedArrival, destinationName, speak, isNavigating, stopVoiceNavigation]);
 
   // Rate limiting check for QR scans
   const isQRScanRateLimited = () => {
@@ -249,11 +525,6 @@ const NavigationQRModal = ({
     } finally {
       setIsCameraPreloading(false);
     }
-    
-    // Add a slight delay for animation
-    setTimeout(() => {
-      setIsTransitioning(false);
-    }, 300);
   }, []);
 
   // Handle switching to QR mode when already within geofence
@@ -266,6 +537,12 @@ const NavigationQRModal = ({
       });
       return;
     }
+    
+    // Stop voice navigation when switching to QR mode
+    if (isNavigating) {
+      stopVoiceNavigation();
+    }
+    stopSpeaking();
     
     // Preload camera
     setIsCameraPreloading(true);
@@ -292,7 +569,7 @@ const NavigationQRModal = ({
     } finally {
       setIsCameraPreloading(false);
     }
-  }, [isWithinGeofence]);
+  }, [isWithinGeofence, isNavigating, stopVoiceNavigation, stopSpeaking]);
 
   // Retry mechanism for location updates (declared first to avoid temporal dead zone)
   const retryLocationUpdate = useCallback(async (maxRetries = LOCATION_RETRY_MAX_ATTEMPTS) => {
@@ -596,7 +873,19 @@ const requestCameraPermission = useCallback(async () => {
             logger.debug('🎯 Geofence check - Within 50m:', withinGeofence, `| Distance: ${distance.toFixed(3)}km (${Math.round(distance * 1000)}m)`);
           }
           
+          // Check if we just entered the geofence (transition from outside to inside)
+          const wasOutsideGeofence = !isWithinGeofence;
           setIsWithinGeofence(withinGeofence);
+          
+          // Trigger arrival announcement when entering geofence
+          if (withinGeofence && wasOutsideGeofence && !position.isFallback) {
+            announceArrival();
+          }
+          
+          // Update navigation progress if voice navigation is active
+          if (isNavigating) {
+            updateNavigationProgress();
+          }
         }
       } catch (err) {
         logger.error('Error updating location:', err);
@@ -644,6 +933,9 @@ const requestCameraPermission = useCallback(async () => {
       // Stop location broadcasting when modal closes
       locationBroadcast.stopTracking();
       
+      // Stop voice navigation and speaking
+      stopSpeaking();
+      
       // Reset states when modal closes
       setMode('navigation');
       setError(null);
@@ -657,6 +949,14 @@ const requestCameraPermission = useCallback(async () => {
       setDistanceToDestination(null);
       setScanStartTime(null);
       setIsScanning(false);
+      
+      // Reset voice navigation state
+      setIsNavigating(false);
+      setNavigationRoute(null);
+      setCurrentStep(0);
+      setNavigationInstructions([]);
+      setIsInstructionsCollapsed(false);
+      setHasAnnouncedArrival(false);
 
       // Clear all refs and timers
       if (watchId.current) {
@@ -842,6 +1142,81 @@ const requestCameraPermission = useCallback(async () => {
           )}
         </div>
 
+        {/* Turn-by-Turn Navigation Instructions Panel (adopted from AssignmentNavigationModal) */}
+        {mode === 'navigation' && isNavigating && navigationInstructions.length > 0 && (
+          <div className="bg-blue-50 border-t border-blue-200">
+            {/* Collapsible Header */}
+            <div className="p-4 pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center flex-1">
+                  <div className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-2">
+                    {currentStep + 1}
+                  </div>
+                  <span className="text-sm text-blue-600 font-medium">
+                    Step {currentStep + 1} of {navigationInstructions.length}
+                  </span>
+                  <div className="text-xs text-blue-500 ml-auto mr-2">
+                    {navigationInstructions[currentStep]?.distance} • {navigationInstructions[currentStep]?.duration}
+                  </div>
+                </div>
+                {/* Collapse/Expand Button */}
+                <button
+                  onClick={() => setIsInstructionsCollapsed(!isInstructionsCollapsed)}
+                  className="p-1.5 rounded-full hover:bg-blue-100 transition-colors duration-200"
+                  aria-label={isInstructionsCollapsed ? "Expand instructions" : "Collapse instructions"}
+                >
+                  <svg 
+                    className={`w-5 h-5 text-blue-600 transition-transform duration-300 ${isInstructionsCollapsed ? 'rotate-180' : ''}`}
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            {/* Collapsible Content */}
+            <div 
+              className="overflow-hidden transition-all duration-300 ease-in-out"
+              style={{ 
+                maxHeight: isInstructionsCollapsed ? '0' : '300px',
+                opacity: isInstructionsCollapsed ? '0' : '1'
+              }}
+            >
+              <div className="px-4 pb-4">
+                <div className="bg-white rounded-lg p-3 shadow-sm border border-blue-200">
+                  <div className="flex items-start">
+                    <div className="bg-blue-100 rounded-full p-2 mr-3 flex-shrink-0">
+                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-gray-800 font-medium">
+                        {navigationInstructions[currentStep]?.instruction}
+                      </p>
+                      {getDistanceToNextStep() && (
+                        <p className="text-sm text-gray-500 mt-1">
+                          {formatDistance(getDistanceToNextStep())} to next step
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Next instruction preview */}
+                {currentStep < navigationInstructions.length - 1 && (
+                  <div className="mt-3 text-xs text-gray-500">
+                    <span className="font-medium">Next:</span> {navigationInstructions[currentStep + 1]?.instruction}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Status Bar */}
         <div className="bg-white border-t p-5 shadow-inner">
           <div className="flex items-center justify-between">
@@ -931,20 +1306,47 @@ const requestCameraPermission = useCallback(async () => {
                         )}
                       </div>
                     </button>
-                  ) : (
+                  ) : isNavigating ? (
+                    /* Stop Voice Navigation button when navigation is active */
                     <button
-                      onClick={handleStartNavigation}
+                      onClick={stopVoiceNavigation}
+                      className="flex-1 min-w-0 px-3 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 transition-all duration-300 font-medium shadow-sm"
+                      aria-label="Stop voice navigation"
+                    >
+                      <div className="flex items-center justify-center min-w-0">
+                        <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        <span className="truncate">Stop Navigation</span>
+                      </div>
+                    </button>
+                  ) : (
+                    /* Voice Navigation button */
+                    <button
+                      onClick={startVoiceNavigation}
                       className={`flex-1 min-w-0 px-3 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm ${
-                        navigationStarted
-                          ? 'bg-blue-700 hover:bg-blue-800'
+                        isLoading
+                          ? 'bg-blue-500 opacity-75'
                           : 'bg-blue-600 hover:bg-blue-700'
                       }`}
-                      aria-label="Start navigation"
-                      disabled={isLoading}
+                      aria-label="Start voice navigation"
+                      disabled={isLoading || !userLocation}
                     >
-                      <span className="truncate">
-                        {navigationStarted ? 'Navigating...' : 'Start Navigation'}
-                      </span>
+                      <div className="flex items-center justify-center min-w-0">
+                        {isLoading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2 flex-shrink-0"></div>
+                            <span className="truncate">Loading...</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                            </svg>
+                            <span className="truncate">Voice Navigation</span>
+                          </>
+                        )}
+                      </div>
                     </button>
                   )}
                 </>
