@@ -1,10 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { isWithinRadius } from '../utils/locationUtils';
 import { logger } from '../utils/logger';
 import AssignmentNavigationModal from './AssignmentNavigationModal';
+
+// Component to handle map resize when tab becomes visible
+const MapResizer = ({ isVisible }) => {
+  const map = useMap();
+  
+  useEffect(() => {
+    if (isVisible && map) {
+      // Small delay to ensure container is visible before invalidating size
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 100);
+    }
+  }, [isVisible, map]);
+  
+  return null;
+};
 
 /**
  * Modal component for disposal process
@@ -19,6 +35,7 @@ const DisposalModal = ({
 }) => {
   const [selectedSite, setSelectedSite] = useState(null);
   const [isDisposing, setIsDisposing] = useState(false);
+  const [activeTab, setActiveTab] = useState('list'); // 'list' or 'map'
   const defaultLat = import.meta.env.VITE_DEFAULT_LATITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LATITUDE) : 5.6037;
   const defaultLng = import.meta.env.VITE_DEFAULT_LONGITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LONGITUDE) : -0.1870;
   const [mapCenter, setMapCenter] = useState([defaultLat, defaultLng]); // Default from env vars
@@ -43,6 +60,23 @@ const DisposalModal = ({
   
   // State for disposal centers fetched from Supabase
   const [disposalCenters, setDisposalCenters] = useState([]);
+  const [centerTypeFilter, setCenterTypeFilter] = useState('all'); // Filter by center type
+  
+  // Filter options for center types
+  const filterOptions = [
+    { key: 'all', label: 'All', icon: '🏢' },
+    { key: 'landfill', label: 'Landfill', icon: '🏔️' },
+    { key: 'recycling_plant', label: 'Recycling', icon: '♻️' },
+    { key: 'center', label: 'Center', icon: '📍' },
+    { key: 'container', label: 'Container', icon: '🗑️' },
+    { key: 'e_waste', label: 'E-Waste', icon: '💻' },
+    { key: 'treatment_plant', label: 'Treatment', icon: '🔬' },
+  ];
+  
+  // Filter disposal centers by type
+  const filteredCenters = centerTypeFilter === 'all' 
+    ? disposalCenters 
+    : disposalCenters.filter(c => c.center_type === centerTypeFilter);
   
   // Fetch disposal centers from Supabase when modal opens
   useEffect(() => {
@@ -125,6 +159,12 @@ const DisposalModal = ({
                 openHours: center.operating_hours || '8:00 AM - 6:00 PM',
                 rating: center.rating || 4.0,
                 waste_type: center.waste_type || '',
+                region: center.region || 'Greater Accra',
+                district: center.district || '',
+                center_type: center.center_type || 'center',
+                phone: center.phone || null,
+                capacity_notes: center.capacity_notes || '',
+                status: center.status || 'active',
                 // We'll calculate distance dynamically based on user location
                 distance: '...' // Will be calculated when user location is available
               };
@@ -336,15 +376,80 @@ const DisposalModal = ({
           </button>
         </div>
         
-        {/* Scrollable Sites List */}
-        <div className="overflow-y-auto p-4 flex-shrink-0" style={{ maxHeight: '35vh' }}>
-          <p className="text-sm text-gray-500 mb-4">
-            Select a dumping site to dispose of waste from assignment #{assignment.id}.
+        {/* View Tabs */}
+        <div className="px-4 pt-2 border-b border-gray-200 flex-shrink-0">
+          <div className="flex gap-1">
+            <button
+              onClick={() => setActiveTab('list')}
+              className={`flex-1 py-2 px-4 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'list'
+                  ? 'bg-white text-green-600 border-b-2 border-green-500'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <span className="flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                </svg>
+                List
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('map')}
+              className={`flex-1 py-2 px-4 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'map'
+                  ? 'bg-white text-green-600 border-b-2 border-green-500'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <span className="flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                </svg>
+                Map
+              </span>
+            </button>
+          </div>
+        </div>
+        
+        {/* Filter Buttons */}
+        <div className="px-4 pt-2 pb-1 border-b border-gray-100 flex-shrink-0">
+          <div className="flex gap-1 overflow-x-auto pb-2 scrollbar-hide">
+            {filterOptions.map(option => (
+              <button
+                key={option.key}
+                onClick={() => setCenterTypeFilter(option.key)}
+                className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                  centerTypeFilter === option.key
+                    ? 'bg-green-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <span>{option.icon}</span>
+                <span>{option.label}</span>
+                {option.key !== 'all' && (
+                  <span className="text-xs opacity-70">
+                    ({disposalCenters.filter(c => c.center_type === option.key).length})
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        {/* Content Area - Stacked views for Leaflet compatibility */}
+        <div className="relative" style={{ height: '300px', minHeight: '300px' }}>
+          {/* List View */}
+          <div 
+            className={`absolute inset-0 overflow-y-auto p-4 bg-white ${activeTab === 'list' ? 'z-20' : 'z-0'}`}
+          >
+          <p className="text-sm text-gray-500 mb-3">
+            {filteredCenters.length} sites found • Select a site to dispose waste
           </p>
           
           {/* Dumping Sites List */}
           <div className="space-y-3">
-            {disposalCenters.map(site => (
+            {filteredCenters.map(site => (
               <div 
                 key={site.id}
                 onClick={() => setSelectedSite(site)}
@@ -355,20 +460,58 @@ const DisposalModal = ({
                 }`}
               >
                 <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-medium text-gray-800">{site.name}</h3>
-                    <p className="text-sm text-gray-600">{site.address}</p>
-                    <div className="flex items-center mt-1">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-medium text-gray-800 truncate">{site.name}</h3>
+                      {/* Center Type Badge */}
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                        site.center_type === 'landfill' ? 'bg-amber-100 text-amber-700' :
+                        site.center_type === 'recycling_plant' ? 'bg-green-100 text-green-700' :
+                        site.center_type === 'e_waste' ? 'bg-purple-100 text-purple-700' :
+                        site.center_type === 'treatment_plant' ? 'bg-blue-100 text-blue-700' :
+                        site.center_type === 'compost_plant' ? 'bg-lime-100 text-lime-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {site.center_type === 'landfill' ? 'Landfill' :
+                         site.center_type === 'recycling_plant' ? 'Recycling' :
+                         site.center_type === 'e_waste' ? 'E-Waste' :
+                         site.center_type === 'treatment_plant' ? 'Treatment' :
+                         site.center_type === 'compost_plant' ? 'Compost' :
+                         site.center_type === 'container' ? 'Container' : 'Center'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 truncate">{site.address}</p>
+                    {/* Region & District */}
+                    {site.region && (
+                      <p className="text-xs text-gray-400">
+                        {site.district ? `${site.district}, ` : ''}{site.region}
+                      </p>
+                    )}
+                    <div className="flex items-center mt-1 flex-wrap gap-2">
                       <div className="flex items-center text-amber-500">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                           <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                         </svg>
                         <span className="text-xs ml-1">{site.rating}</span>
                       </div>
-                      <span className="text-xs text-gray-500 ml-3">{site.openHours}</span>
+                      <span className="text-xs text-gray-500">{site.openHours}</span>
+                      {/* Waste Types */}
+                      {site.waste_type && site.waste_type !== 'Not Specified' && (
+                        <span className="text-xs text-gray-400 truncate max-w-[120px]" title={site.waste_type}>
+                          {site.waste_type.split(',').slice(0, 2).join(', ')}{site.waste_type.split(',').length > 2 ? '...' : ''}
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <span className="text-sm font-medium text-green-600">{site.distance}</span>
+                  <div className="flex flex-col items-end ml-2">
+                    <span className="text-sm font-medium text-green-600">{site.distance}</span>
+                    {/* Phone indicator */}
+                    {site.phone && (
+                      <a href={`tel:${site.phone}`} onClick={(e) => e.stopPropagation()} className="text-xs text-blue-500 hover:underline mt-1">
+                        📞 Call
+                      </a>
+                    )}
+                  </div>
                 </div>
                 
                 {selectedSite?.id === site.id && (
@@ -396,10 +539,12 @@ const DisposalModal = ({
               </div>
             ))}
           </div>
-        </div>
+          </div>
         
-        {/* Fixed Map Area */}
-        <div className="bg-gray-100 flex-shrink-0" style={{ height: '200px', position: 'relative' }}>
+          {/* Map View - Always rendered for Leaflet, z-index controls visibility */}
+          <div 
+            className={`absolute inset-0 bg-gray-100 ${activeTab === 'map' ? 'z-20' : 'z-0'}`}
+          >
           {/* CSS to disable all links in the map */}
           <style>{`
             .leaflet-container a {
@@ -417,6 +562,8 @@ const DisposalModal = ({
             zoomControl={true}
             attributionControl={false} /* Disable attribution control to prevent external links */
           >
+            {/* Handle map resize when tab becomes visible */}
+            <MapResizer isVisible={activeTab === 'map'} />
             <TileLayer
               attribution='&copy; OpenStreetMap contributors' /* Remove hyperlink */
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -453,16 +600,29 @@ const DisposalModal = ({
               </React.Fragment>
             ))}
             
-            {/* User location marker - Green for easy identification */}
+            {/* User location marker - Tricycle icon for collector */}
             <Marker 
-              position={userLocation} // Real or simulated user location
-              icon={new L.Icon({
-                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                iconSize: [25, 41],
-                iconAnchor: [12, 41],
-                popupAnchor: [1, -34],
-                shadowSize: [41, 41]
+              position={userLocation}
+              icon={new L.DivIcon({
+                className: 'custom-tricycle-marker',
+                html: `<div style="
+                  width: 40px;
+                  height: 40px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  background: #22c55e;
+                  border-radius: 50%;
+                  border: 3px solid white;
+                  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                ">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                  </svg>
+                </div>`,
+                iconSize: [40, 40],
+                iconAnchor: [20, 20],
+                popupAnchor: [0, -20]
               })}
             >
               <Popup>
@@ -478,6 +638,41 @@ const DisposalModal = ({
               </Popup>
             </Marker>
           </MapContainer>
+          
+          {/* Selected site info overlay on map */}
+          {selectedSite && (
+            <div className="absolute bottom-2 left-2 right-2 bg-white rounded-lg shadow-lg p-3 z-[1000]">
+              <div className="flex justify-between items-start">
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium text-gray-800 truncate">{selectedSite.name}</h4>
+                  <p className="text-xs text-gray-500 truncate">{selectedSite.address}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-sm font-medium text-green-600">{selectedSite.distance}</span>
+                    {isWithinRange ? (
+                      <span className="text-xs text-green-600">✓ Within 50m</span>
+                    ) : (
+                      <span className="text-xs text-red-500">✗ Outside 50m</span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleGetDirections(selectedSite, e);
+                  }}
+                  className="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 flex items-center gap-1"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                  Navigate
+                </button>
+              </div>
+            </div>
+          )}
+          </div>
         </div>
         
         {/* Footer with Action Buttons */}
@@ -506,7 +701,7 @@ const DisposalModal = ({
           </button>
         </div>
       </div>
-        </div>
+      </div>
       )}
       
       {/* In-App Navigation Modal - Only render when isNavigationOpen is true */}

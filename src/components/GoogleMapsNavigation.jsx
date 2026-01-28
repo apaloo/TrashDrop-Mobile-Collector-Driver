@@ -802,21 +802,21 @@ const GoogleMapsNavigation = ({
         </div>
       )}
       
-      {/* Hands-Free Navigation Overlay - Fullscreen */}
+      {/* Hands-Free Navigation Overlay - Compact */}
       {isNavigating && navigationSteps.length > 0 && (
         <div className="absolute inset-0 z-20 pointer-events-none">
-          {/* Current Instruction - Large and Clear */}
-          <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-blue-600 to-blue-500 text-white shadow-2xl pointer-events-auto">
-            <div className="px-6 py-5">
-              {/* Progress and Distance */}
-              <div className="flex items-center justify-between mb-3">
+          {/* Current Instruction - Compact Design */}
+          <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-blue-600 to-blue-500 text-white shadow-lg pointer-events-auto">
+            <div className="px-3 py-2">
+              {/* Progress and Distance - Single Row */}
+              <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center space-x-2">
-                  <div className="bg-white bg-opacity-20 rounded-full px-3 py-1">
-                    <span className="text-sm font-bold">
+                  <div className="bg-white bg-opacity-20 rounded-full px-2 py-0.5">
+                    <span className="text-xs font-bold">
                       {currentStepIndex + 1}/{navigationSteps.length}
                     </span>
                   </div>
-                  <svg className="h-5 w-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-4 w-4 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
@@ -824,26 +824,26 @@ const GoogleMapsNavigation = ({
                 </div>
                 
                 <div className="text-right">
-                  <div className="text-2xl font-bold">
+                  <div className="text-lg font-bold">
                     {navigationSteps[currentStepIndex]?.distance}
                   </div>
                 </div>
               </div>
               
-              {/* Main Instruction - Large Text */}
+              {/* Main Instruction - Compact */}
               <div 
-                className="text-xl font-semibold leading-snug mb-3"
+                className="text-base font-semibold leading-tight"
                 dangerouslySetInnerHTML={{ 
                   __html: navigationSteps[currentStepIndex]?.instruction || 'Continue on route' 
                 }}
               />
               
-              {/* Next Step Preview - Compact */}
+              {/* Next Step Preview - Very Compact, Single Line */}
               {currentStepIndex < navigationSteps.length - 1 && (
-                <div className="bg-white bg-opacity-10 rounded-lg px-3 py-2">
-                  <div className="text-xs opacity-75 mb-1">THEN</div>
-                  <div 
-                    className="text-sm opacity-90"
+                <div className="bg-white bg-opacity-10 rounded px-2 py-1 mt-1 flex items-center">
+                  <span className="text-xs opacity-75 mr-2">THEN</span>
+                  <span 
+                    className="text-xs opacity-90 truncate"
                     dangerouslySetInnerHTML={{ 
                       __html: navigationSteps[currentStepIndex + 1]?.instruction || 'Continue' 
                     }}
@@ -864,10 +864,10 @@ const GoogleMapsNavigation = ({
                   onNavigationStop();
                 }
               }}
-              className="absolute top-4 right-4 p-2 bg-red-500 hover:bg-red-600 rounded-full shadow-lg transition-colors"
+              className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-600 rounded-full shadow-lg transition-colors"
               title="Exit Navigation"
             >
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
