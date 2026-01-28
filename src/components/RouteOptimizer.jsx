@@ -234,12 +234,19 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
         isNaN: isNaN(distance) || isNaN(time)
       });
       
-      // Show warning with actual values
-      toast.warning(`⚠️ Route spans ${distance.toFixed(1)} km (${time} min). This may be too far for a single day. Consider accepting nearby requests only.`, {
-        position: "top-center",
-        autoClose: 7000,
-        style: { fontSize: '14px' }
-      });
+      // Show warning with actual values - simplified for low literacy
+      toast.warning(
+        <div className="text-center">
+          <div className="text-2xl mb-1">⚠️ Too Far!</div>
+          <div className="text-base font-bold">{distance.toFixed(0)} km • {Math.round(time/60)} hours</div>
+          <div className="text-sm mt-1">📍 Pick closer jobs</div>
+        </div>, 
+        {
+          position: "top-center",
+          autoClose: 10000,
+          style: { fontSize: '16px', padding: '16px' }
+        }
+      );
       
       // Still show the route but warn user
       setOptimizedRoute(route);
@@ -563,29 +570,28 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden">
       <div className="p-4 border-b">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-800">Optimized Route</h2>
-          <div className="flex items-center">
+        <div className="flex justify-end items-center">
+          <div className="flex items-center space-x-2">
             {isOfflineMode ? (
-              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded mr-2 flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded flex items-center whitespace-nowrap">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <span className="font-medium">Offline Ready</span>
               </span>
             ) : (
-              <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded mr-2 flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded flex items-center whitespace-nowrap">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
                 <span className="font-medium">Online Only</span>
               </span>
             )}
             <span 
-              className={`text-xs ${cachedTileCount > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'} px-2 py-1 rounded flex items-center`}
+              className={`text-xs ${cachedTileCount > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'} px-2 py-1 rounded flex items-center whitespace-nowrap`}
               title={`${cachedTileCount} map tiles cached for offline use`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
               </svg>
               <span className="font-medium">{cachedTileCount} {cachedTileCount === 1 ? 'Tile' : 'Tiles'}</span>
@@ -594,17 +600,15 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
         </div>
       </div>
       
-      {/* GPS Fallback Warning Banner */}
+      {/* GPS Fallback Warning Banner - Simplified for low literacy */}
       {userLocation?.isFallback && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mx-4 mt-3 rounded-r-md">
-          <div className="flex items-start">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-yellow-600 mr-2 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mx-4 mt-3 rounded-r-md">
+          <div className="flex items-center">
+            <span className="text-3xl mr-3">📍</span>
             <div>
-              <p className="text-yellow-800 text-sm font-medium">Using Approximate Location</p>
-              <p className="text-yellow-700 text-xs mt-1">
-                Enable GPS for accurate route optimization. Current routes are calculated from a default starting point.
+              <p className="text-yellow-800 text-base font-bold">Turn ON GPS</p>
+              <p className="text-yellow-700 text-sm mt-1">
+                👉 Open phone settings → Location → Turn ON
               </p>
             </div>
           </div>
