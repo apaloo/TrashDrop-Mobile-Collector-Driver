@@ -4,6 +4,8 @@ import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
 import Toast from './Toast';
 import { debounce } from 'lodash';
 import { logger } from '../utils/logger';
+import useWakeLock from '../hooks/useWakeLock';
+import { useNavigationPersistence } from '../hooks/useNavigationPersistence';
 
 const GEOFENCE_RADIUS = 50; // 50 meters radius for auto-completion
 const LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
@@ -16,6 +18,7 @@ const AssignmentNavigationModal = ({
   assignmentTitle = 'Assignment',
   onArrival
 }) => {
+  const { saveNavigationState, restoreNavigationState, clearNavigationState } = useNavigationPersistence();
   const [userLocation, setUserLocation] = useState(null);
   const [distanceToDestination, setDistanceToDestination] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -28,6 +31,9 @@ const AssignmentNavigationModal = ({
   const [currentStep, setCurrentStep] = useState(0);
   const [navigationInstructions, setNavigationInstructions] = useState([]);
   const [isInstructionsCollapsed, setIsInstructionsCollapsed] = useState(false);
+  
+  // Keep screen on during navigation
+  const { isEnabled: isScreenOn, toggle: toggleScreenOn } = useWakeLock(true); // Auto-enable
   
   const mapRef = useRef(null);
   const locationInterval = useRef(null);
@@ -253,6 +259,16 @@ const AssignmentNavigationModal = ({
       setNavigationInstructions(steps);
       setIsNavigating(true);
       
+      // Save navigation state for persistence/recovery
+      await saveNavigationState({
+        destination: parsedDestination,
+        destinationName: assignmentTitle,
+        userLocation,
+        isNavigating: true,
+        requestId: assignmentId,
+        sourceType: 'assignment'
+      });
+      
       // Display route on map if available
       if (directionsRenderer.current && mapRef.current) {
         directionsRenderer.current.setMap(mapRef.current);
@@ -433,6 +449,9 @@ const AssignmentNavigationModal = ({
   // Clean up on modal close
   useEffect(() => {
     if (!isOpen) {
+      // Clear navigation state when modal closes
+      clearNavigationState();
+      
       // Reset all state
       setError(null);
       setUserLocation(null);
@@ -507,19 +526,37 @@ const AssignmentNavigationModal = ({
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-full overflow-hidden flex flex-col mx-4">
         {/* Header */}
         <div className="p-5 border-b flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-gray-800">
+          <h2 className="text-xl font-semibold text-gray-800 flex-1 truncate pr-2">
             Navigate to {assignmentTitle}
           </h2>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-full hover:bg-gray-100"
-            aria-label="Close modal"
-            disabled={arrivalProcessing}
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center space-x-2">
+            {/* Keep Screen On Toggle */}
+            <button
+              onClick={toggleScreenOn}
+              className={`p-2 rounded-full transition-colors duration-200 ${
+                isScreenOn 
+                  ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200' 
+                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+              }`}
+              aria-label={isScreenOn ? 'Disable keep screen on' : 'Enable keep screen on'}
+              title={isScreenOn ? 'Screen will stay on' : 'Screen may turn off'}
+            >
+              <svg className="w-5 h-5" fill={isScreenOn ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+            </button>
+            {/* Close Button */}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-full hover:bg-gray-100"
+              aria-label="Close modal"
+              disabled={arrivalProcessing}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Content Area - Google Maps Navigation */}

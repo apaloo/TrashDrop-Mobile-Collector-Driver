@@ -17,6 +17,7 @@ import 'leaflet.offline';
 import localforage from 'localforage';
 import { logger } from '../utils/logger';
 import GoogleMapsNavigation from './GoogleMapsNavigation';
+import { useNavigationPersistence } from '../hooks/useNavigationPersistence';
 // Make sure Leaflet CSS is loaded
 import 'leaflet/dist/leaflet.css';
 
@@ -90,6 +91,7 @@ const MapOptimizer = ({ mapRef, offlineTileLayerRef, isOfflineMode }) => {
  * Route optimizer component for planning efficient collection routes
  */
 const RouteOptimizer = ({ assignments, requests, userLocation }) => {
+  const { saveNavigationState, restoreNavigationState, clearNavigationState } = useNavigationPersistence();
   const [optimizedRoute, setOptimizedRoute] = useState([]);
   const [totalDistance, setTotalDistance] = useState(0);
   const [estimatedTime, setEstimatedTime] = useState(0);
@@ -842,6 +844,7 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
                   onClick={() => {
                     setShowNavigationModal(false);
                     setIsInTurnByTurn(false);
+                    clearNavigationState();
                   }}
                   className="p-2 hover:bg-green-700 rounded-full transition-colors"
                   aria-label="Close navigation"
@@ -897,11 +900,22 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
                   <span className="ml-1 font-medium">{estimatedTime} min</span>
                 </div>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     // Start in-app turn-by-turn navigation
                     if (navigationControlRef.current?.startNavigation) {
                       setIsInTurnByTurn(true);
                       navigationControlRef.current.startNavigation();
+                      
+                      // Save navigation state for persistence/recovery
+                      const finalWaypoint = navigationWaypoints[navigationWaypoints.length - 1];
+                      await saveNavigationState({
+                        destination: finalWaypoint?.position,
+                        destinationName: finalWaypoint?.name || 'final stop',
+                        userLocation,
+                        isNavigating: true,
+                        sourceType: 'route_optimization'
+                      });
+                      
                       toast.success('Starting hands-free navigation with voice guidance...', {
                         position: "top-center",
                         autoClose: 3000,

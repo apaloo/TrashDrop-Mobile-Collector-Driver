@@ -9,6 +9,8 @@ import './navigation-modal.css'; // Custom CSS for better readability
 import QRCodeScanner from './QRCodeScanner'; // Import our existing QR scanner component
 import ErrorBoundary from './ErrorBoundary'; // Import error boundary
 import { logger } from '../utils/logger';
+import useWakeLock from '../hooks/useWakeLock';
+import { useNavigationPersistence } from '../hooks/useNavigationPersistence';
 
 // QR Scan Rate Limiting
 const QR_SCAN_RATE_LIMIT = 10; // per minute
@@ -28,6 +30,7 @@ const NavigationQRModal = ({
   sourceType = 'pickup_request' // Source type (pickup_request or digital_bin)
 }) => {
   const { user } = useAuth();
+  const { saveNavigationState, restoreNavigationState, clearNavigationState } = useNavigationPersistence();
   const [mode, setMode] = useState('navigation'); // 'navigation' or 'qr'
   const [error, setError] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
@@ -41,6 +44,9 @@ const NavigationQRModal = ({
   const [scanStartTime, setScanStartTime] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
   const [locationRetryCount, setLocationRetryCount] = useState(0);
+  
+  // Keep screen on during navigation
+  const { isEnabled: isScreenOn, toggle: toggleScreenOn } = useWakeLock(true); // Auto-enable
   
   const mapRef = useRef(null);
   const routingControlRef = useRef(null);
@@ -185,6 +191,17 @@ const NavigationQRModal = ({
   // Handle starting navigation
   const handleStartNavigation = useCallback(async () => {
     setNavigationStarted(true);
+    
+    // Save navigation state for persistence/recovery
+    await saveNavigationState({
+      destination,
+      destinationName,
+      userLocation,
+      isNavigating: true,
+      requestId,
+      wasteType,
+      sourceType
+    });
     
     // Start broadcasting location to user
     if (requestId && user?.id) {
@@ -621,6 +638,9 @@ const requestCameraPermission = useCallback(async () => {
   // Cleanup on component unmount or modal close
   useEffect(() => {
     if (!isOpen) {
+      // Clear navigation state when modal closes
+      clearNavigationState();
+      
       // Stop location broadcasting when modal closes
       locationBroadcast.stopTracking();
       
@@ -700,18 +720,36 @@ const requestCameraPermission = useCallback(async () => {
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-full overflow-hidden flex flex-col mx-4">
         {/* Header */}
         <div className="p-5 border-b flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-gray-800">
+          <h2 className="text-xl font-semibold text-gray-800 flex-1 truncate pr-2">
             {mode === 'navigation' ? 'Pickup Navigation' : 'Scan QR Code'}
           </h2>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-full hover:bg-gray-100"
-            aria-label="Close modal"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center space-x-2">
+            {/* Keep Screen On Toggle */}
+            <button
+              onClick={toggleScreenOn}
+              className={`p-2 rounded-full transition-colors duration-200 ${
+                isScreenOn 
+                  ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200' 
+                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+              }`}
+              aria-label={isScreenOn ? 'Disable keep screen on' : 'Enable keep screen on'}
+              title={isScreenOn ? 'Screen will stay on' : 'Screen may turn off'}
+            >
+              <svg className="w-5 h-5" fill={isScreenOn ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+            </button>
+            {/* Close Button */}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-full hover:bg-gray-100"
+              aria-label="Close modal"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Content Area */}
