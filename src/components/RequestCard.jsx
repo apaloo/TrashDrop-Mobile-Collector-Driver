@@ -70,9 +70,36 @@ const RequestCard = ({
   // Check if user is within range of pickup location
   useEffect(() => {
     if (userLocation && request.coordinates) {
-      // Convert request.coordinates from {lat, lng} format to [lat, lng] format
-      const requestCoords = [request.coordinates.lat, request.coordinates.lng];
+      // Handle both array format [lat, lng] and object format {lat, lng}
+      let requestCoords;
+      if (Array.isArray(request.coordinates)) {
+        // Already in array format [lat, lng]
+        requestCoords = request.coordinates;
+      } else if (typeof request.coordinates === 'object' && request.coordinates !== null) {
+        // Object format {lat, lng} or {latitude, longitude}
+        const lat = request.coordinates.lat || request.coordinates.latitude;
+        const lng = request.coordinates.lng || request.coordinates.longitude;
+        requestCoords = [lat, lng];
+      } else {
+        logger.warn('⚠️ Unknown coordinates format in RequestCard:', request.coordinates);
+        setIsWithinRange(false);
+        return;
+      }
+      
+      // Validate coordinates before checking range
+      if (!requestCoords[0] || !requestCoords[1] || isNaN(requestCoords[0]) || isNaN(requestCoords[1])) {
+        logger.warn('⚠️ Invalid coordinates in RequestCard:', requestCoords);
+        setIsWithinRange(false);
+        return;
+      }
+      
       const withinRange = isWithinRadius(userLocation, requestCoords, RADIUS_METERS);
+      logger.debug('🎯 RequestCard geofence check:', { 
+        userLocation, 
+        requestCoords, 
+        radiusMeters: RADIUS_METERS, 
+        withinRange 
+      });
       setIsWithinRange(withinRange);
     } else {
       setIsWithinRange(false);

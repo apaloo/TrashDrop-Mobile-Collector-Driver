@@ -143,9 +143,13 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
         },
         (errorMessage) => {
           // Silently ignore scanning errors (they're just "no QR found" messages)
-          // Only log actual failures
-          if (errorMessage && !errorMessage.includes('No MultiFormat Readers')) {
-            logger.debug('QR Scanner:', errorMessage);
+          // These are expected - camera is scanning but no QR code is in view
+          // Only report to error handler for actual failures, not parse attempts
+          if (errorMessage && onScanError && 
+              !errorMessage.includes('No barcode') && 
+              !errorMessage.includes('No MultiFormat') &&
+              !errorMessage.includes('QR code parse error')) {
+            onScanError(errorMessage);
           }
         }
       );
