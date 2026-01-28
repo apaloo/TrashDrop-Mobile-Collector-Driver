@@ -16,6 +16,7 @@ import { AssignmentStatus, WasteType } from '../utils/types';
 import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, getStopIcon, digitalBinMarkerIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
 import { logger } from '../utils/logger';
+import { realtimeNotificationService } from '../services/realtimeNotificationService';
 
 // Simple online status check
 const isOnline = () => navigator.onLine;
@@ -1348,6 +1349,20 @@ const MapPage = () => {
     
     const setupRealtimeSubscription = async () => {
       try {
+        // Initialize notification service for audio alerts
+        if (user?.id) {
+          await realtimeNotificationService.initialize(user.id, {
+            searchRadius: filters?.searchRadius || 5
+          });
+          // Update location for proximity filtering
+          if (position) {
+            realtimeNotificationService.updateLocation({
+              lat: position[0],
+              lng: position[1]
+            });
+          }
+        }
+        
         // First fetch initial data
         await fetchRequests();
         
@@ -1586,8 +1601,10 @@ const MapPage = () => {
       if (subscription) {
         supabase.removeChannel(subscription);
       }
+      // Cleanup notification service
+      realtimeNotificationService.destroy();
     };
-  }, [isOnlineStatus, user?.id]);
+  }, [isOnlineStatus, user?.id, filters?.searchRadius, position]);
 
   // Handle accepting an assignment
   const handleAcceptAssignment = async (requestId) => {

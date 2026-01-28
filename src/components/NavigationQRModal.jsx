@@ -20,6 +20,7 @@ const NavigationQRModal = ({
   isOpen,
   onClose,
   destination,
+  destinationName = 'pickup location', // Name for arrival announcement
   requestId,
   onQRScanned,
   expectedQRValue,
@@ -724,6 +725,7 @@ const requestCameraPermission = useCallback(async () => {
                 <GoogleMapsNavigation
                   userLocation={userLocation}
                   destination={destination}
+                  destinationName={destinationName}
                   navigationControlRef={navigationControlRef}
                   wasteType={wasteType}
                   sourceType={sourceType}

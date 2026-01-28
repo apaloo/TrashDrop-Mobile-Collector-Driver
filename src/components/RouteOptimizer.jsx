@@ -861,6 +861,7 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
                   lng: userLocation.longitude
                 }}
                 destination={navigationWaypoints[navigationWaypoints.length - 1].position}
+                destinationName={navigationWaypoints[navigationWaypoints.length - 1]?.name || 'final stop'}
                 waypoints={navigationWaypoints.slice(0, -1).map(wp => wp.position)}
                 navigationControlRef={navigationControlRef}
                 onMapReady={(map) => {

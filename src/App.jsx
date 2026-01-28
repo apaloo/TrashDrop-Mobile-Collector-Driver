@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { OfflineProvider } from './contexts/OfflineContext';
 import { CurrencyProvider } from './context/CurrencyContext';
 import { FilterProvider } from './context/FilterContext';
+import { AppStateProvider, useAppState } from './context/AppStateContext';
 
 // Components
 import AppLayout from './components/AppLayout';
@@ -83,6 +84,7 @@ function App() {
         <CurrencyProvider>
           <FilterProvider>
             <Router>
+              <AppStateProvider>
               <AppLayout>
                 <RouteCleanup />
                 <Routes>
@@ -193,6 +195,7 @@ function App() {
                 </Routes>
                 <ToastContainer position="top-center" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
               </AppLayout>
+              </AppStateProvider>
             </Router>
           </FilterProvider>
         </CurrencyProvider>
@@ -204,13 +207,24 @@ function App() {
 // Component to handle default route redirect based on auth state
 const DefaultRedirect = () => {
   const { isAuthenticated, hasLoggedOut, user } = useAuth();
+  const { getRestoredRoute, isRestoring } = useAppState();
   
   // Log state for debugging
   logger.debug('DefaultRedirect:', { isAuthenticated, hasLoggedOut, hasUser: !!user });
   
+  // Wait for state restoration before redirecting
+  if (isRestoring) {
+    return null;
+  }
+  
   // IMMEDIATE: Redirect without waiting for loading
-  // If authenticated and hasn't logged out, go to map
+  // If authenticated and hasn't logged out, go to restored route or map
   if (isAuthenticated && !hasLoggedOut) {
+    const restoredRoute = getRestoredRoute();
+    if (restoredRoute) {
+      logger.debug('DefaultRedirect: Restoring to previous route:', restoredRoute);
+      return <Navigate to={restoredRoute} replace />;
+    }
     logger.debug('DefaultRedirect: Redirecting authenticated user to map');
     return <Navigate to="/map" replace />;
   }

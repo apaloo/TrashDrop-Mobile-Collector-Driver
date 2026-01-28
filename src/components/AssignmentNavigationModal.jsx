@@ -529,6 +529,7 @@ const AssignmentNavigationModal = ({
               <GoogleMapsNavigation
                 userLocation={userLocation}
                 destination={parseDestination(destination)}
+                destinationName={assignmentTitle || 'assignment location'}
                 navigationControlRef={navigationControlRef}
                 wasteType="general"
                 sourceType="assignment"

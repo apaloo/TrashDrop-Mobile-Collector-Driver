@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { logger } from '../utils/logger';
+import { audioAlertService } from '../services/audioAlertService';
 
 // Google Maps API Key from environment variables
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -171,6 +172,7 @@ if (!GOOGLE_MAPS_API_KEY) {
 const GoogleMapsNavigation = ({ 
   userLocation, 
   destination,
+  destinationName = '', // Name of destination for arrival announcement
   waypoints = [], // Array of waypoint coordinates [{lat, lng}, ...]
   navigationControlRef, // Ref to expose navigation control functions
   onMapReady,
@@ -235,28 +237,20 @@ const GoogleMapsNavigation = ({
     return R * c; // Distance in meters
   };
 
-  // Voice announcement function
+  // Voice announcement function using audio alert service
   const announceInstruction = (instruction, distance) => {
-    if ('speechSynthesis' in window) {
-      // Cancel any ongoing speech
-      window.speechSynthesis.cancel();
-      
-      // Clean HTML tags from instruction
-      const cleanText = instruction.replace(/<[^>]*>/g, '');
-      
-      // Create announcement
-      const utterance = new SpeechSynthesisUtterance(
-        `In ${distance}, ${cleanText}`
-      );
-      utterance.rate = 0.9; // Slightly slower for clarity
-      utterance.pitch = 1.0;
-      utterance.volume = 1.0;
-      
-      speechSynthesisRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
-      
-      logger.info('🔊 Voice announcement:', cleanText);
-    }
+    audioAlertService.announceNavigation(instruction, distance);
+  };
+
+  // Arrival announcement with sound and vibration
+  const announceArrival = (locationName) => {
+    audioAlertService.announceArrival(locationName || 'pickup location', {
+      playSound: true,
+      vibrate: true,
+      speak: true,
+      repeat: true,       // Repeat if not acknowledged
+      repeatInterval: 15000 // Every 15 seconds
+    });
   };
 
   // Load Google Maps API
@@ -687,7 +681,9 @@ const GoogleMapsNavigation = ({
             } else {
               // Reached final destination
               logger.info('🎉 Destination reached!');
-              announceInstruction('You have arrived at your destination', '');
+              
+              // Use enhanced arrival alert with sound and vibration
+              announceArrival(destinationName || 'pickup location');
               setIsNavigating(false);
               
               // Notify parent
@@ -730,8 +726,12 @@ const GoogleMapsNavigation = ({
   useEffect(() => {
     if (navigationControlRef) {
       navigationControlRef.current = {
-        startNavigation: () => {
+        startNavigation: async () => {
           if (navigationSteps.length > 0) {
+            // Initialize audio service (requires user interaction)
+            await audioAlertService.initialize();
+            audioAlertService.resetArrivalState();
+            
             setIsNavigating(true);
             setCurrentStepIndex(0);
             logger.info('🧭 Starting turn-by-turn navigation');
@@ -749,10 +749,12 @@ const GoogleMapsNavigation = ({
           setIsNavigating(false);
           logger.info('⏹️ Navigation stopped');
           
-          // Stop speech
-          if (window.speechSynthesis) {
-            window.speechSynthesis.cancel();
-          }
+          // Stop audio alerts and acknowledge arrival
+          audioAlertService.acknowledgeArrival();
+          audioAlertService.stopSpeaking();
+        },
+        acknowledgeArrival: () => {
+          audioAlertService.acknowledgeArrival();
         },
         hasSteps: () => navigationSteps.length > 0
       };
@@ -771,6 +773,9 @@ const GoogleMapsNavigation = ({
       if (directionsRendererRef.current) {
         directionsRendererRef.current.setMap(null);
       }
+      // Cleanup audio alerts
+      audioAlertService.acknowledgeArrival();
+      audioAlertService.stopSpeaking();
       // Note: Google Maps instance cleanup is automatic when DOM element is removed
     };
   }, []);
