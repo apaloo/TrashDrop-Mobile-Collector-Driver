@@ -531,6 +531,14 @@ const NavigationQRModal = ({
 
   // Handle switching to QR mode when already within geofence
   const handleSwitchToQR = useCallback(async () => {
+    logger.info('🔄 handleSwitchToQR called', {
+      isWithinGeofence,
+      hasArrivedRef: hasArrivedRef.current,
+      hasArrivedAtDestination,
+      mode,
+      distanceToDestination
+    });
+    
     // If not within geofence, show error
     if (!isWithinGeofence) {
       setError({
@@ -559,7 +567,10 @@ const NavigationQRModal = ({
       setHasCameraPermission(true);
       setMode('qr');
       setError(null);
-      logger.debug('✅ Successfully switched to QR scanning mode');
+      logger.info('✅ Successfully switched to QR scanning mode', {
+        isWithinGeofence,
+        hasArrivedRef: hasArrivedRef.current
+      });
       
     } catch (err) {
       logger.error('❌ Camera permission error:', err);
@@ -900,6 +911,13 @@ const requestCameraPermission = useCallback(async () => {
           
           // Use latched state OR current geofence check
           const effectiveWithinGeofence = hasArrivedRef.current || withinGeofence;
+          logger.info('🔍 Location update geofence check:', {
+            withinGeofence,
+            hasArrivedRef: hasArrivedRef.current,
+            effectiveWithinGeofence,
+            currentMode: mode,
+            distance: distance.toFixed(4)
+          });
           setIsWithinGeofence(effectiveWithinGeofence);
           
           // Trigger arrival announcement when entering geofence
@@ -1140,6 +1158,8 @@ const requestCameraPermission = useCallback(async () => {
                       </div>
                     )}
                   >
+                    {/* Debug: Log the prop value being passed */}
+                    {logger.info('📷 Rendering QRCodeScanner with isWithinRange:', isWithinGeofence, 'hasArrivedRef:', hasArrivedRef.current)}
                     <QRCodeScanner
                       key={`qr-scanner-${scanStartTime}`}
                       onScanSuccess={handleQRScanSuccess}
