@@ -14,11 +14,62 @@ const AppStateContext = createContext();
 // Protected routes that should be restored (not login/signup)
 const RESTORABLE_ROUTES = ['/map', '/request', '/assign', '/earnings', '/profile', '/route-optimization'];
 
+// CRITICAL: Synchronous localStorage keys for immediate route restoration
+const LAST_ROUTE_KEY = 'trashdrop_last_route';
+const LAST_ROUTE_TIME_KEY = 'trashdrop_last_route_time';
+const ROUTE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// Helper: Synchronously save current route (called on every navigation)
+const saveRouteSync = (route) => {
+  if (route && RESTORABLE_ROUTES.some(r => route.startsWith(r))) {
+    try {
+      localStorage.setItem(LAST_ROUTE_KEY, route);
+      localStorage.setItem(LAST_ROUTE_TIME_KEY, Date.now().toString());
+    } catch (e) {
+      // localStorage might be full, ignore
+    }
+  }
+};
+
+// Helper: Synchronously get last saved route (for immediate restoration)
+const getLastRouteSync = () => {
+  try {
+    const route = localStorage.getItem(LAST_ROUTE_KEY);
+    const timeStr = localStorage.getItem(LAST_ROUTE_TIME_KEY);
+    
+    if (!route || !timeStr) return null;
+    
+    // Check if route is expired (older than 24 hours)
+    const savedTime = parseInt(timeStr, 10);
+    if (Date.now() - savedTime > ROUTE_EXPIRY_MS) {
+      localStorage.removeItem(LAST_ROUTE_KEY);
+      localStorage.removeItem(LAST_ROUTE_TIME_KEY);
+      return null;
+    }
+    
+    // Validate route is in allowed list
+    if (RESTORABLE_ROUTES.some(r => route.startsWith(r))) {
+      return route;
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+};
+
 export const AppStateProvider = ({ children }) => {
   const location = useLocation();
   const [isRestoring, setIsRestoring] = useState(true);
   const hasRestored = useRef(false);
   const isInitialMount = useRef(true);
+  
+  // CRITICAL: Get last route synchronously on first render (before any async operations)
+  const initialRouteRef = useRef(getLastRouteSync());
+  
+  // Log for debugging
+  if (initialRouteRef.current) {
+    logger.info('🔄 Found saved route for restoration:', initialRouteRef.current);
+  }
 
   // App-wide state that needs persistence
   const [appState, setAppState] = useState({
@@ -81,6 +132,10 @@ export const AppStateProvider = ({ children }) => {
     
     // Only save restorable routes
     if (RESTORABLE_ROUTES.some(route => location.pathname.startsWith(route))) {
+      // CRITICAL: Save to localStorage IMMEDIATELY (synchronous) for fast restoration
+      saveRouteSync(location.pathname);
+      
+      // Also update React state for consistency
       setAppState(prev => {
         if (prev.lastRoute !== location.pathname) {
           return { ...prev, lastRoute: location.pathname };
@@ -94,9 +149,12 @@ export const AppStateProvider = ({ children }) => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // Save state immediately when app goes to background
+        // CRITICAL: Save current route to localStorage FIRST (synchronous, guaranteed)
+        saveRouteSync(location.pathname);
+        
+        // Then save full state to IndexedDB (async)
         statePersistence.saveEmergencyState(appState);
-        logger.debug('📱 App backgrounded - state saved');
+        logger.debug('📱 App backgrounded - route & state saved');
       } else {
         // App returning to foreground - could refresh critical data here
         logger.debug('📱 App foregrounded - checking state');
@@ -104,24 +162,29 @@ export const AppStateProvider = ({ children }) => {
     };
 
     const handleBeforeUnload = () => {
+      // CRITICAL: Save route synchronously first
+      saveRouteSync(location.pathname);
       // Save state before page unload
       statePersistence.saveEmergencyState(appState);
     };
 
     const handlePageHide = (event) => {
+      // CRITICAL: Save route synchronously first (iOS Safari)
+      saveRouteSync(location.pathname);
       // iOS Safari uses pagehide instead of beforeunload
-      // persisted = true means page might be restored from bfcache
       statePersistence.saveEmergencyState(appState);
       if (!event.persisted) {
-        logger.debug('📱 Page hiding (not cached) - state saved');
+        logger.debug('📱 Page hiding (not cached) - route & state saved');
       }
     };
 
     // Page Lifecycle API - freeze event (modern browsers)
     // Fired when page is being frozen (app switching, tab discarding)
     const handleFreeze = () => {
+      // CRITICAL: Save route synchronously first
+      saveRouteSync(location.pathname);
       statePersistence.saveEmergencyState(appState);
-      logger.debug('🧊 App frozen - emergency state saved');
+      logger.debug('🧊 App frozen - route & state saved');
     };
 
     // Resume event - when app returns from frozen state
@@ -148,7 +211,7 @@ export const AppStateProvider = ({ children }) => {
         document.removeEventListener('resume', handleResume);
       }
     };
-  }, [appState]);
+  }, [appState, location.pathname]);
 
   // Periodic auto-save as safety net (every 30 seconds when active)
   useEffect(() => {
@@ -236,7 +299,20 @@ export const AppStateProvider = ({ children }) => {
   }, []);
 
   const clearAllState = useCallback(async () => {
+    // Clear IndexedDB state
     await statePersistence.clearAllState();
+    
+    // CRITICAL: Also clear synchronous localStorage route keys
+    try {
+      localStorage.removeItem(LAST_ROUTE_KEY);
+      localStorage.removeItem(LAST_ROUTE_TIME_KEY);
+    } catch (e) {
+      // Ignore localStorage errors
+    }
+    
+    // Clear the ref so it doesn't restore old route
+    initialRouteRef.current = null;
+    
     setAppState({
       lastRoute: null,
       activeTab: null,
@@ -247,15 +323,29 @@ export const AppStateProvider = ({ children }) => {
       navigationState: null,
       formDrafts: {}
     });
+    
+    logger.debug('🗑️ All state cleared including route persistence');
   }, []);
 
   // Get restored route (for use by router)
+  // CRITICAL: Check localStorage FIRST (synchronous), then fall back to React state
   const getRestoredRoute = useCallback(() => {
+    // Priority 1: Check synchronous localStorage (most reliable for app restart)
+    const syncRoute = initialRouteRef.current || getLastRouteSync();
+    if (syncRoute) {
+      logger.debug('🔄 Restoring route from localStorage:', syncRoute);
+      return syncRoute;
+    }
+    
+    // Priority 2: Check React state (from IndexedDB restoration)
     if (appState.lastRoute && RESTORABLE_ROUTES.some(route => 
       appState.lastRoute.startsWith(route)
     )) {
+      logger.debug('🔄 Restoring route from state:', appState.lastRoute);
       return appState.lastRoute;
     }
+    
+    logger.debug('🔄 No route to restore, using default');
     return null;
   }, [appState.lastRoute]);
 
