@@ -37,6 +37,7 @@ const NavigationQRModal = ({
   const [userLocation, setUserLocation] = useState(null);
   const [navigationStarted, setNavigationStarted] = useState(false);
   const [isWithinGeofence, setIsWithinGeofence] = useState(false);
+  const [hasArrivedAtDestination, setHasArrivedAtDestination] = useState(false); // Latched arrival state - once true, stays true
   const [isCameraPreloading, setIsCameraPreloading] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState(null);
   const [scannedItems, setScannedItems] = useState([]);
@@ -72,6 +73,7 @@ const NavigationQRModal = ({
   // Voice navigation refs
   const directionsService = useRef(null);
   const directionsRenderer = useRef(null);
+  const hasArrivedRef = useRef(false); // Ref to track arrival state inside useEffect closures
   const speechSynthesis = useRef(window.speechSynthesis);
   const currentUtterance = useRef(null);
 
@@ -875,7 +877,17 @@ const requestCameraPermission = useCallback(async () => {
           
           // Check if we just entered the geofence (transition from outside to inside)
           const wasOutsideGeofence = !isWithinGeofence;
-          setIsWithinGeofence(withinGeofence);
+          
+          // LATCH: Once arrived, stay arrived (prevents GPS drift from resetting geofence)
+          if (withinGeofence && !hasArrivedRef.current) {
+            hasArrivedRef.current = true;
+            setHasArrivedAtDestination(true);
+            logger.info('🎯 User has arrived at destination - latching arrival state');
+          }
+          
+          // Use latched state OR current geofence check
+          const effectiveWithinGeofence = hasArrivedRef.current || withinGeofence;
+          setIsWithinGeofence(effectiveWithinGeofence);
           
           // Trigger arrival announcement when entering geofence
           if (withinGeofence && wasOutsideGeofence && !position.isFallback) {
@@ -942,6 +954,8 @@ const requestCameraPermission = useCallback(async () => {
       setUserLocation(null);
       setNavigationStarted(false);
       setIsWithinGeofence(false);
+      setHasArrivedAtDestination(false); // Reset latched state when modal closes
+      hasArrivedRef.current = false; // Reset ref too
       setIsCameraPreloading(false);
       setHasCameraPermission(null);
       setScannedItems([]);
