@@ -614,8 +614,14 @@ const NavigationQRModal = ({
         // Use actual distance check (don't force geofence in dev mode for QR scanning)
         const isWithin = within50m;
         
+        // LATCH: Once arrived, stay arrived
+        if (isWithin && !hasArrivedRef.current) {
+          hasArrivedRef.current = true;
+          setHasArrivedAtDestination(true);
+        }
+        
         setDistanceToDestination(distance);
-        setIsWithinGeofence(isWithin);
+        setIsWithinGeofence(hasArrivedRef.current || isWithin);
         
         // Only clear error if we have a non-fallback location
         if (!locationResult.isFallback) {
@@ -703,7 +709,14 @@ const NavigationQRModal = ({
             { lat: destination[0], lng: destination[1] }
           );
           setDistanceToDestination(distance);
-          setIsWithinGeofence(distance <= 0.05); // 50m = 0.05km
+          
+          // LATCH: Once arrived, stay arrived
+          const withinGeofence = distance <= 0.05;
+          if (withinGeofence && !hasArrivedRef.current) {
+            hasArrivedRef.current = true;
+            setHasArrivedAtDestination(true);
+          }
+          setIsWithinGeofence(hasArrivedRef.current || withinGeofence);
         }
       } catch (err) {
         logger.error('Error updating location:', err);
