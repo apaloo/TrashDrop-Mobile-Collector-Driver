@@ -97,6 +97,9 @@ export const AppStateProvider = ({ children }) => {
         // Save state immediately when app goes to background
         statePersistence.saveEmergencyState(appState);
         logger.debug('📱 App backgrounded - state saved');
+      } else {
+        // App returning to foreground - could refresh critical data here
+        logger.debug('📱 App foregrounded - checking state');
       }
     };
 
@@ -105,21 +108,60 @@ export const AppStateProvider = ({ children }) => {
       statePersistence.saveEmergencyState(appState);
     };
 
-    const handlePageHide = () => {
+    const handlePageHide = (event) => {
       // iOS Safari uses pagehide instead of beforeunload
+      // persisted = true means page might be restored from bfcache
       statePersistence.saveEmergencyState(appState);
+      if (!event.persisted) {
+        logger.debug('📱 Page hiding (not cached) - state saved');
+      }
+    };
+
+    // Page Lifecycle API - freeze event (modern browsers)
+    // Fired when page is being frozen (app switching, tab discarding)
+    const handleFreeze = () => {
+      statePersistence.saveEmergencyState(appState);
+      logger.debug('🧊 App frozen - emergency state saved');
+    };
+
+    // Resume event - when app returns from frozen state
+    const handleResume = () => {
+      logger.debug('🔄 App resumed from frozen state');
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('pagehide', handlePageHide);
+    
+    // Page Lifecycle API events (if supported)
+    if ('onfreeze' in document) {
+      document.addEventListener('freeze', handleFreeze);
+      document.addEventListener('resume', handleResume);
+    }
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('pagehide', handlePageHide);
+      if ('onfreeze' in document) {
+        document.removeEventListener('freeze', handleFreeze);
+        document.removeEventListener('resume', handleResume);
+      }
     };
   }, [appState]);
+
+  // Periodic auto-save as safety net (every 30 seconds when active)
+  useEffect(() => {
+    if (isRestoring) return;
+    
+    const autoSaveInterval = setInterval(() => {
+      if (!document.hidden) {
+        statePersistence.saveState(statePersistence.KEYS.APP_STATE, appState);
+      }
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(autoSaveInterval);
+  }, [appState, isRestoring]);
 
   // State update functions
   const setActiveTab = useCallback((tab) => {

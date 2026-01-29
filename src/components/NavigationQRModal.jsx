@@ -28,7 +28,8 @@ const NavigationQRModal = ({
   onQRScanned,
   expectedQRValue,
   wasteType = 'general', // Waste type for destination icon color
-  sourceType = 'pickup_request' // Source type (pickup_request or digital_bin)
+  sourceType = 'pickup_request', // Source type (pickup_request or digital_bin)
+  onArrival // Callback when user arrives at destination - used to share arrival state with parent
 }) => {
   const { user } = useAuth();
   const { saveNavigationState, restoreNavigationState, clearNavigationState } = useNavigationPersistence();
@@ -92,11 +93,17 @@ const NavigationQRModal = ({
       hasArrivedRef.current = true;
       setHasArrivedAtDestination(true);
       logger.info('🎯 Latching arrival state via updateGeofenceState');
+      
+      // CRITICAL: Notify parent component about arrival so external "Scan QR" button works
+      if (onArrival && requestId) {
+        logger.info('📢 Notifying parent of arrival for request:', requestId);
+        onArrival(requestId);
+      }
     }
     
     logger.debug(`📍 Geofence update from ${source}: ${newValue} (latched: ${hasArrivedRef.current})`);
     setIsWithinGeofence(newValue);
-  }, []);
+  }, [onArrival, requestId]);
 
   // Toast management
   const showToast = useCallback(({ message, type = 'info' }) => {
@@ -917,27 +924,42 @@ const requestCameraPermission = useCallback(async () => {
       try {
         const position = await getCurrentLocation();
         
-        // Handle null position (GPS unavailable - no fallback coordinates)
+        // Handle null position (all location methods failed)
         if (!position) {
           consecutiveFallbackUpdates++;
           setIsUsingFallbackLocation(true);
           
           // Only log occasionally to reduce spam
           if (consecutiveFallbackUpdates <= 2) {
-            logger.warn('⚠️ GPS unavailable - waiting for real GPS signal');
+            logger.warn('⚠️ All location methods failed - GPS and IP unavailable');
           }
-          return; // Don't proceed without real GPS
+          return; // Don't proceed without any location
         }
+        
+        // Check if we got IP-based location (approximate, city-level)
+        const isIPLocation = position.isIPBased === true;
         
         // Only log position details occasionally
         if (consecutiveFallbackUpdates < 2) {
-          logger.debug('Current position:', position);
+          logger.debug('Current position:', position, isIPLocation ? '(IP-based)' : '(GPS)');
         }
         
-        // We have real GPS coordinates - update state
-        consecutiveFallbackUpdates = 0;
-        setIsUsingFallbackLocation(false);
-        setUserLocation(position);
+        // Update state - mark as fallback if IP-based (for UI warnings)
+        if (isIPLocation) {
+          consecutiveFallbackUpdates++; // Keep trying for real GPS
+          setIsUsingFallbackLocation(true);
+          // Still set location so navigation can work with approximate position
+          setUserLocation(position);
+          
+          if (consecutiveFallbackUpdates === 1) {
+            logger.info('📍 Using IP-based location (city-level accuracy) - navigation available with approximate position');
+          }
+        } else {
+          // Real GPS coordinates
+          consecutiveFallbackUpdates = 0;
+          setIsUsingFallbackLocation(false);
+          setUserLocation(position);
+        }
         
         if (destination && position) {
           // Only log debug info occasionally
@@ -1185,8 +1207,8 @@ const requestCameraPermission = useCallback(async () => {
                     logger.info('Navigation stopped from GoogleMapsNavigation');
                   }}
                 />
-              ) : isUsingFallbackLocation ? (
-                /* GPS Unavailable - Show warning and retry option instead of wrong route */
+              ) : isUsingFallbackLocation && !userLocation ? (
+                /* Location completely unavailable - Show warning and options */
                 <div className="w-full h-full flex items-center justify-center p-6">
                   <div className="text-center max-w-sm">
                     <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-orange-100 flex items-center justify-center">
@@ -1241,6 +1263,43 @@ const requestCameraPermission = useCallback(async () => {
                       Tip: Go outside or near a window for better GPS signal
                     </p>
                   </div>
+                </div>
+              ) : isUsingFallbackLocation && userLocation ? (
+                /* Have IP-based approximate location - Show map with warning banner */
+                <div className="relative w-full h-full">
+                  {/* Warning banner for approximate location */}
+                  <div className="absolute top-0 left-0 right-0 z-10 bg-orange-500 text-white px-3 py-2 text-sm flex items-center justify-between">
+                    <div className="flex items-center">
+                      <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <span>Approximate location ({userLocation.city || 'IP-based'})</span>
+                    </div>
+                    <button
+                      onClick={handleRetryLocation}
+                      disabled={isLoading}
+                      className="text-white underline text-xs ml-2"
+                    >
+                      {isLoading ? 'Retrying...' : 'Retry GPS'}
+                    </button>
+                  </div>
+                  {/* Map component with approximate location */}
+                  <GoogleMapsNavigation
+                    userLocation={userLocation}
+                    destination={destination}
+                    onNavigationComplete={() => {
+                      logger.info('Navigation completed');
+                    }}
+                    isNavigating={isNavigating}
+                    showControls={true}
+                    allowExternalNav={true}
+                    onError={(error) => {
+                      logger.warn('Map error:', error);
+                    }}
+                    onNavigationStop={() => {
+                      logger.info('Navigation stopped');
+                    }}
+                  />
                 </div>
               ) : (
                 <div className="w-full h-full flex items-center justify-center">

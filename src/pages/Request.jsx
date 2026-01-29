@@ -97,6 +97,9 @@ const RequestPage = () => {
   const [navigationStartedRequests, setNavigationStartedRequests] = useState(new Set()); // Track which requests have started navigation
   const [highlightDirectionsId, setHighlightDirectionsId] = useState(null); // Which request needs "Directions" highlight
   
+  // Track requests where user has arrived at destination (for external QR scan button)
+  const [arrivedRequests, setArrivedRequests] = useState(new Set());
+  
   // Payment modal state (for digital bin client collection)
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [currentPaymentBinId, setCurrentPaymentBinId] = useState(null);
@@ -2310,6 +2313,7 @@ const GeofenceErrorModal = ({
                           highlightLocateSite={highlightRequestId === request.id}
                           navigationStarted={navigationStartedRequests.has(request.id)}
                           highlightDirections={highlightDirectionsId === request.id}
+                          hasArrived={arrivedRequests.has(request.id)}
                         />
                       )
                     ))
@@ -2395,6 +2399,11 @@ const GeofenceErrorModal = ({
           requestId={navigationRequestId}
           wasteType={navigationWasteType}
           sourceType={navigationSourceType}
+          onArrival={(requestId) => {
+            // Mark this request as arrived so external "Scan QR" button works
+            logger.info('📍 User arrived at request location:', requestId);
+            setArrivedRequests(prev => new Set([...prev, requestId]));
+          }}
           onQRScanned={async (scannedValues) => {
             // Handle multiple scanned QR codes
             if (Array.isArray(scannedValues) && scannedValues.length > 0) {

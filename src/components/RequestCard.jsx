@@ -23,7 +23,8 @@ const RequestCard = ({
   siteLocated = false,  // Whether disposal site has been located
   highlightLocateSite = false,  // Visual cue to highlight Locate Site button
   navigationStarted = false,  // Whether navigation to pickup has been started
-  highlightDirections = false  // Visual cue to highlight Directions button
+  highlightDirections = false,  // Visual cue to highlight Directions button
+  hasArrived = false  // Whether user has arrived at this request location (from NavigationQRModal)
 }) => {
   // Get currency from context
   const { currency } = useCurrency();
@@ -69,6 +70,13 @@ const RequestCard = ({
   
   // Check if user is within range of pickup location
   useEffect(() => {
+    // CRITICAL: If user has already arrived via NavigationQRModal, bypass geofence check
+    if (hasArrived) {
+      logger.info('✅ User already arrived via navigation - bypassing geofence check');
+      setIsWithinRange(true);
+      return;
+    }
+    
     if (userLocation && request.coordinates) {
       // Handle both array format [lat, lng] and object format {lat, lng}
       let requestCoords;
@@ -104,7 +112,7 @@ const RequestCard = ({
     } else {
       setIsWithinRange(false);
     }
-  }, [userLocation, request.coordinates, RADIUS_METERS]);
+  }, [userLocation, request.coordinates, RADIUS_METERS, hasArrived]);
   
   // Format date for display
   const formatDate = (dateString) => {
