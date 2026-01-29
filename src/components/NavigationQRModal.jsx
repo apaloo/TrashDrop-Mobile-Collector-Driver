@@ -77,6 +77,26 @@ const NavigationQRModal = ({
   const speechSynthesis = useRef(window.speechSynthesis);
   const currentUtterance = useRef(null);
 
+  // CENTRALIZED geofence setter that ALWAYS respects the latch
+  // This prevents any code from accidentally setting isWithinGeofence to false after arrival
+  const updateGeofenceState = useCallback((newValue, source = 'unknown') => {
+    // If we've arrived, NEVER set to false (unless explicitly resetting via clearNavigationState)
+    if (hasArrivedRef.current && !newValue) {
+      logger.debug(`🔒 Geofence latch active - blocking false value from ${source}`);
+      return; // Don't update - keep it true
+    }
+    
+    // If setting to true, also latch the arrival state
+    if (newValue && !hasArrivedRef.current) {
+      hasArrivedRef.current = true;
+      setHasArrivedAtDestination(true);
+      logger.info('🎯 Latching arrival state via updateGeofenceState');
+    }
+    
+    logger.debug(`📍 Geofence update from ${source}: ${newValue} (latched: ${hasArrivedRef.current})`);
+    setIsWithinGeofence(newValue);
+  }, []);
+
   // Toast management
   const showToast = useCallback(({ message, type = 'info' }) => {
     // Clear any existing toast timeout
@@ -565,6 +585,13 @@ const NavigationQRModal = ({
       
       // Permission granted - switch to QR mode
       setHasCameraPermission(true);
+      
+      // CRITICAL: Ensure geofence state is true if we've arrived (prevents race conditions)
+      if (hasArrivedRef.current) {
+        logger.info('✅ Arrival latched - ensuring geofence state is true before QR mode');
+        updateGeofenceState(true, 'handleSwitchToQR');
+      }
+      
       setMode('qr');
       setError(null);
       logger.info('✅ Successfully switched to QR scanning mode', {
@@ -582,7 +609,7 @@ const NavigationQRModal = ({
     } finally {
       setIsCameraPreloading(false);
     }
-  }, [isWithinGeofence, isNavigating, stopVoiceNavigation, stopSpeaking]);
+  }, [isWithinGeofence, isNavigating, stopVoiceNavigation, stopSpeaking, updateGeofenceState]);
 
   // Retry mechanism for location updates (declared first to avoid temporal dead zone)
   const retryLocationUpdate = useCallback(async (maxRetries = LOCATION_RETRY_MAX_ATTEMPTS) => {
@@ -625,14 +652,8 @@ const NavigationQRModal = ({
         // Use actual distance check (don't force geofence in dev mode for QR scanning)
         const isWithin = within50m;
         
-        // LATCH: Once arrived, stay arrived
-        if (isWithin && !hasArrivedRef.current) {
-          hasArrivedRef.current = true;
-          setHasArrivedAtDestination(true);
-        }
-        
         setDistanceToDestination(distance);
-        setIsWithinGeofence(hasArrivedRef.current || isWithin);
+        updateGeofenceState(isWithin, 'retryLocationUpdate');
         
         // Only clear error if we have a non-fallback location
         if (!locationResult.isFallback) {
@@ -658,7 +679,7 @@ const NavigationQRModal = ({
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
       }
     }
-  }, [destination]);
+  }, [destination, updateGeofenceState]);
 
   // Handle retry location button
   const handleRetryLocation = useCallback(async () => {
@@ -721,13 +742,8 @@ const NavigationQRModal = ({
           );
           setDistanceToDestination(distance);
           
-          // LATCH: Once arrived, stay arrived
           const withinGeofence = distance <= 0.05;
-          if (withinGeofence && !hasArrivedRef.current) {
-            hasArrivedRef.current = true;
-            setHasArrivedAtDestination(true);
-          }
-          setIsWithinGeofence(hasArrivedRef.current || withinGeofence);
+          updateGeofenceState(withinGeofence, 'debouncedUpdateLocation');
         }
       } catch (err) {
         logger.error('Error updating location:', err);
@@ -739,7 +755,7 @@ const NavigationQRModal = ({
         setIsLoading(false);
       }
     }, 1000),
-    [destination, isOpen, mode, retryLocationUpdate]
+    [destination, isOpen, mode, retryLocationUpdate, updateGeofenceState]
   );
 
 // Track scanned items
@@ -902,23 +918,8 @@ const requestCameraPermission = useCallback(async () => {
           // Check if we just entered the geofence (transition from outside to inside)
           const wasOutsideGeofence = !isWithinGeofence;
           
-          // LATCH: Once arrived, stay arrived (prevents GPS drift from resetting geofence)
-          if (withinGeofence && !hasArrivedRef.current) {
-            hasArrivedRef.current = true;
-            setHasArrivedAtDestination(true);
-            logger.info('🎯 User has arrived at destination - latching arrival state');
-          }
-          
-          // Use latched state OR current geofence check
-          const effectiveWithinGeofence = hasArrivedRef.current || withinGeofence;
-          logger.info('🔍 Location update geofence check:', {
-            withinGeofence,
-            hasArrivedRef: hasArrivedRef.current,
-            effectiveWithinGeofence,
-            currentMode: mode,
-            distance: distance.toFixed(4)
-          });
-          setIsWithinGeofence(effectiveWithinGeofence);
+          // Use centralized geofence setter (handles latching automatically)
+          updateGeofenceState(withinGeofence, 'mainLocationLoop');
           
           // Trigger arrival announcement when entering geofence
           if (withinGeofence && wasOutsideGeofence && !position.isFallback) {
@@ -963,7 +964,7 @@ const requestCameraPermission = useCallback(async () => {
         }
       }
     };
-  }, [isOpen, destination]);
+  }, [isOpen, destination, updateGeofenceState]);
 
 
 
