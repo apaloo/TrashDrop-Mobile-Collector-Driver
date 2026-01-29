@@ -125,7 +125,7 @@ const openGoogleMapsRouting = (fromLat, fromLng, toLat, toLng, mode = 'driving')
 };
 
 const GoogleMapComponent = ({ 
-  center = { lat: 5.6037, lng: -0.1870 }, 
+  center = null, // NO HARDCODED FALLBACK - must provide actual coordinates 
   zoom = 13, 
   requests = [], 
   userPosition = null,

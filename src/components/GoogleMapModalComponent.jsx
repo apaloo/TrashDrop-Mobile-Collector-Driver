@@ -154,10 +154,9 @@ const normalizeCoords = (coords) => {
       
       // Handle PostGIS binary format - extract readable coordinates
       if (coords.startsWith('0101000020')) {
-        logger.warn('⚠️ PostGIS binary format detected - using fallback coordinates');
-        // For now, return Accra coordinates as fallback
-        // TODO: Implement proper PostGIS binary parsing
-        return [5.6037, -0.1870]; // Accra, Ghana
+        logger.warn('⚠️ PostGIS binary format detected - cannot parse coordinates');
+        // NO FALLBACK - return null when coordinates can't be parsed
+        return null;
       }
       
       // Handle "lat,lng" string
@@ -240,10 +239,10 @@ const GoogleMapModalComponent = ({
         throw new Error('Map container not available');
       }
 
-      // Create the map with optimized settings
+      // Create the map with optimized settings - center will be updated when location available
       const map = new maps.Map(mapRef.current, {
         zoom: 15,
-        center: { lat: 5.6037, lng: -0.1870 }, // Default to Accra
+        center: userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : destination ? { lat: destination[0], lng: destination[1] } : { lat: 0, lng: 0 }, // Use actual coordinates
         mapTypeId: maps.MapTypeId.ROADMAP,
         zoomControl: true,
         mapTypeControl: false,

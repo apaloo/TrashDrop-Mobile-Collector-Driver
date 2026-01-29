@@ -388,15 +388,14 @@ const MapPage = () => {
   const { user } = useAuth();
   const { filters, updateFilters, updateFilteredRequests, tempRadiusExtension, getMaxRadius } = useFilters();
   const [map, setMap] = useState(null);
-  // Default fallback location (Accra, Ghana) for immediate map load
-  const DEFAULT_POSITION = [5.6037, -0.1870]; // Accra coordinates
+  // NO DEFAULT/FALLBACK LOCATION - App must use ACTUAL GPS coordinates only
   
   // User profile data
   const [userProfile, setUserProfile] = useState(null);
   
-  const [position, setPosition] = useState(DEFAULT_POSITION); // Start with fallback, update with real location
+  const [position, setPosition] = useState(null); // Start with null, only set with REAL GPS location
   const [isUsingCachedLocation, setIsUsingCachedLocation] = useState(false); // Track if using cached location
-  const [isUsingFallbackLocation, setIsUsingFallbackLocation] = useState(true); // Track if using default fallback
+  const [isWaitingForGPS, setIsWaitingForGPS] = useState(true); // Track if waiting for GPS
   const [error, setError] = useState(null);
   const [showCachedFlash, setShowCachedFlash] = useState(false); // Brief flash for "Using Cached"
   const [hasGoodAccuracy, setHasGoodAccuracy] = useState(false); // Track if we have <=50m accuracy
@@ -429,13 +428,13 @@ const MapPage = () => {
           logger.debug('📍 Using cached position temporarily while fetching GPS:', cachedPos);
           setPosition(cachedPos);
           setIsUsingCachedLocation(true); // Mark as using cached location
-          setIsUsingFallbackLocation(false); // No longer using fallback
+          setIsWaitingForGPS(false); // Got real location
           return true;
         }
       } catch (e) {
         logger.warn('Failed to load cached position:', e);
       }
-      logger.debug('🗺️ Using default location (Accra, Ghana) to load map immediately');
+      logger.debug('🗺️ No cached position - waiting for GPS...');
       return false;
     };
 
@@ -491,13 +490,13 @@ const MapPage = () => {
           logger.debug('📍 GPS reading too inaccurate, keeping cached location:', `±${Math.round(accuracy)}m (need ≤50m)`);
           return; // Don't update position if accuracy is poor
         }
-      } else if (isUsingFallbackLocation) {
+      } else if (isWaitingForGPS) {
         if (isAccurateEnough) {
-          logger.info('🎯 GPS location acquired! Updating from default to real position:', newPos, `±${Math.round(accuracy)}m`);
+          logger.info('🎯 GPS location acquired! First real position:', newPos, `±${Math.round(accuracy)}m`);
           logger.debug('💾 Position cached for next time');
-          setIsUsingFallbackLocation(false); // Mark as no longer using fallback
+          setIsWaitingForGPS(false); // Got real GPS
         } else {
-          logger.debug('📍 GPS reading too inaccurate, keeping fallback location:', `±${Math.round(accuracy)}m (need ≤50m)`);
+          logger.debug('📍 GPS reading too inaccurate, waiting for better signal:', `±${Math.round(accuracy)}m (need ≤50m)`);
           return; // Don't update position if accuracy is poor
         }
       } else {
@@ -520,9 +519,9 @@ const MapPage = () => {
       setLocationAttempted(true);
       
       // Flash "Using Cached" briefly, then return to "Getting GPS..." to show continuous effort
-      if (isUsingCachedLocation || isUsingFallbackLocation) {
+      if (isUsingCachedLocation || isWaitingForGPS) {
         setShowCachedFlash(true);
-        logger.debug('⚠️ GPS acquisition failed, using cached/fallback location');
+        logger.debug('⚠️ GPS acquisition failed, continuing to try...');
         
         // Clear the flash after 1.5 seconds and return to "Getting GPS..." state
         setTimeout(() => {
@@ -1150,8 +1149,8 @@ const MapPage = () => {
               coordinates: req.coordinates
             });
           } else {
-            if (isUsingFallbackLocation) {
-              logger.debug('📍 Request passed filter (fallback location):', req.id, 'distance:', distance.toFixed(2) + 'km');
+            if (isWaitingForGPS) {
+              logger.debug('📍 Request passed filter (waiting for GPS):', req.id, 'distance:', distance.toFixed(2) + 'km');
             } else {
               logger.debug('✅ Passed distance filter:', req.id, 'distance:', distance.toFixed(2) + 'km');
             }
@@ -1244,7 +1243,7 @@ const MapPage = () => {
     
     // Update filtered requests in context
     updateFilteredRequests({ available: filteredRequests });
-  }, [allRequests, filters, position, isUsingFallbackLocation, updateFilteredRequests]);
+  }, [allRequests, filters, position, isWaitingForGPS, updateFilteredRequests]);
 
   // Effect to apply filters when filter criteria OR position changes
   useEffect(() => {
@@ -1859,7 +1858,7 @@ const MapPage = () => {
             />
             
             {/* GPS Status Indicator - Hide when accuracy ≤50m achieved */}
-            {(isUsingCachedLocation || isUsingFallbackLocation || error || showCachedFlash) && !hasGoodAccuracy && (
+            {(isUsingCachedLocation || isWaitingForGPS || error || showCachedFlash) && !hasGoodAccuracy && (
               <div className={`text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 transition-all duration-300 ${
                 (showCachedFlash || (error && error.includes('denied'))) ? 'bg-red-500' : 'bg-orange-500 animate-pulse'
               }`}>
@@ -1896,8 +1895,8 @@ const MapPage = () => {
                     <div className="text-center">
                       <p className="font-medium text-blue-600">Your Location</p>
                       <p className="text-sm text-gray-600">
-                        {isUsingFallbackLocation 
-                          ? 'Default Location (Acquiring GPS...)'
+                        {isWaitingForGPS 
+                          ? 'Waiting for GPS...'
                           : isUsingCachedLocation 
                             ? 'Cached Position (Updating...)' 
                             : hasGoodAccuracy 
@@ -1905,10 +1904,10 @@ const MapPage = () => {
                               : 'Live GPS Position'
                         }
                       </p>
-                      {lastUpdated && !isUsingCachedLocation && !isUsingFallbackLocation && (
+                      {lastUpdated && !isUsingCachedLocation && !isWaitingForGPS && (
                         <p className="text-xs text-green-600">Updated: {lastUpdated}</p>
                       )}
-                      {(isUsingCachedLocation || isUsingFallbackLocation) && !hasGoodAccuracy && (
+                      {(isUsingCachedLocation || isWaitingForGPS) && !hasGoodAccuracy && (
                         <p className="text-xs text-orange-600">🔄 Acquiring GPS...</p>
                       )}
                       {hasGoodAccuracy && (
@@ -2009,11 +2008,31 @@ const MapPage = () => {
                   })}
                 </MapContainer>
               ) : (
-                <div className="h-full flex items-center justify-center bg-gray-100">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-2"></div>
-                    <p className="text-gray-600">Loading map...</p>
-                    <p className="text-xs text-gray-500 mt-1">This should not take long</p>
+                /* GPS Required - No fallback coordinates */
+                <div className="h-full flex items-center justify-center bg-gray-100 p-6">
+                  <div className="text-center max-w-sm">
+                    <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-orange-100 flex items-center justify-center">
+                      <svg className="w-10 h-10 text-orange-500 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">Acquiring GPS Location</h3>
+                    <p className="text-gray-600 text-sm mb-4">
+                      Please wait while we get your current location. This ensures accurate navigation and distance calculations.
+                    </p>
+                    <div className="flex items-center justify-center gap-2 text-orange-600 mb-4">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-orange-600"></div>
+                      <span className="text-sm font-medium">Waiting for GPS signal...</span>
+                    </div>
+                    {error && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                        <p className="text-red-700 text-sm">{error}</p>
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500">
+                      Tip: Go outside or near a window for better GPS signal. Ensure location permissions are enabled.
+                    </p>
                   </div>
                 </div>
               )}

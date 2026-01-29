@@ -35,6 +35,7 @@ const NavigationQRModal = ({
   const [mode, setMode] = useState('navigation'); // 'navigation' or 'qr'
   const [error, setError] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
+  const [isUsingFallbackLocation, setIsUsingFallbackLocation] = useState(false); // Track if using fallback GPS
   const [navigationStarted, setNavigationStarted] = useState(false);
   const [isWithinGeofence, setIsWithinGeofence] = useState(false);
   const [hasArrivedAtDestination, setHasArrivedAtDestination] = useState(false); // Latched arrival state - once true, stays true
@@ -692,24 +693,68 @@ const NavigationQRModal = ({
     setError(null);
     
     try {
-      logger.debug('🔄 Retrying location update...');
-      const coords = await retryLocationUpdate();
-      if (coords) {
-        logger.debug('✅ Location retry successful:', coords);
-        showToast({
-          message: 'Location updated successfully',
-          type: 'success'
-        });
-        
-        // Success haptic feedback
-        if (navigator.vibrate) {
-          navigator.vibrate([100, 50, 100]); // Success pattern
+      logger.debug('🔄 Retrying GPS location...');
+      
+      // Force fresh GPS request with high accuracy
+      const position = await new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error('Geolocation not supported'));
+          return;
         }
-      }
-    } catch (err) {
-      logger.error('❌ Location retry failed:', err);
+        
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            resolve({
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              isFallback: false,
+              accuracy: pos.coords.accuracy
+            });
+          },
+          (err) => {
+            reject(err);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 15000, // 15 second timeout for retry
+            maximumAge: 0 // Force fresh position, don't use cached
+          }
+        );
+      });
+      
+      logger.info('✅ GPS retry successful:', position);
+      
+      // Got real GPS - update state
+      setUserLocation(position);
+      setIsUsingFallbackLocation(false);
+      
       showToast({
-        message: 'Unable to get location. Please check your GPS settings.',
+        message: `GPS acquired! Accuracy: ${Math.round(position.accuracy)}m`,
+        type: 'success'
+      });
+      
+      // Success haptic feedback
+      if (navigator.vibrate) {
+        navigator.vibrate([100, 50, 100]); // Success pattern
+      }
+      
+    } catch (err) {
+      logger.error('❌ GPS retry failed:', err);
+      
+      // Still using fallback
+      setIsUsingFallbackLocation(true);
+      
+      let errorMessage = 'Unable to get GPS location.';
+      if (err.code === 1) {
+        errorMessage = 'Location permission denied. Please enable GPS in your device settings.';
+      } else if (err.code === 2) {
+        errorMessage = 'GPS signal unavailable. Try moving to an open area.';
+      } else if (err.code === 3) {
+        errorMessage = 'GPS request timed out. Please try again.';
+      }
+      
+      showToast({
+        message: errorMessage,
         type: 'error'
       });
       
@@ -720,7 +765,7 @@ const NavigationQRModal = ({
     } finally {
       setIsLoading(false);
     }
-  }, [retryLocationUpdate, showToast]);
+  }, [showToast]);
 
   // Location tracking with debounce and retry logic
   const updateLocation = useCallback(
@@ -872,19 +917,27 @@ const requestCameraPermission = useCallback(async () => {
       try {
         const position = await getCurrentLocation();
         
+        // Handle null position (GPS unavailable - no fallback coordinates)
+        if (!position) {
+          consecutiveFallbackUpdates++;
+          setIsUsingFallbackLocation(true);
+          
+          // Only log occasionally to reduce spam
+          if (consecutiveFallbackUpdates <= 2) {
+            logger.warn('⚠️ GPS unavailable - waiting for real GPS signal');
+          }
+          return; // Don't proceed without real GPS
+        }
+        
         // Only log position details occasionally
         if (consecutiveFallbackUpdates < 2) {
           logger.debug('Current position:', position);
         }
         
+        // We have real GPS coordinates - update state
+        consecutiveFallbackUpdates = 0;
+        setIsUsingFallbackLocation(false);
         setUserLocation(position);
-        
-        // Track if we're getting fallback locations
-        if (position.isFallback) {
-          consecutiveFallbackUpdates++;
-        } else {
-          consecutiveFallbackUpdates = 0;
-        }
         
         if (destination && position) {
           // Only log debug info occasionally
@@ -984,6 +1037,7 @@ const requestCameraPermission = useCallback(async () => {
       setMode('navigation');
       setError(null);
       setUserLocation(null);
+      setIsUsingFallbackLocation(false); // Reset fallback state for fresh start
       setNavigationStarted(false);
       setIsWithinGeofence(false);
       setHasArrivedAtDestination(false); // Reset latched state when modal closes
@@ -1131,6 +1185,63 @@ const requestCameraPermission = useCallback(async () => {
                     logger.info('Navigation stopped from GoogleMapsNavigation');
                   }}
                 />
+              ) : isUsingFallbackLocation ? (
+                /* GPS Unavailable - Show warning and retry option instead of wrong route */
+                <div className="w-full h-full flex items-center justify-center p-6">
+                  <div className="text-center max-w-sm">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-orange-100 flex items-center justify-center">
+                      <svg className="w-8 h-8 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">GPS Signal Unavailable</h3>
+                    <p className="text-gray-600 text-sm mb-4">
+                      Unable to get your current location. Please ensure GPS is enabled and try again.
+                    </p>
+                    <div className="space-y-3">
+                      <button
+                        onClick={handleRetryLocation}
+                        disabled={isLoading}
+                        className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center disabled:opacity-50"
+                      >
+                        {isLoading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                            Getting Location...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            Retry GPS
+                          </>
+                        )}
+                      </button>
+                      {/* External navigation option when GPS fails */}
+                      {destination && (
+                        <button
+                          onClick={() => {
+                            const destLat = Array.isArray(destination) ? destination[0] : destination.lat;
+                            const destLng = Array.isArray(destination) ? destination[1] : destination.lng;
+                            const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}&travelmode=driving`;
+                            window.open(mapsUrl, '_blank');
+                          }}
+                          className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center"
+                        >
+                          <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                          Open in Google Maps
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-4">
+                      Tip: Go outside or near a window for better GPS signal
+                    </p>
+                  </div>
+                </div>
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <div className="text-center">

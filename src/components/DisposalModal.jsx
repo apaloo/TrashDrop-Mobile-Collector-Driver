@@ -36,10 +36,9 @@ const DisposalModal = ({
   const [selectedSite, setSelectedSite] = useState(null);
   const [isDisposing, setIsDisposing] = useState(false);
   const [activeTab, setActiveTab] = useState('list'); // 'list' or 'map'
-  const defaultLat = import.meta.env.VITE_DEFAULT_LATITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LATITUDE) : 5.6037;
-  const defaultLng = import.meta.env.VITE_DEFAULT_LONGITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LONGITUDE) : -0.1870;
-  const [mapCenter, setMapCenter] = useState([defaultLat, defaultLng]); // Default from env vars
-  const [userLocation, setUserLocation] = useState([defaultLat, defaultLng]); // Default user location
+  // NO HARDCODED FALLBACK COORDINATES - use actual GPS only
+  const [mapCenter, setMapCenter] = useState(null); // Will be set from GPS or disposal center
+  const [userLocation, setUserLocation] = useState(null); // Will be set from actual GPS
   const [isWithinRange, setIsWithinRange] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [isNavigationOpen, setIsNavigationOpen] = useState(false);
@@ -195,6 +194,10 @@ const DisposalModal = ({
           async (position) => {
             const { latitude, longitude } = position.coords;
             setUserLocation([latitude, longitude]);
+            // Set map center from actual GPS if not already set
+            if (!mapCenter) {
+              setMapCenter([latitude, longitude]);
+            }
             
             // Update distances for all disposal centers
             if (disposalCenters.length > 0) {
@@ -555,6 +558,7 @@ const DisposalModal = ({
               display: none !important;
             }
           `}</style>
+          {mapCenter ? (
           <MapContainer 
             center={mapCenter} 
             zoom={12} 
@@ -600,7 +604,8 @@ const DisposalModal = ({
               </React.Fragment>
             ))}
             
-            {/* User location marker - Tricycle icon for collector */}
+            {/* User location marker - Tricycle icon for collector (only show if location available) */}
+            {userLocation && (
             <Marker 
               position={userLocation}
               icon={new L.DivIcon({
@@ -637,7 +642,18 @@ const DisposalModal = ({
                 )}
               </Popup>
             </Marker>
+            )}
           </MapContainer>
+          ) : (
+            /* GPS Waiting State - No hardcoded coordinates */
+            <div className="h-full flex items-center justify-center bg-gray-100">
+              <div className="text-center p-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-3"></div>
+                <p className="text-gray-600 font-medium">Acquiring GPS location...</p>
+                <p className="text-xs text-gray-500 mt-1">Please enable GPS for accurate map display</p>
+              </div>
+            </div>
+          )}
           
           {/* Selected site info overlay on map */}
           {selectedSite && (

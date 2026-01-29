@@ -328,9 +328,10 @@ const OSMNavigationMap = ({
         waypointsArray.push(L.latLng(userLocation.lat, userLocation.lng));
       } else {
         if (Math.random() < 0.1) { // Reduce console spam - 10% logging
-          logger.warn('⚠️ Invalid user location coordinates, using fallback');
+          logger.warn('⚠️ Invalid user location coordinates - cannot create route');
         }
-        waypointsArray.push(L.latLng(5.6037, -0.1870)); // Accra fallback
+        // NO FALLBACK - return early if user location is invalid
+        return;
       }
       
       // Add destination waypoint with validation
@@ -339,9 +340,10 @@ const OSMNavigationMap = ({
         waypointsArray.push(L.latLng(destLat, destLng));
       } else {
         if (Math.random() < 0.1) { // Reduce console spam - 10% logging
-          logger.warn('⚠️ Invalid destination coordinates, using fallback');
+          logger.warn('⚠️ Invalid destination coordinates - cannot create route');
         }
-        waypointsArray.push(L.latLng(5.6037, -0.1870)); // Accra fallback
+        // NO FALLBACK - return early if destination is invalid
+        return;
       }
       
       // Create a custom itinerary builder that does nothing to prevent appendChild errors

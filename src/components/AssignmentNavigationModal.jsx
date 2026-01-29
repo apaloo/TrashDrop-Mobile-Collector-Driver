@@ -124,14 +124,14 @@ const AssignmentNavigationModal = ({
           return { lat, lng, isFallback: false };
         }
         
-        // Handle PostGIS binary format - use fallback coordinates
+        // Handle PostGIS binary format - return null (no fallback coordinates)
         if (dest.startsWith('0101000020')) {
           // Reduce PostGIS warning spam to 1% frequency
           if (Math.random() < 0.01) {
-            logger.warn('⚠️ PostGIS binary format detected - using fallback coordinates for assignment');
+            logger.warn('⚠️ PostGIS binary format detected - cannot parse coordinates');
           }
-          // Return Accra coordinates as fallback but mark as fallback
-          return { lat: 5.6037, lng: -0.1870, isFallback: true };
+          // Return null - NO FALLBACK COORDINATES
+          return null;
         }
         
         // Handle "lat,lng" string

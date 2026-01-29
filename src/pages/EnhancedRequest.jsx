@@ -70,8 +70,8 @@ const EnhancedRequestPage = () => {
         setUserLocation(location);
       } catch (error) {
         logger.warn('Could not get user location:', error);
-        // Fallback to Accra, Ghana
-        setUserLocation({ lat: 5.6037, lng: -0.1870 });
+        // NO FALLBACK - keep userLocation as null when GPS fails
+        setUserLocation(null);
       }
     };
 

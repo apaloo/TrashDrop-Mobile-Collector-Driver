@@ -58,8 +58,8 @@ const AssignmentDetailsModal = ({
   };
 
   // Initialize map when modal opens
-  // Parse coordinates from assignment or use default coordinates
-  const [coordinates, setCoordinates] = useState([5.6037, -0.1870]); // Default to Accra coordinates
+  // Parse coordinates from assignment - NO HARDCODED FALLBACK
+  const [coordinates, setCoordinates] = useState(null); // Will be set from assignment data
 
   useEffect(() => {
     if (isOpen && assignment) {

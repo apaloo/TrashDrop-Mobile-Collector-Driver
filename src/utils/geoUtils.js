@@ -45,11 +45,8 @@ export const isWithinRadius = (location, center, radiusKm) => {
   return distance <= radiusKm;
 };
 
-// Default location (Accra, Ghana)
-const DEFAULT_LOCATION = {
-  lat: 5.6037,
-  lng: -0.1870
-};
+// NO DEFAULT/FALLBACK LOCATION - App must use ACTUAL GPS coordinates only
+// Removed hardcoded Accra coordinates to ensure navigation uses real user location
 
 // Location caching to reduce repeated failed attempts
 let locationCache = {
@@ -84,10 +81,11 @@ export const getCurrentLocation = () => {
     if (locationCache.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
       // Only log this warning every 2 minutes to reduce console spam
       if (!locationCache.lastFailureWarning || now - locationCache.lastFailureWarning > 120000) {
-        logger.warn('⚠️ Max consecutive failures reached, using default location');
+        logger.warn('⚠️ Max consecutive GPS failures - location unavailable');
         locationCache.lastFailureWarning = now;
       }
-      resolve({ ...DEFAULT_LOCATION, isFallback: true, source: 'default' });
+      // Return null to indicate GPS is unavailable - NO FALLBACK COORDINATES
+      resolve(null);
       return;
     }
 
@@ -101,11 +99,11 @@ export const getCurrentLocation = () => {
           clearInterval(intervalId);
           getCurrentLocation().then(resolve);
         } else if (Date.now() - startTime > maxWait) {
-          // Timeout reached - stop waiting and use fallback
+          // Timeout reached - return null, NO FALLBACK
           clearInterval(intervalId);
-          logger.warn('⚠️ Location fetch timeout - using fallback location');
+          logger.warn('⚠️ Location fetch timeout - GPS unavailable');
           locationCache.isCurrentlyFetching = false; // Reset flag
-          resolve({ ...DEFAULT_LOCATION, isFallback: true, source: 'timeout' });
+          resolve(null);
         }
       }, 100);
       return;
@@ -205,18 +203,18 @@ export const getCurrentLocation = () => {
           return;
         }
 
-        // If both fail, increment failure count and use default location
+        // If both fail, increment failure count - NO FALLBACK COORDINATES
         locationCache.consecutiveFailures++;
         locationCache.isCurrentlyFetching = false;
         
         // Only log warning on first few failures and then occasionally to reduce console spam
         if (locationCache.consecutiveFailures <= 2 || (!locationCache.lastMethodWarning || now - locationCache.lastMethodWarning > 120000)) {
-          logger.warn('⚠️ All geolocation methods failed, using default location');
+          logger.warn('⚠️ All geolocation methods failed - GPS unavailable');
           locationCache.lastMethodWarning = now;
         }
         
-        const defaultLocation = { ...DEFAULT_LOCATION, isFallback: true, source: 'default' };
-        resolve(defaultLocation);
+        // Return null to indicate GPS is unavailable - NO FALLBACK
+        resolve(null);
       } catch (error) {
         locationCache.consecutiveFailures++;
         locationCache.isCurrentlyFetching = false;
@@ -226,7 +224,8 @@ export const getCurrentLocation = () => {
           logger.error('❌ Critical geolocation error:', error);
         }
         
-        resolve({ ...DEFAULT_LOCATION, isFallback: true, source: 'default' });
+        // Return null - NO FALLBACK COORDINATES
+        resolve(null);
       }
     };
 
@@ -271,18 +270,14 @@ export const getLocationWithRetry = async (maxRetries = 3, delay = 2000) => {
     }
   }
   
-  // All attempts failed - only log occasionally to reduce console spam
+  // All attempts failed - return null, NO FALLBACK COORDINATES
   const now = Date.now();
   if (!locationCache.lastRetryWarning || now - locationCache.lastRetryWarning > 300000) { // 5 minutes
-    logger.warn('⚠️ All location attempts failed, using default location', lastError?.message);
+    logger.warn('⚠️ All location attempts failed - GPS unavailable');
     locationCache.lastRetryWarning = now;
   }
-  return { 
-    ...DEFAULT_LOCATION, 
-    isFallback: true,
-    source: 'default',
-    error: lastError?.message
-  };
+  // Return null to indicate GPS is unavailable
+  return null;
 };
 
 /**
