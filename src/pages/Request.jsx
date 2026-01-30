@@ -39,6 +39,48 @@ L.Icon.Default.mergeOptions({
 // OPTIMIZATION: Memoize RequestCard for better performance
 const MemoizedRequestCard = memo(RequestCard);
 
+// CRITICAL: Navigation modal state persistence keys
+const NAV_MODAL_STATE_KEY = 'trashdrop_nav_modal_state';
+const NAV_MODAL_TIME_KEY = 'trashdrop_nav_modal_time';
+const NAV_MODAL_EXPIRY_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+// Helper: Save navigation modal state synchronously
+const saveNavModalState = (state) => {
+  try {
+    if (state && state.isOpen) {
+      localStorage.setItem(NAV_MODAL_STATE_KEY, JSON.stringify(state));
+      localStorage.setItem(NAV_MODAL_TIME_KEY, Date.now().toString());
+    } else {
+      localStorage.removeItem(NAV_MODAL_STATE_KEY);
+      localStorage.removeItem(NAV_MODAL_TIME_KEY);
+    }
+  } catch (e) {
+    // localStorage might be full, ignore
+  }
+};
+
+// Helper: Load navigation modal state synchronously
+const loadNavModalState = () => {
+  try {
+    const stateStr = localStorage.getItem(NAV_MODAL_STATE_KEY);
+    const timeStr = localStorage.getItem(NAV_MODAL_TIME_KEY);
+    
+    if (!stateStr || !timeStr) return null;
+    
+    // Check expiry (2 hours)
+    const savedTime = parseInt(timeStr, 10);
+    if (Date.now() - savedTime > NAV_MODAL_EXPIRY_MS) {
+      localStorage.removeItem(NAV_MODAL_STATE_KEY);
+      localStorage.removeItem(NAV_MODAL_TIME_KEY);
+      return null;
+    }
+    
+    return JSON.parse(stateStr);
+  } catch (e) {
+    return null;
+  }
+};
+
 const RequestPage = () => {
   const { id: requestId } = useParams();
   const navigate = useNavigate();
@@ -82,11 +124,18 @@ const RequestPage = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [currentReport, setCurrentReport] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [showNavigationModal, setShowNavigationModal] = useState(false);
-  const [navigationDestination, setNavigationDestination] = useState(null);
-  const [navigationRequestId, setNavigationRequestId] = useState(null);
-  const [navigationWasteType, setNavigationWasteType] = useState('general');
-  const [navigationSourceType, setNavigationSourceType] = useState('pickup_request');
+  // CRITICAL: Initialize navigation modal state from localStorage (for app switch persistence)
+  const savedNavState = useMemo(() => loadNavModalState(), []);
+  const [showNavigationModal, setShowNavigationModal] = useState(savedNavState?.isOpen || false);
+  const [navigationDestination, setNavigationDestination] = useState(savedNavState?.destination || null);
+  const [navigationRequestId, setNavigationRequestId] = useState(savedNavState?.requestId || null);
+  const [navigationWasteType, setNavigationWasteType] = useState(savedNavState?.wasteType || 'general');
+  const [navigationSourceType, setNavigationSourceType] = useState(savedNavState?.sourceType || 'pickup_request');
+  
+  // Log restoration for debugging
+  if (savedNavState?.isOpen) {
+    logger.info('🔄 Restored navigation modal state:', savedNavState);
+  }
   const [showDisposalModal, setShowDisposalModal] = useState(false);
   const [selectedDisposalCenter, setSelectedDisposalCenter] = useState(null);
   const [currentDisposalRequestId, setCurrentDisposalRequestId] = useState(null);
@@ -125,6 +174,43 @@ const RequestPage = () => {
       });
     }
   }, [photoError]);
+  
+  // CRITICAL: Save navigation modal state on visibility change (app backgrounding)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && showNavigationModal && navigationDestination) {
+        // Save current navigation state when app goes to background
+        saveNavModalState({
+          isOpen: true,
+          destination: navigationDestination,
+          requestId: navigationRequestId,
+          wasteType: navigationWasteType,
+          sourceType: navigationSourceType
+        });
+        logger.debug('📱 Navigation modal state saved on background');
+      }
+    };
+    
+    const handlePageHide = () => {
+      if (showNavigationModal && navigationDestination) {
+        saveNavModalState({
+          isOpen: true,
+          destination: navigationDestination,
+          requestId: navigationRequestId,
+          wasteType: navigationWasteType,
+          sourceType: navigationSourceType
+        });
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [showNavigationModal, navigationDestination, navigationRequestId, navigationWasteType, navigationSourceType]);
   
   // OPTIMIZATION: Cache for transformed request data to avoid recalculation
   const [requestCache, setRequestCache] = useState({
@@ -1095,6 +1181,17 @@ const RequestPage = () => {
       
       // If we have valid coordinates, open in-app navigation
       if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
+        const navState = {
+          isOpen: true,
+          destination: [lat, lng],
+          requestId: requestId,
+          wasteType: request.waste_type || 'general',
+          sourceType: request.source_type || 'pickup_request'
+        };
+        
+        // CRITICAL: Save to localStorage FIRST (synchronous) for app switch persistence
+        saveNavModalState(navState);
+        
         setNavigationDestination([lat, lng]);
         setNavigationRequestId(requestId);
         setNavigationWasteType(request.waste_type || 'general');
@@ -2394,7 +2491,11 @@ const GeofenceErrorModal = ({
       {showNavigationModal && navigationDestination && (
         <NavigationQRModal
           isOpen={showNavigationModal}
-          onClose={() => setShowNavigationModal(false)}
+          onClose={() => {
+            // CRITICAL: Clear localStorage state when modal closes
+            saveNavModalState(null);
+            setShowNavigationModal(false);
+          }}
           destination={navigationDestination}
           requestId={navigationRequestId}
           wasteType={navigationWasteType}
@@ -2489,6 +2590,7 @@ const GeofenceErrorModal = ({
                     logger.info('✅ Data refresh complete');
                     
                     // Close navigation modal first before opening payment modal
+                    saveNavModalState(null); // Clear persisted state
                     setShowNavigationModal(false);
                     
                     // Wait a moment for navigation modal to close
