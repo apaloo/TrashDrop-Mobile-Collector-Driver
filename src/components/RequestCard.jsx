@@ -428,7 +428,7 @@ const RequestCard = ({
       <div className="p-4">
         <div className="flex justify-between items-center mb-2">
           <h3 className="font-medium">
-            {request.source_type === 'digital_bin' ? 'Digital Bin' : 'Anonymous'}
+            {request.source_type === 'digital_bin' ? 'Digital Bin' : 'Digital Bag'}
           </h3>
           <div className="text-sm text-gray-500">
             {formatDate(request.created_at)}
