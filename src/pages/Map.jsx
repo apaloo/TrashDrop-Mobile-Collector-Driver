@@ -1476,8 +1476,6 @@ const MapPage = () => {
                 // Handle request deletion
                 setAllRequests(prev => {
                   const updated = prev.filter(r => r.id !== oldRecord.id);
-                  // Update cache
-                  saveToCache(CACHE_KEYS.PICKUP_REQUESTS, updated);
                   return updated;
                 });
                 showToast('A pickup request was removed', 'info');
@@ -1618,7 +1616,7 @@ const MapPage = () => {
       // Cleanup notification service
       realtimeNotificationService.destroy();
     };
-  }, [isOnlineStatus, user?.id, filters?.searchRadius, position]);
+  }, [isOnlineStatus, user?.id]);
 
   // Handle accepting an assignment
   const handleAcceptAssignment = async (requestId) => {
@@ -1699,50 +1697,6 @@ const MapPage = () => {
       </div>
     );
   };
-  
-  
-  // Auto refresh every 2 minutes
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      refreshData();
-    }, 120000); // 2 minutes
-    
-    return () => clearInterval(intervalId);
-  }, []);
-  
-  // This is the end of the previous function and useEffect
-  
-  // The applyFilters function already exists above, so we're not redeclaring it here
-  // We need to ensure that filters work properly when called
-  
-  
-  // Effect to apply filters when filter criteria change
-  useEffect(() => {
-    applyFilters();
-  }, [filters]);
-  
-  // Effect to handle online/offline status changes
-  useEffect(() => {
-    // Register connectivity listeners
-    const cleanup = registerConnectivityListeners(
-      // Online callback
-      () => {
-        setIsOnlineStatus(true);
-        showToast('Back online', 'success');
-        refreshData(); // Refresh data when coming back online
-      },
-      // Offline callback
-      () => {
-        setIsOnlineStatus(false);
-        showToast('You are offline', 'offline', 0); // 0 duration means it stays until dismissed
-      }
-    );
-    
-    // Initial online status check
-    setIsOnlineStatus(isOnline());
-    
-    return cleanup;
-  }, []);
   
   // Waste type legend component
   const WasteLegend = () => {

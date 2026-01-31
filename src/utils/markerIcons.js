@@ -156,9 +156,30 @@ const TRICYCLE_IMAGE_URL = '/icons/tricycle-3d.png';
 // Icon size for accessibility (larger for vision impaired users)
 const TRICYCLE_ICON_SIZE = 100; // Increased for better visibility
 
+// Preload the tricycle image for faster rendering
+const preloadTricycleImage = () => {
+  const img = new Image();
+  img.src = TRICYCLE_IMAGE_URL;
+};
+preloadTricycleImage();
+
+// Cache for tricycle icons - only two directions needed (left/right)
+const tricycleIconCache = {
+  left: null,
+  right: null
+};
+
 // Function to create a 3D tricycle icon for user location with heading rotation
 // Uses the actual 3D rendered tricycle image with rotation support
+// OPTIMIZED: Returns cached icon for left/right direction to avoid recreating on every render
 export const createTricycleIcon = (heading = 0) => {
+  // Determine direction - only left or right
+  const direction = (heading >= 0 && heading < 180) ? 'right' : 'left';
+  
+  // Return cached icon if available
+  if (tricycleIconCache[direction]) {
+    return tricycleIconCache[direction];
+  }
   // The tricycle image faces LEFT by default
   // User requirement: tricycle should ONLY face LEFT or RIGHT (horizontal)
   // If heading is 0-180° (eastward/right direction) → face RIGHT (horizontal flip)
@@ -214,13 +235,18 @@ export const createTricycleIcon = (heading = 0) => {
       </svg>
     </div>`;
 
-  return L.divIcon({
+  const icon = L.divIcon({
     html: svgHtml,
     className: 'user-location-marker z-[1000]',
     iconSize: [TRICYCLE_ICON_SIZE, TRICYCLE_ICON_SIZE],
     iconAnchor: [TRICYCLE_ICON_SIZE/2, TRICYCLE_ICON_SIZE/2],
     popupAnchor: [0, -TRICYCLE_ICON_SIZE/2]
   });
+  
+  // Cache the icon for this direction
+  tricycleIconCache[direction] = icon;
+  
+  return icon;
 };
 
 // Create a default tricycle icon (facing left) for initial display
