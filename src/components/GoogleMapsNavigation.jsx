@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { logger } from '../utils/logger';
 import { audioAlertService } from '../services/audioAlertService';
+import { offlineMapService } from '../services/offlineMapService';
+import OfflineNavigationMap from './OfflineNavigationMap';
 
 // Google Maps API Key from environment variables
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -656,11 +658,19 @@ const GoogleMapsNavigation = ({
         // Check if we've reached the next step location
         const currentStep = navigationSteps[currentStepIndex];
         if (currentStep && currentStep.endLocation) {
+          // Handle both Google Maps LatLng objects (methods) and plain objects (properties)
+          const endLat = typeof currentStep.endLocation.lat === 'function' 
+            ? currentStep.endLocation.lat() 
+            : currentStep.endLocation.lat;
+          const endLng = typeof currentStep.endLocation.lng === 'function' 
+            ? currentStep.endLocation.lng() 
+            : currentStep.endLocation.lng;
+          
           const distanceToNextPoint = calculateGPSDistance(
             userLat,
             userLng,
-            currentStep.endLocation.lat(),
-            currentStep.endLocation.lng()
+            endLat,
+            endLng
           );
 
           logger.debug(`Distance to next point: ${distanceToNextPoint.toFixed(0)}m`);
@@ -780,14 +790,87 @@ const GoogleMapsNavigation = ({
     };
   }, []);
 
-  if (hasError) {
+  // Cache route for offline use when calculated
+  useEffect(() => {
+    if (navigationSteps.length > 0 && navigator.onLine) {
+      const cacheRouteData = async () => {
+        try {
+          await offlineMapService.initialize();
+          
+          // Extract polyline coordinates from navigation steps
+          const polylineCoords = navigationSteps.map(step => ({
+            lat: step.startLocation?.lat?.() || step.startLocation?.lat,
+            lng: step.startLocation?.lng?.() || step.startLocation?.lng
+          })).filter(coord => coord.lat && coord.lng);
+          
+          // Add end location of last step
+          const lastStep = navigationSteps[navigationSteps.length - 1];
+          if (lastStep?.endLocation) {
+            polylineCoords.push({
+              lat: lastStep.endLocation.lat?.() || lastStep.endLocation.lat,
+              lng: lastStep.endLocation.lng?.() || lastStep.endLocation.lng
+            });
+          }
+          
+          // Serialize navigation steps to plain objects (remove Google Maps functions)
+          const serializedSteps = navigationSteps.map(step => ({
+            instruction: step.instruction,
+            distance: step.distance,
+            duration: step.duration,
+            startLocation: step.startLocation ? {
+              lat: typeof step.startLocation.lat === 'function' ? step.startLocation.lat() : step.startLocation.lat,
+              lng: typeof step.startLocation.lng === 'function' ? step.startLocation.lng() : step.startLocation.lng
+            } : null,
+            endLocation: step.endLocation ? {
+              lat: typeof step.endLocation.lat === 'function' ? step.endLocation.lat() : step.endLocation.lat,
+              lng: typeof step.endLocation.lng === 'function' ? step.endLocation.lng() : step.endLocation.lng
+            } : null
+          }));
+          
+          // Save route data
+          await offlineMapService.saveRoute('current-navigation', {
+            steps: serializedSteps,
+            polylineCoords,
+            destination,
+            destinationName,
+            userLocation
+          });
+          
+          // Cache tiles along the route
+          if (polylineCoords.length > 0) {
+            logger.info('📦 Caching tiles for offline navigation...');
+            await offlineMapService.cacheRouteArea(polylineCoords, (progress) => {
+              if (progress.percent % 25 === 0) {
+                logger.debug(`📦 Tile caching: ${progress.percent}% (${progress.cached}/${progress.total})`);
+              }
+            });
+          }
+        } catch (error) {
+          logger.warn('Failed to cache route for offline use:', error);
+        }
+      };
+      
+      cacheRouteData();
+    }
+  }, [navigationSteps, destination, destinationName, userLocation]);
+
+  // Render offline map when Google Maps fails to load (API error or offline)
+  // This provides a fallback navigation experience using Leaflet/OpenStreetMap
+  if (hasError || (isOfflineMode && !isInitialized)) {
+    logger.info('📵 Rendering offline navigation map (Google Maps unavailable)');
+    
     return (
-      <div className="w-full h-full flex items-center justify-center bg-gray-100">
-        <div className="text-center p-4">
-          <p className="text-red-600 mb-2">⚠️ Map Error</p>
-          <p className="text-sm text-gray-600">{errorMessage}</p>
-        </div>
-      </div>
+      <OfflineNavigationMap
+        userLocation={userLocation}
+        destination={destination}
+        destinationName={destinationName}
+        routeCoordinates={[]}
+        navigationSteps={navigationSteps}
+        currentStepIndex={currentStepIndex}
+        wasteType={wasteType}
+        isNavigating={isNavigating}
+        onMapReady={onMapReady}
+      />
     );
   }
 
