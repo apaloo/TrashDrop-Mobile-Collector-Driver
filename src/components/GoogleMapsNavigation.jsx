@@ -12,42 +12,167 @@ const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 // (Matching the Request map icons from markerIcons.js)
 // ============================================
 
-// Create tricycle SVG icon for user location (matches Leaflet tricycleIcon)
-const createTricycleSvgUrl = () => {
+// Calculate bearing/heading between two GPS coordinates
+const calculateBearing = (lat1, lng1, lat2, lng2) => {
+  const toRad = (deg) => deg * Math.PI / 180;
+  const toDeg = (rad) => rad * 180 / Math.PI;
+  
+  const dLng = toRad(lng2 - lng1);
+  const lat1Rad = toRad(lat1);
+  const lat2Rad = toRad(lat2);
+  
+  const y = Math.sin(dLng) * Math.cos(lat2Rad);
+  const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - 
+            Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
+  
+  let bearing = toDeg(Math.atan2(y, x));
+  return (bearing + 360) % 360; // Normalize to 0-360
+};
+
+// 3D Tricycle image URL - uses the high-quality 3D rendered tricycle image
+const TRICYCLE_IMAGE_URL = '/icons/tricycle-3d.png';
+
+// Icon size for accessibility (larger for vision impaired users)
+const TRICYCLE_ICON_SIZE = 100; // Increased for better visibility
+
+// Cache for the loaded tricycle image
+let tricycleImageCache = null;
+let tricycleImageLoading = false;
+const rotatedImageCache = new Map(); // Cache rotated images by heading
+
+// Load the tricycle image and cache it
+const loadTricycleImage = () => {
+  return new Promise((resolve, reject) => {
+    if (tricycleImageCache) {
+      resolve(tricycleImageCache);
+      return;
+    }
+    if (tricycleImageLoading) {
+      // Wait for existing load to complete
+      const checkInterval = setInterval(() => {
+        if (tricycleImageCache) {
+          clearInterval(checkInterval);
+          resolve(tricycleImageCache);
+        }
+      }, 50);
+      return;
+    }
+    tricycleImageLoading = true;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      tricycleImageCache = img;
+      tricycleImageLoading = false;
+      resolve(img);
+    };
+    img.onerror = (err) => {
+      tricycleImageLoading = false;
+      reject(err);
+    };
+    img.src = TRICYCLE_IMAGE_URL;
+  });
+};
+
+// Create rotated tricycle icon using canvas (for Google Maps)
+// Returns a data URL of the rotated image
+const createRotatedTricycleUrl = async (heading = 270) => {
+  // Round heading to nearest 5 degrees for caching
+  const roundedHeading = Math.round(heading / 5) * 5;
+  
+  // Check cache first
+  if (rotatedImageCache.has(roundedHeading)) {
+    return rotatedImageCache.get(roundedHeading);
+  }
+  
+  try {
+    const img = await loadTricycleImage();
+    
+    // Create canvas for rotation
+    const canvas = document.createElement('canvas');
+    canvas.width = TRICYCLE_ICON_SIZE;
+    canvas.height = TRICYCLE_ICON_SIZE;
+    const ctx = canvas.getContext('2d');
+    
+    // The tricycle image faces LEFT by default
+    // User requirement: tricycle should ONLY face LEFT or RIGHT (horizontal)
+    // If heading is 0-180° (eastward/right direction) → face RIGHT (horizontal flip)
+    // If heading is 180-360° (westward/left direction) → face LEFT (no flip)
+    const shouldFaceRight = heading >= 0 && heading < 180;
+    
+    // Clear and set up canvas
+    ctx.clearRect(0, 0, TRICYCLE_ICON_SIZE, TRICYCLE_ICON_SIZE);
+    
+    // Draw the image with optional horizontal flip
+    ctx.save();
+    
+    const imgSize = TRICYCLE_ICON_SIZE - 8;
+    const imgX = 4;
+    const imgY = 4;
+    
+    if (shouldFaceRight) {
+      // Flip horizontally to face right
+      ctx.translate(TRICYCLE_ICON_SIZE, 0);
+      ctx.scale(-1, 1);
+    }
+    
+    ctx.drawImage(img, imgX, imgY, imgSize, imgSize);
+    ctx.restore();
+    
+    // Get data URL
+    const dataUrl = canvas.toDataURL('image/png');
+    
+    // Cache it
+    rotatedImageCache.set(roundedHeading, dataUrl);
+    
+    return dataUrl;
+  } catch (error) {
+    console.error('Failed to create rotated tricycle icon:', error);
+    // Return fallback - just the original image URL
+    return TRICYCLE_IMAGE_URL;
+  }
+};
+
+// Synchronous version that uses cached image or returns placeholder
+// This is used for initial render before async image loads
+const createTricycleSvgUrl = (heading = 270) => {
+  // Round heading for cache lookup
+  const roundedHeading = Math.round(heading / 5) * 5;
+  
+  // If we have a cached rotated image, use it
+  if (rotatedImageCache.has(roundedHeading)) {
+    return rotatedImageCache.get(roundedHeading);
+  }
+  
+  // Trigger async load for next time
+  createRotatedTricycleUrl(heading);
+  
+  // Return a simple direction arrow SVG as placeholder while image loads
+  // Same logic as canvas: only LEFT or RIGHT facing
+  const shouldFaceRight = heading >= 0 && heading < 180;
+  
+  // Arrow points horizontally (right or left)
+  const arrowPoints = shouldFaceRight
+    ? `${TRICYCLE_ICON_SIZE - 2},${TRICYCLE_ICON_SIZE/2} ${TRICYCLE_ICON_SIZE - 14},${TRICYCLE_ICON_SIZE/2 - 8} ${TRICYCLE_ICON_SIZE - 10},${TRICYCLE_ICON_SIZE/2} ${TRICYCLE_ICON_SIZE - 14},${TRICYCLE_ICON_SIZE/2 + 8}`
+    : `2,${TRICYCLE_ICON_SIZE/2} 14,${TRICYCLE_ICON_SIZE/2 - 8} 10,${TRICYCLE_ICON_SIZE/2} 14,${TRICYCLE_ICON_SIZE/2 + 8}`;
+  
   const svgTemplate = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60" width="60" height="36">
-      <!-- Shadow effect -->
-      <ellipse cx="50" cy="55" rx="30" ry="5" fill="rgba(0,0,0,0.2)"/>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${TRICYCLE_ICON_SIZE} ${TRICYCLE_ICON_SIZE}" width="${TRICYCLE_ICON_SIZE}" height="${TRICYCLE_ICON_SIZE}">
+      <!-- Pulsing GPS accuracy ring -->
+      <circle cx="${TRICYCLE_ICON_SIZE/2}" cy="${TRICYCLE_ICON_SIZE/2}" r="${TRICYCLE_ICON_SIZE/2 - 4}" fill="none" stroke="#22C55E" stroke-width="3" opacity="0.5">
+        <animate attributeName="r" values="${TRICYCLE_ICON_SIZE/2 - 8};${TRICYCLE_ICON_SIZE/2 - 2};${TRICYCLE_ICON_SIZE/2 - 8}" dur="2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.6;0.2;0.6" dur="2s" repeatCount="indefinite"/>
+      </circle>
       
-      <!-- Main tricycle -->
-      <g>
-        <!-- Cargo area with 3D effect -->
-        <path d="M65,40 L90,40 Q95,40 95,35 L95,30 Q95,25 90,25 L65,25 Q60,25 60,30 L60,35 Q60,40 65,40 Z" 
-              fill="#1d4ed8" stroke="#1e40af" stroke-width="1.5" stroke-linejoin="round"/>
-        <!-- Side panel for 3D effect -->
-        <path d="M90,40 L95,35 L95,30 L90,25 L90,40 Z" fill="#1e40af" stroke="#1e40af" stroke-width="1"/>
-        
-        <!-- Front wheel -->
-        <circle cx="20" cy="45" r="12" fill="#1f2937" stroke="#111827" stroke-width="2.5"/>
-        <circle cx="20" cy="45" r="10" fill="none" stroke="#4b5563" stroke-width="1" stroke-dasharray="1,3"/>
-        
-        <!-- Back wheel -->
-        <circle cx="80" cy="45" r="10" fill="#1f2937" stroke="#111827" stroke-width="2.5"/>
-        <circle cx="80" cy="45" r="8" fill="none" stroke="#4b5563" stroke-width="1" stroke-dasharray="1,3"/>
-        
-        <!-- Frame -->
-        <path d="M30,25 L40,40 L60,40" stroke="#1f2937" stroke-width="4" fill="none" stroke-linecap="round"/>
-        
-        <!-- Handlebar -->
-        <path d="M20,25 L20,35 Q20,20 30,25 L35,25" stroke="#1f2937" stroke-width="4" fill="none" stroke-linecap="round"/>
-        
-        <!-- Seat -->
-        <rect x="40" y="25" width="10" height="5" rx="1" fill="#1f2937" stroke="#111827" stroke-width="1"/>
-        
-        <!-- Driver indicator -->
-        <circle cx="45" cy="20" r="6" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>
-        <circle cx="45" cy="20" r="3" fill="#fff"/>
-      </g>
+      <!-- Blue location dot -->
+      <circle cx="${TRICYCLE_ICON_SIZE/2}" cy="${TRICYCLE_ICON_SIZE/2}" r="12" fill="#3B82F6" stroke="#fff" stroke-width="3"/>
+      
+      <!-- Direction indicator arrow (horizontal) -->
+      <polygon 
+        points="${arrowPoints}" 
+        fill="#22C55E" 
+        stroke="#16A34A" 
+        stroke-width="1.5"
+      />
     </svg>
   `;
   
@@ -214,6 +339,8 @@ const GoogleMapsNavigation = ({
   const speechSynthesisRef = useRef(null);
   const routeCalculatedForRef = useRef(null); // Track destination for which route was calculated
   const lastUserLocationRef = useRef(null); // Track last user location for smooth updates
+  const [currentHeading, setCurrentHeading] = useState(270); // Default to 270° (west/left) - will be updated to route direction
+  const previousPositionRef = useRef(null); // Track previous position for heading calculation
 
   // Helper function to check if Google Maps API is fully loaded
   const isGoogleMapsFullyLoaded = () => {
@@ -254,6 +381,15 @@ const GoogleMapsNavigation = ({
       repeatInterval: 15000 // Every 15 seconds
     });
   };
+
+  // Preload tricycle image on mount
+  useEffect(() => {
+    loadTricycleImage().then(() => {
+      logger.debug('✅ Tricycle image preloaded');
+    }).catch((err) => {
+      logger.warn('Failed to preload tricycle image:', err);
+    });
+  }, []);
 
   // Load Google Maps API
   useEffect(() => {
@@ -418,21 +554,43 @@ const GoogleMapsNavigation = ({
         destMarkerRef.current.setMap(null);
       }
 
-      // Add user location marker (tricycle icon - matching Request map)
+      // Add destination marker (red pin)
+      const destLat = Array.isArray(destination) ? destination[0] : destination.lat;
+      const destLng = Array.isArray(destination) ? destination[1] : destination.lng;
+      
+      // Calculate initial heading from user position to destination
+      // This ensures the tricycle faces the correct direction when navigation starts
+      const initialHeading = calculateBearing(
+        userLocation.lat, userLocation.lng,
+        destLat, destLng
+      );
+      setCurrentHeading(initialHeading);
+      
+      // Add user location marker (3D tricycle icon with heading rotation)
+      // Initialize previous position for heading calculation
+      previousPositionRef.current = { lat: userLocation.lat, lng: userLocation.lng };
+      
       userMarkerRef.current = new window.google.maps.Marker({
         position: { lat: userLocation.lat, lng: userLocation.lng },
         map: map,
         title: 'Your Location',
         icon: {
-          url: createTricycleSvgUrl(),
-          scaledSize: new window.google.maps.Size(60, 36),
-          anchor: new window.google.maps.Point(30, 18),
+          url: createTricycleSvgUrl(initialHeading), // Use calculated heading towards destination
+          scaledSize: new window.google.maps.Size(100, 100),
+          anchor: new window.google.maps.Point(50, 50),
         },
       });
-
-      // Add destination marker (red pin)
-      const destLat = Array.isArray(destination) ? destination[0] : destination.lat;
-      const destLng = Array.isArray(destination) ? destination[1] : destination.lng;
+      
+      // Load the actual tricycle image asynchronously and update marker
+      createRotatedTricycleUrl(initialHeading).then((url) => {
+        if (userMarkerRef.current) {
+          userMarkerRef.current.setIcon({
+            url: url,
+            scaledSize: new window.google.maps.Size(100, 100),
+            anchor: new window.google.maps.Point(50, 50),
+          });
+        }
+      });
       
       // Add destination marker (dustbin icon - matching Request map)
       destMarkerRef.current = new window.google.maps.Marker({
@@ -582,7 +740,7 @@ const GoogleMapsNavigation = ({
     }
   }, [isInitialized, userLocation, destination, waypoints, wasteType, sourceType]);
 
-  // Real-time marker position update (separate from route calculation)
+  // Real-time marker position update with heading-based rotation (separate from route calculation)
   useEffect(() => {
     if (!mapInstanceRef.current || !userMarkerRef.current || !userLocation) {
       return;
@@ -600,10 +758,45 @@ const GoogleMapsNavigation = ({
       }
     }
 
+    // Calculate heading/bearing from previous position to current position
+    const prevPos = previousPositionRef.current;
+    let newHeading = currentHeading; // Keep current heading if no movement
+    
+    if (prevPos) {
+      const distance = calculateGPSDistance(
+        prevPos.lat, prevPos.lng,
+        userLocation.lat, userLocation.lng
+      );
+      
+      // Only update heading if moved at least 3 meters (to avoid jitter from GPS noise)
+      if (distance >= 3) {
+        newHeading = calculateBearing(
+          prevPos.lat, prevPos.lng,
+          userLocation.lat, userLocation.lng
+        );
+        setCurrentHeading(newHeading);
+        logger.debug(`🧭 Heading updated: ${newHeading.toFixed(1)}°`);
+      }
+    }
+    
+    // Update previous position for next heading calculation
+    previousPositionRef.current = { lat: userLocation.lat, lng: userLocation.lng };
+
     // Update marker position smoothly
     userMarkerRef.current.setPosition({ 
       lat: userLocation.lat, 
       lng: userLocation.lng 
+    });
+    
+    // Update marker icon with new heading rotation (async load)
+    createRotatedTricycleUrl(newHeading).then((url) => {
+      if (userMarkerRef.current) {
+        userMarkerRef.current.setIcon({
+          url: url,
+          scaledSize: new window.google.maps.Size(100, 100),
+          anchor: new window.google.maps.Point(50, 50),
+        });
+      }
     });
     
     // Store last location
@@ -626,8 +819,8 @@ const GoogleMapsNavigation = ({
       map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
     }
 
-    logger.debug(`📍 Marker updated to: ${userLocation.lat.toFixed(6)}, ${userLocation.lng.toFixed(6)}`);
-  }, [userLocation, isFollowMode]);
+    logger.debug(`📍 Marker updated to: ${userLocation.lat.toFixed(6)}, ${userLocation.lng.toFixed(6)} | Heading: ${newHeading.toFixed(1)}°`);
+  }, [userLocation, isFollowMode, currentHeading]);
 
   // GPS tracking for auto-advance navigation
   useEffect(() => {
@@ -650,9 +843,32 @@ const GoogleMapsNavigation = ({
         
         setCurrentPosition({ lat: userLat, lng: userLng });
 
-        // Update user marker on map
+        // Calculate heading from previous position for icon rotation
+        const prevPos = previousPositionRef.current;
+        let heading = currentHeading;
+        
+        if (prevPos) {
+          const movementDistance = calculateGPSDistance(prevPos.lat, prevPos.lng, userLat, userLng);
+          // Only update heading if moved at least 3 meters
+          if (movementDistance >= 3) {
+            heading = calculateBearing(prevPos.lat, prevPos.lng, userLat, userLng);
+            setCurrentHeading(heading);
+          }
+        }
+        previousPositionRef.current = { lat: userLat, lng: userLng };
+
+        // Update user marker on map with heading rotation (async load)
         if (userMarkerRef.current && mapInstanceRef.current) {
           userMarkerRef.current.setPosition({ lat: userLat, lng: userLng });
+          createRotatedTricycleUrl(heading).then((url) => {
+            if (userMarkerRef.current) {
+              userMarkerRef.current.setIcon({
+                url: url,
+                scaledSize: new window.google.maps.Size(100, 100),
+                anchor: new window.google.maps.Point(50, 50),
+              });
+            }
+          });
         }
 
         // Check if we've reached the next step location

@@ -133,79 +133,95 @@ export const getStopIcon = (stop) => {
   return stop.type === 'request' ? requestMarkerIcon : assignmentMarkerIcon;
 };
 
-// Function to create a tricycle icon for user location
-export const createTricycleIcon = () => {
-  return L.divIcon({
-    html: `
-    <div style="position: relative; width: 60px; height: 60px; filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.3));">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60" width="60" height="36" style="transform: scale(1.5); transform-origin: center;">
-        <!-- Shadow effect -->
-        <ellipse cx="50" cy="55" rx="30" ry="5" fill="rgba(0,0,0,0.2)" filter="url(#shadow)"/>
-        
-        <!-- Glow effect -->
+// Calculate bearing/heading between two GPS coordinates
+export const calculateBearing = (lat1, lng1, lat2, lng2) => {
+  const toRad = (deg) => deg * Math.PI / 180;
+  const toDeg = (rad) => rad * 180 / Math.PI;
+  
+  const dLng = toRad(lng2 - lng1);
+  const lat1Rad = toRad(lat1);
+  const lat2Rad = toRad(lat2);
+  
+  const y = Math.sin(dLng) * Math.cos(lat2Rad);
+  const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - 
+            Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
+  
+  let bearing = toDeg(Math.atan2(y, x));
+  return (bearing + 360) % 360; // Normalize to 0-360
+};
+
+// 3D Tricycle image URL - uses the high-quality 3D rendered tricycle image
+const TRICYCLE_IMAGE_URL = '/icons/tricycle-3d.png';
+
+// Icon size for accessibility (larger for vision impaired users)
+const TRICYCLE_ICON_SIZE = 100; // Increased for better visibility
+
+// Function to create a 3D tricycle icon for user location with heading rotation
+// Uses the actual 3D rendered tricycle image with rotation support
+export const createTricycleIcon = (heading = 0) => {
+  // The tricycle image faces LEFT by default
+  // User requirement: tricycle should ONLY face LEFT or RIGHT (horizontal)
+  // If heading is 0-180° (eastward/right direction) → face RIGHT (horizontal flip)
+  // If heading is 180-360° (westward/left direction) → face LEFT (no flip)
+  const shouldFaceRight = heading >= 0 && heading < 180;
+  
+  // For horizontal flip in SVG: translate to right edge, then scale(-1, 1)
+  const flipTransform = shouldFaceRight 
+    ? `translate(${TRICYCLE_ICON_SIZE}, 0) scale(-1, 1)` 
+    : '';
+  
+  // Direction arrow points right when facing right, left when facing left
+  const arrowPoints = shouldFaceRight
+    ? `${TRICYCLE_ICON_SIZE - 2},${TRICYCLE_ICON_SIZE/2} ${TRICYCLE_ICON_SIZE - 12},${TRICYCLE_ICON_SIZE/2 - 6} ${TRICYCLE_ICON_SIZE - 8},${TRICYCLE_ICON_SIZE/2} ${TRICYCLE_ICON_SIZE - 12},${TRICYCLE_ICON_SIZE/2 + 6}`
+    : `2,${TRICYCLE_ICON_SIZE/2} 12,${TRICYCLE_ICON_SIZE/2 - 6} 8,${TRICYCLE_ICON_SIZE/2} 12,${TRICYCLE_ICON_SIZE/2 + 6}`;
+  
+  const svgHtml = `
+    <div style="position: relative; width: ${TRICYCLE_ICON_SIZE}px; height: ${TRICYCLE_ICON_SIZE}px;">
+      <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${TRICYCLE_ICON_SIZE} ${TRICYCLE_ICON_SIZE}" width="${TRICYCLE_ICON_SIZE}" height="${TRICYCLE_ICON_SIZE}">
         <defs>
-          <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="4" result="blur"/>
-            <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-          </filter>
-          <filter id="shadow">
-            <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
-            <feOffset in="blur" dx="0" dy="2" result="offsetBlur"/>
-            <feComponentTransfer in="offsetBlur" result="shadow">
-              <feFuncA type="linear" slope="0.2"/>
-            </feComponentTransfer>
-            <feComposite in="SourceGraphic" in2="shadow" operator="over"/>
+          <!-- Drop shadow for 3D effect -->
+          <filter id="tricycleShadowLeaflet" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity="0.35"/>
           </filter>
         </defs>
         
-        <!-- Main tricycle -->
-        <g filter="url(#glow)">
-          <!-- Cargo area with 3D effect -->
-          <path d="M65,40 L90,40 Q95,40 95,35 L95,30 Q95,25 90,25 L65,25 Q60,25 60,30 L60,35 Q60,40 65,40 Z" 
-                fill="#1d4ed8" stroke="#1e40af" stroke-width="1.5" stroke-linejoin="round"/>
-          <!-- Side panel for 3D effect -->
-          <path d="M90,40 L95,35 L95,30 L90,25 L90,40 Z" fill="#1e40af" stroke="#1e40af" stroke-width="1"/>
-          
-          <!-- Wheels with highlights -->
-          <!-- Front wheel -->
-          <circle cx="20" cy="45" r="12" fill="#1f2937" stroke="#111827" stroke-width="2.5"/>
-          <circle cx="20" cy="45" r="10" fill="none" stroke="#4b5563" stroke-width="1" stroke-dasharray="1,3"/>
-          
-          <!-- Back wheel -->
-          <circle cx="80" cy="45" r="10" fill="#1f2937" stroke="#111827" stroke-width="2.5"/>
-          <circle cx="80" cy="45" r="8" fill="none" stroke="#4b5563" stroke-width="1" stroke-dasharray="1,3"/>
-          
-          <!-- Frame -->
-          <path d="M30,25 L40,40 L60,40" stroke="#1f2937" stroke-width="4" fill="none" stroke-linecap="round"/>
-          
-          <!-- Handlebar -->
-          <path d="M20,25 L20,35 Q20,20 30,25 L35,25" stroke="#1f2937" stroke-width="4" fill="none" stroke-linecap="round"/>
-          
-          <!-- Seat -->
-          <rect x="40" y="25" width="10" height="5" rx="1" fill="#1f2937" stroke="#111827" stroke-width="1"/>
-          
-          <!-- Driver indicator with pulse effect -->
-          <g style="animation: pulse 2s infinite;">
-            <circle cx="45" cy="20" r="6" fill="#22c55e" stroke="#fff" stroke-width="1.5"/>
-            <circle cx="45" cy="20" r="3" fill="#fff"/>
-          </g>
+        <!-- Flip wrapper - flips tricycle horizontally when facing right -->
+        <g transform="${flipTransform}" filter="url(#tricycleShadowLeaflet)">
+          <!-- 3D Tricycle Image -->
+          <image 
+            href="${TRICYCLE_IMAGE_URL}" 
+            x="4" 
+            y="4" 
+            width="${TRICYCLE_ICON_SIZE - 8}" 
+            height="${TRICYCLE_ICON_SIZE - 8}"
+            preserveAspectRatio="xMidYMid meet"
+          />
         </g>
         
-        <style>
-          @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.1); opacity: 0.8; }
-            100% { transform: scale(1); opacity: 1; }
-          }
-        </style>
+        <!-- Pulsing GPS accuracy ring -->
+        <circle cx="${TRICYCLE_ICON_SIZE/2}" cy="${TRICYCLE_ICON_SIZE/2}" r="${TRICYCLE_ICON_SIZE/2 - 4}" fill="none" stroke="#22C55E" stroke-width="3" opacity="0.5">
+          <animate attributeName="r" values="${TRICYCLE_ICON_SIZE/2 - 8};${TRICYCLE_ICON_SIZE/2 - 2};${TRICYCLE_ICON_SIZE/2 - 8}" dur="2s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.6;0.2;0.6" dur="2s" repeatCount="indefinite"/>
+        </circle>
+        
+        <!-- Direction indicator arrow (points in direction of travel) -->
+        <polygon 
+          points="${arrowPoints}" 
+          fill="#22C55E" 
+          stroke="#16A34A" 
+          stroke-width="1"
+        />
       </svg>
-    </div>`,
+    </div>`;
+
+  return L.divIcon({
+    html: svgHtml,
     className: 'user-location-marker z-[1000]',
-    iconSize: [60, 60],
-    iconAnchor: [30, 30],
-    popupAnchor: [0, -30]
+    iconSize: [TRICYCLE_ICON_SIZE, TRICYCLE_ICON_SIZE],
+    iconAnchor: [TRICYCLE_ICON_SIZE/2, TRICYCLE_ICON_SIZE/2],
+    popupAnchor: [0, -TRICYCLE_ICON_SIZE/2]
   });
 };
 
-// Create a single instance of the tricycle icon for better performance
-export const tricycleIcon = createTricycleIcon();
+// Create a default tricycle icon (facing left) for initial display
+export const tricycleIcon = createTricycleIcon(270);

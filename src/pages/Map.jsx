@@ -13,7 +13,7 @@ import StatusButton from '../components/StatusButton';
 import { useAuth } from '../context/AuthContext';
 import { supabase, authService } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
-import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, getStopIcon, digitalBinMarkerIcon } from '../utils/markerIcons';
+import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, createTricycleIcon, calculateBearing, getStopIcon, digitalBinMarkerIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
 import { logger } from '../utils/logger';
 import { realtimeNotificationService } from '../services/realtimeNotificationService';
@@ -394,6 +394,8 @@ const MapPage = () => {
   const [userProfile, setUserProfile] = useState(null);
   
   const [position, setPosition] = useState(null); // Start with null, only set with REAL GPS location
+  const [currentHeading, setCurrentHeading] = useState(270); // Default to 270° (West/left) - tricycle faces left horizontally
+  const previousPositionRef = useRef(null); // Track previous position for heading calculation
   const [isUsingCachedLocation, setIsUsingCachedLocation] = useState(false); // Track if using cached location
   const [isWaitingForGPS, setIsWaitingForGPS] = useState(true); // Track if waiting for GPS
   const [error, setError] = useState(null);
@@ -506,6 +508,19 @@ const MapPage = () => {
           logger.debug('📍 GPS location updated (low accuracy):', newPos, `±${Math.round(accuracy)}m`);
         }
       }
+      
+      // Calculate heading from previous position for icon rotation
+      const prevPos = previousPositionRef.current;
+      if (prevPos) {
+        const movementDistance = calculateDistance(prevPos, newPos);
+        // Only update heading if moved at least 3 meters (0.003 km)
+        if (movementDistance >= 0.003) {
+          const newHeading = calculateBearing(prevPos[0], prevPos[1], newPos[0], newPos[1]);
+          setCurrentHeading(newHeading);
+          logger.debug(`🧭 Heading updated: ${newHeading.toFixed(1)}°`);
+        }
+      }
+      previousPositionRef.current = newPos;
       
       setPosition(newPos);
       savePositionToCache(newPos); // Cache for next time
@@ -1889,8 +1904,8 @@ const MapPage = () => {
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
                 
-                {/* User location marker */}
-                <Marker position={position} icon={tricycleIcon}>
+                {/* User location marker with heading-based rotation */}
+                <Marker position={position} icon={createTricycleIcon(currentHeading)}>
                   <Popup>
                     <div className="text-center">
                       <p className="font-medium text-blue-600">Your Location</p>
@@ -1913,6 +1928,7 @@ const MapPage = () => {
                       {hasGoodAccuracy && (
                         <p className="text-xs text-green-600">✅ Accuracy ≤50m achieved</p>
                       )}
+                      <p className="text-xs text-gray-500 mt-1">Heading: {currentHeading.toFixed(0)}°</p>
                     </div>
                   </Popup>
                 </Marker>
