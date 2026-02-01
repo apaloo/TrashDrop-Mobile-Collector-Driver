@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect } from 'react';
+import React, { Suspense, lazy, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -35,13 +35,14 @@ const RouteOptimizationPage = lazy(() => import('./pages/RouteOptimization'));
 // Clean up image resources when navigating away from request pages
 const RouteCleanup = () => {
   const location = useLocation();
+  const lastCleanedPath = useRef(null);
   
   useEffect(() => {
     // Clean up images when navigating away from request pages
-    if (!location.pathname.includes('/request/')) {
-      if (process.env.NODE_ENV === 'development') {
-        logger.debug('🚀 Navigating away from request page, cleaning up images');
-      }
+    // Only run once per path change, not on every render
+    if (!location.pathname.includes('/request/') && lastCleanedPath.current !== location.pathname) {
+      lastCleanedPath.current = location.pathname;
+      logger.debug('🚀 Navigating away from request page, cleaning up images');
       // Don't clear all images, just revoke blob URLs to free memory
       const photos = ImageManager.getAllCapturedPhotos();
       ImageManager.revokeBlobURLs(photos);

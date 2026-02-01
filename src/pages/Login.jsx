@@ -16,13 +16,8 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
-  // Redirect if already authenticated
-  useEffect(() => {
-    if (user) {
-      logger.debug('User already authenticated, redirecting to map');
-      navigate('/map');
-    }
-  }, [user, navigate]);
+  // NOTE: Redirect is handled by PublicRoute wrapper in App.jsx
+  // Removing duplicate redirect logic to prevent infinite loops
   
   // Send OTP to phone number
   const handleSendOtp = async (e) => {

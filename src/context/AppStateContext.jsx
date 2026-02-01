@@ -65,11 +65,15 @@ export const AppStateProvider = ({ children }) => {
   
   // CRITICAL: Get last route synchronously on first render (before any async operations)
   const initialRouteRef = useRef(getLastRouteSync());
+  const hasLoggedRouteRestoration = useRef(false);
   
-  // Log for debugging
-  if (initialRouteRef.current) {
-    logger.info('🔄 Found saved route for restoration:', initialRouteRef.current);
-  }
+  // Log for debugging - only once on mount
+  useEffect(() => {
+    if (initialRouteRef.current && !hasLoggedRouteRestoration.current) {
+      hasLoggedRouteRestoration.current = true;
+      logger.info('🔄 Found saved route for restoration:', initialRouteRef.current);
+    }
+  }, []);
 
   // App-wide state that needs persistence
   const [appState, setAppState] = useState({

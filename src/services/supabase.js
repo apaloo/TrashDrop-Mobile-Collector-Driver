@@ -176,7 +176,13 @@ export const authService = {
         .eq('user_id', userId)
         .single();
       
-      if (error) throw error;
+      if (error) {
+        // PGRST116 = no rows returned - this is expected for users who haven't completed signup
+        if (error.code === 'PGRST116') {
+          return { success: false, profile: null, error: 'Profile not found' };
+        }
+        throw error;
+      }
       return { success: true, profile: data };
     } catch (error) {
       logger.error('Error getting profile:', error);

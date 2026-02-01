@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import logo from '../assets/logo.svg';
 import { useAuth } from '../context/AuthContext';
@@ -15,9 +15,12 @@ export const TopNavBar = ({ user }) => {
   const navigate = useNavigate();
 
   // Fetch user profile to get first_name and last_name
+  const hasAttemptedFetch = useRef(false);
+  
   useEffect(() => {
     const fetchProfile = async () => {
-      if (!user?.id) return;
+      if (!user?.id || hasAttemptedFetch.current) return;
+      hasAttemptedFetch.current = true;
       
       try {
         const { success, profile } = await authService.getUserProfile(user.id);
@@ -27,8 +30,12 @@ export const TopNavBar = ({ user }) => {
             last_name: profile.last_name
           });
         }
+        // If no profile found (success=false), silently use defaults - user may not have completed signup
       } catch (err) {
-        logger.error('Failed to fetch user profile for NavBar:', err);
+        // Only log unexpected errors, not missing profile (PGRST116)
+        if (!err?.code?.includes('PGRST116')) {
+          logger.warn('Failed to fetch user profile for NavBar:', err);
+        }
       }
     };
     

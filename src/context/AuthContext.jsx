@@ -150,11 +150,21 @@ export const AuthProvider = ({ children }) => {
       async (_event, session) => {
         try {
           logger.debug('Auth state changed:', _event, session ? 'session exists' : 'no session');
+          
+          // CRITICAL: Respect the user_logged_out flag to prevent infinite loops
+          // If user explicitly logged out, don't auto-login even if Supabase has a session
+          const isLoggedOut = localStorage.getItem('user_logged_out') === 'true';
+          if (isLoggedOut && session?.user) {
+            logger.debug('🚫 Ignoring auth state change - user has explicitly logged out');
+            return; // Don't update state, keep user logged out
+          }
+          
           const user = session?.user || null;
           
           if (user) {
             logger.debug('User authenticated:', user.id);
             setUser(user);
+            setHasLoggedOut(false); // Clear logout flag when legitimately signing in
           } else {
             logger.debug('No session found, clearing user state');
             setUser(null);
