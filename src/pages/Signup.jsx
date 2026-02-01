@@ -297,19 +297,19 @@ const SignupPage = () => {
       case 1:
         return (
           <>
-            <h2 className="text-xl font-bold mb-4">Create Account</h2>
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">Phone Number</label>
+            <h2 className="text-2xl font-bold mb-6 text-white">Create Account</h2>
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">📱 Phone Number</label>
               <input
                 type="tel"
                 name="phone"
                 placeholder="e.g., +233501234567"
                 value={formData.phone}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-4 text-lg border-2 border-gray-600 rounded-lg bg-gray-800 text-white placeholder-gray-400 focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none"
                 required
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-sm text-gray-400 mt-2">
                 We'll send a verification code to this number
               </p>
             </div>
@@ -328,22 +328,22 @@ const SignupPage = () => {
       case 2:
         return (
           <>
-            <h2 className="text-xl font-bold mb-4">Verify Your Number</h2>
-            <p className="mb-4 text-sm text-gray-600 dark:text-gray-300">
-              We've sent a one-time password to {formData.phone}
+            <h2 className="text-2xl font-bold mb-4 text-white">Verify Your Number</h2>
+            <p className="mb-5 text-base text-gray-300">
+              We've sent a one-time password to <span className="font-bold text-primary">{formData.phone}</span>
             </p>
             
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">
-                One-Time Password
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">
+                🔐 One-Time Password
               </label>
               <input
                 type="text"
                 name="otp"
-                placeholder="6-digit code"
+                placeholder="Enter 6-digit code"
                 value={formData.otp}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-md text-center tracking-widest"
+                className="w-full px-4 py-4 text-2xl border-2 border-gray-600 rounded-lg bg-gray-800 text-white text-center tracking-[0.5em] placeholder-gray-400 focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none"
                 maxLength={6}
                 required
               />
@@ -384,18 +384,18 @@ const SignupPage = () => {
       case 3:
         return (
           <>
-            <h2 className="text-xl font-bold mb-4">ID Verification</h2>
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+            <h2 className="text-2xl font-bold mb-4 text-white">ID Verification</h2>
+            <p className="text-base text-gray-300 mb-5">
               📸 Use your camera to capture clear photos of your ID
             </p>
             
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">ID Type</label>
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">🪪 ID Type</label>
               <select
                 name="id_type"
                 value={formData.id_type}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-4 text-lg border-2 border-gray-600 rounded-lg bg-gray-800 text-white focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none"
                 required
               >
                 <option value="Ghana Card">Ghana Card</option>
@@ -406,8 +406,8 @@ const SignupPage = () => {
             </div>
             
             {/* ID Front Photo */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">Front View of ID Card</label>
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">📷 Front View of ID Card</label>
               <input
                 type="file"
                 accept="image/*"
@@ -421,14 +421,14 @@ const SignupPage = () => {
                 <button
                   type="button"
                   onClick={() => document.getElementById('id-front-camera').click()}
-                  className="w-full py-12 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary transition-colors bg-gray-50 hover:bg-gray-100 flex flex-col items-center justify-center"
+                  className="w-full py-12 border-2 border-dashed border-gray-500 rounded-lg hover:border-primary transition-colors bg-gray-800 hover:bg-gray-700 flex flex-col items-center justify-center"
                 >
-                  <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-16 h-16 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  <span className="text-gray-600 font-medium">Capture ID Front</span>
-                  <span className="text-xs text-gray-500 mt-1">Tap to open camera</span>
+                  <span className="text-white font-bold text-lg">Capture ID Front</span>
+                  <span className="text-sm text-gray-400 mt-1">Tap to open camera</span>
                 </button>
               ) : (
                 <div className="relative">
@@ -464,8 +464,8 @@ const SignupPage = () => {
             </div>
             
             {/* ID Back Photo */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">Back View of ID Card</label>
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">📷 Back View of ID Card</label>
               <input
                 type="file"
                 accept="image/*"
@@ -479,14 +479,14 @@ const SignupPage = () => {
                 <button
                   type="button"
                   onClick={() => document.getElementById('id-back-camera').click()}
-                  className="w-full py-12 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary transition-colors bg-gray-50 hover:bg-gray-100 flex flex-col items-center justify-center"
+                  className="w-full py-12 border-2 border-dashed border-gray-500 rounded-lg hover:border-primary transition-colors bg-gray-800 hover:bg-gray-700 flex flex-col items-center justify-center"
                 >
-                  <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-16 h-16 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  <span className="text-gray-600 font-medium">Capture ID Back</span>
-                  <span className="text-xs text-gray-500 mt-1">Tap to open camera</span>
+                  <span className="text-white font-bold text-lg">Capture ID Back</span>
+                  <span className="text-sm text-gray-400 mt-1">Tap to open camera</span>
                 </button>
               ) : (
                 <div className="relative">
@@ -544,42 +544,44 @@ const SignupPage = () => {
       case 4:
         return (
           <>
-            <h2 className="text-xl font-bold mb-4">Personal Information</h2>
+            <h2 className="text-2xl font-bold mb-6 text-white">Personal Information</h2>
             
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">First Name</label>
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">👤 First Name</label>
               <input
                 type="text"
                 name="first_name"
                 value={formData.first_name}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-4 text-lg border-2 border-gray-600 rounded-lg bg-gray-800 text-white placeholder-gray-400 focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none"
+                placeholder="Enter your first name"
                 required
               />
             </div>
             
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">Last Name</label>
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">👤 Last Name</label>
               <input
                 type="text"
                 name="last_name"
                 value={formData.last_name}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-4 text-lg border-2 border-gray-600 rounded-lg bg-gray-800 text-white placeholder-gray-400 focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none"
+                placeholder="Enter your last name"
                 required
               />
             </div>
             
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">Region</label>
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">📍 Region</label>
               <select
                 name="region"
                 value={formData.region}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-4 text-lg border-2 border-gray-600 rounded-lg bg-gray-800 text-white focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none"
                 required
               >
-                <option value="">Select Region</option>
+                <option value="">Select Your Region</option>
                 <option value="Greater Accra">Greater Accra</option>
                 <option value="Ashanti">Ashanti</option>
                 <option value="Western">Western</option>
@@ -612,15 +614,15 @@ const SignupPage = () => {
       case 5:
         return (
           <>
-            <h2 className="text-xl font-bold mb-4">Vehicle Information</h2>
+            <h2 className="text-2xl font-bold mb-6 text-white">Vehicle Information</h2>
             
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">Vehicle Type</label>
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">🚚 Vehicle Type</label>
               <select
                 name="vehicle_type"
                 value={formData.vehicle_type}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-4 text-lg border-2 border-gray-600 rounded-lg bg-gray-800 text-white focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none"
                 required
               >
                 <option value="motorcycle">Motorcycle</option>
@@ -632,34 +634,35 @@ const SignupPage = () => {
               </select>
             </div>
             
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">License Plate</label>
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">🎫 License Plate</label>
               <input
                 type="text"
                 name="license_plate"
                 value={formData.license_plate}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-4 text-lg border-2 border-gray-600 rounded-lg bg-gray-800 text-white placeholder-gray-400 focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none"
                 placeholder="e.g., GR-123-20"
                 required
               />
             </div>
             
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">Vehicle Color</label>
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">🎨 Vehicle Color</label>
               <input
                 type="text"
                 name="vehicle_color"
                 value={formData.vehicle_color}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-4 text-lg border-2 border-gray-600 rounded-lg bg-gray-800 text-white placeholder-gray-400 focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none"
+                placeholder="e.g., Blue, Red, Black"
                 required
               />
             </div>
             
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">Vehicle Photo</label>
-              <p className="text-xs text-gray-500 mb-2">
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">📷 Vehicle Photo</label>
+              <p className="text-sm text-gray-400 mb-3">
                 📸 Use your camera to capture a clear photo of your vehicle
               </p>
               <input
@@ -675,21 +678,21 @@ const SignupPage = () => {
                 <button
                   type="button"
                   onClick={() => document.getElementById('vehicle-camera').click()}
-                  className="w-full py-12 border-2 border-dashed border-gray-300 rounded-lg hover:border-primary transition-colors bg-gray-50 hover:bg-gray-100 flex flex-col items-center justify-center"
+                  className="w-full py-12 border-2 border-dashed border-gray-500 rounded-lg hover:border-primary transition-colors bg-gray-800 hover:bg-gray-700 flex flex-col items-center justify-center"
                 >
-                  <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-16 h-16 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  <span className="text-gray-600 font-medium">Capture Vehicle Photo</span>
-                  <span className="text-xs text-gray-500 mt-1">Tap to open camera</span>
+                  <span className="text-white font-bold text-lg">Capture Vehicle Photo</span>
+                  <span className="text-sm text-gray-400 mt-1">Tap to open camera</span>
                 </button>
               ) : (
                 <div className="relative">
                   <img 
                     src={previewUrls.vehicle} 
                     alt="Vehicle" 
-                    className="w-full h-48 object-cover rounded-md border"
+                    className="w-full h-48 object-cover rounded-md border-2 border-gray-600"
                   />
                   <button
                     type="button"
@@ -740,42 +743,44 @@ const SignupPage = () => {
       case 6:
         return (
           <>
-            <h2 className="text-xl font-bold mb-4">Company Information</h2>
+            <h2 className="text-2xl font-bold mb-6 text-white">Company Information</h2>
             
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">Company ID</label>
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">🏢 Company ID</label>
               <input
                 type="text"
                 name="company_id"
                 value={formData.company_id}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-4 text-lg border-2 border-gray-600 rounded-lg bg-gray-800 text-white placeholder-gray-400 focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none"
+                placeholder="Enter your company ID"
                 required
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-sm text-gray-400 mt-2">
                 Enter the ID provided by your company
               </p>
             </div>
             
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">Company Name</label>
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">🏢 Company Name</label>
               <input
                 type="text"
                 name="company_name"
                 value={formData.company_name}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-4 text-lg border-2 border-gray-600 rounded-lg bg-gray-800 text-white placeholder-gray-400 focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none"
+                placeholder="Enter company name"
                 required
               />
             </div>
             
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">Role</label>
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">👷 Your Role</label>
               <select
                 name="role"
                 value={formData.role}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-4 text-lg border-2 border-gray-600 rounded-lg bg-gray-800 text-white focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none"
                 required
               >
                 <option value="driver">Driver</option>
@@ -814,11 +819,12 @@ const SignupPage = () => {
       <div className="w-full max-w-md">
         {/* Logo and App Name */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-20 h-20 bg-primary rounded-lg flex items-center justify-center mb-2">
-            <span className="text-white text-3xl font-bold">TD</span>
-          </div>
-          <h1 className="text-2xl font-bold">TrashDrop</h1>
-          <p className="text-gray-500">Mobile Collector Driver</p>
+          <img 
+            src="/icons/logo-08.png" 
+            alt="TrashDrop Logo" 
+            className="w-32 h-32 object-contain mb-2"
+          />
+          <p className="text-gray-400 text-lg">TrashDrop Carter Registration</p>
         </div>
         
         {/* Step Indicator */}
