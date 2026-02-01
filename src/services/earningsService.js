@@ -957,6 +957,13 @@ class EarningsService {
       }
 
       if (!validation.valid) {
+        // Provide clear feedback about why withdrawal failed
+        const available = validation.available || 0;
+        if (available === 0) {
+          throw new Error('No funds available for withdrawal. You must dispose your collected waste at a facility before you can withdraw earnings.');
+        } else if (amount > available) {
+          throw new Error(`Insufficient balance. Available: ₵${available.toFixed(2)}. Only disposed bins can be withdrawn - dispose your pending collections first.`);
+        }
         throw new Error(validation.error || 'Insufficient balance');
       }
 

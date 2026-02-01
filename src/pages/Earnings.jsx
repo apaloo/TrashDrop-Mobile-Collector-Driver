@@ -7,9 +7,10 @@ import { authService } from '../services/supabase';
 import { logger } from '../utils/logger';
 
 // Cash Out Modal Component
-const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, onWithdrawalSuccess }) => {
-  // Use net payout (after commission deduction) if available, otherwise fall back to total earnings
-  const withdrawableAmount = availableForWithdrawal ?? totalEarnings;
+const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, pendingDisposalAmount = 0, onWithdrawalSuccess }) => {
+  // Available for withdrawal is only from disposed bins
+  const withdrawableAmount = availableForWithdrawal ?? 0;
+  const hasPendingEarnings = pendingDisposalAmount > 0;
   const [amount, setAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('momo');
   const [momoNumber, setMomoNumber] = useState('');
@@ -129,7 +130,20 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
                     required
                   />
                 </div>
-                <p className="text-sm text-green-600 font-semibold mt-1">Available: ₵{withdrawableAmount.toFixed(2)}</p>
+                {withdrawableAmount > 0 ? (
+                  <p className="text-sm text-green-600 font-semibold mt-1">Available for withdrawal: ₵{withdrawableAmount.toFixed(2)}</p>
+                ) : (
+                  <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-700 font-medium">
+                      ⚠️ No funds available for withdrawal
+                    </p>
+                    {hasPendingEarnings && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        You have ₵{pendingDisposalAmount.toFixed(2)} pending disposal. Dispose your collected waste at a facility to unlock these funds.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
               
               <div className="mb-4">
@@ -581,7 +595,8 @@ const EarningsPage = () => {
           isOpen={showCashOutModal} 
           onClose={() => setShowCashOutModal(false)} 
           totalEarnings={totalEarnings}
-          availableForWithdrawal={stats.paymentModeBreakdown?.reconciliation?.netPayoutToCollector ?? totalEarnings}
+          availableForWithdrawal={disposedEarnings}
+          pendingDisposalAmount={pendingDisposalEarnings}
           onWithdrawalSuccess={handleWithdrawalSuccess}
         />
         
@@ -608,18 +623,22 @@ const EarningsPage = () => {
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
               <div className="flex items-center mb-1">
                 <span className="text-amber-600 mr-2">🚚</span>
-                <p className="text-amber-700 text-sm font-medium">Pending Disposal</p>
+                <p className="text-amber-700 text-sm font-bold">Pending Disposal</p>
               </div>
               <p className="text-xl font-bold text-amber-600">₵{pendingDisposalEarnings.toFixed(2)}</p>
               <p className="text-xs text-amber-600">{stats.pendingDisposalJobs || 0} jobs awaiting disposal</p>
+              <p className="text-xs text-amber-500 mt-1 italic">Dispose to unlock funds</p>
             </div>
             <div className="bg-green-50 border border-green-200 rounded-lg p-3">
               <div className="flex items-center mb-1">
-                <span className="text-green-600 mr-2">✅</span>
-                <p className="text-green-700 text-sm font-medium">Disposed</p>
+                <span className="text-green-600 mr-2">💰</span>
+                <p className="text-green-700 text-sm font-bold">Available for Withdrawal</p>
               </div>
               <p className="text-xl font-bold text-green-600">₵{disposedEarnings.toFixed(2)}</p>
-              <p className="text-xs text-green-600">{stats.disposedJobs || 0} jobs completed</p>
+              <p className="text-xs text-green-600">{stats.disposedJobs || 0} jobs disposed</p>
+              {disposedEarnings > 0 && (
+                <p className="text-xs text-green-500 mt-1 italic">Ready to cash out!</p>
+              )}
             </div>
           </div>
         </div>
