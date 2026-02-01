@@ -150,51 +150,102 @@ export const calculateBearing = (lat1, lng1, lat2, lng2) => {
   return (bearing + 360) % 360; // Normalize to 0-360
 };
 
-// 3D Tricycle image URL - uses the high-quality 3D rendered tricycle image
-const TRICYCLE_IMAGE_URL = '/icons/tricycle-3d.png';
+// 3D Tricycle image URLs - dual images for horizontal and vertical movement
+const TRICYCLE_HORIZONTAL_URL = '/icons/tricycle-3d.png';    // Side view, faces LEFT by default
+const TRICYCLE_VERTICAL_URL = '/icons/tricycle-3d-2.png';    // Top-down view, faces UP by default
 
 // Icon size for accessibility (larger for vision impaired users)
-const TRICYCLE_ICON_SIZE = 100; // Increased for better visibility
+const TRICYCLE_ICON_SIZE = 130; // Increased for better visibility and easy tracking
 
-// Preload the tricycle image for faster rendering
-const preloadTricycleImage = () => {
-  const img = new Image();
-  img.src = TRICYCLE_IMAGE_URL;
+// Preload both tricycle images for faster rendering
+const preloadTricycleImages = () => {
+  const imgH = new Image();
+  imgH.src = TRICYCLE_HORIZONTAL_URL;
+  const imgV = new Image();
+  imgV.src = TRICYCLE_VERTICAL_URL;
 };
-preloadTricycleImage();
+preloadTricycleImages();
 
-// Cache for tricycle icons - only two directions needed (left/right)
+// Determine which image and flip to use based on heading
+// Returns: { isVertical: boolean, shouldFlip: boolean, direction: string }
+const getImageOrientation = (heading) => {
+  // Normalize heading to 0-360
+  const h = ((heading % 360) + 360) % 360;
+  
+  // Quadrant logic:
+  // 315-45° (East-ish): Horizontal image, flip to face RIGHT
+  // 45-135° (South-ish): Vertical image, flip to face DOWN
+  // 135-225° (West-ish): Horizontal image, no flip (faces LEFT)
+  // 225-315° (North-ish): Vertical image, no flip (faces UP)
+  
+  if (h >= 315 || h < 45) {
+    return { isVertical: false, shouldFlip: true, direction: 'right' };
+  } else if (h >= 45 && h < 135) {
+    return { isVertical: true, shouldFlip: true, direction: 'down' };
+  } else if (h >= 135 && h < 225) {
+    return { isVertical: false, shouldFlip: false, direction: 'left' };
+  } else {
+    return { isVertical: true, shouldFlip: false, direction: 'up' };
+  }
+};
+
+// Cache for tricycle icons - 4 directions needed (left/right/up/down)
 const tricycleIconCache = {
   left: null,
-  right: null
+  right: null,
+  up: null,
+  down: null
 };
 
 // Function to create a 3D tricycle icon for user location with heading rotation
-// Uses the actual 3D rendered tricycle image with rotation support
-// OPTIMIZED: Returns cached icon for left/right direction to avoid recreating on every render
+// Uses dual-image system: horizontal image for East/West, vertical image for North/South
+// OPTIMIZED: Returns cached icon for each of 4 directions to avoid recreating on every render
 export const createTricycleIcon = (heading = 0) => {
-  // Determine direction - only left or right
-  const direction = (heading >= 0 && heading < 180) ? 'right' : 'left';
+  // Determine direction and image orientation
+  const { isVertical, shouldFlip, direction } = getImageOrientation(heading);
   
   // Return cached icon if available
   if (tricycleIconCache[direction]) {
     return tricycleIconCache[direction];
   }
-  // The tricycle image faces LEFT by default
-  // User requirement: tricycle should ONLY face LEFT or RIGHT (horizontal)
-  // If heading is 0-180° (eastward/right direction) → face RIGHT (horizontal flip)
-  // If heading is 180-360° (westward/left direction) → face LEFT (no flip)
-  const shouldFaceRight = heading >= 0 && heading < 180;
   
-  // For horizontal flip in SVG: translate to right edge, then scale(-1, 1)
-  const flipTransform = shouldFaceRight 
-    ? `translate(${TRICYCLE_ICON_SIZE}, 0) scale(-1, 1)` 
-    : '';
+  // Select appropriate image URL
+  const imageUrl = isVertical ? TRICYCLE_VERTICAL_URL : TRICYCLE_HORIZONTAL_URL;
   
-  // Direction arrow points right when facing right, left when facing left
-  const arrowPoints = shouldFaceRight
-    ? `${TRICYCLE_ICON_SIZE - 2},${TRICYCLE_ICON_SIZE/2} ${TRICYCLE_ICON_SIZE - 12},${TRICYCLE_ICON_SIZE/2 - 6} ${TRICYCLE_ICON_SIZE - 8},${TRICYCLE_ICON_SIZE/2} ${TRICYCLE_ICON_SIZE - 12},${TRICYCLE_ICON_SIZE/2 + 6}`
-    : `2,${TRICYCLE_ICON_SIZE/2} 12,${TRICYCLE_ICON_SIZE/2 - 6} 8,${TRICYCLE_ICON_SIZE/2} 12,${TRICYCLE_ICON_SIZE/2 + 6}`;
+  // Calculate flip transform based on direction
+  let flipTransform = '';
+  if (shouldFlip) {
+    if (isVertical) {
+      // Vertical flip (for facing down instead of up)
+      flipTransform = `translate(0, ${TRICYCLE_ICON_SIZE}) scale(1, -1)`;
+    } else {
+      // Horizontal flip (for facing right instead of left)
+      flipTransform = `translate(${TRICYCLE_ICON_SIZE}, 0) scale(-1, 1)`;
+    }
+  }
+  
+  // Direction arrow points in 4 directions
+  const size = TRICYCLE_ICON_SIZE;
+  const half = size / 2;
+  let arrowPoints;
+  
+  if (isVertical) {
+    if (shouldFlip) {
+      // Down arrow (South)
+      arrowPoints = `${half},${size - 2} ${half - 6},${size - 12} ${half},${size - 8} ${half + 6},${size - 12}`;
+    } else {
+      // Up arrow (North)
+      arrowPoints = `${half},2 ${half - 6},12 ${half},8 ${half + 6},12`;
+    }
+  } else {
+    if (shouldFlip) {
+      // Right arrow (East)
+      arrowPoints = `${size - 2},${half} ${size - 12},${half - 6} ${size - 8},${half} ${size - 12},${half + 6}`;
+    } else {
+      // Left arrow (West)
+      arrowPoints = `2,${half} 12,${half - 6} 8,${half} 12,${half + 6}`;
+    }
+  }
   
   const svgHtml = `
     <div style="position: relative; width: ${TRICYCLE_ICON_SIZE}px; height: ${TRICYCLE_ICON_SIZE}px;">
@@ -206,11 +257,11 @@ export const createTricycleIcon = (heading = 0) => {
           </filter>
         </defs>
         
-        <!-- Flip wrapper - flips tricycle horizontally when facing right -->
+        <!-- Flip wrapper - transforms tricycle based on direction -->
         <g transform="${flipTransform}" filter="url(#tricycleShadowLeaflet)">
           <!-- 3D Tricycle Image -->
           <image 
-            href="${TRICYCLE_IMAGE_URL}" 
+            href="${imageUrl}" 
             x="4" 
             y="4" 
             width="${TRICYCLE_ICON_SIZE - 8}" 
@@ -225,7 +276,7 @@ export const createTricycleIcon = (heading = 0) => {
           <animate attributeName="opacity" values="0.6;0.2;0.6" dur="2s" repeatCount="indefinite"/>
         </circle>
         
-        <!-- Direction indicator arrow (points in direction of travel) -->
+        <!-- Direction indicator arrow (4 directions) -->
         <polygon 
           points="${arrowPoints}" 
           fill="#22C55E" 

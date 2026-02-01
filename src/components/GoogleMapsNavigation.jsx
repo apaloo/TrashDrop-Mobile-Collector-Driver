@@ -29,52 +29,105 @@ const calculateBearing = (lat1, lng1, lat2, lng2) => {
   return (bearing + 360) % 360; // Normalize to 0-360
 };
 
-// 3D Tricycle image URL - uses the high-quality 3D rendered tricycle image
-const TRICYCLE_IMAGE_URL = '/icons/tricycle-3d.png';
+// 3D Tricycle image URLs - dual images for horizontal and vertical movement
+const TRICYCLE_HORIZONTAL_URL = '/icons/tricycle-3d.png';    // Side view, faces LEFT by default
+const TRICYCLE_VERTICAL_URL = '/icons/tricycle-3d-2.png';    // Top-down view, faces UP by default
 
 // Icon size for accessibility (larger for vision impaired users)
-const TRICYCLE_ICON_SIZE = 100; // Increased for better visibility
+const TRICYCLE_ICON_SIZE = 130; // Increased for better visibility and easy tracking
 
-// Cache for the loaded tricycle image
-let tricycleImageCache = null;
-let tricycleImageLoading = false;
+// Cache for the loaded tricycle images (horizontal and vertical)
+let tricycleHorizontalCache = null;
+let tricycleVerticalCache = null;
+let tricycleImagesLoading = false;
 const rotatedImageCache = new Map(); // Cache rotated images by heading
 
-// Load the tricycle image and cache it
-const loadTricycleImage = () => {
+// Determine which image and flip to use based on heading
+// Returns: { isVertical: boolean, shouldFlip: boolean }
+const getImageOrientation = (heading) => {
+  // Normalize heading to 0-360
+  const h = ((heading % 360) + 360) % 360;
+  
+  // Quadrant logic:
+  // 315-45° (East-ish): Horizontal image, flip to face RIGHT
+  // 45-135° (South-ish): Vertical image, flip to face DOWN
+  // 135-225° (West-ish): Horizontal image, no flip (faces LEFT)
+  // 225-315° (North-ish): Vertical image, no flip (faces UP)
+  
+  if (h >= 315 || h < 45) {
+    // East - use horizontal, flip to face right
+    return { isVertical: false, shouldFlip: true };
+  } else if (h >= 45 && h < 135) {
+    // South - use vertical, flip to face down
+    return { isVertical: true, shouldFlip: true };
+  } else if (h >= 135 && h < 225) {
+    // West - use horizontal, no flip (already faces left)
+    return { isVertical: false, shouldFlip: false };
+  } else {
+    // North (225-315) - use vertical, no flip (already faces up)
+    return { isVertical: true, shouldFlip: false };
+  }
+};
+
+// Load both tricycle images and cache them
+const loadTricycleImages = () => {
   return new Promise((resolve, reject) => {
-    if (tricycleImageCache) {
-      resolve(tricycleImageCache);
+    if (tricycleHorizontalCache && tricycleVerticalCache) {
+      resolve({ horizontal: tricycleHorizontalCache, vertical: tricycleVerticalCache });
       return;
     }
-    if (tricycleImageLoading) {
+    if (tricycleImagesLoading) {
       // Wait for existing load to complete
       const checkInterval = setInterval(() => {
-        if (tricycleImageCache) {
+        if (tricycleHorizontalCache && tricycleVerticalCache) {
           clearInterval(checkInterval);
-          resolve(tricycleImageCache);
+          resolve({ horizontal: tricycleHorizontalCache, vertical: tricycleVerticalCache });
         }
       }, 50);
       return;
     }
-    tricycleImageLoading = true;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      tricycleImageCache = img;
-      tricycleImageLoading = false;
-      resolve(img);
+    tricycleImagesLoading = true;
+    
+    let loadedCount = 0;
+    const checkComplete = () => {
+      loadedCount++;
+      if (loadedCount === 2) {
+        tricycleImagesLoading = false;
+        resolve({ horizontal: tricycleHorizontalCache, vertical: tricycleVerticalCache });
+      }
     };
-    img.onerror = (err) => {
-      tricycleImageLoading = false;
+    
+    // Load horizontal image
+    const imgH = new Image();
+    imgH.crossOrigin = 'anonymous';
+    imgH.onload = () => {
+      tricycleHorizontalCache = imgH;
+      checkComplete();
+    };
+    imgH.onerror = (err) => {
+      tricycleImagesLoading = false;
       reject(err);
     };
-    img.src = TRICYCLE_IMAGE_URL;
+    imgH.src = TRICYCLE_HORIZONTAL_URL;
+    
+    // Load vertical image
+    const imgV = new Image();
+    imgV.crossOrigin = 'anonymous';
+    imgV.onload = () => {
+      tricycleVerticalCache = imgV;
+      checkComplete();
+    };
+    imgV.onerror = (err) => {
+      tricycleImagesLoading = false;
+      reject(err);
+    };
+    imgV.src = TRICYCLE_VERTICAL_URL;
   });
 };
 
 // Create rotated tricycle icon using canvas (for Google Maps)
 // Returns a data URL of the rotated image
+// Uses dual-image system: horizontal image for East/West, vertical image for North/South
 const createRotatedTricycleUrl = async (heading = 270) => {
   // Round heading to nearest 5 degrees for caching
   const roundedHeading = Math.round(heading / 5) * 5;
@@ -85,34 +138,38 @@ const createRotatedTricycleUrl = async (heading = 270) => {
   }
   
   try {
-    const img = await loadTricycleImage();
+    const images = await loadTricycleImages();
+    const { isVertical, shouldFlip } = getImageOrientation(heading);
     
-    // Create canvas for rotation
+    // Select the appropriate image
+    const img = isVertical ? images.vertical : images.horizontal;
+    
+    // Create canvas for rendering
     const canvas = document.createElement('canvas');
     canvas.width = TRICYCLE_ICON_SIZE;
     canvas.height = TRICYCLE_ICON_SIZE;
     const ctx = canvas.getContext('2d');
     
-    // The tricycle image faces LEFT by default
-    // User requirement: tricycle should ONLY face LEFT or RIGHT (horizontal)
-    // If heading is 0-180° (eastward/right direction) → face RIGHT (horizontal flip)
-    // If heading is 180-360° (westward/left direction) → face LEFT (no flip)
-    const shouldFaceRight = heading >= 0 && heading < 180;
-    
-    // Clear and set up canvas
+    // Clear canvas
     ctx.clearRect(0, 0, TRICYCLE_ICON_SIZE, TRICYCLE_ICON_SIZE);
     
-    // Draw the image with optional horizontal flip
+    // Draw the image with optional flip
     ctx.save();
     
     const imgSize = TRICYCLE_ICON_SIZE - 8;
     const imgX = 4;
     const imgY = 4;
     
-    if (shouldFaceRight) {
-      // Flip horizontally to face right
-      ctx.translate(TRICYCLE_ICON_SIZE, 0);
-      ctx.scale(-1, 1);
+    if (shouldFlip) {
+      if (isVertical) {
+        // Vertical flip (for facing down instead of up)
+        ctx.translate(0, TRICYCLE_ICON_SIZE);
+        ctx.scale(1, -1);
+      } else {
+        // Horizontal flip (for facing right instead of left)
+        ctx.translate(TRICYCLE_ICON_SIZE, 0);
+        ctx.scale(-1, 1);
+      }
     }
     
     ctx.drawImage(img, imgX, imgY, imgSize, imgSize);
@@ -127,8 +184,8 @@ const createRotatedTricycleUrl = async (heading = 270) => {
     return dataUrl;
   } catch (error) {
     console.error('Failed to create rotated tricycle icon:', error);
-    // Return fallback - just the original image URL
-    return TRICYCLE_IMAGE_URL;
+    // Return fallback - horizontal image URL
+    return TRICYCLE_HORIZONTAL_URL;
   }
 };
 
@@ -147,13 +204,31 @@ const createTricycleSvgUrl = (heading = 270) => {
   createRotatedTricycleUrl(heading);
   
   // Return a simple direction arrow SVG as placeholder while image loads
-  // Same logic as canvas: only LEFT or RIGHT facing
-  const shouldFaceRight = heading >= 0 && heading < 180;
+  // Uses same quadrant logic as canvas for 4-directional arrows
+  const { isVertical, shouldFlip } = getImageOrientation(heading);
   
-  // Arrow points horizontally (right or left)
-  const arrowPoints = shouldFaceRight
-    ? `${TRICYCLE_ICON_SIZE - 2},${TRICYCLE_ICON_SIZE/2} ${TRICYCLE_ICON_SIZE - 14},${TRICYCLE_ICON_SIZE/2 - 8} ${TRICYCLE_ICON_SIZE - 10},${TRICYCLE_ICON_SIZE/2} ${TRICYCLE_ICON_SIZE - 14},${TRICYCLE_ICON_SIZE/2 + 8}`
-    : `2,${TRICYCLE_ICON_SIZE/2} 14,${TRICYCLE_ICON_SIZE/2 - 8} 10,${TRICYCLE_ICON_SIZE/2} 14,${TRICYCLE_ICON_SIZE/2 + 8}`;
+  // Arrow points in the direction of travel (4 directions)
+  let arrowPoints;
+  const size = TRICYCLE_ICON_SIZE;
+  const half = size / 2;
+  
+  if (isVertical) {
+    if (shouldFlip) {
+      // Down arrow (South)
+      arrowPoints = `${half},${size - 2} ${half - 8},${size - 14} ${half},${size - 10} ${half + 8},${size - 14}`;
+    } else {
+      // Up arrow (North)
+      arrowPoints = `${half},2 ${half - 8},14 ${half},10 ${half + 8},14`;
+    }
+  } else {
+    if (shouldFlip) {
+      // Right arrow (East)
+      arrowPoints = `${size - 2},${half} ${size - 14},${half - 8} ${size - 10},${half} ${size - 14},${half + 8}`;
+    } else {
+      // Left arrow (West)
+      arrowPoints = `2,${half} 14,${half - 8} 10,${half} 14,${half + 8}`;
+    }
+  }
   
   const svgTemplate = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${TRICYCLE_ICON_SIZE} ${TRICYCLE_ICON_SIZE}" width="${TRICYCLE_ICON_SIZE}" height="${TRICYCLE_ICON_SIZE}">
@@ -166,7 +241,7 @@ const createTricycleSvgUrl = (heading = 270) => {
       <!-- Blue location dot -->
       <circle cx="${TRICYCLE_ICON_SIZE/2}" cy="${TRICYCLE_ICON_SIZE/2}" r="12" fill="#3B82F6" stroke="#fff" stroke-width="3"/>
       
-      <!-- Direction indicator arrow (horizontal) -->
+      <!-- Direction indicator arrow (4 directions) -->
       <polygon 
         points="${arrowPoints}" 
         fill="#22C55E" 
@@ -314,6 +389,7 @@ const GoogleMapsNavigation = ({
   const directionsRendererRef = useRef(null);
   const userMarkerRef = useRef(null);
   const destMarkerRef = useRef(null);
+  const waypointMarkersRef = useRef([]); // Store waypoint markers
   
   // Store callbacks in refs to avoid infinite loops in useEffect
   const onMapReadyRef = useRef(onMapReady);
@@ -382,12 +458,12 @@ const GoogleMapsNavigation = ({
     });
   };
 
-  // Preload tricycle image on mount
+  // Preload tricycle images on mount (both horizontal and vertical)
   useEffect(() => {
-    loadTricycleImage().then(() => {
-      logger.debug('✅ Tricycle image preloaded');
+    loadTricycleImages().then(() => {
+      logger.debug('✅ Tricycle images preloaded (horizontal + vertical)');
     }).catch((err) => {
-      logger.warn('Failed to preload tricycle image:', err);
+      logger.warn('Failed to preload tricycle images:', err);
     });
   }, []);
 
@@ -553,6 +629,11 @@ const GoogleMapsNavigation = ({
       if (destMarkerRef.current) {
         destMarkerRef.current.setMap(null);
       }
+      // Clear existing waypoint markers
+      if (waypointMarkersRef.current && waypointMarkersRef.current.length > 0) {
+        waypointMarkersRef.current.forEach(marker => marker.setMap(null));
+        waypointMarkersRef.current = [];
+      }
 
       // Add destination marker (red pin)
       const destLat = Array.isArray(destination) ? destination[0] : destination.lat;
@@ -576,8 +657,8 @@ const GoogleMapsNavigation = ({
         title: 'Your Location',
         icon: {
           url: createTricycleSvgUrl(initialHeading), // Use calculated heading towards destination
-          scaledSize: new window.google.maps.Size(100, 100),
-          anchor: new window.google.maps.Point(50, 50),
+          scaledSize: new window.google.maps.Size(130, 130),
+          anchor: new window.google.maps.Point(65, 65),
         },
       });
       
@@ -586,8 +667,8 @@ const GoogleMapsNavigation = ({
         if (userMarkerRef.current) {
           userMarkerRef.current.setIcon({
             url: url,
-            scaledSize: new window.google.maps.Size(100, 100),
-            anchor: new window.google.maps.Point(50, 50),
+            scaledSize: new window.google.maps.Size(130, 130),
+            anchor: new window.google.maps.Point(65, 65),
           });
         }
       });
@@ -603,6 +684,32 @@ const GoogleMapsNavigation = ({
           anchor: new window.google.maps.Point(24, 64),
         },
       });
+      
+      // Add waypoint markers (intermediate stops along the route)
+      if (waypoints && waypoints.length > 0) {
+        logger.info(`📍 Adding ${waypoints.length} waypoint markers to map`);
+        waypointMarkersRef.current = waypoints.map((wp, index) => {
+          const wpLat = wp.lat;
+          const wpLng = wp.lng;
+          
+          return new window.google.maps.Marker({
+            position: { lat: wpLat, lng: wpLng },
+            map: map,
+            title: `Stop ${index + 1}`,
+            icon: {
+              url: createDustbinSvgUrl(wasteType, sourceType),
+              scaledSize: new window.google.maps.Size(48, 64),
+              anchor: new window.google.maps.Point(24, 64),
+            },
+            label: {
+              text: `${index + 1}`,
+              color: '#FFFFFF',
+              fontWeight: 'bold',
+              fontSize: '12px',
+            },
+          });
+        });
+      }
 
       // Initialize Directions Service and Renderer
       if (!directionsRendererRef.current) {
@@ -793,8 +900,8 @@ const GoogleMapsNavigation = ({
       if (userMarkerRef.current) {
         userMarkerRef.current.setIcon({
           url: url,
-          scaledSize: new window.google.maps.Size(100, 100),
-          anchor: new window.google.maps.Point(50, 50),
+          scaledSize: new window.google.maps.Size(130, 130),
+          anchor: new window.google.maps.Point(65, 65),
         });
       }
     });
@@ -864,8 +971,8 @@ const GoogleMapsNavigation = ({
             if (userMarkerRef.current) {
               userMarkerRef.current.setIcon({
                 url: url,
-                scaledSize: new window.google.maps.Size(100, 100),
-                anchor: new window.google.maps.Point(50, 50),
+                scaledSize: new window.google.maps.Size(130, 130),
+                anchor: new window.google.maps.Point(65, 65),
               });
             }
           });
@@ -995,6 +1102,11 @@ const GoogleMapsNavigation = ({
       }
       if (destMarkerRef.current) {
         destMarkerRef.current.setMap(null);
+      }
+      // Clean up waypoint markers
+      if (waypointMarkersRef.current && waypointMarkersRef.current.length > 0) {
+        waypointMarkersRef.current.forEach(marker => marker.setMap(null));
+        waypointMarkersRef.current = [];
       }
       if (directionsRendererRef.current) {
         directionsRendererRef.current.setMap(null);
