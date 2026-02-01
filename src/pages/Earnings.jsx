@@ -357,6 +357,7 @@ const EarningsPage = () => {
   const [fromCache, setFromCache] = useState(false);
   const [cacheAge, setCacheAge] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false); // Separate state for overlay loader
   
   // Monitor online/offline status
   useEffect(() => {
@@ -414,9 +415,27 @@ const EarningsPage = () => {
     ...stats 
   } = earningsState;
   
-  // Fix #7: Paginated transactions
-  const totalPages = Math.ceil(transactions.length / TRANSACTIONS_PER_PAGE);
-  const paginatedTransactions = transactions.slice(
+  // Fix: Filter transactions by period
+  const filteredTransactions = transactions.filter(transaction => {
+    if (!transaction.created_at && !transaction.date) return true; // Include transactions without date
+    const txDate = new Date(transaction.created_at || transaction.date);
+    const now = new Date();
+    
+    if (period === 'week') {
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return txDate >= weekAgo;
+    } else if (period === 'month') {
+      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return txDate >= monthAgo;
+    } else { // year
+      const yearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+      return txDate >= yearAgo;
+    }
+  });
+  
+  // Fix #7: Paginated transactions (now using filtered)
+  const totalPages = Math.ceil(filteredTransactions.length / TRANSACTIONS_PER_PAGE);
+  const paginatedTransactions = filteredTransactions.slice(
     (transactionPage - 1) * TRANSACTIONS_PER_PAGE,
     transactionPage * TRANSACTIONS_PER_PAGE
   );
@@ -424,7 +443,10 @@ const EarningsPage = () => {
   // Fetch earnings and stats with offline caching support
   const fetchEarningsData = async (forceRefresh = false) => {
     try {
-      setIsLoading(true);
+      // Only show full-page loader on initial load, not on refresh
+      if (!forceRefresh) {
+        setIsLoading(true);
+      }
       if (!user?.id) {
         throw new Error('User not authenticated');
       }
@@ -503,9 +525,14 @@ const EarningsPage = () => {
   };
   
   // Force refresh handler for pull-to-refresh or manual refresh
-  const handleForceRefresh = () => {
+  const handleForceRefresh = async () => {
     if (navigator.onLine) {
-      fetchEarningsData(true);
+      setIsRefreshing(true); // Use overlay loader instead of full page
+      try {
+        await fetchEarningsData(true);
+      } finally {
+        setIsRefreshing(false);
+      }
     } else {
       logger.warn('📴 Cannot refresh while offline');
     }
@@ -599,8 +626,8 @@ const EarningsPage = () => {
     }
   }, [period, user?.id]);
 
-  // Show loading state while checking auth or fetching data
-  if (!hasInitiallyChecked || isLoading) {
+  // Show loading state only during initial auth check or first data load
+  if (!hasInitiallyChecked || (isLoading && transactions.length === 0)) {
     return (
       <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="flex-grow mt-14 mb-16 flex items-center justify-center">
@@ -632,8 +659,18 @@ const EarningsPage = () => {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900 relative">
       <TopNavBar user={userProfile} />
+      
+      {/* Overlay loader for refresh - keeps content visible */}
+      {isRefreshing && (
+        <div className="fixed inset-0 bg-white/70 dark:bg-gray-900/70 z-50 flex items-center justify-center">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg flex flex-col items-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mb-3"></div>
+            <p className="text-gray-700 dark:text-gray-300 font-medium">Refreshing data...</p>
+          </div>
+        </div>
+      )}
       
       <div className="flex-grow mt-14 mb-16 flex flex-col">
         {/* Fixed Header Section */}
@@ -1041,14 +1078,14 @@ const EarningsPage = () => {
               <div className="card">
                 <p className="text-sm text-gray-500 mb-1">This {period.charAt(0).toUpperCase() + period.slice(1)}</p>
                 <p className="text-xl font-bold">
-                  ₵{period === 'week' ? weeklyEarnings.toFixed(2) : 
-                      period === 'month' ? monthlyEarnings.toFixed(2) : 
-                      stats.totalEarnings.toFixed(2)}
+                  ₵{period === 'week' ? (weeklyEarnings || 0).toFixed(2) : 
+                      period === 'month' ? (monthlyEarnings || 0).toFixed(2) : 
+                      (totalEarnings || 0).toFixed(2)}
                 </p>
               </div>
               <div className="card">
                 <p className="text-sm text-gray-500 mb-1">Avg. per Job</p>
-                <p className="text-xl font-bold">₵{stats.avgPerJob.toFixed(2)}</p>
+                <p className="text-xl font-bold">₵{(stats.avgPerJob || 0).toFixed(2)}</p>
               </div>
             </div>
             
@@ -1056,18 +1093,18 @@ const EarningsPage = () => {
               <h3 className="font-bold text-lg mb-2">Performance</h3>
               <div className="flex justify-between mb-2">
                 <span className="text-sm">Rating</span>
-                <span className="font-bold">{stats.rating.toFixed(1)}/5.0</span>
+                <span className="font-bold">{(stats.rating || 0).toFixed(1)}/5.0</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
-                <div className="bg-primary h-2.5 rounded-full" style={{ width: `${(stats.rating / 5) * 100}%` }}></div>
+                <div className="bg-primary h-2.5 rounded-full" style={{ width: `${((stats.rating || 0) / 5) * 100}%` }}></div>
               </div>
               
               <div className="flex justify-between mb-2">
                 <span className="text-sm">Completion Rate</span>
-                <span className="font-bold">{stats.completionRate}%</span>
+                <span className="font-bold">{stats.completionRate || 0}%</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2.5">
-                <div className="bg-primary h-2.5 rounded-full" style={{ width: `${stats.completionRate}%` }}></div>
+                <div className="bg-primary h-2.5 rounded-full" style={{ width: `${stats.completionRate || 0}%` }}></div>
               </div>
             </div>
           </div>
@@ -1081,8 +1118,10 @@ const EarningsPage = () => {
               {paginatedTransactions.map((transaction, index) => (
                 <TransactionItem key={transaction.id || index} transaction={transaction} />
               ))}
-              {transactions.length === 0 && (
-                <p className="text-gray-500 text-center py-4">No transactions yet</p>
+              {filteredTransactions.length === 0 && (
+                <p className="text-gray-500 text-center py-4">
+                  {transactions.length === 0 ? 'No transactions yet' : `No transactions this ${period}`}
+                </p>
               )}
             </div>
             
@@ -1097,7 +1136,7 @@ const EarningsPage = () => {
                   Previous
                 </button>
                 <span className="text-sm text-gray-600">
-                  Page {transactionPage} of {totalPages} ({transactions.length} total)
+                  Page {transactionPage} of {totalPages} ({filteredTransactions.length} in {period})
                 </span>
                 <button
                   onClick={() => setTransactionPage(p => Math.min(totalPages, p + 1))}

@@ -609,6 +609,7 @@ const GoogleMapsNavigation = ({
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
+          gestureHandling: 'greedy', // Allow single-finger zoom/pan for non-tech-savvy users
         });
 
         mapInstanceRef.current = map;
@@ -847,6 +848,35 @@ const GoogleMapsNavigation = ({
     }
   }, [isInitialized, userLocation, destination, waypoints, wasteType, sourceType]);
 
+  // Calculate heading towards next point on the route (route-aware heading)
+  const getRouteBasedHeading = (userLat, userLng) => {
+    // Priority 1: If we have navigation steps, point towards next step's start/end location
+    if (navigationSteps.length > 0 && currentStepIndex < navigationSteps.length) {
+      const currentStep = navigationSteps[currentStepIndex];
+      if (currentStep?.endLocation) {
+        const endLat = typeof currentStep.endLocation.lat === 'function' 
+          ? currentStep.endLocation.lat() 
+          : currentStep.endLocation.lat;
+        const endLng = typeof currentStep.endLocation.lng === 'function' 
+          ? currentStep.endLocation.lng() 
+          : currentStep.endLocation.lng;
+        
+        if (endLat && endLng) {
+          return calculateBearing(userLat, userLng, endLat, endLng);
+        }
+      }
+    }
+    
+    // Priority 2: Point towards destination
+    if (destination) {
+      const destLat = Array.isArray(destination) ? destination[0] : destination.lat;
+      const destLng = Array.isArray(destination) ? destination[1] : destination.lng;
+      return calculateBearing(userLat, userLng, destLat, destLng);
+    }
+    
+    return null; // No route info available
+  };
+
   // Real-time marker position update with heading-based rotation (separate from route calculation)
   useEffect(() => {
     if (!mapInstanceRef.current || !userMarkerRef.current || !userLocation) {
@@ -865,24 +895,35 @@ const GoogleMapsNavigation = ({
       }
     }
 
-    // Calculate heading/bearing from previous position to current position
-    const prevPos = previousPositionRef.current;
-    let newHeading = currentHeading; // Keep current heading if no movement
+    // Calculate heading - PREFER route direction over GPS movement
+    let newHeading = currentHeading;
     
-    if (prevPos) {
-      const distance = calculateGPSDistance(
-        prevPos.lat, prevPos.lng,
-        userLocation.lat, userLocation.lng
-      );
-      
-      // Only update heading if moved at least 3 meters (to avoid jitter from GPS noise)
-      if (distance >= 3) {
-        newHeading = calculateBearing(
+    // First, try to get route-based heading (direction towards next waypoint)
+    const routeHeading = getRouteBasedHeading(userLocation.lat, userLocation.lng);
+    
+    if (routeHeading !== null) {
+      // Use route-based heading - this makes tricycle face the direction of travel on the route
+      newHeading = routeHeading;
+      setCurrentHeading(newHeading);
+      logger.debug(`🧭 Route-based heading: ${newHeading.toFixed(1)}° (towards next waypoint)`);
+    } else {
+      // Fallback: Calculate heading from GPS movement (previous position to current)
+      const prevPos = previousPositionRef.current;
+      if (prevPos) {
+        const distance = calculateGPSDistance(
           prevPos.lat, prevPos.lng,
           userLocation.lat, userLocation.lng
         );
-        setCurrentHeading(newHeading);
-        logger.debug(`🧭 Heading updated: ${newHeading.toFixed(1)}°`);
+        
+        // Only update heading if moved at least 3 meters (to avoid jitter from GPS noise)
+        if (distance >= 3) {
+          newHeading = calculateBearing(
+            prevPos.lat, prevPos.lng,
+            userLocation.lat, userLocation.lng
+          );
+          setCurrentHeading(newHeading);
+          logger.debug(`🧭 GPS-based heading: ${newHeading.toFixed(1)}°`);
+        }
       }
     }
     
@@ -927,7 +968,7 @@ const GoogleMapsNavigation = ({
     }
 
     logger.debug(`📍 Marker updated to: ${userLocation.lat.toFixed(6)}, ${userLocation.lng.toFixed(6)} | Heading: ${newHeading.toFixed(1)}°`);
-  }, [userLocation, isFollowMode, currentHeading]);
+  }, [userLocation, isFollowMode, currentHeading, navigationSteps, currentStepIndex, destination]);
 
   // GPS tracking for auto-advance navigation
   useEffect(() => {
@@ -950,16 +991,24 @@ const GoogleMapsNavigation = ({
         
         setCurrentPosition({ lat: userLat, lng: userLng });
 
-        // Calculate heading from previous position for icon rotation
-        const prevPos = previousPositionRef.current;
+        // Calculate heading - PREFER route direction over GPS movement
         let heading = currentHeading;
         
-        if (prevPos) {
-          const movementDistance = calculateGPSDistance(prevPos.lat, prevPos.lng, userLat, userLng);
-          // Only update heading if moved at least 3 meters
-          if (movementDistance >= 3) {
-            heading = calculateBearing(prevPos.lat, prevPos.lng, userLat, userLng);
-            setCurrentHeading(heading);
+        // First, try route-based heading (direction towards next waypoint on route)
+        const routeHeading = getRouteBasedHeading(userLat, userLng);
+        
+        if (routeHeading !== null) {
+          heading = routeHeading;
+          setCurrentHeading(heading);
+        } else {
+          // Fallback: Calculate from GPS movement
+          const prevPos = previousPositionRef.current;
+          if (prevPos) {
+            const movementDistance = calculateGPSDistance(prevPos.lat, prevPos.lng, userLat, userLng);
+            if (movementDistance >= 3) {
+              heading = calculateBearing(prevPos.lat, prevPos.lng, userLat, userLng);
+              setCurrentHeading(heading);
+            }
           }
         }
         previousPositionRef.current = { lat: userLat, lng: userLng };

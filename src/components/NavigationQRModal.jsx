@@ -1378,9 +1378,9 @@ const requestCameraPermission = useCallback(async () => {
                     <span>
                       {distanceToDestination !== null ? (
                         `${distanceToDestination < 1 ? (
-                          Math.round(distanceToDestination * 1000)
+                          `${Math.round(distanceToDestination * 1000)}m`
                         ) : (
-                          distanceToDestination.toFixed(1)
+                          `${distanceToDestination.toFixed(1)}km`
                         )} to destination`
                       ) : (
                         'Calculating...'

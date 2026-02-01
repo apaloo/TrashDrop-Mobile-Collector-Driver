@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import logo from '../assets/logo.svg';
 import { useAuth } from '../context/AuthContext';
+import { authService } from '../services/supabase';
 import { logger } from '../utils/logger';
 
 /**
@@ -9,8 +10,30 @@ import { logger } from '../utils/logger';
  */
 export const TopNavBar = ({ user }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
   const { logout } = useAuth();
   const navigate = useNavigate();
+
+  // Fetch user profile to get first_name and last_name
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const { success, profile } = await authService.getUserProfile(user.id);
+        if (success && profile) {
+          setUserProfile({
+            first_name: profile.first_name,
+            last_name: profile.last_name
+          });
+        }
+      } catch (err) {
+        logger.error('Failed to fetch user profile for NavBar:', err);
+      }
+    };
+    
+    fetchProfile();
+  }, [user?.id]);
 
   return (
     <nav className="fixed top-0 left-0 right-0 bg-white shadow-md px-4 py-2 z-10 nav-top-bar">
@@ -28,11 +51,11 @@ export const TopNavBar = ({ user }) => {
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
           >
             <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white font-medium">
-              {user?.first_name?.[0] || ''}{user?.last_name?.[0] || 'U'}
+              {userProfile?.first_name?.[0]?.toUpperCase() || ''}{userProfile?.last_name?.[0]?.toUpperCase() || (userProfile ? '' : 'U')}
             </div>
             <span className="ml-2 hidden md:inline text-gray-700">
-              {user?.first_name && user?.last_name 
-                ? `${user.first_name} ${user.last_name}` 
+              {userProfile?.first_name && userProfile?.last_name 
+                ? `${userProfile.first_name} ${userProfile.last_name}` 
                 : 'User'}
             </span>
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -6,7 +6,13 @@ import React, { useState, useEffect } from 'react';
 const Toast = ({ message, type = 'info', duration = 3000, onClose }) => {
   const [visible, setVisible] = useState(true);
   
+  // Reset visible state when message changes (new toast)
   useEffect(() => {
+    setVisible(true);
+  }, [message]);
+  
+  useEffect(() => {
+    // Reset timer whenever message, duration, or onClose changes
     const timer = setTimeout(() => {
       setVisible(false);
       if (onClose) {
@@ -15,7 +21,7 @@ const Toast = ({ message, type = 'info', duration = 3000, onClose }) => {
     }, duration);
     
     return () => clearTimeout(timer);
-  }, [duration, onClose]);
+  }, [message, duration, onClose]);
   
   // Toast styling based on type
   const getToastStyles = () => {
