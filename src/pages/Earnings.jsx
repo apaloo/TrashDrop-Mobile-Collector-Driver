@@ -88,7 +88,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
       <div className="bg-white rounded-lg w-full max-w-md">
         <div className="p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">Cash Out</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Cash Out</h2>
             <button 
               onClick={onClose}
               className="text-gray-500 hover:text-gray-700"
@@ -114,7 +114,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
           ) : (
             <form onSubmit={handleSubmit}>
               <div className="mb-4">
-                <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="amount">
+                <label className="block text-gray-900 text-base font-bold mb-2" htmlFor="amount">
                   Amount (₵)
                 </label>
                 <div className="relative">
@@ -133,7 +133,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
               </div>
               
               <div className="mb-4">
-                <label className="block text-gray-700 text-sm font-bold mb-2">
+                <label className="block text-gray-900 text-base font-bold mb-2">
                   Payment Method
                 </label>
                 <div className="bg-gray-100 p-3 rounded-lg">
@@ -147,7 +147,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
                       onChange={() => setPaymentMethod('momo')}
                       className="h-4 w-4 text-primary"
                     />
-                    <label htmlFor="momo" className="ml-2 text-gray-700">
+                    <label htmlFor="momo" className="ml-2 text-gray-900 font-medium">
                       Mobile Money (MOMO)
                     </label>
                   </div>
@@ -157,27 +157,27 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
               {paymentMethod === 'momo' && (
                 <>
                   <div className="mb-4">
-                    <label className="block text-gray-700 text-sm font-bold mb-2">
+                    <label className="block text-gray-900 text-base font-bold mb-2">
                       MOMO Provider
                     </label>
                     <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
-                        className={`py-2 px-3 rounded-lg border ${momoProvider === 'mtn' ? 'bg-primary text-white border-primary' : 'bg-white border-gray-300'}`}
+                        className={`py-3 px-3 rounded-lg border-2 font-bold transition-all ${momoProvider === 'mtn' ? 'bg-yellow-400 text-black border-yellow-500 ring-2 ring-yellow-300' : 'bg-yellow-50 text-yellow-700 border-yellow-300 hover:bg-yellow-100'}`}
                         onClick={() => setMomoProvider('mtn')}
                       >
                         MTN
                       </button>
                       <button
                         type="button"
-                        className={`py-2 px-3 rounded-lg border ${momoProvider === 'vodafone' ? 'bg-primary text-white border-primary' : 'bg-white border-gray-300'}`}
+                        className={`py-3 px-3 rounded-lg border-2 font-bold transition-all ${momoProvider === 'vodafone' ? 'bg-red-500 text-white border-red-600 ring-2 ring-red-300' : 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100'}`}
                         onClick={() => setMomoProvider('vodafone')}
                       >
                         Vodafone
                       </button>
                       <button
                         type="button"
-                        className={`py-2 px-3 rounded-lg border ${momoProvider === 'airtel' ? 'bg-primary text-white border-primary' : 'bg-white border-gray-300'}`}
+                        className={`py-3 px-3 rounded-lg border-2 font-bold transition-all ${momoProvider === 'airtel' ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-300' : 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'}`}
                         onClick={() => setMomoProvider('airtel')}
                       >
                         AirtelTigo
@@ -186,7 +186,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
                   </div>
                   
                   <div className="mb-6">
-                    <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="momoNumber">
+                    <label className="block text-gray-900 text-base font-bold mb-2" htmlFor="momoNumber">
                       MOMO Number
                     </label>
                     <input
