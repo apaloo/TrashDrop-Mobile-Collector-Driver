@@ -284,6 +284,8 @@ const TransactionItem = ({ transaction }) => {
     switch (type) {
       case 'pickup_request':
         return 'Pickup Request';
+      case 'digital_bin':
+        return 'Digital Bin';
       case 'authority_assignment':
         return 'Authority Assignment';
       case 'bonus':
@@ -310,7 +312,17 @@ const TransactionItem = ({ transaction }) => {
         </div>
       </div>
       {transaction.note && (
-        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{transaction.note}</p>
+        <span className={`inline-block mt-2 px-2 py-1 rounded-full text-xs font-semibold ${
+          transaction.note === 'Pending disposal' 
+            ? 'bg-amber-100 text-amber-800 border border-amber-300' 
+            : transaction.note === 'Disposed'
+              ? 'bg-green-100 text-green-800 border border-green-300'
+              : 'bg-gray-100 text-gray-700 border border-gray-300'
+        }`}>
+          {transaction.note === 'Pending disposal' && '🚚 '}
+          {transaction.note === 'Disposed' && '✅ '}
+          {transaction.note}
+        </span>
       )}
     </div>
   );
@@ -325,12 +337,23 @@ const EarningsPage = () => {
   const [totalEarnings, setTotalEarnings] = useState(0);
   const [weeklyEarnings, setWeeklyEarnings] = useState(0);
   const [monthlyEarnings, setMonthlyEarnings] = useState(0);
+  const [pendingDisposalEarnings, setPendingDisposalEarnings] = useState(0);
+  const [disposedEarnings, setDisposedEarnings] = useState(0);
+  const [platformEarnings, setPlatformEarnings] = useState(0);
+  const [grossRevenue, setGrossRevenue] = useState(0);
   const [stats, setStats] = useState({
     totalEarnings: 0,
     completedJobs: 0,
+    pendingDisposalJobs: 0,
+    disposedJobs: 0,
     avgPerJob: 0,
     rating: 0,
-    completionRate: 0
+    completionRate: 0,
+    platformEarnings: 0,
+    grossRevenue: 0,
+    collectorSharePercent: 0,
+    platformSharePercent: 0,
+    paymentModeBreakdown: null
   });
   const [earningsData, setEarningsData] = useState({});
   const [transactions, setTransactions] = useState([]);
@@ -357,6 +380,12 @@ const EarningsPage = () => {
       setStats(data.stats);
       setTransactions(data.transactions);
       setTotalEarnings(data.stats.totalEarnings);
+      setWeeklyEarnings(data.stats.weeklyEarnings || 0);
+      setMonthlyEarnings(data.stats.monthlyEarnings || 0);
+      setPendingDisposalEarnings(data.stats.pendingDisposalEarnings || 0);
+      setDisposedEarnings(data.stats.disposedEarnings || 0);
+      setPlatformEarnings(data.stats.platformEarnings || 0);
+      setGrossRevenue(data.stats.grossRevenue || 0);
       
       // Fetch detailed earnings breakdown (SOP v4.5.6)
       const { success: detailSuccess, data: detailData } = await earningsService.getDetailedEarningsBreakdown();
@@ -569,10 +598,191 @@ const EarningsPage = () => {
           </div>
         </div>
         
+        {/* Disposal Status Breakdown */}
+        <div className="bg-white rounded-lg shadow mb-6 p-4">
+          <h3 className="text-lg font-bold text-gray-800 mb-3">Earnings by Status</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <div className="flex items-center mb-1">
+                <span className="text-amber-600 mr-2">🚚</span>
+                <p className="text-amber-700 text-sm font-medium">Pending Disposal</p>
+              </div>
+              <p className="text-xl font-bold text-amber-600">₵{pendingDisposalEarnings.toFixed(2)}</p>
+              <p className="text-xs text-amber-600">{stats.pendingDisposalJobs || 0} jobs awaiting disposal</p>
+            </div>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="flex items-center mb-1">
+                <span className="text-green-600 mr-2">✅</span>
+                <p className="text-green-700 text-sm font-medium">Disposed</p>
+              </div>
+              <p className="text-xl font-bold text-green-600">₵{disposedEarnings.toFixed(2)}</p>
+              <p className="text-xs text-green-600">{stats.disposedJobs || 0} jobs completed</p>
+            </div>
+          </div>
+        </div>
+        
+        {/* Revenue Split - Collector vs Platform (SOP v4.5.6) */}
+        {grossRevenue > 0 && (
+          <div className="bg-white rounded-lg shadow mb-6 p-4">
+            <h3 className="text-lg font-bold text-gray-800 mb-3">Revenue Split</h3>
+            <div className="mb-4">
+              <div className="flex justify-between text-sm text-gray-600 mb-1">
+                <span>Gross Revenue (User Paid)</span>
+                <span className="font-semibold">₵{grossRevenue.toFixed(2)}</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
+                <div className="flex h-full">
+                  <div 
+                    className="bg-green-500 h-full flex items-center justify-center text-xs text-white font-medium"
+                    style={{ width: `${stats.collectorSharePercent || 87}%` }}
+                  >
+                    {stats.collectorSharePercent || 87}%
+                  </div>
+                  <div 
+                    className="bg-blue-500 h-full flex items-center justify-center text-xs text-white font-medium"
+                    style={{ width: `${stats.platformSharePercent || 13}%` }}
+                  >
+                    {stats.platformSharePercent || 13}%
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="flex items-center mb-1">
+                  <span className="text-green-600 mr-2">👤</span>
+                  <p className="text-green-700 text-sm font-medium">Your Earnings</p>
+                </div>
+                <p className="text-xl font-bold text-green-600">₵{totalEarnings.toFixed(2)}</p>
+                <p className="text-xs text-green-600">{stats.collectorSharePercent || 87}% of revenue</p>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div className="flex items-center mb-1">
+                  <span className="text-blue-600 mr-2">🏢</span>
+                  <p className="text-blue-700 text-sm font-medium">Platform Fee</p>
+                </div>
+                <p className="text-xl font-bold text-blue-600">₵{platformEarnings.toFixed(2)}</p>
+                <p className="text-xs text-blue-600">{stats.platformSharePercent || 13}% of revenue</p>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Payment Mode Settlement (Cash vs Digital) */}
+        {stats.paymentModeBreakdown && (stats.paymentModeBreakdown.cash.collected > 0 || stats.paymentModeBreakdown.digital.collected > 0) && (
+          <div className="bg-white rounded-lg shadow mb-6 p-4">
+            <h3 className="text-lg font-bold text-gray-800 mb-3">Payment Settlement</h3>
+            <div className="space-y-3">
+              {/* Cash Payments */}
+              {stats.paymentModeBreakdown.cash.collected > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center">
+                      <span className="text-yellow-600 mr-2">💵</span>
+                      <span className="text-yellow-800 font-medium">Cash Collected</span>
+                    </div>
+                    <span className="font-bold text-yellow-700">₵{stats.paymentModeBreakdown.cash.collected.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-yellow-700">Platform commission:</span>
+                    <span className="font-semibold text-gray-600">₵{stats.paymentModeBreakdown.cash.platformDue.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Digital Payments */}
+              {stats.paymentModeBreakdown.digital.collected > 0 && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center">
+                      <span className="text-purple-600 mr-2">📱</span>
+                      <span className="text-purple-800 font-medium">Digital Payments</span>
+                    </div>
+                    <span className="font-bold text-purple-700">₵{stats.paymentModeBreakdown.digital.collected.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-purple-700">Your share:</span>
+                    <span className="font-semibold text-purple-600">₵{stats.paymentModeBreakdown.digital.collectorDue.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Reconciliation Section */}
+              {stats.paymentModeBreakdown.reconciliation && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <p className="text-sm font-medium text-gray-700 mb-2">📊 Reconciliation</p>
+                  
+                  {/* Commission deducted from digital payout */}
+                  {stats.paymentModeBreakdown.reconciliation.commissionDeducted > 0 && (
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span className="text-gray-600">Commission deducted from payout:</span>
+                      <span className="font-semibold text-orange-600">-₵{stats.paymentModeBreakdown.reconciliation.commissionDeducted.toFixed(2)}</span>
+                    </div>
+                  )}
+                  
+                  {/* Net payout to collector (after deduction) */}
+                  {stats.paymentModeBreakdown.reconciliation.netPayoutToCollector > 0 && (
+                    <div className="flex items-center justify-between text-sm border-t border-gray-200 pt-2 mt-2">
+                      <span className="text-gray-700 font-medium">Net payout to you:</span>
+                      <span className="font-bold text-green-600">₵{stats.paymentModeBreakdown.reconciliation.netPayoutToCollector.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Final Settlement Status */}
+              {stats.paymentModeBreakdown.reconciliation?.requiresPayback ? (
+                // Collector must pay back via MoMo
+                <div className="bg-red-50 border border-red-300 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <span className="mr-2">⚠️</span>
+                      <div>
+                        <span className="font-medium text-red-800">Payment Required</span>
+                        <p className="text-xs text-red-600">Pay via MoMo to platform</p>
+                      </div>
+                    </div>
+                    <span className="font-bold text-xl text-red-600">
+                      ₵{stats.paymentModeBreakdown.reconciliation.collectorMustPayBack.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              ) : stats.paymentModeBreakdown.reconciliation?.netPayoutToCollector > 0 ? (
+                // Platform will pay collector
+                <div className="bg-green-50 border border-green-300 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <span className="mr-2">✅</span>
+                      <div>
+                        <span className="font-medium text-green-800">You Will Receive</span>
+                        <p className="text-xs text-green-600">After commission deduction</p>
+                      </div>
+                    </div>
+                    <span className="font-bold text-xl text-green-600">
+                      ₵{stats.paymentModeBreakdown.reconciliation.netPayoutToCollector.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                // Fully settled
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <span className="mr-2">🤝</span>
+                      <span className="font-medium text-gray-700">Fully Settled</span>
+                    </div>
+                    <span className="font-bold text-gray-600">₵0.00</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
         {/* Earnings Breakdown (SOP v4.5.6) */}
         {detailedEarnings && detailedEarnings.buckets && (
           <div className="bg-white rounded-lg shadow mb-6 p-4">
-            <h3 className="text-lg font-semibold mb-3">Earnings Breakdown</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-3">Earnings Breakdown</h3>
             <div className="space-y-2">
               <div className="flex justify-between items-center py-2 border-b">
                 <span className="text-gray-700">💼 Base Core Pickups</span>
@@ -652,18 +862,28 @@ const EarningsPage = () => {
         )}
         
         {/* Tab Navigation */}
-        <div className="flex border-b mb-4">
+        <div className="flex justify-center gap-2 mb-6 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
           <button
-            className={`px-4 py-2 ${activeTab === 'summary' ? 'border-b-2 border-primary text-primary' : 'text-gray-500'}`}
+            className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg text-base font-bold transition-all ${
+              activeTab === 'summary' 
+                ? 'bg-green-500 text-white shadow-md' 
+                : 'bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
             onClick={() => setActiveTab('summary')}
           >
-            Summary
+            <span className="text-lg">📊</span>
+            <span>Summary</span>
           </button>
           <button
-            className={`px-4 py-2 ${activeTab === 'transactions' ? 'border-b-2 border-primary text-primary' : 'text-gray-500'}`}
+            className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg text-base font-bold transition-all ${
+              activeTab === 'transactions' 
+                ? 'bg-green-500 text-white shadow-md' 
+                : 'bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
             onClick={() => setActiveTab('transactions')}
           >
-            Transactions
+            <span className="text-lg">📋</span>
+            <span>Transactions</span>
           </button>
         </div>
         

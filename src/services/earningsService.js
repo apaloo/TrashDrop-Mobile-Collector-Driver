@@ -1,9 +1,203 @@
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
 import * as TrendiPayService from './trendiPayService';
+import { getDeadheadShare } from '../utils/paymentCalculations';
 
 // Feature flag for TrendiPay integration
 const ENABLE_TRENDIPAY = import.meta.env.VITE_ENABLE_TRENDIPAY === 'true';
+
+// SOP v4.5.6 Payment Model Constants
+const PAYMENT_SPLITS = {
+  // Collector shares
+  URGENT_COLLECTOR_SHARE: 0.75,      // 75% of urgent surcharge to collector
+  SURGE_COLLECTOR_SHARE: 0.75,       // 75% of surge uplift to collector
+  TIPS_COLLECTOR_SHARE: 1.0,         // 100% of tips to collector
+  RECYCLABLES_COLLECTOR_SHARE: 0.60, // 60% of recyclables to collector
+  RECYCLABLES_USER_SHARE: 0.25,      // 25% of recyclables to user
+  DISTANCE_COLLECTOR_SHARE: 1.0,     // 100% of distance bonus to collector
+  DEFAULT_DEADHEAD_SHARE: 0.87,      // Average of 85-92% for legacy data without deadhead info
+  
+  // Platform shares (App Bucket)
+  URGENT_PLATFORM_SHARE: 0.25,       // 25% of urgent surcharge to platform
+  SURGE_PLATFORM_SHARE: 0.25,        // 25% of surge uplift to platform
+  RECYCLABLES_PLATFORM_SHARE: 0.15,  // 15% of recyclables to platform
+  REQUEST_FEE_PLATFORM_SHARE: 1.0    // 100% of request fee to platform
+};
+
+/**
+ * Calculate collector's earnings from a pickup request applying SOP v4.5.6 percentage shares
+ * NOTE: Request fee (GHC 1.00) is EXCLUDED from bucket sharing - it's 100% platform revenue
+ * @param {Object} pickup - Pickup request object
+ * @returns {number} Collector's total earnings
+ */
+function calculateCollectorEarnings(pickup) {
+  // If new payment model fields exist, use them directly (already calculated)
+  if (pickup.collector_total_payout !== null && pickup.collector_total_payout !== undefined) {
+    return pickup.collector_total_payout;
+  }
+  
+  // Legacy data: Apply percentage sharing algorithm
+  // IMPORTANT: Subtract request fee from base - it's 100% platform revenue, not shared
+  const rawFee = pickup.fee || pickup.base_amount || 0;
+  const requestFee = pickup.request_fee || 1.0; // Default GHC 1.00 request fee
+  const baseFee = Math.max(0, rawFee - requestFee); // Exclude request fee from sharing
+  if (baseFee === 0) return 0;
+  
+  // Get deadhead share based on distance (85-92%), or use default average
+  const deadheadKm = pickup.deadhead_km || pickup.distance_km || 0;
+  const deadheadShare = deadheadKm > 0 ? getDeadheadShare(deadheadKm) : PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
+  
+  // Calculate core payout (base * deadhead share)
+  let collectorTotal = baseFee * deadheadShare;
+  
+  // Add urgent bonus (75% of urgent surcharge)
+  if (pickup.urgent_enabled && pickup.urgent_amount) {
+    collectorTotal += pickup.urgent_amount * PAYMENT_SPLITS.URGENT_COLLECTOR_SHARE;
+  }
+  
+  // Add surge bonus (75% of surge uplift)
+  if (pickup.surge_multiplier && pickup.surge_multiplier > 1) {
+    const surgeUplift = baseFee * (pickup.surge_multiplier - 1);
+    collectorTotal += surgeUplift * PAYMENT_SPLITS.SURGE_COLLECTOR_SHARE;
+  }
+  
+  // Add distance bonus (100% when urgent and >5km)
+  if (pickup.distance_billed_km && pickup.distance_billed_km > 0) {
+    const perKm = 0.06 * baseFee; // 6% per km
+    collectorTotal += pickup.distance_billed_km * perKm * PAYMENT_SPLITS.DISTANCE_COLLECTOR_SHARE;
+  }
+  
+  // Add tips (100%)
+  if (pickup.tips) {
+    collectorTotal += pickup.tips * PAYMENT_SPLITS.TIPS_COLLECTOR_SHARE;
+  }
+  
+  // Add recyclables (60%)
+  if (pickup.recycler_gross_payout) {
+    collectorTotal += pickup.recycler_gross_payout * PAYMENT_SPLITS.RECYCLABLES_COLLECTOR_SHARE;
+  }
+  
+  // Add loyalty cashback
+  if (pickup.collector_loyalty_cashback) {
+    collectorTotal += pickup.collector_loyalty_cashback;
+  }
+  
+  return collectorTotal;
+}
+
+/**
+ * Calculate collector's earnings from a digital bin applying SOP v4.5.6 percentage shares
+ * @param {Object} bin - Digital bin object
+ * @returns {number} Collector's total earnings
+ */
+function calculateBinCollectorEarnings(bin) {
+  // If new payment model fields exist, use them directly
+  if (bin.collector_total_payout !== null && bin.collector_total_payout !== undefined) {
+    return bin.collector_total_payout;
+  }
+  
+  // Legacy data: Apply default share
+  const basePayout = bin.payout || bin.fee || 0;
+  return basePayout * PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
+}
+
+/**
+ * Calculate platform earnings (App Bucket) from a pickup request applying SOP v4.5.6 percentage shares
+ * @param {Object} pickup - Pickup request object
+ * @returns {Object} Platform earnings breakdown
+ */
+function calculatePlatformEarnings(pickup) {
+  // Request fee is ALWAYS 100% platform revenue (GHC 1.00 default)
+  const requestFee = pickup.request_fee || 1.0;
+  
+  // If new payment model fields exist, calculate from stored values
+  if (pickup.collector_total_payout !== null && pickup.collector_total_payout !== undefined) {
+    const rawFee = pickup.base_amount || pickup.fee || 0;
+    // Exclude request fee from base for core calculation (it's already accounted for separately)
+    const baseFeeForSharing = Math.max(0, rawFee - requestFee);
+    const collectorCore = pickup.collector_core_payout || 0;
+    const collectorUrg = pickup.collector_urgent_payout || 0;
+    const collectorSurge = pickup.collector_surge_payout || 0;
+    const collectorRecyclables = pickup.collector_recyclables_payout || 0;
+    
+    // Platform gets the remainder of shared amounts
+    const platformCore = baseFeeForSharing - collectorCore;
+    const platformUrg = pickup.urgent_amount ? pickup.urgent_amount - collectorUrg : 0;
+    const platformSurge = pickup.surge_amount ? pickup.surge_amount - collectorSurge : 0;
+    const platformRecyclables = pickup.recycler_gross_payout ? 
+      pickup.recycler_gross_payout * PAYMENT_SPLITS.RECYCLABLES_PLATFORM_SHARE : 0;
+    
+    return {
+      platformCore,
+      platformUrg,
+      platformSurge,
+      platformRecyclables,
+      requestFee, // 100% to platform, not shared
+      total: platformCore + platformUrg + platformSurge + platformRecyclables + requestFee
+    };
+  }
+  
+  // Legacy data: Apply percentage sharing algorithm
+  // IMPORTANT: Exclude request fee from base - it's 100% platform revenue
+  const rawFee = pickup.fee || pickup.base_amount || 0;
+  const baseFee = Math.max(0, rawFee - requestFee); // Exclude request fee from sharing
+  if (baseFee === 0) return { platformCore: 0, platformUrg: 0, platformSurge: 0, platformRecyclables: 0, requestFee, total: requestFee };
+  
+  const deadheadKm = pickup.deadhead_km || pickup.distance_km || 0;
+  const deadheadShare = deadheadKm > 0 ? getDeadheadShare(deadheadKm) : PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
+  
+  // Platform core = base * (1 - deadhead share) = 8-15%
+  const platformCore = baseFee * (1 - deadheadShare);
+  
+  // Platform urgent = 25% of urgent surcharge
+  let platformUrg = 0;
+  if (pickup.urgent_enabled && pickup.urgent_amount) {
+    platformUrg = pickup.urgent_amount * PAYMENT_SPLITS.URGENT_PLATFORM_SHARE;
+  }
+  
+  // Platform surge = 25% of surge uplift
+  let platformSurge = 0;
+  if (pickup.surge_multiplier && pickup.surge_multiplier > 1) {
+    const surgeUplift = baseFee * (pickup.surge_multiplier - 1);
+    platformSurge = surgeUplift * PAYMENT_SPLITS.SURGE_PLATFORM_SHARE;
+  }
+  
+  // Platform recyclables = 15%
+  let platformRecyclables = 0;
+  if (pickup.recycler_gross_payout) {
+    platformRecyclables = pickup.recycler_gross_payout * PAYMENT_SPLITS.RECYCLABLES_PLATFORM_SHARE;
+  }
+  
+  // Request fee already extracted at line 111 (100% to platform, not shared)
+  return {
+    platformCore,
+    platformUrg,
+    platformSurge,
+    platformRecyclables,
+    requestFee,
+    total: platformCore + platformUrg + platformSurge + platformRecyclables + requestFee
+  };
+}
+
+/**
+ * Calculate platform earnings from a digital bin
+ * @param {Object} bin - Digital bin object
+ * @returns {Object} Platform earnings breakdown
+ */
+function calculateBinPlatformEarnings(bin) {
+  const basePayout = bin.payout || bin.fee || 0;
+  const platformShare = 1 - PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE; // ~13%
+  const platformCore = basePayout * platformShare;
+  
+  return {
+    platformCore,
+    platformUrg: 0,
+    platformSurge: 0,
+    platformRecyclables: 0,
+    requestFee: 0,
+    total: platformCore
+  };
+}
 
 class EarningsService {
   constructor(collectorId) {
@@ -12,68 +206,256 @@ class EarningsService {
 
   async getEarningsData() {
     try {
-      // Get completed pickups (regular requests)
-      const { data: completedPickups, error: pickupsError } = await supabase
+      // === PICKUP REQUESTS ===
+      // Get ALL pickups for this collector (both picked_up and disposed)
+      const { data: allPickups, error: pickupsError } = await supabase
         .from('pickup_requests')
         .select('*')
         .eq('collector_id', this.collectorId)
-        .eq('status', 'picked_up');
+        .in('status', ['picked_up', 'disposed']);
 
       if (pickupsError) throw pickupsError;
 
-      // **NEW: Get digital bin earnings (using RPC function)**
-      const { data: digitalBinEarnings, error: digitalBinError } = await supabase
-        .rpc('get_collector_available_earnings', { 
-          p_collector_id: this.collectorId 
-        });
+      // Separate by status
+      const pickedUpRequests = allPickups?.filter(p => p.status === 'picked_up') || [];
+      const disposedRequests = allPickups?.filter(p => p.status === 'disposed') || [];
 
-      if (digitalBinError) {
-        logger.warn('Error fetching digital bin earnings:', digitalBinError);
+      // === DIGITAL BINS ===
+      // Get digital bins for this collector (both picked_up and disposed)
+      const { data: digitalBins, error: binsError } = await supabase
+        .from('digital_bins')
+        .select('*')
+        .eq('collector_id', this.collectorId)
+        .in('status', ['picked_up', 'disposed']);
+
+      if (binsError) {
+        logger.warn('Error fetching digital bins:', binsError);
       }
 
-      // Calculate earnings stats
-      const regularEarnings = completedPickups?.reduce((sum, pickup) => sum + (pickup.fee || 0), 0) || 0;
-      const digitalEarnings = digitalBinEarnings || 0;
-      const totalEarnings = regularEarnings + digitalEarnings;
-      
-      const completedJobs = completedPickups?.length || 0;
-      const avgPerJob = completedJobs > 0 ? regularEarnings / completedJobs : 0;
+      // Separate digital bins by status
+      const pickedUpBins = digitalBins?.filter(b => b.status === 'picked_up') || [];
+      const disposedBins = digitalBins?.filter(b => b.status === 'disposed') || [];
 
-      // Calculate weekly and monthly earnings
+      // === BIN PAYMENTS (for payment mode tracking) ===
+      // Get payment records to determine payment mode (cash vs digital)
+      const binIds = (digitalBins || []).map(b => b.id);
+      let binPayments = [];
+      if (binIds.length > 0) {
+        const { data: payments, error: paymentsError } = await supabase
+          .from('bin_payments')
+          .select('digital_bin_id, payment_mode, total_bill, type, status')
+          .in('digital_bin_id', binIds)
+          .eq('type', 'collection')
+          .eq('status', 'success');
+        
+        if (!paymentsError) {
+          binPayments = payments || [];
+        }
+      }
+      
+      // Create a map of bin_id -> payment_mode
+      const binPaymentModeMap = {};
+      binPayments.forEach(p => {
+        binPaymentModeMap[p.digital_bin_id] = p.payment_mode;
+      });
+
+      // === AUTHORITY ASSIGNMENTS ===
+      // Get completed authority assignments
+      const { data: authorityAssignments, error: assignmentsError } = await supabase
+        .from('authority_assignments')
+        .select('*')
+        .eq('collector_id', this.collectorId)
+        .in('status', ['completed', 'disposed']);
+
+      if (assignmentsError) {
+        logger.warn('Error fetching authority assignments:', assignmentsError);
+      }
+
+      // === CALCULATE COLLECTOR EARNINGS (SOP v4.5.6 Percentage Sharing) ===
+      // Pickup requests earnings - apply percentage sharing algorithm
+      const pickupPendingDisposal = pickedUpRequests.reduce((sum, p) => sum + calculateCollectorEarnings(p), 0);
+      const pickupDisposedEarnings = disposedRequests.reduce((sum, p) => sum + calculateCollectorEarnings(p), 0);
+      const totalPickupEarnings = pickupPendingDisposal + pickupDisposedEarnings;
+
+      // Digital bin earnings - apply percentage sharing algorithm
+      const binsPendingDisposal = pickedUpBins.reduce((sum, b) => sum + calculateBinCollectorEarnings(b), 0);
+      const binsDisposedEarnings = disposedBins.reduce((sum, b) => sum + calculateBinCollectorEarnings(b), 0);
+      const totalBinEarnings = binsPendingDisposal + binsDisposedEarnings;
+
+      // Authority assignment earnings
+      const assignmentEarnings = authorityAssignments?.reduce((sum, a) => sum + (a.payment || 0), 0) || 0;
+
+      // Total collector earnings from all sources
+      const totalEarnings = totalPickupEarnings + totalBinEarnings + assignmentEarnings;
+      const pendingDisposalEarnings = pickupPendingDisposal + binsPendingDisposal;
+      const disposedEarnings = pickupDisposedEarnings + binsDisposedEarnings + assignmentEarnings;
+
+      // === CALCULATE PLATFORM EARNINGS (App Bucket) ===
+      // Pickup requests platform earnings
+      const pickupPlatformEarnings = allPickups?.reduce((sum, p) => sum + calculatePlatformEarnings(p).total, 0) || 0;
+      
+      // Digital bin platform earnings
+      const binPlatformEarnings = (digitalBins || []).reduce((sum, b) => sum + calculateBinPlatformEarnings(b).total, 0);
+      
+      // Total platform earnings (authority assignments are 100% to collector, no platform share)
+      const totalPlatformEarnings = pickupPlatformEarnings + binPlatformEarnings;
+      
+      // Calculate gross revenue (what user paid)
+      const grossRevenue = totalEarnings + totalPlatformEarnings;
+
+      // === PAYMENT MODE TRACKING (Cash vs Digital) ===
+      // Track what collector owes platform (cash payments) vs what platform owes collector (digital payments)
+      // Cash: Collector received full amount, owes platform its commission
+      // Digital (momo/e_cash): Platform received full amount, owes collector their share
+      
+      let cashCollected = 0;           // Total cash collected by collector
+      let cashPlatformDue = 0;         // Platform's share from cash payments (collector owes this)
+      let digitalCollected = 0;        // Total digital payments received by platform
+      let digitalCollectorDue = 0;     // Collector's share from digital payments (platform owes this)
+      
+      // Track pickup requests by payment mode (using payment_type field if available)
+      allPickups?.forEach(p => {
+        const paymentMode = p.payment_mode || p.payment_type || 'digital'; // Default to digital
+        const collectorEarnings = calculateCollectorEarnings(p);
+        const platformEarnings = calculatePlatformEarnings(p).total;
+        const grossAmount = collectorEarnings + platformEarnings;
+        
+        if (paymentMode === 'cash') {
+          cashCollected += grossAmount;
+          cashPlatformDue += platformEarnings; // Collector owes platform this amount
+        } else {
+          // momo, e_cash, or other digital payments
+          digitalCollected += grossAmount;
+          digitalCollectorDue += collectorEarnings; // Platform owes collector this amount
+        }
+      });
+      
+      // Track digital bins by payment mode (from bin_payments)
+      (digitalBins || []).forEach(b => {
+        const paymentMode = binPaymentModeMap[b.id] || 'digital'; // Default to digital
+        const collectorEarnings = calculateBinCollectorEarnings(b);
+        const platformEarnings = calculateBinPlatformEarnings(b).total;
+        const grossAmount = collectorEarnings + platformEarnings;
+        
+        if (paymentMode === 'cash') {
+          cashCollected += grossAmount;
+          cashPlatformDue += platformEarnings; // Collector owes platform this amount
+        } else {
+          // momo, e_cash, or other digital payments
+          digitalCollected += grossAmount;
+          digitalCollectorDue += collectorEarnings; // Platform owes collector this amount
+        }
+      });
+      
+      // Net settlement: positive = collector owes platform, negative = platform owes collector
+      const netSettlement = cashPlatformDue - digitalCollectorDue;
+
+      // Job counts
+      const totalPickedUpJobs = pickedUpRequests.length + pickedUpBins.length;
+      const totalDisposedJobs = disposedRequests.length + disposedBins.length + (authorityAssignments?.length || 0);
+      const completedJobs = totalPickedUpJobs + totalDisposedJobs;
+      const avgPerJob = completedJobs > 0 ? totalEarnings / completedJobs : 0;
+
+      // === CALCULATE REAL RATING ===
+      // Get ratings from completed requests that have ratings
+      const ratingsData = [...(allPickups || []), ...(authorityAssignments || [])]
+        .filter(item => item.rating !== null && item.rating !== undefined)
+        .map(item => item.rating);
+      
+      const rating = ratingsData.length > 0 
+        ? ratingsData.reduce((sum, r) => sum + r, 0) / ratingsData.length 
+        : 0;
+
+      // === CALCULATE REAL COMPLETION RATE ===
+      // Get total accepted jobs (including expired/cancelled)
+      const { data: allAcceptedJobs, error: acceptedError } = await supabase
+        .from('pickup_requests')
+        .select('id, status')
+        .eq('collector_id', this.collectorId)
+        .in('status', ['accepted', 'picked_up', 'disposed', 'expired', 'cancelled']);
+
+      let completionRate = 0;
+      if (!acceptedError && allAcceptedJobs && allAcceptedJobs.length > 0) {
+        const completedCount = allAcceptedJobs.filter(j => 
+          j.status === 'picked_up' || j.status === 'disposed'
+        ).length;
+        completionRate = Math.round((completedCount / allAcceptedJobs.length) * 100);
+      }
+
+      // === CALCULATE WEEKLY & MONTHLY EARNINGS ===
       const now = new Date();
       const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
       const monthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
 
-      const weeklyEarnings = completedPickups
-        ?.filter(p => new Date(p.picked_up_at) > weekAgo)
-        ?.reduce((sum, p) => sum + (p.fee || 0), 0) || 0;
+      // Combine all items with timestamps - using percentage sharing algorithm
+      const allItemsWithTimestamps = [
+        ...allPickups.map(p => ({ 
+          amount: calculateCollectorEarnings(p), 
+          timestamp: p.picked_up_at || p.disposed_at || p.updated_at 
+        })),
+        ...(digitalBins || []).map(b => ({ 
+          amount: calculateBinCollectorEarnings(b), 
+          timestamp: b.picked_up_at || b.disposed_at || b.updated_at 
+        })),
+        ...(authorityAssignments || []).map(a => ({ 
+          amount: a.payment || 0, 
+          timestamp: a.completed_at || a.updated_at 
+        }))
+      ];
 
-      const monthlyEarnings = completedPickups
-        ?.filter(p => new Date(p.picked_up_at) > monthAgo)
-        ?.reduce((sum, p) => sum + (p.fee || 0), 0) || 0;
+      const weeklyEarnings = allItemsWithTimestamps
+        .filter(item => item.timestamp && new Date(item.timestamp) > weekAgo)
+        .reduce((sum, item) => sum + item.amount, 0);
 
-      // Format transactions
-      const transactions = completedPickups?.map(pickup => ({
-        id: pickup.id,
-        type: 'pickup',
-        amount: pickup.fee || 0,
-        status: 'completed',
-        timestamp: pickup.picked_up_at,
-        location: pickup.location,
-        customer: `Customer #${pickup.id}`
-      })) || [];
+      const monthlyEarnings = allItemsWithTimestamps
+        .filter(item => item.timestamp && new Date(item.timestamp) > monthAgo)
+        .reduce((sum, item) => sum + item.amount, 0);
 
-      // Generate chart data from actual pickup data
-      const generateChartData = (pickups) => {
+      // === FORMAT TRANSACTIONS (with SOP v4.5.6 percentage sharing) ===
+      const transactions = [
+        // Pickup requests
+        ...allPickups.map(pickup => ({
+          id: pickup.id,
+          type: 'pickup_request',
+          amount: calculateCollectorEarnings(pickup),
+          status: pickup.status,
+          date: pickup.picked_up_at || pickup.disposed_at || pickup.updated_at,
+          location: pickup.location,
+          note: pickup.status === 'picked_up' ? 'Pending disposal' : 'Disposed'
+        })),
+        // Digital bins
+        ...(digitalBins || []).map(bin => ({
+          id: bin.id,
+          type: 'digital_bin',
+          amount: calculateBinCollectorEarnings(bin),
+          status: bin.status,
+          date: bin.picked_up_at || bin.disposed_at || bin.updated_at,
+          location: bin.location_id,
+          note: bin.status === 'picked_up' ? 'Pending disposal' : 'Disposed'
+        })),
+        // Authority assignments
+        ...(authorityAssignments || []).map(assignment => ({
+          id: assignment.id,
+          type: 'authority_assignment',
+          amount: assignment.payment || 0,
+          status: 'completed',
+          date: assignment.completed_at || assignment.updated_at,
+          location: assignment.location,
+          note: assignment.title || 'Authority Assignment'
+        }))
+      ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      // === GENERATE CHART DATA ===
+      const generateChartData = (items) => {
         const today = new Date();
         
         // Week data (last 7 days)
         const weekData = Array.from({ length: 7 }, (_, i) => {
           const date = new Date(today - i * 24 * 60 * 60 * 1000);
           const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
-          const dayEarnings = pickups
-            ?.filter(p => new Date(p.picked_up_at).toDateString() === date.toDateString())
-            ?.reduce((sum, p) => sum + (p.fee || 0), 0) || 0;
+          const dayEarnings = items
+            .filter(item => item.timestamp && new Date(item.timestamp).toDateString() === date.toDateString())
+            .reduce((sum, item) => sum + item.amount, 0);
           return { label: dayName, amount: dayEarnings };
         }).reverse();
 
@@ -81,12 +463,13 @@ class EarningsService {
         const monthData = Array.from({ length: 4 }, (_, i) => {
           const weekStart = new Date(today - (i + 1) * 7 * 24 * 60 * 60 * 1000);
           const weekEnd = new Date(today - i * 7 * 24 * 60 * 60 * 1000);
-          const weekEarnings = pickups
-            ?.filter(p => {
-              const pickupDate = new Date(p.picked_up_at);
-              return pickupDate >= weekStart && pickupDate < weekEnd;
+          const weekEarnings = items
+            .filter(item => {
+              if (!item.timestamp) return false;
+              const itemDate = new Date(item.timestamp);
+              return itemDate >= weekStart && itemDate < weekEnd;
             })
-            ?.reduce((sum, p) => sum + (p.fee || 0), 0) || 0;
+            .reduce((sum, item) => sum + item.amount, 0);
           return { label: `W${4-i}`, amount: weekEarnings };
         }).reverse();
 
@@ -95,19 +478,38 @@ class EarningsService {
           const monthStart = new Date(today.getFullYear(), today.getMonth() - i, 1);
           const monthEnd = new Date(today.getFullYear(), today.getMonth() - i + 1, 0);
           const monthName = monthStart.toLocaleDateString('en-US', { month: 'short' });
-          const monthEarnings = pickups
-            ?.filter(p => {
-              const pickupDate = new Date(p.picked_up_at);
-              return pickupDate >= monthStart && pickupDate <= monthEnd;
+          const monthEarnings = items
+            .filter(item => {
+              if (!item.timestamp) return false;
+              const itemDate = new Date(item.timestamp);
+              return itemDate >= monthStart && itemDate <= monthEnd;
             })
-            ?.reduce((sum, p) => sum + (p.fee || 0), 0) || 0;
+            .reduce((sum, item) => sum + item.amount, 0);
           return { label: monthName, amount: monthEarnings };
         }).reverse();
 
         return { week: weekData, month: monthData, year: yearData };
       };
 
-      const chartData = generateChartData(completedPickups);
+      const chartData = generateChartData(allItemsWithTimestamps);
+
+      logger.info('📊 Earnings data fetched:', {
+        totalEarnings,
+        totalPlatformEarnings,
+        grossRevenue,
+        pendingDisposalEarnings,
+        disposedEarnings,
+        completedJobs,
+        rating,
+        completionRate,
+        paymentMode: {
+          cashCollected,
+          cashPlatformDue,
+          digitalCollected,
+          digitalCollectorDue,
+          netSettlement
+        }
+      });
 
       return {
         success: true,
@@ -115,15 +517,61 @@ class EarningsService {
           transactions,
           chartData,
           stats: {
+            // Collector earnings
             totalEarnings,
-            regularEarnings, // **NEW: Regular pickup earnings**
-            digitalBinEarnings: digitalEarnings, // **NEW: Digital bin earnings**
+            pendingDisposalEarnings,
+            disposedEarnings,
+            // Breakdown by source (collector)
+            pickupRequestEarnings: totalPickupEarnings,
+            digitalBinEarnings: totalBinEarnings,
+            authorityAssignmentEarnings: assignmentEarnings,
+            // Platform earnings (App Bucket)
+            platformEarnings: totalPlatformEarnings,
+            pickupPlatformEarnings,
+            binPlatformEarnings,
+            // Gross revenue (user paid)
+            grossRevenue,
+            // Collector share percentage
+            collectorSharePercent: grossRevenue > 0 ? Math.round((totalEarnings / grossRevenue) * 100) : 0,
+            platformSharePercent: grossRevenue > 0 ? Math.round((totalPlatformEarnings / grossRevenue) * 100) : 0,
+            // Job counts
             completedJobs,
+            pendingDisposalJobs: totalPickedUpJobs,
+            disposedJobs: totalDisposedJobs,
             avgPerJob,
-            rating: 4.8, // Placeholder until rating system is implemented
-            completionRate: 95, // Placeholder until completion rate tracking is implemented
+            // Performance metrics (real data)
+            rating,
+            completionRate,
+            // Time-based earnings
             weeklyEarnings,
-            monthlyEarnings
+            monthlyEarnings,
+            // Payment mode tracking (cash vs digital settlement)
+            paymentModeBreakdown: {
+              cash: {
+                collected: cashCollected,           // Total cash collector received from users
+                platformDue: cashPlatformDue        // Platform's share collector owes
+              },
+              digital: {
+                collected: digitalCollected,        // Total digital payments platform received
+                collectorDue: digitalCollectorDue   // Collector's share platform owes
+              },
+              // Reconciliation: Platform deducts commission from what it owes collector
+              // Only if platform owes less than commission due, collector must pay back difference
+              reconciliation: {
+                // Amount platform will deduct from collector's digital payout
+                commissionDeducted: Math.min(cashPlatformDue, digitalCollectorDue),
+                // Net payout after deduction (platform pays this to collector)
+                netPayoutToCollector: Math.max(0, digitalCollectorDue - cashPlatformDue),
+                // Only if collector owes more than platform owes, collector must pay this back via MoMo
+                collectorMustPayBack: Math.max(0, cashPlatformDue - digitalCollectorDue),
+                // Whether collector needs to make a payment to platform
+                requiresPayback: cashPlatformDue > digitalCollectorDue
+              },
+              // Legacy fields for compatibility
+              netSettlement,
+              settlementDirection: netSettlement > 0 ? 'collector_owes_platform' : 
+                                   netSettlement < 0 ? 'platform_owes_collector' : 'settled'
+            }
           }
         }
       };
@@ -172,19 +620,31 @@ class EarningsService {
   /**
    * Get detailed earnings breakdown by bucket type (SOP v4.5.6)
    * Falls back to legacy fee calculation if new fields unavailable
+   * Includes both picked_up (pending disposal) and disposed items
    * 
    * @returns {Promise<Object>} Earnings breakdown by bucket type
    */
   async getDetailedEarningsBreakdown() {
     try {
-      // Get completed pickups with all fields
-      const { data: completedPickups, error: pickupsError } = await supabase
+      // Get ALL pickups (both picked_up and disposed) with all fields
+      const { data: allPickups, error: pickupsError } = await supabase
         .from('pickup_requests')
         .select('*')
         .eq('collector_id', this.collectorId)
-        .eq('status', 'picked_up');
+        .in('status', ['picked_up', 'disposed']);
 
       if (pickupsError) throw pickupsError;
+
+      // Get digital bins (both picked_up and disposed)
+      const { data: digitalBins, error: binsError } = await supabase
+        .from('digital_bins')
+        .select('*')
+        .eq('collector_id', this.collectorId)
+        .in('status', ['picked_up', 'disposed']);
+
+      if (binsError) {
+        logger.warn('Error fetching digital bins for breakdown:', binsError);
+      }
 
       // Aggregate by bucket type
       const buckets = {
@@ -197,8 +657,9 @@ class EarningsService {
         loyalty: 0
       };
 
-      completedPickups?.forEach(pickup => {
-        // Use new fields if available, fallback to proportional split of fee
+      // Process pickup requests with SOP v4.5.6 percentage sharing
+      allPickups?.forEach(pickup => {
+        // Use new fields if available
         if (pickup.collector_core_payout !== null && pickup.collector_core_payout !== undefined) {
           buckets.core += pickup.collector_core_payout || 0;
           buckets.urgent += pickup.collector_urgent_payout || 0;
@@ -208,8 +669,47 @@ class EarningsService {
           buckets.recyclables += pickup.collector_recyclables_payout || 0;
           buckets.loyalty += pickup.collector_loyalty_cashback || 0;
         } else {
-          // Legacy: all earnings go to core bucket
-          buckets.core += pickup.fee || 0;
+          // Legacy: Apply SOP v4.5.6 percentage sharing algorithm
+          // IMPORTANT: Exclude request fee (GHC 1.00) from bucket sharing - it's 100% platform revenue
+          const rawFee = pickup.fee || pickup.base_amount || 0;
+          const requestFee = pickup.request_fee || 1.0; // Default GHC 1.00 request fee
+          const baseFee = Math.max(0, rawFee - requestFee); // Exclude request fee from sharing
+          const deadheadKm = pickup.deadhead_km || pickup.distance_km || 0;
+          const deadheadShare = deadheadKm > 0 ? getDeadheadShare(deadheadKm) : PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
+          
+          // Core payout with deadhead share (request fee excluded)
+          buckets.core += baseFee * deadheadShare;
+          
+          // Apply other percentage splits for legacy data
+          if (pickup.urgent_enabled && pickup.urgent_amount) {
+            buckets.urgent += pickup.urgent_amount * PAYMENT_SPLITS.URGENT_COLLECTOR_SHARE;
+          }
+          if (pickup.surge_multiplier && pickup.surge_multiplier > 1) {
+            buckets.surge += baseFee * (pickup.surge_multiplier - 1) * PAYMENT_SPLITS.SURGE_COLLECTOR_SHARE;
+          }
+          if (pickup.tips) {
+            buckets.tips += pickup.tips * PAYMENT_SPLITS.TIPS_COLLECTOR_SHARE;
+          }
+          if (pickup.recycler_gross_payout) {
+            buckets.recyclables += pickup.recycler_gross_payout * PAYMENT_SPLITS.RECYCLABLES_COLLECTOR_SHARE;
+          }
+        }
+      });
+
+      // Process digital bins with SOP v4.5.6 percentage sharing
+      digitalBins?.forEach(bin => {
+        if (bin.collector_core_payout !== null && bin.collector_core_payout !== undefined) {
+          buckets.core += bin.collector_core_payout || 0;
+          buckets.urgent += bin.collector_urgent_payout || 0;
+          buckets.distance += bin.collector_distance_payout || 0;
+          buckets.surge += bin.collector_surge_payout || 0;
+          buckets.tips += bin.collector_tips || 0;
+          buckets.recyclables += bin.collector_recyclables_payout || 0;
+          buckets.loyalty += bin.collector_loyalty_cashback || 0;
+        } else {
+          // Legacy: Apply default deadhead share (87%)
+          const basePayout = bin.payout || bin.fee || 0;
+          buckets.core += basePayout * PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
         }
       });
 
@@ -222,12 +722,20 @@ class EarningsService {
         percentage: total > 0 ? (buckets[type] / total) * 100 : 0
       }));
 
+      // Separate counts by status
+      const pendingDisposalCount = (allPickups?.filter(p => p.status === 'picked_up').length || 0) + 
+                                   (digitalBins?.filter(b => b.status === 'picked_up').length || 0);
+      const disposedCount = (allPickups?.filter(p => p.status === 'disposed').length || 0) + 
+                           (digitalBins?.filter(b => b.status === 'disposed').length || 0);
+
       return {
         success: true,
         data: {
           buckets,
           total,
-          jobCount: completedPickups?.length || 0,
+          jobCount: (allPickups?.length || 0) + (digitalBins?.length || 0),
+          pendingDisposalCount,
+          disposedCount,
           breakdown
         }
       };
