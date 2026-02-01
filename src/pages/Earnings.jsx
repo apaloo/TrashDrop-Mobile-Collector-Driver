@@ -7,7 +7,9 @@ import { authService } from '../services/supabase';
 import { logger } from '../utils/logger';
 
 // Cash Out Modal Component
-const CashOutModal = ({ isOpen, onClose, totalEarnings, onWithdrawalSuccess }) => {
+const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, onWithdrawalSuccess }) => {
+  // Use net payout (after commission deduction) if available, otherwise fall back to total earnings
+  const withdrawableAmount = availableForWithdrawal ?? totalEarnings;
   const [amount, setAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('momo');
   const [momoNumber, setMomoNumber] = useState('');
@@ -31,8 +33,8 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, onWithdrawalSuccess }) =
       return false;
     }
     
-    if (parseFloat(amount) > totalEarnings) {
-      setError(`Amount cannot exceed your total earnings of ₵${totalEarnings.toFixed(2)}`);
+    if (parseFloat(amount) > withdrawableAmount) {
+      setError(`Amount cannot exceed your available balance of ₵${withdrawableAmount.toFixed(2)}`);
       return false;
     }
     
@@ -127,7 +129,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, onWithdrawalSuccess }) =
                     required
                   />
                 </div>
-                <p className="text-sm text-gray-500 mt-1">Available: ₵{totalEarnings.toFixed(2)}</p>
+                <p className="text-sm text-green-600 font-semibold mt-1">Available: ₵{withdrawableAmount.toFixed(2)}</p>
               </div>
               
               <div className="mb-4">
@@ -579,6 +581,7 @@ const EarningsPage = () => {
           isOpen={showCashOutModal} 
           onClose={() => setShowCashOutModal(false)} 
           totalEarnings={totalEarnings}
+          availableForWithdrawal={stats.paymentModeBreakdown?.reconciliation?.netPayoutToCollector ?? totalEarnings}
           onWithdrawalSuccess={handleWithdrawalSuccess}
         />
         
