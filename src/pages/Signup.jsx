@@ -846,16 +846,7 @@ const SignupPage = () => {
         
         {/* Form */}
         <div className="card">
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            // Only handle form submission for steps after OTP verification (3-5)
-            // Let the button handlers manage steps 1-2
-            if (step >= 3 && step < 5) {
-              setStep(step + 1);
-            } else if (step === 5) {
-              handleSubmit(e);
-            }
-          }}>
+          <form onSubmit={(e) => e.preventDefault()}>
             {renderStep()}
           </form>
         </div>

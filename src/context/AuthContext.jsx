@@ -253,11 +253,12 @@ export const AuthProvider = ({ children }) => {
       const user = session.user;
       
       // Create user profile with additional data
-      // IMPORTANT: Add email from authenticated user session (required by database)
-      // For phone auth, Supabase typically uses phone as email or provides a generated email
+      // EMAIL STRATEGY: Auto-generate from phone number (no email collection in signup form)
+      // Priority: 1) Supabase session email, 2) phone number, 3) generated {phone}@trashdrop.app
+      // This approach is intentional - collectors primarily use phone-based communication
       const profileData = {
         user_id: user.id,
-        email: user.email || user.phone || `${user.phone}@trashdrop.app`, // Required field
+        email: user.email || user.phone || `${user.phone}@trashdrop.app`,
         first_name: userData.first_name,
         last_name: userData.last_name,
         phone: userData.phone,
