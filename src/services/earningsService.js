@@ -6,6 +6,272 @@ import { getDeadheadShare } from '../utils/paymentCalculations';
 // Feature flag for TrendiPay integration
 const ENABLE_TRENDIPAY = import.meta.env.VITE_ENABLE_TRENDIPAY === 'true';
 
+// ========================================
+// OFFLINE CACHING CONFIGURATION
+// ========================================
+const CACHE_CONFIG = {
+  EARNINGS_CACHE_KEY: 'trashdrop_earnings_cache',
+  ANALYTICS_CACHE_KEY: 'trashdrop_earnings_analytics',
+  CACHE_DURATION_MS: 5 * 60 * 1000, // 5 minutes for fresh data
+  OFFLINE_CACHE_DURATION_MS: 24 * 60 * 60 * 1000, // 24 hours for offline use
+  MAX_CACHED_TRANSACTIONS: 100
+};
+
+// ========================================
+// EARNINGS ANALYTICS TRACKER
+// ========================================
+class EarningsAnalytics {
+  constructor(collectorId) {
+    this.collectorId = collectorId;
+    this.sessionStart = Date.now();
+    this.events = [];
+  }
+
+  track(eventName, data = {}) {
+    const event = {
+      event: eventName,
+      timestamp: new Date().toISOString(),
+      sessionDuration: Date.now() - this.sessionStart,
+      collectorId: this.collectorId,
+      ...data
+    };
+    
+    this.events.push(event);
+    logger.debug(`📊 [Analytics] ${eventName}`, data);
+    
+    // Persist to localStorage for offline analysis
+    this._persistEvent(event);
+    
+    return event;
+  }
+
+  trackEarningsFetch(source, duration, success, dataSize = 0) {
+    return this.track('earnings_fetch', {
+      source, // 'rpc', 'legacy', 'cache'
+      durationMs: duration,
+      success,
+      dataSize,
+      isOffline: !navigator.onLine
+    });
+  }
+
+  trackCashout(amount, method, success, error = null) {
+    return this.track('cashout_attempt', {
+      amount,
+      paymentMethod: method,
+      success,
+      error: error?.message || null
+    });
+  }
+
+  trackDisbursement(amount, success, retryCount = 0, error = null) {
+    return this.track('disbursement', {
+      amount,
+      success,
+      retryCount,
+      error: error?.message || null
+    });
+  }
+
+  trackPageView(page, earningsData = null) {
+    return this.track('page_view', {
+      page,
+      totalEarnings: earningsData?.totalEarnings || 0,
+      pendingEarnings: earningsData?.pendingDisposalEarnings || 0,
+      disposedEarnings: earningsData?.disposedEarnings || 0
+    });
+  }
+
+  trackCacheHit(cacheAge, dataFreshness) {
+    return this.track('cache_hit', {
+      cacheAgeMs: cacheAge,
+      dataFreshness // 'fresh', 'stale', 'offline'
+    });
+  }
+
+  trackCacheMiss(reason) {
+    return this.track('cache_miss', { reason });
+  }
+
+  trackError(errorType, errorMessage, context = {}) {
+    logger.error(`❌ [Analytics Error] ${errorType}: ${errorMessage}`, context);
+    return this.track('error', {
+      errorType,
+      errorMessage,
+      ...context
+    });
+  }
+
+  _persistEvent(event) {
+    try {
+      const key = `${CACHE_CONFIG.ANALYTICS_CACHE_KEY}_${this.collectorId}`;
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      existing.push(event);
+      
+      // Keep only last 100 events
+      const trimmed = existing.slice(-100);
+      localStorage.setItem(key, JSON.stringify(trimmed));
+    } catch (err) {
+      // Silent fail - analytics shouldn't break the app
+    }
+  }
+
+  getSessionEvents() {
+    return this.events;
+  }
+
+  getPersistedEvents() {
+    try {
+      const key = `${CACHE_CONFIG.ANALYTICS_CACHE_KEY}_${this.collectorId}`;
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  generateSummary() {
+    const events = this.getPersistedEvents();
+    const fetchEvents = events.filter(e => e.event === 'earnings_fetch');
+    const cashoutEvents = events.filter(e => e.event === 'cashout_attempt');
+    const errorEvents = events.filter(e => e.event === 'error');
+    
+    return {
+      totalFetches: fetchEvents.length,
+      avgFetchDuration: fetchEvents.length > 0 
+        ? Math.round(fetchEvents.reduce((sum, e) => sum + (e.durationMs || 0), 0) / fetchEvents.length)
+        : 0,
+      cacheHitRate: fetchEvents.length > 0
+        ? Math.round((fetchEvents.filter(e => e.source === 'cache').length / fetchEvents.length) * 100)
+        : 0,
+      totalCashouts: cashoutEvents.length,
+      successfulCashouts: cashoutEvents.filter(e => e.success).length,
+      totalErrors: errorEvents.length,
+      lastError: errorEvents[errorEvents.length - 1] || null
+    };
+  }
+}
+
+// ========================================
+// OFFLINE CACHE MANAGER
+// ========================================
+class EarningsCacheManager {
+  constructor(collectorId) {
+    this.collectorId = collectorId;
+    this.cacheKey = `${CACHE_CONFIG.EARNINGS_CACHE_KEY}_${collectorId}`;
+  }
+
+  async get() {
+    try {
+      const cached = localStorage.getItem(this.cacheKey);
+      if (!cached) return null;
+      
+      const { data, timestamp, version } = JSON.parse(cached);
+      const age = Date.now() - timestamp;
+      const isOnline = navigator.onLine;
+      
+      // Determine cache validity based on online status
+      const maxAge = isOnline 
+        ? CACHE_CONFIG.CACHE_DURATION_MS 
+        : CACHE_CONFIG.OFFLINE_CACHE_DURATION_MS;
+      
+      if (age > maxAge) {
+        logger.debug(`📦 Cache expired (age: ${Math.round(age / 1000)}s, max: ${Math.round(maxAge / 1000)}s)`);
+        return null;
+      }
+      
+      logger.info(`📦 Cache hit (age: ${Math.round(age / 1000)}s, online: ${isOnline})`);
+      return {
+        data,
+        timestamp,
+        age,
+        fromCache: true,
+        freshness: age < CACHE_CONFIG.CACHE_DURATION_MS ? 'fresh' : 'stale'
+      };
+      
+    } catch (error) {
+      logger.warn('Cache read error:', error);
+      this.clear();
+      return null;
+    }
+  }
+
+  set(data) {
+    try {
+      // Trim transactions to prevent storage overflow
+      const trimmedData = {
+        ...data,
+        transactions: (data.transactions || []).slice(0, CACHE_CONFIG.MAX_CACHED_TRANSACTIONS)
+      };
+      
+      const cacheEntry = {
+        data: trimmedData,
+        timestamp: Date.now(),
+        version: '1.0',
+        collectorId: this.collectorId
+      };
+      
+      localStorage.setItem(this.cacheKey, JSON.stringify(cacheEntry));
+      logger.debug(`📦 Earnings cached (${JSON.stringify(cacheEntry).length} bytes)`);
+      return true;
+      
+    } catch (error) {
+      logger.warn('Cache write error:', error);
+      // Try to clear old data and retry
+      this._clearOldCaches();
+      return false;
+    }
+  }
+
+  clear() {
+    try {
+      localStorage.removeItem(this.cacheKey);
+      logger.debug('📦 Earnings cache cleared');
+    } catch (error) {
+      logger.warn('Cache clear error:', error);
+    }
+  }
+
+  _clearOldCaches() {
+    try {
+      // Clear all earnings caches older than 24 hours
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith(CACHE_CONFIG.EARNINGS_CACHE_KEY)) {
+          try {
+            const { timestamp } = JSON.parse(localStorage.getItem(key) || '{}');
+            if (Date.now() - timestamp > CACHE_CONFIG.OFFLINE_CACHE_DURATION_MS) {
+              keysToRemove.push(key);
+            }
+          } catch {
+            keysToRemove.push(key);
+          }
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      logger.debug(`📦 Cleared ${keysToRemove.length} old cache entries`);
+    } catch (error) {
+      logger.warn('Error clearing old caches:', error);
+    }
+  }
+
+  getStats() {
+    try {
+      const cached = localStorage.getItem(this.cacheKey);
+      if (!cached) return { exists: false };
+      
+      const { timestamp } = JSON.parse(cached);
+      return {
+        exists: true,
+        age: Date.now() - timestamp,
+        size: cached.length
+      };
+    } catch {
+      return { exists: false };
+    }
+  }
+}
+
 // SOP v4.5.6 Payment Model Constants
 const PAYMENT_SPLITS = {
   // Collector shares
@@ -202,6 +468,296 @@ function calculateBinPlatformEarnings(bin) {
 class EarningsService {
   constructor(collectorId) {
     this.collectorId = collectorId;
+    this.cache = new EarningsCacheManager(collectorId);
+    this.analytics = new EarningsAnalytics(collectorId);
+    
+    // Log service initialization
+    logger.info(`💰 EarningsService initialized for collector: ${collectorId}`);
+  }
+
+  /**
+   * Get earnings with offline caching support
+   * Returns cached data when offline or for quick loads
+   * @param {Object} options - Fetch options
+   * @param {boolean} options.forceRefresh - Skip cache and fetch fresh data
+   * @returns {Promise<Object>} Earnings data
+   */
+  async getEarningsWithCache(options = {}) {
+    const { forceRefresh = false } = options;
+    const startTime = Date.now();
+    
+    // Track page view
+    this.analytics.trackPageView('earnings');
+    
+    // Check cache first (unless forcing refresh)
+    if (!forceRefresh) {
+      const cached = await this.cache.get();
+      if (cached) {
+        this.analytics.trackCacheHit(cached.age, cached.freshness);
+        this.analytics.trackEarningsFetch('cache', Date.now() - startTime, true, 0);
+        
+        // If cache is stale but we're online, fetch in background
+        if (cached.freshness === 'stale' && navigator.onLine) {
+          this._refreshCacheInBackground();
+        }
+        
+        return {
+          success: true,
+          data: cached.data,
+          fromCache: true,
+          cacheAge: cached.age
+        };
+      }
+      
+      this.analytics.trackCacheMiss(navigator.onLine ? 'expired_or_missing' : 'offline_no_cache');
+    }
+    
+    // If offline and no cache, return error
+    if (!navigator.onLine) {
+      this.analytics.trackError('offline', 'No cached data available while offline');
+      return {
+        success: false,
+        error: 'You are offline and no cached earnings data is available.',
+        fromCache: false,
+        isOffline: true
+      };
+    }
+    
+    // Fetch fresh data
+    try {
+      const result = await this.getEarningsDataOptimized(options);
+      const duration = Date.now() - startTime;
+      
+      if (result.success !== false) {
+        // Normalize data structure - legacy method returns { success, data: { stats, ... } }
+        // RPC method returns flat data directly
+        let normalizedData;
+        if (result.success === true && result.data) {
+          // Legacy format: { success: true, data: { stats: {...}, transactions: [...] } }
+          // Flatten the stats into the top level for consistent access
+          normalizedData = {
+            ...result.data.stats,
+            transactions: result.data.transactions || [],
+            chartData: result.data.chartData || {},
+            _source: 'legacy'
+          };
+        } else {
+          // RPC format: flat data structure
+          normalizedData = result;
+        }
+        
+        // Cache the normalized data
+        this.cache.set(normalizedData);
+        this.analytics.trackEarningsFetch(
+          normalizedData._source || 'legacy', 
+          duration, 
+          true, 
+          JSON.stringify(normalizedData).length
+        );
+        
+        return {
+          success: true,
+          data: normalizedData,
+          fromCache: false
+        };
+      } else {
+        throw new Error(result.error || 'Failed to fetch earnings');
+      }
+      
+    } catch (error) {
+      this.analytics.trackError('fetch_error', error.message);
+      this.analytics.trackEarningsFetch('error', Date.now() - startTime, false, 0);
+      
+      // Try to return stale cache as fallback
+      const staleCache = await this.cache.get();
+      if (staleCache) {
+        logger.warn('Using stale cache due to fetch error');
+        return {
+          success: true,
+          data: staleCache.data,
+          fromCache: true,
+          cacheAge: staleCache.age,
+          hadError: true
+        };
+      }
+      
+      return {
+        success: false,
+        error: error.message,
+        fromCache: false
+      };
+    }
+  }
+
+  /**
+   * Refresh cache in background without blocking UI
+   * @private
+   */
+  async _refreshCacheInBackground() {
+    logger.debug('🔄 Refreshing earnings cache in background...');
+    try {
+      const result = await this.getEarningsDataOptimized();
+      if (result.success !== false) {
+        this.cache.set(result);
+        logger.debug('✅ Background cache refresh complete');
+      }
+    } catch (error) {
+      logger.warn('Background cache refresh failed:', error.message);
+    }
+  }
+
+  /**
+   * Clear cached earnings data
+   */
+  clearCache() {
+    this.cache.clear();
+    this.analytics.track('cache_cleared');
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats() {
+    return this.cache.getStats();
+  }
+
+  /**
+   * Get analytics summary
+   */
+  getAnalyticsSummary() {
+    return this.analytics.generateSummary();
+  }
+
+  /**
+   * Fix #5: Optimized earnings data fetch using single RPC call
+   * Falls back to legacy multi-query method if RPC not available
+   * 
+   * @param {Object} options - Options for fetching earnings
+   * @param {Date} options.startDate - Start date for earnings period
+   * @param {Date} options.endDate - End date for earnings period
+   * @returns {Promise<Object>} Aggregated earnings data
+   */
+  async getEarningsDataOptimized(options = {}) {
+    try {
+      const { startDate, endDate } = options;
+      
+      // Try the optimized RPC function first
+      const { data, error } = await supabase.rpc('get_collector_earnings_aggregate', {
+        p_collector_id: this.collectorId,
+        p_start_date: startDate?.toISOString() || null,
+        p_end_date: endDate?.toISOString() || null
+      });
+      
+      if (error) {
+        // RPC not available, fall back to legacy method
+        logger.warn('Earnings RPC not available, using legacy method:', error.message);
+        return this.getEarningsData();
+      }
+      
+      logger.info('✅ Earnings fetched via optimized RPC');
+      
+      // Transform RPC response to match existing data structure
+      const pickupEarnings = data.pickup_earnings || {};
+      const digitalBinEarnings = data.digital_bin_earnings || {};
+      const pendingEarnings = data.pending_earnings || {};
+      const settlements = data.settlements || {};
+      const jobCounts = data.job_counts || {};
+      const loyaltyTier = data.loyalty_tier || { tier: 'Silver', cashback_rate: 0.01 };
+      const tipsReceived = data.tips_received || { total: 0, count: 0 };
+      
+      // Calculate totals
+      const totalPickupEarnings = parseFloat(pickupEarnings.total) || 0;
+      const totalBinEarnings = parseFloat(digitalBinEarnings.total) || 0;
+      const totalEarnings = totalPickupEarnings + totalBinEarnings;
+      const pendingDisposalEarnings = parseFloat(pendingEarnings.total) || 0;
+      const disposedEarnings = totalEarnings;
+      
+      // Platform share
+      const platformShare = parseFloat(data.platform_share) || 0;
+      const grossRevenue = totalEarnings + platformShare;
+      
+      // Settlement calculations
+      const cashCollected = parseFloat(settlements.cash_collected) || 0;
+      const digitalCollected = parseFloat(settlements.digital_collected) || 0;
+      const netSettlement = cashCollected - platformShare;
+      
+      // Build transactions from items
+      const transactions = [
+        ...(pickupEarnings.items || []).map(item => ({
+          id: item.id,
+          type: 'pickup',
+          description: `${item.waste_type || 'Waste'} pickup`,
+          amount: parseFloat(item.collector_total_payout) || parseFloat(item.fee) * 0.87,
+          date: item.disposed_at || item.created_at,
+          status: item.status
+        })),
+        ...(digitalBinEarnings.items || []).map(item => ({
+          id: item.id,
+          type: 'digital_bin',
+          description: `Digital bin - ${item.waste_type || 'Waste'}`,
+          amount: parseFloat(item.collector_total_payout) || 0,
+          date: item.disposed_at || item.created_at,
+          status: item.status
+        }))
+      ].sort((a, b) => new Date(b.date) - new Date(a.date));
+      
+      // Build chart data
+      const chartData = {
+        week: (data.chart_data || []).slice(-7),
+        month: data.chart_data || [],
+        year: data.chart_data || []
+      };
+      
+      return {
+        totalEarnings,
+        pendingDisposalEarnings,
+        disposedEarnings,
+        platformEarnings: platformShare,
+        grossRevenue,
+        revenueSplit: {
+          collector: totalEarnings,
+          platform: platformShare
+        },
+        paymentSettlement: {
+          cashCollected,
+          digitalCollected,
+          platformShare,
+          netSettlement,
+          collectorOwes: netSettlement < 0,
+          amountDue: Math.abs(netSettlement)
+        },
+        jobCounts: {
+          pickedUp: jobCounts.total_picked_up || 0,
+          disposed: jobCounts.total_disposed || 0,
+          binsPickedUp: jobCounts.bins_picked_up || 0,
+          binsDisposed: jobCounts.bins_disposed || 0
+        },
+        completionRate: parseFloat(data.completion_rate) || 100,
+        weeklyEarnings: parseFloat(data.weekly_earnings) || 0,
+        monthlyEarnings: parseFloat(data.monthly_earnings) || 0,
+        loyaltyTier,
+        tipsReceived: parseFloat(tipsReceived.total) || 0,
+        transactions,
+        chartData,
+        // Breakdown by bucket type
+        earningsBreakdown: {
+          core: (parseFloat(pickupEarnings.core) || 0) + (parseFloat(digitalBinEarnings.core) || 0),
+          urgent: (parseFloat(pickupEarnings.urgent) || 0) + (parseFloat(digitalBinEarnings.urgent) || 0),
+          distance: (parseFloat(pickupEarnings.distance) || 0) + (parseFloat(digitalBinEarnings.distance) || 0),
+          surge: (parseFloat(pickupEarnings.surge) || 0) + (parseFloat(digitalBinEarnings.surge) || 0),
+          tips: (parseFloat(pickupEarnings.tips) || 0) + (parseFloat(digitalBinEarnings.tips) || 0),
+          recyclables: (parseFloat(pickupEarnings.recyclables) || 0) + (parseFloat(digitalBinEarnings.recyclables) || 0),
+          loyalty: (parseFloat(pickupEarnings.loyalty) || 0) + (parseFloat(digitalBinEarnings.loyalty) || 0)
+        },
+        _source: 'rpc_optimized',
+        _generatedAt: data.generated_at
+      };
+      
+    } catch (error) {
+      logger.error('Error in optimized earnings fetch:', error);
+      // Fall back to legacy method
+      return this.getEarningsData();
+    }
   }
 
   async getEarningsData() {
@@ -1105,6 +1661,204 @@ class EarningsService {
       return {
         success: false,
         error: error.message || 'Failed to process withdrawal'
+      };
+    }
+  }
+
+  /**
+   * Fix #6: Retry failed disbursement
+   * Attempts to retry a previously failed disbursement
+   * 
+   * @param {string} disbursementId - ID of the failed disbursement to retry
+   * @param {Object} paymentDetails - Updated payment details (optional)
+   * @returns {Promise<Object>} Result with success status
+   */
+  async retryFailedDisbursement(disbursementId, paymentDetails = null) {
+    try {
+      logger.info('Retrying failed disbursement:', { disbursementId, collectorId: this.collectorId });
+
+      // Step 1: Fetch the failed disbursement record
+      const { data: disbursement, error: fetchError } = await supabase
+        .from('bin_payments')
+        .select('*')
+        .eq('id', disbursementId)
+        .eq('type', 'disbursement')
+        .eq('status', 'failed')
+        .single();
+
+      if (fetchError || !disbursement) {
+        throw new Error('Failed disbursement not found or already processed');
+      }
+
+      // Step 2: Verify ownership
+      const { data: collectorProfile } = await supabase
+        .from('collector_profiles')
+        .select('id')
+        .eq('user_id', this.collectorId)
+        .single();
+
+      if (!collectorProfile || disbursement.collector_id !== collectorProfile.id) {
+        throw new Error('Unauthorized: This disbursement belongs to another collector');
+      }
+
+      // Step 3: Use updated payment details or existing ones
+      const momoNumber = paymentDetails?.momoNumber || disbursement.collector_account_number;
+      const momoProvider = paymentDetails?.momoProvider || disbursement.client_rswitch;
+      const amount = disbursement.collector_share;
+
+      // Step 4: Increment retry count
+      const retryCount = (disbursement.retry_count || 0) + 1;
+      const maxRetries = 3;
+
+      if (retryCount > maxRetries) {
+        throw new Error(`Maximum retry attempts (${maxRetries}) exceeded. Please contact support.`);
+      }
+
+      // Step 5: Update record to pending and increment retry count
+      await supabase
+        .from('bin_payments')
+        .update({ 
+          status: 'pending',
+          retry_count: retryCount,
+          gateway_error: null,
+          updated_at: new Date().toISOString(),
+          collector_account_number: momoNumber,
+          client_rswitch: momoProvider
+        })
+        .eq('id', disbursementId);
+
+      logger.info(`Retry attempt ${retryCount}/${maxRetries} for disbursement:`, disbursementId);
+
+      // Step 6: Call TrendiPay disbursement API
+      if (ENABLE_TRENDIPAY) {
+        const gatewayResult = await TrendiPayService.initiateDisbursement({
+          reference: `${disbursementId}_retry${retryCount}`,
+          accountNumber: momoNumber,
+          rSwitch: momoProvider,
+          amount: amount,
+          description: `TrashDrop payout retry #${retryCount}`,
+          currency: 'GHS'
+        });
+
+        if (!gatewayResult.success) {
+          // Update with new error
+          await supabase
+            .from('bin_payments')
+            .update({ 
+              status: 'failed',
+              gateway_error: gatewayResult.error,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', disbursementId);
+
+          throw new Error(gatewayResult.error || 'Disbursement retry failed');
+        }
+
+        // Update with success
+        await supabase
+          .from('bin_payments')
+          .update({ 
+            status: gatewayResult.status,
+            gateway_reference: gatewayResult.gatewayReference,
+            gateway_transaction_id: gatewayResult.transactionId,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', disbursementId);
+
+        logger.info('✅ Disbursement retry successful:', {
+          disbursementId,
+          transactionId: gatewayResult.transactionId,
+          retryCount
+        });
+
+        return {
+          success: true,
+          disbursementId,
+          transactionId: gatewayResult.transactionId,
+          amount,
+          message: `Withdrawal retry #${retryCount} initiated successfully`,
+          status: gatewayResult.status,
+          retryCount
+        };
+      } else {
+        // Stub mode
+        await supabase
+          .from('bin_payments')
+          .update({ 
+            status: 'success',
+            gateway_reference: `stub_retry_${Date.now()}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', disbursementId);
+
+        return {
+          success: true,
+          disbursementId,
+          amount,
+          message: `Retry #${retryCount} processed successfully (stub mode)`,
+          retryCount
+        };
+      }
+
+    } catch (error) {
+      logger.error('Error retrying disbursement:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to retry withdrawal'
+      };
+    }
+  }
+
+  /**
+   * Fix #6: Get all failed disbursements for this collector
+   * Returns list of failed disbursements that can be retried
+   * 
+   * @returns {Promise<Object>} List of failed disbursements
+   */
+  async getFailedDisbursements() {
+    try {
+      const { data: collectorProfile } = await supabase
+        .from('collector_profiles')
+        .select('id')
+        .eq('user_id', this.collectorId)
+        .single();
+
+      if (!collectorProfile) {
+        return { success: true, disbursements: [] };
+      }
+
+      const { data: failed, error } = await supabase
+        .from('bin_payments')
+        .select('id, collector_share, gateway_error, retry_count, created_at, updated_at, collector_account_number, client_rswitch')
+        .eq('collector_id', collectorProfile.id)
+        .eq('type', 'disbursement')
+        .eq('status', 'failed')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      const maxRetries = 3;
+      const disbursements = (failed || []).map(d => ({
+        ...d,
+        canRetry: (d.retry_count || 0) < maxRetries,
+        retriesRemaining: maxRetries - (d.retry_count || 0)
+      }));
+
+      return {
+        success: true,
+        disbursements,
+        totalFailed: disbursements.length,
+        canRetryCount: disbursements.filter(d => d.canRetry).length
+      };
+
+    } catch (error) {
+      logger.error('Error fetching failed disbursements:', error);
+      return {
+        success: false,
+        error: error.message,
+        disbursements: []
       };
     }
   }

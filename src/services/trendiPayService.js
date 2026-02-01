@@ -18,6 +18,7 @@ const TRENDIPAY_CONFIG = {
   apiKey: import.meta.env.VITE_TRENDIPAY_API_KEY || '',
   terminalId: import.meta.env.VITE_TRENDIPAY_TERMINAL_ID || '',
   merchantId: import.meta.env.VITE_TRENDIPAY_MERCHANT_ID || '',
+  webhookSecret: import.meta.env.VITE_TRENDIPAY_WEBHOOK_SECRET || '', // Fix #4: Required for signature verification
   callbackBaseUrl: import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000',
   
   // Timeouts and retries
@@ -407,32 +408,99 @@ export async function checkDisbursementStatus(transactionId, reference) {
 }
 
 /**
- * Verify webhook signature (security validation)
+ * Verify webhook signature using HMAC-SHA256 (Fix #4: Security validation)
  * 
- * @param {string} signature - Signature from webhook header
- * @param {Object} payload - Webhook payload
- * @returns {boolean} True if signature is valid
+ * TrendiPay signs webhooks with HMAC-SHA256 using your webhook secret.
+ * The signature is sent in the X-TrendiPay-Signature header.
+ * 
+ * @param {string} signature - Signature from X-TrendiPay-Signature header
+ * @param {Object|string} payload - Webhook payload (raw body string preferred)
+ * @param {Object} options - Optional configuration
+ * @param {string} options.algorithm - Hash algorithm (default: 'SHA-256')
+ * @param {string} options.encoding - Signature encoding (default: 'hex')
+ * @returns {Promise<boolean>} True if signature is valid
  */
-export function verifyWebhookSignature(signature, payload) {
+export async function verifyWebhookSignature(signature, payload, options = {}) {
   try {
-    // TrendiPay uses HMAC-SHA256 for webhook signatures
-    // Implementation would depend on their specific signature algorithm
-    // For now, return true (implement proper verification in production)
+    const { algorithm = 'SHA-256', encoding = 'hex' } = options;
     
-    logger.info('Verifying webhook signature...');
+    // Validate inputs
+    if (!signature) {
+      logger.warn('Webhook signature missing');
+      return false;
+    }
     
-    // TODO: Implement actual signature verification
-    // const expectedSignature = crypto
-    //   .createHmac('sha256', TRENDIPAY_CONFIG.webhookSecret)
-    //   .update(JSON.stringify(payload))
-    //   .digest('hex');
-    // return signature === expectedSignature;
+    if (!TRENDIPAY_CONFIG.webhookSecret) {
+      logger.error('CRITICAL: Webhook secret not configured! Set VITE_TRENDIPAY_WEBHOOK_SECRET');
+      // In development, you might want to allow unsigned webhooks
+      if (import.meta.env.DEV) {
+        logger.warn('⚠️ DEV MODE: Allowing unsigned webhook (UNSAFE for production)');
+        return true;
+      }
+      return false;
+    }
     
-    return true;
+    // Normalize payload to string
+    const payloadString = typeof payload === 'string' 
+      ? payload 
+      : JSON.stringify(payload);
+    
+    // Use Web Crypto API (available in browsers and modern Node.js)
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(TRENDIPAY_CONFIG.webhookSecret);
+    const messageData = encoder.encode(payloadString);
+    
+    // Import the secret key
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'HMAC', hash: algorithm },
+      false,
+      ['sign']
+    );
+    
+    // Generate expected signature
+    const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+    const expectedSignature = Array.from(new Uint8Array(signatureBuffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    // Timing-safe comparison to prevent timing attacks
+    const isValid = timingSafeEqual(signature.toLowerCase(), expectedSignature.toLowerCase());
+    
+    if (!isValid) {
+      logger.warn('Webhook signature mismatch', {
+        receivedPrefix: signature.substring(0, 10) + '...',
+        expectedPrefix: expectedSignature.substring(0, 10) + '...'
+      });
+    } else {
+      logger.info('✅ Webhook signature verified successfully');
+    }
+    
+    return isValid;
+    
   } catch (error) {
     logger.error('Error verifying webhook signature:', error);
     return false;
   }
+}
+
+/**
+ * Timing-safe string comparison to prevent timing attacks
+ * @param {string} a - First string
+ * @param {string} b - Second string
+ * @returns {boolean} True if strings are equal
+ */
+function timingSafeEqual(a, b) {
+  if (a.length !== b.length) {
+    return false;
+  }
+  
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
 }
 
 /**

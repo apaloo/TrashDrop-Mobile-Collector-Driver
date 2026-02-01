@@ -1,5 +1,22 @@
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
+import { getDeadheadShare } from '../utils/paymentCalculations';
+
+// SOP v4.5.6 Payment Model Constants (aligned with earningsService.js)
+const PAYMENT_SPLITS = {
+  // Collector shares
+  URGENT_COLLECTOR_SHARE: 0.75,      // 75% of urgent surcharge to collector
+  SURGE_COLLECTOR_SHARE: 0.75,       // 75% of surge uplift to collector
+  TIPS_COLLECTOR_SHARE: 1.0,         // 100% of tips to collector
+  RECYCLABLES_COLLECTOR_SHARE: 0.60, // 60% of recyclables to collector
+  RECYCLABLES_USER_SHARE: 0.25,      // 25% of recyclables to user
+  DISTANCE_COLLECTOR_SHARE: 1.0,     // 100% of distance bonus to collector
+  
+  // Platform shares (App Bucket)
+  URGENT_PLATFORM_SHARE: 0.25,       // 25% of urgent surcharge to platform
+  SURGE_PLATFORM_SHARE: 0.25,        // 25% of surge uplift to platform
+  RECYCLABLES_PLATFORM_SHARE: 0.15,  // 15% of recyclables to platform
+};
 
 /**
  * Disposal Service
@@ -15,29 +32,25 @@ import { logger } from '../utils/logger';
  * TrashDrop Pricing Algorithm v4.5.6
  * 
  * Payment Sharing Model Components:
- * 1. Core Collection Fee (base rate)
- * 2. Urgent Request Premium (if applicable)
- * 3. Distance Premium (deadhead km)
- * 4. Surge Multiplier (demand-based)
- * 5. Tips (optional, 100% to collector)
- * 6. Recyclables Bonus (material value)
- * 7. Loyalty Cashback (collector retention)
- * 
- * Platform Share:
- * - Base: 20% of (core + urgent + distance + surge)
- * - Tips: 0% (100% to collector)
- * - Recyclables: 10% (90% to collector)
- * - Loyalty: Funded by platform
+ * 1. Core Collection Fee - Collector gets 85-92% based on deadhead distance
+ * 2. Urgent Request Premium - 75% collector / 25% platform
+ * 3. Distance Bonus - 100% to collector (only when urgent and >5km)
+ * 4. Surge Multiplier - 75% collector / 25% platform
+ * 5. Tips - 100% to collector (fetched from collector_tips table)
+ * 6. Recyclables Bonus - 60% collector / 25% user / 15% platform
+ * 7. Loyalty Cashback - 1-3% based on tier (platform funded)
  */
 
 /**
  * Calculate payment sharing based on bin data and payment record
+ * Uses SOP v4.5.6 percentages aligned with earningsService.js
  * 
  * @param {Object} digitalBin - Digital bin data from database
  * @param {Object} payment - Payment record from bin_payments
+ * @param {number} actualTips - Actual tips from collector_tips table (default 0)
  * @returns {Object} Payout breakdown
  */
-function calculatePaymentSharing(digitalBin, payment) {
+function calculatePaymentSharing(digitalBin, payment, actualTips = 0) {
   logger.info('Calculating payment sharing for bin:', digitalBin.id);
   
   const totalBill = parseFloat(payment.total_bill) || 0;
@@ -50,81 +63,91 @@ function calculatePaymentSharing(digitalBin, payment) {
   const baseRatePerBag = 5.0; // GHS 5 per bag
   const coreCollectionFee = baseRatePerBag * bagsCollected;
   
-  // Component 2: Urgent Premium (50% bonus if urgent)
-  const urgentPremium = isUrgent ? coreCollectionFee * 0.5 : 0;
+  // Calculate collector's core share based on deadhead distance (85-92%)
+  const deadheadShare = getDeadheadShare(deadheadKm);
+  const collectorCorePayout = coreCollectionFee * deadheadShare;
+  const platformCoreMargin = coreCollectionFee - collectorCorePayout;
   
-  // Component 3: Distance Premium (GHS 2 per km beyond 5km)
+  // Component 2: Urgent Premium (30% of core if urgent) - 75/25 split
+  const urgentAmount = isUrgent ? coreCollectionFee * 0.30 : 0;
+  const collectorUrgentPayout = urgentAmount * PAYMENT_SPLITS.URGENT_COLLECTOR_SHARE;
+  const platformUrgentShare = urgentAmount * PAYMENT_SPLITS.URGENT_PLATFORM_SHARE;
+  
+  // Component 3: Distance Bonus - 100% to collector (only if urgent and >5km)
   const freeDistanceKm = 5;
-  const distancePremium = deadheadKm > freeDistanceKm 
-    ? (deadheadKm - freeDistanceKm) * 2.0 
+  const billedKm = (isUrgent && deadheadKm > freeDistanceKm) 
+    ? Math.min(deadheadKm, 10) - freeDistanceKm 
     : 0;
+  const perKmRate = isUrgent ? coreCollectionFee * 0.06 : 0;
+  const distanceAmount = billedKm * perKmRate;
+  const collectorDistancePayout = distanceAmount * PAYMENT_SPLITS.DISTANCE_COLLECTOR_SHARE;
   
-  // Component 4: Surge Multiplier (applied to base components)
-  const baseBeforeSurge = coreCollectionFee + urgentPremium + distancePremium;
-  const surgeBonus = baseBeforeSurge * (surgeMultiplier - 1.0);
+  // Component 4: Surge Multiplier - 75/25 split
+  const eligibleSurgeBase = coreCollectionFee + urgentAmount + distanceAmount;
+  const surgeUplift = Math.max(0, (surgeMultiplier - 1) * eligibleSurgeBase);
+  const collectorSurgePayout = surgeUplift * PAYMENT_SPLITS.SURGE_COLLECTOR_SHARE;
+  const platformSurgeShare = surgeUplift * PAYMENT_SPLITS.SURGE_PLATFORM_SHARE;
   
-  // Component 5: Tips (assume 10% of total bill, or extract if available)
-  // For now, we'll use a fixed percentage
-  const tipsAmount = totalBill * 0.10;
+  // Component 5: Tips - 100% to collector (use actual tips, not hardcoded)
+  const tipsAmount = actualTips;
+  const collectorTips = tipsAmount * PAYMENT_SPLITS.TIPS_COLLECTOR_SHARE;
   
-  // Component 6: Recyclables Bonus (estimate based on bag type and count)
-  // Simplified: GHS 2 per bag for recyclable content
-  const recyclablesBonus = bagsCollected * 2.0;
+  // Component 6: Recyclables Bonus - 60/25/15 split (collector/user/platform)
+  const recyclablesBonus = bagsCollected * 2.0; // GHS 2 per bag estimate
+  const collectorRecyclablesPayout = recyclablesBonus * PAYMENT_SPLITS.RECYCLABLES_COLLECTOR_SHARE;
+  const userRecyclablesCredit = recyclablesBonus * PAYMENT_SPLITS.RECYCLABLES_USER_SHARE;
+  const platformRecyclablesShare = recyclablesBonus * PAYMENT_SPLITS.RECYCLABLES_PLATFORM_SHARE;
   
-  // Component 7: Loyalty Cashback (5% of collector's share, platform funded)
-  // Calculate after determining collector share
+  // Component 7: Loyalty Cashback (1-3% based on tier, default 1%)
+  const collectorPayoutPreLoyalty = collectorCorePayout + collectorUrgentPayout + 
+    collectorDistancePayout + collectorSurgePayout;
+  const loyaltyRate = digitalBin.loyalty_rate || 0.01; // Default 1% (Silver tier)
+  const loyaltyCashback = collectorPayoutPreLoyalty * loyaltyRate;
   
-  // Calculate shares
-  const platformShareRate = 0.20; // 20% platform fee
-  
-  // Platform takes 20% of operational components
-  const operationalTotal = coreCollectionFee + urgentPremium + distancePremium + surgeBonus;
-  const platformShareOperational = operationalTotal * platformShareRate;
-  
-  // Tips: 100% to collector
-  const platformShareTips = 0;
-  const collectorShareTips = tipsAmount;
-  
-  // Recyclables: 90% to collector, 10% to platform
-  const platformShareRecyclables = recyclablesBonus * 0.10;
-  const collectorShareRecyclables = recyclablesBonus * 0.90;
-  
-  // Collector's operational share (after platform fee)
-  const collectorShareOperational = operationalTotal - platformShareOperational;
-  
-  // Loyalty cashback (5% of collector's operational + recyclables share, platform funded)
-  const loyaltyCashback = (collectorShareOperational + collectorShareRecyclables) * 0.05;
-  
-  // Total shares
+  // Total collector payout
   const collectorTotalPayout = 
-    collectorShareOperational + 
-    collectorShareTips + 
-    collectorShareRecyclables + 
+    collectorCorePayout + 
+    collectorUrgentPayout + 
+    collectorDistancePayout + 
+    collectorSurgePayout + 
+    collectorTips + 
+    collectorRecyclablesPayout + 
     loyaltyCashback;
   
+  // Total platform share (App Bucket)
   const platformTotalShare = 
-    platformShareOperational + 
-    platformShareTips + 
-    platformShareRecyclables;
+    platformCoreMargin + 
+    platformUrgentShare + 
+    platformSurgeShare + 
+    platformRecyclablesShare;
   
   // Breakdown for storage
   const breakdown = {
     // Collector components
-    collector_core_payout: coreCollectionFee - (coreCollectionFee * platformShareRate),
-    collector_urgent_payout: urgentPremium - (urgentPremium * platformShareRate),
-    collector_distance_payout: distancePremium - (distancePremium * platformShareRate),
-    collector_surge_payout: surgeBonus - (surgeBonus * platformShareRate),
-    collector_tips: collectorShareTips,
-    collector_recyclables_payout: collectorShareRecyclables,
+    collector_core_payout: collectorCorePayout,
+    collector_urgent_payout: collectorUrgentPayout,
+    collector_distance_payout: collectorDistancePayout,
+    collector_surge_payout: collectorSurgePayout,
+    collector_tips: collectorTips,
+    collector_recyclables_payout: collectorRecyclablesPayout,
     collector_loyalty_cashback: loyaltyCashback,
     collector_total_payout: collectorTotalPayout,
     
     // Platform share
     platform_share: platformTotalShare,
+    platform_core_margin: platformCoreMargin,
+    platform_urgent_share: platformUrgentShare,
+    platform_surge_share: platformSurgeShare,
+    platform_recyclables_share: platformRecyclablesShare,
+    
+    // User credit
+    user_recyclables_credit: userRecyclablesCredit,
     
     // Metadata
     surge_multiplier: surgeMultiplier,
     deadhead_km: deadheadKm,
+    deadhead_share: deadheadShare,
+    loyalty_rate: loyaltyRate,
     
     // Summary
     total_bill: totalBill,
@@ -132,12 +155,12 @@ function calculatePaymentSharing(digitalBin, payment) {
     is_urgent: isUrgent
   };
   
-  logger.info('Payment sharing calculated:', {
+  logger.info('Payment sharing calculated (SOP v4.5.6):', {
     binId: digitalBin.id,
     totalBill,
-    collectorPayout: collectorTotalPayout,
-    platformShare: platformTotalShare,
-    sharingRate: `${(platformTotalShare / totalBill * 100).toFixed(1)}%`
+    collectorPayout: collectorTotalPayout.toFixed(2),
+    platformShare: platformTotalShare.toFixed(2),
+    deadheadShare: `${(deadheadShare * 100).toFixed(0)}%`
   });
   
   return breakdown;
@@ -202,8 +225,22 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
       // In production (Phase 4), you might want to enforce payment success
     }
     
-    // 6. Calculate payment sharing using the algorithm
-    const payoutBreakdown = calculatePaymentSharing(digitalBin, payment);
+    // 6. Fetch actual tips from collector_tips table (Fix #3: no more hardcoded tips)
+    let actualTips = 0;
+    const { data: tipsData } = await supabase
+      .from('collector_tips')
+      .select('amount')
+      .eq('collector_id', collectorId)
+      .eq('request_id', binId)
+      .eq('status', 'confirmed');
+    
+    if (tipsData && tipsData.length > 0) {
+      actualTips = tipsData.reduce((sum, tip) => sum + (parseFloat(tip.amount) || 0), 0);
+      logger.info('Fetched actual tips for bin:', { binId, tipsAmount: actualTips });
+    }
+    
+    // 7. Calculate payment sharing using the algorithm with actual tips
+    const payoutBreakdown = calculatePaymentSharing(digitalBin, payment, actualTips);
     
     // 7. Update digital_bins with disposal info and payout breakdown
     const { error: updateError } = await supabase

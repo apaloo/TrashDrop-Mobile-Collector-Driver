@@ -350,35 +350,79 @@ const EarningsPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('summary');
   const [period, setPeriod] = useState('week');
-  const [totalEarnings, setTotalEarnings] = useState(0);
-  const [weeklyEarnings, setWeeklyEarnings] = useState(0);
-  const [monthlyEarnings, setMonthlyEarnings] = useState(0);
-  const [pendingDisposalEarnings, setPendingDisposalEarnings] = useState(0);
-  const [disposedEarnings, setDisposedEarnings] = useState(0);
-  const [platformEarnings, setPlatformEarnings] = useState(0);
-  const [grossRevenue, setGrossRevenue] = useState(0);
-  const [stats, setStats] = useState({
+  const [showCashOutModal, setShowCashOutModal] = useState(false);
+  
+  // Offline and cache status
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [fromCache, setFromCache] = useState(false);
+  const [cacheAge, setCacheAge] = useState(null);
+  const [lastRefresh, setLastRefresh] = useState(null);
+  
+  // Monitor online/offline status
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+  
+  // Fix #8: Consolidated state management - single state object instead of 15+ separate states
+  const [earningsState, setEarningsState] = useState({
+    // Earnings totals
     totalEarnings: 0,
+    weeklyEarnings: 0,
+    monthlyEarnings: 0,
+    pendingDisposalEarnings: 0,
+    disposedEarnings: 0,
+    platformEarnings: 0,
+    grossRevenue: 0,
+    // Stats
     completedJobs: 0,
     pendingDisposalJobs: 0,
     disposedJobs: 0,
     avgPerJob: 0,
     rating: 0,
     completionRate: 0,
-    platformEarnings: 0,
-    grossRevenue: 0,
     collectorSharePercent: 0,
     platformSharePercent: 0,
-    paymentModeBreakdown: null
+    paymentModeBreakdown: null,
+    // Chart and transactions
+    chartData: {},
+    transactions: [],
+    // Detailed breakdown
+    detailedEarnings: null,
+    loyaltyTier: null
   });
-  const [earningsData, setEarningsData] = useState({});
-  const [transactions, setTransactions] = useState([]);
-  const [showCashOutModal, setShowCashOutModal] = useState(false);
-  const [detailedEarnings, setDetailedEarnings] = useState(null);
-  const [loyaltyTier, setLoyaltyTier] = useState(null);
+  
+  // Fix #7: Pagination state for transactions
+  const [transactionPage, setTransactionPage] = useState(1);
+  const TRANSACTIONS_PER_PAGE = 10;
+  
+  // Computed values from consolidated state
+  const { 
+    totalEarnings, weeklyEarnings, monthlyEarnings, 
+    pendingDisposalEarnings, disposedEarnings, 
+    platformEarnings, grossRevenue, 
+    chartData: earningsData, transactions,
+    detailedEarnings, loyaltyTier,
+    ...stats 
+  } = earningsState;
+  
+  // Fix #7: Paginated transactions
+  const totalPages = Math.ceil(transactions.length / TRANSACTIONS_PER_PAGE);
+  const paginatedTransactions = transactions.slice(
+    (transactionPage - 1) * TRANSACTIONS_PER_PAGE,
+    transactionPage * TRANSACTIONS_PER_PAGE
+  );
 
-  // Fetch earnings and stats
-  const fetchEarningsData = async () => {
+  // Fetch earnings and stats with offline caching support
+  const fetchEarningsData = async (forceRefresh = false) => {
     try {
       setIsLoading(true);
       if (!user?.id) {
@@ -386,39 +430,84 @@ const EarningsPage = () => {
       }
 
       const earningsService = createEarningsService(user.id);
-      const { success, data, error } = await earningsService.getEarningsData();
-
-      if (!success || error) {
-        throw new Error(error || 'Failed to fetch earnings data');
-      }
-
-      setEarningsData(data.chartData);
-      setStats(data.stats);
-      setTransactions(data.transactions);
-      setTotalEarnings(data.stats.totalEarnings);
-      setWeeklyEarnings(data.stats.weeklyEarnings || 0);
-      setMonthlyEarnings(data.stats.monthlyEarnings || 0);
-      setPendingDisposalEarnings(data.stats.pendingDisposalEarnings || 0);
-      setDisposedEarnings(data.stats.disposedEarnings || 0);
-      setPlatformEarnings(data.stats.platformEarnings || 0);
-      setGrossRevenue(data.stats.grossRevenue || 0);
       
-      // Fetch detailed earnings breakdown (SOP v4.5.6)
-      const { success: detailSuccess, data: detailData } = await earningsService.getDetailedEarningsBreakdown();
-      if (detailSuccess && detailData) {
-        setDetailedEarnings(detailData);
+      // Use cache-enabled fetch for better offline support
+      const result = await earningsService.getEarningsWithCache({ forceRefresh });
+      
+      if (!result.success) {
+        // Show offline message if applicable
+        if (result.isOffline) {
+          logger.warn('📴 Offline mode - no cached data available');
+        }
+        throw new Error(result.error || 'Failed to fetch earnings data');
       }
       
-      // Fetch loyalty tier information
-      const { success: tierSuccess, data: tierData } = await earningsService.getLoyaltyTier();
-      if (tierSuccess && tierData) {
-        setLoyaltyTier(tierData);
+      const data = result.data;
+      
+      // Update cache status indicators
+      setFromCache(result.fromCache || false);
+      setCacheAge(result.cacheAge || null);
+      setLastRefresh(new Date());
+      
+      logger.info(`📊 Earnings data loaded (fromCache: ${result.fromCache}, cacheAge: ${result.cacheAge ? Math.round(result.cacheAge / 1000) + 's' : 'N/A'})`);
+
+      // Fix #8: Update consolidated state in single call
+      // Handle both RPC optimized and legacy data formats
+      const statsData = data.stats || data;
+      setEarningsState(prev => ({
+        ...prev,
+        chartData: data.chartData || {},
+        transactions: data.transactions || [],
+        totalEarnings: statsData.totalEarnings || data.totalEarnings || 0,
+        weeklyEarnings: statsData.weeklyEarnings || data.weeklyEarnings || 0,
+        monthlyEarnings: statsData.monthlyEarnings || data.monthlyEarnings || 0,
+        pendingDisposalEarnings: statsData.pendingDisposalEarnings || data.pendingDisposalEarnings || 0,
+        disposedEarnings: statsData.disposedEarnings || data.disposedEarnings || 0,
+        platformEarnings: statsData.platformEarnings || data.platformEarnings || 0,
+        grossRevenue: statsData.grossRevenue || data.grossRevenue || 0,
+        completedJobs: statsData.completedJobs || data.jobCounts?.disposed || 0,
+        pendingDisposalJobs: statsData.pendingDisposalJobs || data.jobCounts?.pickedUp || 0,
+        disposedJobs: statsData.disposedJobs || data.jobCounts?.disposed || 0,
+        avgPerJob: statsData.avgPerJob || 0,
+        rating: statsData.rating || 0,
+        completionRate: statsData.completionRate || data.completionRate || 0,
+        collectorSharePercent: statsData.collectorSharePercent || 0,
+        platformSharePercent: statsData.platformSharePercent || 0,
+        paymentModeBreakdown: statsData.paymentModeBreakdown || null,
+        loyaltyTier: data.loyaltyTier || null
+      }));
+      
+      // Only fetch detailed breakdown if online and not from cache
+      if (!result.fromCache && navigator.onLine) {
+        // Fetch detailed earnings breakdown (SOP v4.5.6)
+        const { success: detailSuccess, data: detailData } = await earningsService.getDetailedEarningsBreakdown();
+        // Fetch loyalty tier information
+        const { success: tierSuccess, data: tierData } = await earningsService.getLoyaltyTier();
+        
+        // Update detailed data in single call
+        setEarningsState(prev => ({
+          ...prev,
+          detailedEarnings: detailSuccess ? detailData : null,
+          loyaltyTier: tierSuccess ? tierData : prev.loyaltyTier
+        }));
       }
+      
+      // Fix #7: Reset pagination when data changes
+      setTransactionPage(1);
       
       setIsLoading(false);
     } catch (error) {
       logger.error('Error fetching earnings data:', error);
       setIsLoading(false);
+    }
+  };
+  
+  // Force refresh handler for pull-to-refresh or manual refresh
+  const handleForceRefresh = () => {
+    if (navigator.onLine) {
+      fetchEarningsData(true);
+    } else {
+      logger.warn('📴 Cannot refresh while offline');
     }
   };
 
@@ -599,6 +688,38 @@ const EarningsPage = () => {
           pendingDisposalAmount={pendingDisposalEarnings}
           onWithdrawalSuccess={handleWithdrawalSuccess}
         />
+        
+        {/* Offline/Cache Status Indicator */}
+        {(isOffline || fromCache) && (
+          <div className={`mb-4 p-3 rounded-lg flex items-center justify-between ${
+            isOffline 
+              ? 'bg-red-50 border border-red-200' 
+              : 'bg-blue-50 border border-blue-200'
+          }`}>
+            <div className="flex items-center">
+              <span className="mr-2">{isOffline ? '📴' : '📦'}</span>
+              <div>
+                <p className={`text-sm font-medium ${isOffline ? 'text-red-700' : 'text-blue-700'}`}>
+                  {isOffline ? 'Offline Mode' : 'Cached Data'}
+                </p>
+                <p className={`text-xs ${isOffline ? 'text-red-600' : 'text-blue-600'}`}>
+                  {isOffline 
+                    ? 'Showing cached data. Connect to refresh.' 
+                    : `Updated ${cacheAge ? Math.round(cacheAge / 1000) + 's ago' : 'recently'}`
+                  }
+                </p>
+              </div>
+            </div>
+            {!isOffline && (
+              <button
+                onClick={handleForceRefresh}
+                className="px-3 py-1 bg-blue-100 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-200 transition-colors"
+              >
+                Refresh
+              </button>
+            )}
+          </div>
+        )}
         
         {/* Summary Cards */}
         <div className="grid grid-cols-3 gap-4 mb-6">
@@ -955,11 +1076,38 @@ const EarningsPage = () => {
         {activeTab === 'transactions' && (
           <div className="card">
             <h3 className="font-bold text-lg mb-4">Recent Transactions</h3>
+            {/* Fix #7: Paginated transactions */}
             <div className="divide-y">
-              {transactions.map((transaction, index) => (
-                <TransactionItem key={index} transaction={transaction} />
+              {paginatedTransactions.map((transaction, index) => (
+                <TransactionItem key={transaction.id || index} transaction={transaction} />
               ))}
+              {transactions.length === 0 && (
+                <p className="text-gray-500 text-center py-4">No transactions yet</p>
+              )}
             </div>
+            
+            {/* Fix #7: Pagination controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                <button
+                  onClick={() => setTransactionPage(p => Math.max(1, p - 1))}
+                  disabled={transactionPage === 1}
+                  className={`px-3 py-1 rounded ${transactionPage === 1 ? 'bg-gray-200 text-gray-400' : 'bg-primary text-white'}`}
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-gray-600">
+                  Page {transactionPage} of {totalPages} ({transactions.length} total)
+                </span>
+                <button
+                  onClick={() => setTransactionPage(p => Math.min(totalPages, p + 1))}
+                  disabled={transactionPage === totalPages}
+                  className={`px-3 py-1 rounded ${transactionPage === totalPages ? 'bg-gray-200 text-gray-400' : 'bg-primary text-white'}`}
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
         )}
         </div>
