@@ -6,7 +6,7 @@ import { logger } from '../utils/logger';
 
 const SignupPage = () => {
   const navigate = useNavigate();
-  const { sendOtp, signup, loading: authLoading, error: authError } = useAuth();
+  const { sendOtp, signup, loading: authLoading, error: authError, setIsCompletingSignup } = useAuth();
   
   // Use a reference to track current step to avoid closure issues
   const [step, setStep] = useState(1); // Multi-step form
@@ -156,6 +156,10 @@ const SignupPage = () => {
         throw new Error('Invalid OTP. Please enter a valid 6-digit code.');
       }
       
+      // CRITICAL: Set signup flag BEFORE verifying OTP
+      // This allows auth listener to recognize this as a new signup, not an auto-login
+      localStorage.setItem('is_completing_signup', 'true');
+      
       // CRITICAL: Verify OTP with Supabase directly (without setting user in context)
       // This authenticates the user and creates their session in Supabase
       // BUT we don't update AuthContext yet - that happens after profile creation
@@ -163,6 +167,8 @@ const SignupPage = () => {
       const { success, error: verifyError } = await authService.verifyOtp(formData.phone, formData.otp);
       
       if (!success) {
+        // Clear the signup flag if verification failed
+        localStorage.removeItem('is_completing_signup');
         throw new Error(verifyError || 'Invalid verification code. Please try again.');
       }
       
@@ -170,6 +176,13 @@ const SignupPage = () => {
       // Session exists, but we haven't set user in AuthContext yet
       logger.info('✅ OTP verified successfully - Supabase session created');
       logger.debug('📝 User can now proceed to fill profile information');
+      
+      // Clear the logout flag from previous sessions
+      localStorage.removeItem('user_logged_out');
+      
+      // Update React state to match localStorage
+      setIsCompletingSignup(true);
+      
       setStep(3); // Move to personal info
     } catch (err) {
       logger.error('❌ OTP verification error:', err);
@@ -240,6 +253,9 @@ const SignupPage = () => {
       if (success) {
         // Log success for demo purposes
         logger.info('✅ Registration successful with data:', signupData);
+        
+        // Clear the signup flag - user has completed registration
+        setIsCompletingSignup(false);
         
         // Redirect to welcome page
         navigate('/welcome');

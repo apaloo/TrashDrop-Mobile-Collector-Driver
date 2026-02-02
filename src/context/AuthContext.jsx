@@ -25,6 +25,11 @@ export const AuthProvider = ({ children }) => {
     localStorage.getItem('user_logged_out') === 'true'
   );
   
+  // Track if user is in the middle of signup flow (prevents redirect to map)
+  const [isCompletingSignup, setIsCompletingSignup] = useState(
+    localStorage.getItem('is_completing_signup') === 'true'
+  );
+  
   // IMMEDIATE: Start with true to allow immediate rendering
   // Auth check happens in background without blocking UI
   const [hasInitiallyChecked, setHasInitiallyChecked] = useState(true);
@@ -153,8 +158,10 @@ export const AuthProvider = ({ children }) => {
           
           // CRITICAL: Respect the user_logged_out flag to prevent infinite loops
           // If user explicitly logged out, don't auto-login even if Supabase has a session
+          // EXCEPTION: If user is completing signup, allow the auth change (new user registration)
           const isLoggedOut = localStorage.getItem('user_logged_out') === 'true';
-          if (isLoggedOut && session?.user) {
+          const isSigningUp = localStorage.getItem('is_completing_signup') === 'true';
+          if (isLoggedOut && session?.user && !isSigningUp) {
             logger.debug('🚫 Ignoring auth state change - user has explicitly logged out');
             return; // Don't update state, keep user logged out
           }
@@ -235,6 +242,11 @@ export const AuthProvider = ({ children }) => {
       // Reset logout flag and set user after successful verification
       setHasLoggedOut(false);
       localStorage.removeItem('user_logged_out');
+      
+      // Clear signup flag - login means user already has an account
+      localStorage.removeItem('is_completing_signup');
+      setIsCompletingSignup(false);
+      
       setUser(user);
       logger.debug('User verified successfully, logout flag cleared');
       return { success: true, user };
@@ -300,6 +312,11 @@ export const AuthProvider = ({ children }) => {
       // Reset logout flag and set user
       setHasLoggedOut(false);
       localStorage.removeItem('user_logged_out');
+      
+      // Clear signup flag - signup is complete
+      localStorage.removeItem('is_completing_signup');
+      setIsCompletingSignup(false);
+      
       setUser(user);
       logger.info('✅ User signup completed successfully - profile created');
       return { success: true, user };
@@ -325,6 +342,10 @@ export const AuthProvider = ({ children }) => {
       
       // Clear login time
       localStorage.removeItem('last_login_time');
+      
+      // Clear signup flag if user was in the middle of signup
+      localStorage.removeItem('is_completing_signup');
+      setIsCompletingSignup(false);
       
       // Set logout flag to prevent automatic session restoration
       setHasLoggedOut(true);
@@ -361,7 +382,16 @@ export const AuthProvider = ({ children }) => {
     logout,
     hasLoggedOut,
     isAuthenticated: !!user,
-    hasInitiallyChecked // Expose initial check status
+    hasInitiallyChecked, // Expose initial check status
+    isCompletingSignup,
+    setIsCompletingSignup: (value) => {
+      setIsCompletingSignup(value);
+      if (value) {
+        localStorage.setItem('is_completing_signup', 'true');
+      } else {
+        localStorage.removeItem('is_completing_signup');
+      }
+    }
   };
 
   return (

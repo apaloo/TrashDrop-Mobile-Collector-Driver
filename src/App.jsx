@@ -65,10 +65,11 @@ const ProtectedRoute = ({ children }) => {
 };
 
 const PublicRoute = ({ children }) => {
-  const { isAuthenticated, hasLoggedOut } = useAuth();
+  const { isAuthenticated, hasLoggedOut, isCompletingSignup } = useAuth();
   
   // IMMEDIATE: No loading check - redirect immediately if authenticated
-  if (isAuthenticated && !hasLoggedOut) {
+  // BUT don't redirect if user is in the middle of completing signup
+  if (isAuthenticated && !hasLoggedOut && !isCompletingSignup) {
     return <Navigate to="/map" replace />;
   }
   
@@ -207,15 +208,21 @@ function App() {
 
 // Component to handle default route redirect based on auth state
 const DefaultRedirect = () => {
-  const { isAuthenticated, hasLoggedOut, user } = useAuth();
+  const { isAuthenticated, hasLoggedOut, user, isCompletingSignup } = useAuth();
   const { getRestoredRoute, isRestoring } = useAppState();
   
   // Log state for debugging
-  logger.debug('DefaultRedirect:', { isAuthenticated, hasLoggedOut, hasUser: !!user });
+  logger.debug('DefaultRedirect:', { isAuthenticated, hasLoggedOut, hasUser: !!user, isCompletingSignup });
   
   // Wait for state restoration before redirecting
   if (isRestoring) {
     return null;
+  }
+  
+  // If user is completing signup, redirect to signup page
+  if (isCompletingSignup) {
+    logger.debug('DefaultRedirect: User completing signup, redirecting to signup');
+    return <Navigate to="/signup" replace />;
   }
   
   // IMMEDIATE: Redirect without waiting for loading
