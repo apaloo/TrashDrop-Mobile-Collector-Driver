@@ -313,9 +313,16 @@ const CompletionModal = ({
               <h3 className="font-medium text-gray-700 mb-2">Photo Documentation</h3>
               
               <div className="grid grid-cols-3 gap-3">
-                {photos.map((photo, index) => (
+                {photos.map((photo, index) => {
+                  // Handle both Blob/File objects and string URLs
+                  const photoSrc = typeof photo === 'string' ? photo : 
+                    (photo instanceof Blob || photo instanceof File) ? URL.createObjectURL(photo) : null;
+                  
+                  if (!photoSrc) return null;
+                  
+                  return (
                   <div key={index} className="aspect-square relative rounded-md overflow-hidden">
-                    <img src={URL.createObjectURL(photo)} alt={`Photo ${index + 1}`} className="w-full h-full object-cover" />
+                    <img src={photoSrc} alt={`Photo ${index + 1}`} className="w-full h-full object-cover" />
                     <button 
                       onClick={() => removePhoto(index)}
                       className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full w-6 h-6 flex items-center justify-center"
@@ -325,7 +332,8 @@ const CompletionModal = ({
                       </svg>
                     </button>
                   </div>
-                ))}
+                  );
+                })}
                 
                 {photos.length < 6 && (
                   <div onClick={openCamera} className="aspect-square bg-gray-100 rounded-md flex flex-col items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors border-2 border-dashed border-gray-300 p-4">

@@ -282,6 +282,8 @@ const AssignPage = () => {
   const [fetchError, setFetchError] = useState(null);
 
   // Fetch assignments from Supabase
+  // Uses collector_assignments_view which maps illegal_dumping_mobile table
+  // to the assignment format expected by this app
   const fetchAssignments = async () => {
     try {
       setLoading(true);
@@ -295,13 +297,13 @@ const AssignPage = () => {
       
       logger.debug('📥 Fetching assignments for collector:', user.id);
       
-      // Fetch ONLY assignments assigned to THIS collector by admin
-      // - Available: Assignments assigned to me by admin with status 'available' (not yet accepted)
-      // - Accepted: Assignments assigned to me that I've accepted with status 'accepted'
-      // - Completed: Assignments assigned to me that I've completed with status 'completed'
-      // Note: If collector_id IS NULL, it means no admin has assigned it yet - should not show to collectors
+      // Fetch from collector_assignments_view (maps illegal_dumping_mobile)
+      // - Available: Reports assigned to me by admin with status 'verified' → mapped to 'available'
+      // - Accepted: Reports I've accepted with status 'in_progress' → mapped to 'accepted'
+      // - Completed: Reports I've completed with status 'completed'
+      // Note: Only reports with assigned_to IS NOT NULL are shown (admin must assign first)
       const { data, error } = await supabase
-        .from('authority_assignments')
+        .from('collector_assignments_view')
         .select('*')
         .eq('collector_id', user.id)
         .order('created_at', { ascending: false });
@@ -313,24 +315,35 @@ const AssignPage = () => {
       }
 
       // Transform data to match expected format
+      // Data comes from collector_assignments_view which already maps most fields
       const transformedAssignments = data.map(assignment => ({
         id: assignment.id,
         type: assignment.type,
         location: assignment.location,
-        distance: assignment.distance || 'Unknown',
-        payment: parseFloat(assignment.payment?.replace('$', '') || 0),
+        distance: assignment.distance || 'Calculate',
+        payment: parseFloat(assignment.payment || 0),
         estimated_time: assignment.estimated_time || 'Unknown',
         priority: assignment.priority,
-        authority: assignment.authority,
+        authority: assignment.authority || 'Community Report',
         status: assignment.status === 'available' ? AssignmentStatus.AVAILABLE :
                 assignment.status === 'accepted' ? AssignmentStatus.ACCEPTED :
                 assignment.status === 'completed' ? AssignmentStatus.COMPLETED :
                 AssignmentStatus.AVAILABLE,
         created_at: assignment.created_at,
-        coordinates: assignment.coordinates,
-        accepted_at: assignment.accepted_at,
-        completed_at: assignment.completed_at,
-        collector_id: assignment.collector_id
+        // Build coordinates from latitude/longitude
+        coordinates: assignment.latitude && assignment.longitude 
+          ? [parseFloat(assignment.latitude), parseFloat(assignment.longitude)]
+          : null,
+        accepted_at: assignment.status === 'accepted' ? assignment.updated_at : null,
+        completed_at: assignment.status === 'completed' ? assignment.updated_at : null,
+        collector_id: assignment.collector_id,
+        // Profile ID for database updates (assigned_to stores profile id, not user id)
+        collector_profile_id: assignment.collector_profile_id,
+        // Additional fields from illegal_dumping_mobile
+        size: assignment.size,
+        photos: assignment.photos,
+        reported_by: assignment.reported_by,
+        original_status: assignment.original_status
       }));
 
       // Deduplicate assignments by ID (keep most recent based on updated_at or created_at)
@@ -445,18 +458,19 @@ const AssignPage = () => {
 
       logger.info('✅ Accepting assignment', assignmentId, 'for collector:', user.id);
 
-      // Update in Supabase - Change status from 'available' to 'accepted'
-      // Note: collector_id is already set by admin, we're just accepting the assignment
+      // Update in Supabase - Change status from 'verified' to 'in_progress'
+      // Write directly to illegal_dumping_mobile table (not the view)
+      // Note: assigned_to stores collector_profile_id (not user_id)
+      // We use collector_profile_id from the assignment object for the update
       const { error } = await supabase
-        .from('authority_assignments')
+        .from('illegal_dumping_mobile')
         .update({ 
-          status: 'accepted',
-          accepted_at: new Date().toISOString(),
+          status: 'in_progress',
           updated_at: new Date().toISOString()
         })
         .eq('id', assignmentId)
-        .eq('collector_id', user.id)
-        .eq('status', 'available');
+        .eq('assigned_to', assignmentToAccept.collector_profile_id)
+        .eq('status', 'verified');
 
       if (error) {
         logger.error('Error accepting assignment:', error);
@@ -513,11 +527,11 @@ const AssignPage = () => {
       }
 
       // Update assignment status to completed in Supabase
+      // Write directly to illegal_dumping_mobile table (not the view)
       const { error } = await supabase
-        .from('authority_assignments')
+        .from('illegal_dumping_mobile')
         .update({ 
           status: 'completed',
-          completed_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .eq('id', assignmentId);
@@ -652,11 +666,11 @@ const AssignPage = () => {
       }
 
       // Update in Supabase
+      // Write directly to illegal_dumping_mobile table (not the view)
       const { error } = await supabase
-        .from('authority_assignments')
+        .from('illegal_dumping_mobile')
         .update({ 
           status: 'completed',
-          completed_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .eq('id', assignmentId);

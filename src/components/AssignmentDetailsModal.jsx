@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { AssignmentStatus } from '../utils/types';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -57,32 +57,37 @@ const AssignmentDetailsModal = ({
     }
   };
 
-  // Initialize map when modal opens
-  // Parse coordinates from assignment - NO HARDCODED FALLBACK
-  const [coordinates, setCoordinates] = useState(null); // Will be set from assignment data
-
-  useEffect(() => {
-    if (isOpen && assignment) {
-      // In a real app, you would get actual coordinates from the assignment
-      // For now, we'll use a geocoding simulation based on the location string
-      const simulateGeocode = (locationString) => {
-        // This is a simplified simulation - in a real app you would use a geocoding service
-        // Add some randomness around Accra for demo purposes
-        const baseLatitude = 5.6037;
-        const baseLongitude = -0.1870;
-        
-        // Generate a "unique" but consistent coordinate based on the location string
-        const hash = locationString.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        const latOffset = (hash % 100) / 1000;
-        const lngOffset = ((hash * 13) % 100) / 1000;
-        
-        return [baseLatitude + latOffset, baseLongitude + lngOffset];
-      };
-      
-      // Set coordinates based on the assignment location
-      setCoordinates(simulateGeocode(assignment.location));
+  // Get coordinates from assignment data
+  // assignment.coordinates should be [lat, lng] array from the database
+  const getCoordinates = () => {
+    if (!assignment) return null;
+    
+    // Use actual coordinates from assignment if available
+    if (assignment.coordinates && Array.isArray(assignment.coordinates) && assignment.coordinates.length >= 2) {
+      const lat = parseFloat(assignment.coordinates[0]);
+      const lng = parseFloat(assignment.coordinates[1]);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        return [lat, lng];
+      }
     }
-  }, [isOpen, assignment]);
+    
+    // Fallback: Try to parse from location string if it contains coordinates
+    if (assignment.location) {
+      const coordMatch = assignment.location.match(/Coordinates:\s*([\d.-]+),\s*([\d.-]+)/);
+      if (coordMatch) {
+        const lat = parseFloat(coordMatch[1]);
+        const lng = parseFloat(coordMatch[2]);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          return [lat, lng];
+        }
+      }
+    }
+    
+    // Final fallback: Accra, Ghana center
+    return [5.6037, -0.1870];
+  };
+  
+  const coordinates = getCoordinates();
   
   // Determine if this modal should float under Available tab
   const isAvailableTab = tabContext === 'available';
@@ -101,7 +106,7 @@ const AssignmentDetailsModal = ({
       <div className={modalContentClass}>
         {/* Header */}
         <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-800">Assignment Details</h2>
+          <h2 className="text-xl font-bold text-gray-800 capitalize">{assignment.type} Assignment</h2>
           <button 
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700"
@@ -116,7 +121,6 @@ const AssignmentDetailsModal = ({
         <div className={`overflow-y-auto p-4 flex-1 ${isAvailableTab ? 'pb-20' : 'max-h-[calc(90vh-8rem)]'}`}>
           {/* Basic Info */}
           <div className="mb-4">
-            <h3 className="font-bold text-lg">{assignment.type} Assignment</h3>
             <p className="text-sm text-gray-600">{assignment.location}</p>
             <div className="flex items-center mt-1">
               <span className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded-full font-medium mr-2">#{assignment.id}</span>
@@ -153,33 +157,33 @@ const AssignmentDetailsModal = ({
           </div>
           
           {/* Details */}
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
-              <p className="text-gray-500 text-sm">Authority</p>
-              <p className="font-medium">{assignment.authority}</p>
+              <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Authority</p>
+              <p className="font-semibold text-gray-900">{assignment.authority}</p>
             </div>
             <div>
-              <p className="text-gray-500 text-sm">Payment</p>
-              <p className="font-medium">₵{assignment.payment}</p>
+              <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Payment</p>
+              <p className="font-semibold text-green-600 text-lg">₵{assignment.payment}</p>
             </div>
             <div>
-              <p className="text-gray-500 text-sm">Estimated Time</p>
-              <p className="font-medium">{assignment.estimated_time}</p>
+              <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Estimated Time</p>
+              <p className="font-semibold text-gray-900">{assignment.estimated_time}</p>
             </div>
             <div>
-              <p className="text-gray-500 text-sm">Created</p>
-              <p className="font-medium">{formatDate(assignment.created_at)}</p>
+              <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Created</p>
+              <p className="font-semibold text-gray-900">{formatDate(assignment.created_at)}</p>
             </div>
             {assignment.accepted_at && (
               <div>
-                <p className="text-gray-500 text-sm">Accepted</p>
-                <p className="font-medium">{formatDate(assignment.accepted_at)}</p>
+                <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Accepted</p>
+                <p className="font-semibold text-gray-900">{formatDate(assignment.accepted_at)}</p>
               </div>
             )}
             {assignment.completed_at && (
               <div>
-                <p className="text-gray-500 text-sm">Completed</p>
-                <p className="font-medium">{formatDate(assignment.completed_at)}</p>
+                <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Completed</p>
+                <p className="font-semibold text-gray-900">{formatDate(assignment.completed_at)}</p>
               </div>
             )}
           </div>
