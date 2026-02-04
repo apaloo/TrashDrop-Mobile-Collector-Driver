@@ -89,17 +89,10 @@ const AssignmentDetailsModal = ({
   
   const coordinates = getCoordinates();
   
-  // Determine if this modal should float under Available tab
-  const isAvailableTab = tabContext === 'available';
-  
-  // Different styling based on which tab opened the modal
-  const modalContainerClass = isAvailableTab
-    ? "fixed inset-x-0 top-[130px] bottom-[80px] z-[1000] flex flex-col items-center p-4 pt-0 pointer-events-none"
-    : "fixed inset-0 bg-black bg-opacity-50 z-[1000] flex items-center justify-center p-4";
+  // Use z-[9999] to ensure modal appears above all navbars
+  const modalContainerClass = "fixed inset-0 z-[9999] bg-black bg-opacity-50 flex items-center justify-center p-4";
     
-  const modalContentClass = isAvailableTab
-    ? "bg-white rounded-lg shadow-xl w-full max-w-lg h-full overflow-hidden pointer-events-auto relative flex flex-col"
-    : "bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden relative";
+  const modalContentClass = "bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden relative flex flex-col";
   
   return (
     <div className={modalContainerClass}>
@@ -118,7 +111,7 @@ const AssignmentDetailsModal = ({
         </div>
         
         {/* Content */}
-        <div className={`overflow-y-auto p-4 flex-1 ${isAvailableTab ? 'pb-20' : 'max-h-[calc(90vh-8rem)]'}`}>
+        <div className="overflow-y-auto p-4 flex-1">
           {/* Basic Info */}
           <div className="mb-4">
             <p className="text-sm text-gray-600">{assignment.location}</p>
@@ -202,9 +195,9 @@ const AssignmentDetailsModal = ({
           {assignment.status === AssignmentStatus.AVAILABLE && (
             <button 
               onClick={() => onAccept(assignment.id)} 
-              className="w-full py-3 bg-green-500 text-white rounded-md flex items-center justify-center hover:bg-green-600 transition-colors"
+              className="w-full py-4 bg-green-500 text-white text-lg font-semibold rounded-lg flex items-center justify-center hover:bg-green-600 transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
               Accept Assignment
@@ -212,21 +205,21 @@ const AssignmentDetailsModal = ({
           )}
           
           {assignment.status === AssignmentStatus.ACCEPTED && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-3">
               <button 
                 onClick={() => onNavigate(assignment)}
-                className="py-3 bg-blue-500 text-white rounded-md flex items-center justify-center hover:bg-blue-600 transition-colors"
+                className="w-full py-4 bg-indigo-500 text-white text-lg font-semibold rounded-lg flex items-center justify-center hover:bg-indigo-600 transition-colors"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                 </svg>
                 Navigate
               </button>
               <button 
                 onClick={() => onComplete(assignment.id)}
-                className="py-3 bg-green-500 text-white rounded-md flex items-center justify-center hover:bg-green-600 transition-colors"
+                className="w-full py-4 bg-green-500 text-white text-lg font-semibold rounded-lg flex items-center justify-center hover:bg-green-600 transition-colors"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Complete
@@ -235,24 +228,24 @@ const AssignmentDetailsModal = ({
           )}
           
           {assignment.status === AssignmentStatus.COMPLETED && (
-            <div>
+            <div className="flex flex-col gap-3">
               {assignment.hasDisposed ? (
                 <button 
                   onClick={() => onViewReport(assignment.id)}
-                  className="w-full py-3 bg-purple-500 text-white rounded-md flex items-center justify-center hover:bg-purple-600 transition-colors"
+                  className="w-full py-4 bg-purple-500 text-white text-lg font-semibold rounded-lg flex items-center justify-center hover:bg-purple-600 transition-colors"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                   View Report
                 </button>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
+                <>
                   <button 
                     onClick={() => onDumpingSite(assignment.id)}
-                    className="py-3 bg-blue-500 text-white rounded-md flex items-center justify-center hover:bg-blue-600 transition-colors"
+                    className="w-full py-4 bg-indigo-500 text-white text-lg font-semibold rounded-lg flex items-center justify-center hover:bg-indigo-600 transition-colors"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
@@ -260,14 +253,14 @@ const AssignmentDetailsModal = ({
                   </button>
                   <button 
                     onClick={() => onDispose(assignment.id)}
-                    className="py-3 bg-green-500 text-white rounded-md flex items-center justify-center hover:bg-green-600 transition-colors"
+                    className="w-full py-4 bg-green-500 text-white text-lg font-semibold rounded-lg flex items-center justify-center hover:bg-green-600 transition-colors"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                     Dispose
                   </button>
-                </div>
+                </>
               )}
             </div>
           )}

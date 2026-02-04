@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { isWithinRadius } from '../utils/locationUtils';
@@ -22,8 +22,23 @@ const CompletionModal = ({
   const [isWithinRange, setIsWithinRange] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
+  const [shouldZoomToUser, setShouldZoomToUser] = useState(false);
   const cameraInputRef = useRef(null);
   const RADIUS_METERS = 50; // 50 meter radius requirement
+  
+  // Component to control map zoom to user location
+  const MapController = ({ userCoords, shouldZoom, onZoomComplete }) => {
+    const map = useMap();
+    
+    useEffect(() => {
+      if (shouldZoom && userCoords && userCoords[0] && userCoords[1]) {
+        map.flyTo(userCoords, 17, { duration: 1.5 });
+        onZoomComplete();
+      }
+    }, [shouldZoom, userCoords, map, onZoomComplete]);
+    
+    return null;
+  };
   
   // Use the photo capture hook
   const {
@@ -169,6 +184,10 @@ const CompletionModal = ({
   // Add the missing verifyLocation function
   const verifyLocation = () => {
     getUserLocation();
+    // Trigger map zoom to user location after a short delay to allow location fetch
+    setTimeout(() => {
+      setShouldZoomToUser(true);
+    }, 500);
   };
   
   if (!isOpen || !assignment) return null;
@@ -314,18 +333,26 @@ const CompletionModal = ({
               
               <div className="grid grid-cols-3 gap-3">
                 {photos.map((photo, index) => {
-                  // Handle both Blob/File objects and string URLs
-                  const photoSrc = typeof photo === 'string' ? photo : 
-                    (photo instanceof Blob || photo instanceof File) ? URL.createObjectURL(photo) : null;
+                  // Handle photo objects with url property, Blob/File objects, and string URLs
+                  let photoSrc = null;
+                  if (typeof photo === 'string') {
+                    photoSrc = photo;
+                  } else if (photo && photo.url) {
+                    photoSrc = photo.url;
+                  } else if (photo instanceof Blob || photo instanceof File) {
+                    photoSrc = URL.createObjectURL(photo);
+                  }
                   
                   if (!photoSrc) return null;
                   
+                  const photoId = photo?.id || index;
+                  
                   return (
-                  <div key={index} className="aspect-square relative rounded-md overflow-hidden">
+                  <div key={photoId} className="aspect-square relative rounded-md overflow-hidden border-2 border-gray-200">
                     <img src={photoSrc} alt={`Photo ${index + 1}`} className="w-full h-full object-cover" />
                     <button 
-                      onClick={() => removePhoto(index)}
-                      className="absolute top-1 right-1 bg-black bg-opacity-50 text-white rounded-full w-6 h-6 flex items-center justify-center"
+                      onClick={() => removePhoto(photoId)}
+                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center shadow-lg"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -407,6 +434,13 @@ const CompletionModal = ({
                       fillColor: isWithinRange ? 'green' : 'red', 
                       fillOpacity: 0.1 
                     }}
+                  />
+                  
+                  {/* Map controller for auto-zoom to user location */}
+                  <MapController 
+                    userCoords={userCoordinates} 
+                    shouldZoom={shouldZoomToUser} 
+                    onZoomComplete={() => setShouldZoomToUser(false)} 
                   />
                 </MapContainer>
               </div>

@@ -76,7 +76,7 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
         {/* Header */}
         <div className="flex justify-between items-start mb-3">
           <div>
-            <h3 className="font-bold text-lg">{assignment.type} Assignment</h3>
+            <h3 className="font-semibold text-base text-gray-800 capitalize">{assignment.type} Assignment</h3>
             <p className="text-sm text-gray-600">{assignment.location}</p>
           </div>
           <span className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded-full font-medium">#{assignment.id}</span>

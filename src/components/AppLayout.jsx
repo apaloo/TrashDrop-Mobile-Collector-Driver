@@ -22,7 +22,7 @@ const AppLayout = ({ children }) => {
       {!isPublicRoute && <TopNavBar user={user} />}
       
       {/* Main content with padding for nav bars */}
-      <main className={`flex-grow relative z-0`} style={location.pathname === '/route-optimization' ? {paddingTop: '3.8rem'} : {}}>
+      <main className={`flex-grow relative`} style={location.pathname === '/route-optimization' ? {paddingTop: '3.8rem'} : {}}>
         {children}
       </main>
       
