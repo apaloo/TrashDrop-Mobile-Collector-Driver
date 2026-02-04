@@ -1860,26 +1860,74 @@ const GeofenceErrorModal = ({
   // Handle dispose bag
   const handleDisposeBag = async (requestId) => {
     // Get the selected disposal center for this request
-    // Use selectedDisposalCenter if it matches this request, otherwise we need to find it
+    // Use selectedDisposalCenter if it matches this request, otherwise auto-detect
     let targetSite = selectedDisposalCenter;
     
-    // If no disposal site has been selected yet, trigger visual highlight instead of text
+    // If no disposal site has been selected yet, try to auto-detect if user is at ANY disposal site
     if (!targetSite || !targetSite.lat || !targetSite.lng) {
-      // Haptic feedback - attention pattern
-      if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 100]);
+      logger.info('No disposal site selected, auto-detecting nearby sites...');
       
-      // Highlight the "Locate Site" button for this request
-      setHighlightRequestId(requestId);
+      // Fetch disposal centers to check if user is at any of them
+      const { data: disposalCenters, error: fetchError } = await supabase
+        .from('disposal_centers')
+        .select('id, name, address, latitude, longitude, waste_type, center_type')
+        .order('name');
       
-      // Auto-remove highlight after 3 seconds
-      setTimeout(() => {
-        setHighlightRequestId(null);
-      }, 3000);
+      if (!fetchError && disposalCenters && disposalCenters.length > 0) {
+        // Check if user is within range of ANY disposal center
+        for (const center of disposalCenters) {
+          // Parse coordinates
+          let centerLat = null;
+          let centerLng = null;
+          
+          if (typeof center.latitude === 'number') {
+            centerLat = center.latitude;
+          } else if (typeof center.latitude === 'string') {
+            centerLat = parseFloat(center.latitude);
+          }
+          
+          if (typeof center.longitude === 'number') {
+            centerLng = center.longitude;
+          } else if (typeof center.longitude === 'string') {
+            centerLng = parseFloat(center.longitude);
+          }
+          
+          if (centerLat && centerLng && !isNaN(centerLat) && !isNaN(centerLng)) {
+            const siteWithCoords = {
+              ...center,
+              lat: centerLat,
+              lng: centerLng
+            };
+            
+            if (checkWithinDisposalRange(userLocation, siteWithCoords)) {
+              logger.info('✅ Auto-detected user at disposal site:', center.name);
+              targetSite = siteWithCoords;
+              // Store for subsequent disposals
+              setSelectedDisposalCenter(siteWithCoords);
+              break;
+            }
+          }
+        }
+      }
       
-      return;
+      // If still no site found after auto-detection, show guidance
+      if (!targetSite || !targetSite.lat || !targetSite.lng) {
+        // Haptic feedback - attention pattern
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 100]);
+        
+        // Highlight the "Locate Site" button for this request
+        setHighlightRequestId(requestId);
+        
+        // Auto-remove highlight after 3 seconds
+        setTimeout(() => {
+          setHighlightRequestId(null);
+        }, 3000);
+        
+        return;
+      }
     }
     
-    // Check if user is within range of the SELECTED disposal center (not hardcoded one)
+    // Check if user is within range of the disposal center
     const isWithinRange = checkWithinDisposalRange(userLocation, targetSite);
     
     if (!isWithinRange) {
@@ -1974,10 +2022,11 @@ const GeofenceErrorModal = ({
           const { error } = await supabase
             .from('pickup_requests') // Use pickup_requests table instead of authority_assignments
             .update({ 
-              // Only include fields that exist in the schema
+              // CRITICAL: Set status to 'disposed' so earningsService counts it
+              status: 'disposed',
               disposal_site: disposalSite,
-              disposal_timestamp: disposalTimestamp
-              // Removed non-existent columns: disposal_complete, environmental_impact
+              disposal_timestamp: disposalTimestamp,
+              disposed_at: disposalTimestamp
             })
             .eq('id', requestId);
           
@@ -1997,18 +2046,8 @@ const GeofenceErrorModal = ({
         logger.debug(`Skipping database update for non-UUID request ID: ${requestId} (using local state only for disposal)`); 
       }
       
-      // Update request
-      const updatedRequest = {
-        ...requests.picked_up[requestIndex],
-        disposal_complete: true,
-        disposal_site: disposalSite,
-        disposal_timestamp: disposalTimestamp,
-        environmental_impact: environmentalImpact
-      };
-      
-      // Update state
-      const newPickedUp = [...requests.picked_up];
-      newPickedUp[requestIndex] = updatedRequest;
+      // REMOVE disposed item from picked_up list to save memory and avoid clutter
+      const newPickedUp = requests.picked_up.filter((_, idx) => idx !== requestIndex);
       
       const updatedRequests = {
         ...requests,
@@ -2046,6 +2085,106 @@ const GeofenceErrorModal = ({
       showToast('Failed to view report', 'error');
     }
   };
+
+  // Handle dispose ALL picked up items at once
+  const handleDisposeAll = async () => {
+    // Verify user is at a disposal site
+    if (!selectedDisposalCenter?.lat || !selectedDisposalCenter?.lng) {
+      showToast('Please locate a disposal site first', 'warning');
+      return;
+    }
+    
+    const isWithinRange = checkWithinDisposalRange(userLocation, selectedDisposalCenter);
+    if (!isWithinRange) {
+      showToast('You must be within 50m of the disposal site', 'warning');
+      return;
+    }
+    
+    const itemsToDispose = requests.picked_up?.filter(req => req.status !== 'disposed') || [];
+    
+    if (itemsToDispose.length === 0) {
+      showToast('No items to dispose', 'info');
+      return;
+    }
+    
+    const totalItems = itemsToDispose.length;
+    showToast(`Disposing ${totalItems} item${totalItems > 1 ? 's' : ''}...`, 'info');
+    
+    let successCount = 0;
+    let totalEarnings = 0;
+    const disposalTimestamp = new Date().toISOString();
+    const disposalSite = selectedDisposalCenter?.name || 'Disposal Center';
+    
+    try {
+      for (const request of itemsToDispose) {
+        try {
+          if (request.source_type === 'digital_bin') {
+            // Dispose digital bin with payout calculation
+            const result = await disposeDigitalBin(request.id, user?.id, selectedDisposalCenter?.id);
+            if (result.success) {
+              successCount++;
+              totalEarnings += result.payoutBreakdown?.collector_total_payout || 0;
+            }
+          } else {
+            // Dispose regular pickup request
+            const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(request.id);
+            
+            if (isValidUuid) {
+              const { error } = await supabase
+                .from('pickup_requests')
+                .update({
+                  status: 'disposed',
+                  disposal_site: disposalSite,
+                  disposal_timestamp: disposalTimestamp,
+                  disposed_at: disposalTimestamp
+                })
+                .eq('id', request.id);
+              
+              if (!error) {
+                successCount++;
+              }
+            } else {
+              // Demo/local data - count as success
+              successCount++;
+            }
+          }
+        } catch (itemError) {
+          logger.error(`Error disposing item ${request.id}:`, itemError);
+        }
+      }
+      
+      // Clear all disposed items from picked_up list
+      setRequests(prev => ({
+        ...prev,
+        picked_up: []
+      }));
+      
+      // Refresh requests to sync with database
+      await fetchRequests();
+      
+      // Show success message with earnings if applicable
+      if (totalEarnings > 0) {
+        showToast(
+          `✅ Disposed ${successCount}/${totalItems} items! Earnings: GHS ${totalEarnings.toFixed(2)}`,
+          'success',
+          5000
+        );
+      } else {
+        showToast(`✅ Disposed ${successCount}/${totalItems} items at ${disposalSite}!`, 'success', 4000);
+      }
+      
+    } catch (err) {
+      logger.error('Error in handleDisposeAll:', err);
+      showToast('Some items failed to dispose. Please try again.', 'error');
+    }
+  };
+
+  // Check if user is within 50m of a disposal site (for FAB visibility)
+  const isAtDisposalSite = selectedDisposalCenter?.lat && selectedDisposalCenter?.lng && 
+    checkWithinDisposalRange(userLocation, selectedDisposalCenter);
+  
+  // Count items available to dispose
+  const itemsToDisposeCount = requests.picked_up?.filter(req => req.status !== 'disposed')?.length || 0;
 
   // Handle payment submission (digital bin client collection)
   const handlePaymentSubmit = async (paymentData) => {
@@ -2480,6 +2619,21 @@ const GeofenceErrorModal = ({
         </div>
       </main>
       
+      {/* Dispose All FAB - Only shows when at disposal site with items to dispose */}
+      {activeTab === 'picked_up' && isAtDisposalSite && itemsToDisposeCount > 0 && (
+        <button
+          onClick={handleDisposeAll}
+          className="fixed bottom-24 right-4 z-40 bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-full shadow-lg flex items-center gap-2 transition-all duration-300 animate-pulse hover:animate-none"
+          style={{ boxShadow: '0 4px 14px rgba(34, 197, 94, 0.4)' }}
+        >
+          {/* Trash/Dispose icon */}
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          <span className="font-semibold">Dispose All ({itemsToDisposeCount})</span>
+        </button>
+      )}
+      
       <BottomNavBar activeTab="request" />
       
       {/* Toast Notification */}
@@ -2634,10 +2788,62 @@ const GeofenceErrorModal = ({
             setSelectedDisposalCenter(null);
             setCurrentDisposalRequestId(null);
           }}
-          onDispose={(assignmentId, site) => {
+          onDispose={async (assignmentId, site) => {
             logger.info('Disposal confirmed:', { assignmentId, site });
-            showToast(`Disposal confirmed at ${site.name}`, 'success');
+            
+            try {
+              // Find the request to determine if it's a digital bin or pickup request
+              const request = requests.picked_up?.find(req => req.id === assignmentId);
+              
+              if (!request) {
+                showToast('Request not found', 'error');
+                setShowDisposalModal(false);
+                return;
+              }
+              
+              showToast('Processing disposal...', 'info');
+              
+              if (request.source_type === 'digital_bin') {
+                // Use disposeDigitalBin for digital bins
+                const result = await disposeDigitalBin(assignmentId, user?.id, site?.id);
+                
+                if (!result.success) {
+                  throw new Error(result.error || 'Failed to dispose bin');
+                }
+                
+                const earnings = result.payoutBreakdown?.collector_total_payout || 0;
+                showToast(`Disposal confirmed at ${site.name}! Earnings: GHS ${earnings.toFixed(2)}`, 'success', 5000);
+              } else {
+                // Update pickup_requests status to 'disposed'
+                const { error } = await supabase
+                  .from('pickup_requests')
+                  .update({
+                    status: 'disposed',
+                    disposal_site: site?.name || 'Disposal Center',
+                    disposal_timestamp: new Date().toISOString(),
+                    disposed_at: new Date().toISOString()
+                  })
+                  .eq('id', assignmentId);
+                
+                if (error) {
+                  throw new Error(error.message);
+                }
+                
+                showToast(`Disposal confirmed at ${site.name}!`, 'success');
+              }
+              
+              // Refresh requests to update UI and earnings
+              await fetchRequests();
+              
+            } catch (error) {
+              logger.error('Error confirming disposal:', error);
+              showToast(`Disposal failed: ${error.message}`, 'error');
+            }
+            
             setShowDisposalModal(false);
+            // KEEP selectedDisposalCenter set so subsequent items show "Site Found" button
+            // User is still at the same disposal site, no need to re-locate
+            setCurrentDisposalRequestId(null);
           }}
           // onGetDirections is NOT provided - let DisposalModal handle in-app navigation internally
         />
