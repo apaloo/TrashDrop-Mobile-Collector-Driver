@@ -1216,9 +1216,13 @@ const GoogleMapsNavigation = ({
           // Cache tiles along the route
           if (polylineCoords.length > 0) {
             logger.info('📦 Caching tiles for offline navigation...');
+            let lastLoggedPercent = -1; // Track last logged percentage to avoid spam
             await offlineMapService.cacheRouteArea(polylineCoords, (progress) => {
-              if (progress.percent % 25 === 0) {
-                logger.debug(`📦 Tile caching: ${progress.percent}% (${progress.cached}/${progress.total})`);
+              // Only log at 25%, 50%, 75%, 100% milestones (not every batch)
+              const milestone = Math.floor(progress.percent / 25) * 25;
+              if (milestone > lastLoggedPercent && milestone <= 100) {
+                lastLoggedPercent = milestone;
+                logger.debug(`📦 Tile caching: ${milestone}% (${progress.cached}/${progress.total})`);
               }
             });
           }

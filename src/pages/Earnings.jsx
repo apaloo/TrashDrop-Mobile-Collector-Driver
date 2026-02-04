@@ -660,7 +660,7 @@ const EarningsPage = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900 relative">
-      <TopNavBar user={userProfile} />
+      <TopNavBar user={user} />
       
       {/* Overlay loader for refresh - keeps content visible */}
       {isRefreshing && (

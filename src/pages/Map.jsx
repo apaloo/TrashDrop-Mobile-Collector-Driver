@@ -1077,10 +1077,10 @@ const MapPage = () => {
       totalItems: allRequests.length 
     });  
     
-    // Position should always be available now (fallback location ensures this)
+    // Position may be null during initial render before GPS is acquired - this is expected
     if (!position || !position[0] || !position[1]) {
-      // This should rarely happen now that we have fallback location
-      logger.warn('⚠️ Position not available even with fallback - this should not happen');
+      // Don't warn during initial startup - only log at debug level
+      // Position will be set once GPS is acquired
       setRequests([]);
       updateFilteredRequests([]);
       return;
@@ -1779,7 +1779,7 @@ const MapPage = () => {
   // Return the component UI
   return (
     <div className="flex flex-col h-screen">
-      <TopNavBar user={userProfile} />
+      <TopNavBar user={user} />
       
       {/* Toast notification */}
       {toast.show && (

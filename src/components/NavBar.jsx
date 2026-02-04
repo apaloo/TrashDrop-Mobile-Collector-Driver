@@ -5,17 +5,52 @@ import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/supabase';
 import { logger } from '../utils/logger';
 
+// Cache key for user profile in localStorage
+const PROFILE_CACHE_KEY = 'trashdrop_user_profile';
+
 /**
  * Top navigation bar component with logo and profile dropdown
  */
 export const TopNavBar = ({ user }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [userProfile, setUserProfile] = useState(null);
+  // Initialize from localStorage cache for instant display on refresh
+  const [userProfile, setUserProfile] = useState(() => {
+    try {
+      const cached = localStorage.getItem(PROFILE_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        // Only use cache if it matches current user
+        if (parsed.user_id === user?.id) {
+          return { first_name: parsed.first_name, last_name: parsed.last_name };
+        }
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+    return null;
+  });
   const { logout } = useAuth();
   const navigate = useNavigate();
 
   // Fetch user profile to get first_name and last_name
   const hasAttemptedFetch = useRef(false);
+  
+  // Load from cache when user becomes available (handles timing issues on refresh)
+  useEffect(() => {
+    if (user?.id && !userProfile) {
+      try {
+        const cached = localStorage.getItem(PROFILE_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.user_id === user.id && parsed.first_name) {
+            setUserProfile({ first_name: parsed.first_name, last_name: parsed.last_name });
+          }
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+  }, [user?.id, userProfile]);
   
   useEffect(() => {
     const fetchProfile = async () => {
@@ -25,10 +60,21 @@ export const TopNavBar = ({ user }) => {
       try {
         const { success, profile } = await authService.getUserProfile(user.id);
         if (success && profile) {
-          setUserProfile({
+          const profileData = {
             first_name: profile.first_name,
             last_name: profile.last_name
-          });
+          };
+          setUserProfile(profileData);
+          // Cache in localStorage for next refresh
+          try {
+            localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({
+              user_id: user.id,
+              first_name: profile.first_name,
+              last_name: profile.last_name
+            }));
+          } catch (e) {
+            // Ignore storage errors
+          }
         }
         // If no profile found (success=false), silently use defaults - user may not have completed signup
       } catch (err) {

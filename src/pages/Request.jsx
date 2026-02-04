@@ -2372,7 +2372,7 @@ const GeofenceErrorModal = ({
 
   return (
     <div className="app-container bg-gray-100 min-h-screen flex flex-col">
-      <TopNavBar user={userProfile} />
+      <TopNavBar user={user} />
       
       {/* Fixed Header Section */}
       <div className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md pt-16 pb-0">

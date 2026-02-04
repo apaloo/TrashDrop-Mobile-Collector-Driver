@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import { AssignmentStatus } from '../utils/types';
@@ -10,6 +10,7 @@ import AssignmentNavigationModal from '../components/AssignmentNavigationModal';
 import { supabase, authService } from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logger } from '../utils/logger';
+import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
 
 const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNavigate, onDumpingSite, onDispose, onViewReport }) => {
   const [expanded, setExpanded] = useState(false);
@@ -280,6 +281,10 @@ const AssignPage = () => {
     completed: []
   });
   const [fetchError, setFetchError] = useState(null);
+  
+  // Track assignments that have had arrival confirmed via navigation modal
+  // This is used as a fallback in geofence check since navigation uses accurate GPS
+  const [confirmedArrivals, setConfirmedArrivals] = useState(new Set());
 
   // Fetch assignments from Supabase
   // Uses collector_assignments_view which maps illegal_dumping_mobile table
@@ -435,12 +440,155 @@ const AssignPage = () => {
     setDetailsModalOpen(true);
   };
   
-  // Check if user is within geofence (simulated)
-  const isWithinGeofence = (assignmentId) => {
-    // In a real app, this would use the device's GPS to check if the user is within 50m of the assignment location
-    // For now, we'll simulate this with a random check that returns true 70% of the time
-    return Math.random() > 0.3;
-  };
+  // User location state for geofence checking
+  const [userLocation, setUserLocation] = useState(null);
+  const locationUpdateRef = useRef(null);
+
+  // Update user location periodically
+  useEffect(() => {
+    const updateUserLocation = async () => {
+      try {
+        const location = await getCurrentLocation();
+        if (location && !location.isFallback) {
+          setUserLocation(location);
+          logger.debug('📍 User location updated:', location.lat, location.lng);
+        }
+      } catch (error) {
+        logger.warn('Failed to get user location:', error);
+      }
+    };
+
+    // Initial location update
+    updateUserLocation();
+
+    // Update location every 10 seconds
+    locationUpdateRef.current = setInterval(updateUserLocation, 10000);
+
+    return () => {
+      if (locationUpdateRef.current) {
+        clearInterval(locationUpdateRef.current);
+      }
+    };
+  }, []);
+
+  // Parse assignment coordinates from various formats
+  const parseAssignmentCoordinates = useCallback((assignment) => {
+    if (!assignment) return null;
+
+    // Try coordinates field first (may be array, object, or string)
+    if (assignment.coordinates) {
+      const coords = assignment.coordinates;
+      
+      // Array format [lat, lng]
+      if (Array.isArray(coords) && coords.length >= 2) {
+        return { lat: coords[0], lng: coords[1] };
+      }
+      
+      // Object format {lat, lng}
+      if (typeof coords === 'object' && coords.lat !== undefined) {
+        return { lat: coords.lat, lng: coords.lng || coords.lon };
+      }
+      
+      // String format "lat,lng" or PostGIS POINT format
+      if (typeof coords === 'string') {
+        // PostGIS POINT format: "POINT(lng lat)"
+        const pointMatch = coords.match(/POINT\(([+-]?\d+\.?\d*)\s+([+-]?\d+\.?\d*)\)/i);
+        if (pointMatch) {
+          return { lat: parseFloat(pointMatch[2]), lng: parseFloat(pointMatch[1]) };
+        }
+        
+        // PostGIS binary format - cannot parse
+        if (coords.startsWith('0101000020')) {
+          logger.warn('⚠️ PostGIS binary format detected - cannot verify location');
+          return null;
+        }
+        
+        // Simple "lat,lng" format
+        const parts = coords.split(',').map(c => parseFloat(c.trim()));
+        if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+          return { lat: parts[0], lng: parts[1] };
+        }
+      }
+    }
+
+    // Try latitude/longitude fields
+    if (assignment.latitude !== undefined && assignment.longitude !== undefined) {
+      return { lat: assignment.latitude, lng: assignment.longitude };
+    }
+
+    // Try lat/lng fields
+    if (assignment.lat !== undefined && assignment.lng !== undefined) {
+      return { lat: assignment.lat, lng: assignment.lng };
+    }
+
+    return null;
+  }, []);
+
+  // Check if user is within 50m geofence of assignment location
+  const isWithinGeofence = useCallback((assignmentId) => {
+    // FIRST: Check if arrival was already confirmed via navigation modal
+    // The navigation modal uses accurate real-time GPS and is more reliable
+    if (confirmedArrivals.has(assignmentId)) {
+      logger.info(`✅ Geofence bypassed - arrival already confirmed via navigation for ${assignmentId}`);
+      return true;
+    }
+    
+    // Find the assignment
+    const assignment = assignments.accepted.find(a => a.id === assignmentId);
+    if (!assignment) {
+      logger.warn('Assignment not found for geofence check:', assignmentId);
+      return false;
+    }
+
+    // Check if we have user location
+    if (!userLocation) {
+      logger.warn('⚠️ Cannot verify location - GPS unavailable');
+      showToast('Please enable GPS to verify your location', 'warning');
+      return false;
+    }
+
+    // DEBUG: Log raw assignment data with exact values
+    logger.info('🔍 DEBUG Geofence - Assignment:', {
+      id: assignment.id,
+      coordinates: assignment.coordinates,
+      coordsType: typeof assignment.coordinates,
+      coordsIsArray: Array.isArray(assignment.coordinates),
+      coordsValues: Array.isArray(assignment.coordinates) ? `[${assignment.coordinates[0]}, ${assignment.coordinates[1]}]` : 'not array'
+    });
+    logger.info('🔍 DEBUG Geofence - User location:', {
+      lat: userLocation?.lat,
+      lng: userLocation?.lng,
+      raw: userLocation
+    });
+
+    // Parse assignment coordinates
+    const assignmentCoords = parseAssignmentCoordinates(assignment);
+    logger.info('🔍 DEBUG Geofence - Parsed coords:', assignmentCoords);
+    
+    if (!assignmentCoords) {
+      logger.warn('⚠️ Cannot parse assignment coordinates:', assignment.coordinates);
+      // Allow completion if we can't parse coordinates (legacy data)
+      showToast('Location verification unavailable - proceeding with manual verification', 'warning');
+      return true;
+    }
+
+    // Calculate distance in km
+    const distance = calculateDistance(userLocation, assignmentCoords);
+    const distanceMeters = Math.round(distance * 1000);
+    
+    logger.info(`📍 Distance to assignment: ${distanceMeters}m (geofence: 50m)`);
+
+    // Check if within 50m (0.05km)
+    const isWithin = distance <= 0.05;
+    
+    if (!isWithin) {
+      logger.info(`❌ User is ${distanceMeters}m away - outside 50m geofence`);
+    } else {
+      logger.info(`✅ User is within geofence (${distanceMeters}m)`);
+    }
+
+    return isWithin;
+  }, [assignments.accepted, userLocation, parseAssignmentCoordinates, confirmedArrivals]);
   
   // Handle accept assignment
   const handleAccept = async (assignmentId) => {
@@ -515,10 +663,13 @@ const AssignPage = () => {
     setDetailsModalOpen(false); // Close details modal if open
   };
   
-  // Handle assignment arrival (auto-completion when within 50m)
+  // Handle assignment arrival (called when navigation modal confirms user is within 50m)
   const handleAssignmentArrival = async (assignmentId) => {
     try {
-      logger.info(`✅ Assignment ${assignmentId} auto-completed via navigation`);
+      logger.info(`✅ Assignment ${assignmentId} arrival confirmed via navigation modal`);
+      
+      // Mark this assignment as having confirmed arrival (for geofence fallback)
+      setConfirmedArrivals(prev => new Set([...prev, assignmentId]));
       
       const assignmentToComplete = assignments.accepted.find(assign => assign.id === assignmentId);
       if (!assignmentToComplete) {
@@ -657,12 +808,21 @@ const AssignPage = () => {
   };
   
   // Handle completion submission
-  const handleCompletionSubmit = async (assignmentId, photos) => {
+  const handleCompletionSubmit = async (submissionData) => {
     try {
+      // Extract photos from submission data (CompletionModal passes { photos, locationVerified, userCoordinates })
+      const { photos } = submissionData || {};
+      const assignmentId = selectedAssignment?.id;
+      
+      if (!assignmentId) {
+        showToast('No assignment selected', 'error');
+        return false;
+      }
+      
       const assignmentToComplete = assignments.accepted.find(assign => assign.id === assignmentId);
       if (!assignmentToComplete) {
         showToast('Assignment not found', 'error');
-        return;
+        return false;
       }
 
       // Update in Supabase
@@ -678,7 +838,7 @@ const AssignPage = () => {
       if (error) {
         logger.error('Error completing assignment:', error);
         showToast('Failed to complete assignment. Please try again.', 'error');
-        return;
+        return false;
       }
 
       // Update local state
@@ -686,7 +846,7 @@ const AssignPage = () => {
         ...assignmentToComplete,
         status: AssignmentStatus.COMPLETED,
         completed_at: new Date().toISOString(),
-        photos: photos.length, // In a real app, we would upload the photos to a server
+        photos: photos?.length || 0, // In a real app, we would upload the photos to a server
         hasDisposed: false
       };
       
@@ -696,12 +856,17 @@ const AssignPage = () => {
         completed: [...prev.completed, updatedAssignment]
       }));
       
-      // Show success toast
+      // Show success toast and close modal
       showToast('Assignment completed successfully!');
+      setCompletionModalOpen(false);
+      setSelectedAssignment(null);
+      
+      return true; // Signal success to CompletionModal
       
     } catch (error) {
       logger.error('Unexpected error completing assignment:', error);
       showToast('An unexpected error occurred. Please try again.', 'error');
+      return false;
     }
   };
   
@@ -838,7 +1003,7 @@ const AssignPage = () => {
 
   return (
     <div className="app-container bg-gray-100 min-h-screen flex flex-col">
-      <TopNavBar user={userProfile} />
+      <TopNavBar user={user} />
       
       {/* Fixed Header Section */}
       <div className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md pt-16 pb-0">
@@ -993,6 +1158,7 @@ const AssignPage = () => {
         isOpen={completionModalOpen}
         onClose={() => setCompletionModalOpen(false)}
         onSubmit={handleCompletionSubmit}
+        isGeofenceVerified={true} // Geofence was already verified in handleComplete before opening modal
       />
       
       <DisposalModal

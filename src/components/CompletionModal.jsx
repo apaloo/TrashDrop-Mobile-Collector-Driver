@@ -15,11 +15,12 @@ const CompletionModal = ({
   assignment, 
   isOpen, 
   onClose, 
-  onSubmit 
+  onSubmit,
+  isGeofenceVerified = false // Pass true if Assign.jsx already verified the user is within 50m
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [locationVerified, setLocationVerified] = useState(false);
-  const [isWithinRange, setIsWithinRange] = useState(false);
+  const [locationVerified, setLocationVerified] = useState(isGeofenceVerified);
+  const [isWithinRange, setIsWithinRange] = useState(isGeofenceVerified);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [shouldZoomToUser, setShouldZoomToUser] = useState(false);
@@ -46,6 +47,7 @@ const CompletionModal = ({
     capturePhoto,
     removePhoto,
     clearPhotos,
+    isUploading,
     error: photoError,
     hasPhotos
   } = usePhotoCapture(assignment?.id);
@@ -61,11 +63,52 @@ const CompletionModal = ({
     });
   }, []);
 
-  // State for map coordinates
-  const defaultLat = import.meta.env.VITE_DEFAULT_LATITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LATITUDE) : 5.6037;
-  const defaultLng = import.meta.env.VITE_DEFAULT_LONGITUDE ? parseFloat(import.meta.env.VITE_DEFAULT_LONGITUDE) : -0.1870;
-  const [coordinates, setCoordinates] = useState([defaultLat, defaultLng]); // Default coordinates from env vars
-  const [userCoordinates, setUserCoordinates] = useState([defaultLat, defaultLng]); // Default user coordinates
+  // State for map coordinates - NO hardcoded defaults, use null until we have real data
+  const [coordinates, setCoordinates] = useState(null);
+  const [userCoordinates, setUserCoordinates] = useState(null);
+  
+  // Helper to parse coordinates from various formats
+  const parseCoordinates = (coords) => {
+    if (!coords) return null;
+    
+    // Array format [lat, lng]
+    if (Array.isArray(coords) && coords.length >= 2) {
+      const lat = parseFloat(coords[0]);
+      const lng = parseFloat(coords[1]);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        return [lat, lng];
+      }
+    }
+    
+    // Object format {lat, lng}
+    if (coords.lat !== undefined && coords.lng !== undefined) {
+      const lat = parseFloat(coords.lat);
+      const lng = parseFloat(coords.lng);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        return [lat, lng];
+      }
+    }
+    
+    // Object format {latitude, longitude}
+    if (coords.latitude !== undefined && coords.longitude !== undefined) {
+      const lat = parseFloat(coords.latitude);
+      const lng = parseFloat(coords.longitude);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        return [lat, lng];
+      }
+    }
+    
+    return null;
+  };
+  
+  // Sync geofence verification state when modal opens or prop changes
+  useEffect(() => {
+    if (isOpen && isGeofenceVerified) {
+      setLocationVerified(true);
+      setIsWithinRange(true);
+      logger.debug('✅ CompletionModal: Geofence already verified by parent');
+    }
+  }, [isOpen, isGeofenceVerified]);
   
   // Show error toast if photo capture fails
   useEffect(() => {
@@ -77,13 +120,16 @@ const CompletionModal = ({
   
   // Set assignment coordinates on component mount
   useEffect(() => {
-    if (isOpen && assignment && assignment.coordinates) {
-      // Use actual assignment coordinates if available
-      if (assignment.coordinates.lat && assignment.coordinates.lng) {
-        setCoordinates([assignment.coordinates.lat, assignment.coordinates.lng]);
+    if (isOpen && assignment) {
+      // Parse assignment coordinates from various formats
+      const parsedCoords = parseCoordinates(assignment.coordinates);
+      
+      if (parsedCoords) {
+        logger.debug('📍 CompletionModal: Using assignment coordinates:', parsedCoords);
+        setCoordinates(parsedCoords);
       } else {
-        // Fallback to default coordinates from environment variables
-        setCoordinates([defaultLat, defaultLng]);
+        logger.warn('⚠️ CompletionModal: Could not parse assignment coordinates:', assignment.coordinates);
+        // No fallback - we need real coordinates
       }
       
       // Get user's current location
@@ -151,24 +197,17 @@ const CompletionModal = ({
 
   // Handle geolocation fallback with enhanced logic
   const handleGeolocationFallback = (reason) => {
-    logger.debug(`🔄 Using fallback location due to: ${reason}`);
-    
-    // Use environment variables as fallback
-    const fallbackCoords = [defaultLat, defaultLng];
-    setUserCoordinates(fallbackCoords);
+    logger.debug(`🔄 Geolocation failed: ${reason}`);
     setIsCheckingLocation(false);
     
-    // For completion modal, we should be more lenient with location verification
-    // when geolocation fails, as the user might be in a location with poor GPS
+    // If we have assignment coordinates, use them as user location for display
+    // (user will need to retry to get actual location)
     if (coordinates) {
-      // Still check proximity with fallback coordinates, but don't be as strict
-      const withinRange = isWithinRadius(fallbackCoords, coordinates, RADIUS_METERS * 2); // Double the radius for fallback
-      setIsWithinRange(withinRange);
-      setLocationVerified(true); // Allow completion with fallback location for better UX
-      logger.debug(`📍 Fallback proximity check: ${withinRange ? 'within range' : 'outside range'} (relaxed criteria)`);
-    } else {
-      setLocationVerified(true); // Allow completion if no assignment coordinates available
-      setIsWithinRange(true);
+      setUserCoordinates(coordinates);
+      // Don't auto-verify - user needs to get real GPS
+      setIsWithinRange(false);
+      setLocationVerified(false);
+      logger.warn('⚠️ Could not get GPS - please enable location services and try again');
     }
   };
   
@@ -296,18 +335,23 @@ const CompletionModal = ({
       setIsSubmitting(true);
       
       // Call the onSubmit handler with all collected data
-      await onSubmit({
+      const success = await onSubmit({
         photos,
         locationVerified: isWithinRange,
         userCoordinates
       });
       
-      // Clear the form after successful submission
-      clearPhotos();
-      setLocationVerified(false);
+      // Only clear the form if submission was successful
+      // The parent (Assign.jsx) will close the modal on success
+      if (success) {
+        clearPhotos();
+        setLocationVerified(false);
+        setIsWithinRange(false);
+      }
+      // If not successful, keep the state so user can retry
     } catch (error) {
       logger.error('Error submitting completion:', error);
-      // Show error notification
+      // Keep state on error so user can retry
     } finally {
       setIsSubmitting(false);
     }
@@ -346,13 +390,35 @@ const CompletionModal = ({
                   if (!photoSrc) return null;
                   
                   const photoId = photo?.id || index;
+                  const isPhotoUploading = photo?.isUploading === true;
                   
                   return (
                   <div key={photoId} className="aspect-square relative rounded-md overflow-hidden border-2 border-gray-200">
                     <img src={photoSrc} alt={`Photo ${index + 1}`} className="w-full h-full object-cover" />
+                    {/* Upload indicator overlay */}
+                    {isPhotoUploading && (
+                      <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                        <div className="text-white text-center">
+                          <svg className="animate-spin h-6 w-6 mx-auto mb-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span className="text-xs">Uploading...</span>
+                        </div>
+                      </div>
+                    )}
+                    {/* Cloud indicator for uploaded photos */}
+                    {photo?.cloudUrl && !isPhotoUploading && (
+                      <div className="absolute bottom-1 left-1 bg-green-500 text-white rounded-full w-5 h-5 flex items-center justify-center shadow-lg" title="Uploaded to cloud">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    )}
                     <button 
                       onClick={() => removePhoto(photoId)}
                       className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center shadow-lg"
+                      disabled={isPhotoUploading}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -401,48 +467,56 @@ const CompletionModal = ({
               
               {/* Map */}
               <div className="h-48 w-full bg-gray-200 rounded-md overflow-hidden">
-                <MapContainer 
-                  center={coordinates} 
-                  zoom={15} 
-                  style={{ height: '100%', width: '100%' }}
-                  zoomControl={true}
-                >
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  {/* Assignment location marker */}
-                  <Marker position={coordinates}>
-                    <Popup>
-                      {assignment.location}
-                    </Popup>
-                  </Marker>
-                  
-                  {/* User location marker */}
-                  <Marker position={userCoordinates}>
-                    <Popup>
-                      Your Location
-                    </Popup>
-                  </Marker>
-                  
-                  {/* 50m radius circle around assignment location */}
-                  <Circle 
-                    center={coordinates}
-                    radius={50}
-                    pathOptions={{ 
-                      color: isWithinRange ? 'green' : 'red', 
-                      fillColor: isWithinRange ? 'green' : 'red', 
-                      fillOpacity: 0.1 
-                    }}
-                  />
-                  
-                  {/* Map controller for auto-zoom to user location */}
-                  <MapController 
-                    userCoords={userCoordinates} 
-                    shouldZoom={shouldZoomToUser} 
-                    onZoomComplete={() => setShouldZoomToUser(false)} 
-                  />
-                </MapContainer>
+                {coordinates ? (
+                  <MapContainer 
+                    center={coordinates} 
+                    zoom={17} 
+                    style={{ height: '100%', width: '100%' }}
+                    zoomControl={true}
+                  >
+                    <TileLayer
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+                    {/* Assignment location marker */}
+                    <Marker position={coordinates}>
+                      <Popup>
+                        {assignment.location}
+                      </Popup>
+                    </Marker>
+                    
+                    {/* User location marker - only show if we have user coordinates */}
+                    {userCoordinates && (
+                      <Marker position={userCoordinates}>
+                        <Popup>
+                          Your Location
+                        </Popup>
+                      </Marker>
+                    )}
+                    
+                    {/* 50m radius circle around assignment location */}
+                    <Circle 
+                      center={coordinates}
+                      radius={50}
+                      pathOptions={{ 
+                        color: isWithinRange ? 'green' : 'red', 
+                        fillColor: isWithinRange ? 'green' : 'red', 
+                        fillOpacity: 0.1 
+                      }}
+                    />
+                    
+                    {/* Map controller for auto-zoom to user location */}
+                    <MapController 
+                      userCoords={userCoordinates} 
+                      shouldZoom={shouldZoomToUser} 
+                      onZoomComplete={() => setShouldZoomToUser(false)} 
+                    />
+                  </MapContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-gray-500">
+                    <span>Loading map...</span>
+                  </div>
+                )}
               </div>
               <div className="mt-2 text-sm text-gray-600">
                 <p>Assignment location: {assignment.location}</p>

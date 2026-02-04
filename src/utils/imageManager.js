@@ -107,8 +107,9 @@ class ImageManager {
 
   /**
    * Gets all captured photos for a specific request
+   * Filters out invalid blob URLs that may have become stale after page refresh
    * @param {string} requestId - The ID of the request to get photos for
-   * @returns {Array} Array of captured photos
+   * @returns {Array} Array of captured photos with valid URLs
    */
   static getCapturedPhotos(requestId) {
     if (!requestId) {
@@ -128,7 +129,34 @@ class ImageManager {
         sessionStorage.removeItem(storageKey);
         return [];
       }
-      return parsed.photos || [];
+      
+      const photos = parsed.photos || [];
+      
+      // Filter out photos with blob URLs - these become invalid after page refresh
+      // Blob URLs are created with URL.createObjectURL() and are tied to the current
+      // browser session. After a page refresh, they no longer point to valid data.
+      const validPhotos = photos.filter(photo => {
+        // If URL starts with 'blob:', it's invalid after page refresh
+        if (photo?.url?.startsWith?.('blob:')) {
+          logger.debug(`🗑️ Filtering out stale blob URL for photo ${photo.id}`);
+          return false;
+        }
+        // Keep photos with valid URLs (base64, http/https, or other valid sources)
+        return photo?.url;
+      });
+      
+      // If we filtered out any photos, update storage to remove the stale entries
+      if (validPhotos.length !== photos.length) {
+        if (validPhotos.length > 0) {
+          this.saveCapturedPhotos(requestId, validPhotos);
+        } else {
+          // No valid photos left, remove the storage entry entirely
+          sessionStorage.removeItem(storageKey);
+        }
+        logger.debug(`🧹 Cleaned up ${photos.length - validPhotos.length} stale blob URLs for request ${requestId}`);
+      }
+      
+      return validPhotos;
     } catch (error) {
       logger.error('Error parsing captured photos:', error);
       return [];
