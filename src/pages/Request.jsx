@@ -907,18 +907,29 @@ const RequestPage = () => {
   const checkWithinDisposalRange = useCallback((userCoords, site) => {
     if (!userCoords || !site) return false;
     
+    // Normalize user coordinates (handle both lat/lng and latitude/longitude formats)
+    const normalizedUserCoords = {
+      lat: userCoords.lat || userCoords.latitude,
+      lng: userCoords.lng || userCoords.longitude
+    };
+    
     // Get site coordinates in the right format
     const siteCoords = {
-      lat: site.lat || site.coordinates?.[0],
-      lng: site.lng || site.coordinates?.[1]
+      lat: site.lat || site.latitude || site.coordinates?.[0],
+      lng: site.lng || site.longitude || site.coordinates?.[1]
     };
+    
+    if (!normalizedUserCoords.lat || !normalizedUserCoords.lng) {
+      logger.warn('Invalid user coordinates:', userCoords);
+      return false;
+    }
     
     if (!siteCoords.lat || !siteCoords.lng) {
       logger.warn('Invalid disposal site coordinates:', site);
       return false;
     }
     
-    const distance = calculateDistance(userCoords, siteCoords);
+    const distance = calculateDistance(normalizedUserCoords, siteCoords);
     logger.info('📍 Distance to disposal site:', {
       siteName: site.name,
       distance: `${(distance * 1000).toFixed(0)}m`,
@@ -931,7 +942,10 @@ const RequestPage = () => {
   useEffect(() => {
     const autoDetectDisposalSite = async () => {
       // Only run if user has location and is on picked_up tab with items
-      if (!userLocation?.lat || !userLocation?.lng) return;
+      // Handle both lat/lng and latitude/longitude formats
+      const hasValidLocation = (userLocation?.lat || userLocation?.latitude) && 
+                               (userLocation?.lng || userLocation?.longitude);
+      if (!hasValidLocation) return;
       if (activeTab !== 'picked_up') return;
       if (!requests.picked_up || requests.picked_up.length === 0) return;
       
