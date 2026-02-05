@@ -927,6 +927,50 @@ const RequestPage = () => {
     return distance <= 0.05; // 50 meters in km
   }, [calculateDistance]);
 
+  // AUTO-DETECT: Check if user is near any disposal site and set selectedDisposalCenter
+  useEffect(() => {
+    const autoDetectDisposalSite = async () => {
+      // Only run if user has location and is on picked_up tab with items
+      if (!userLocation?.lat || !userLocation?.lng) return;
+      if (activeTab !== 'picked_up') return;
+      if (!requests.picked_up || requests.picked_up.length === 0) return;
+      
+      // If already at a disposal site, don't re-fetch
+      if (selectedDisposalCenter?.lat && checkWithinDisposalRange(userLocation, selectedDisposalCenter)) {
+        return;
+      }
+      
+      try {
+        // Fetch all disposal centers
+        const { data: disposalCenters, error } = await supabase
+          .from('disposal_centers')
+          .select('id, name, address, latitude, longitude, waste_type, center_type')
+          .order('name');
+        
+        if (error || !disposalCenters) return;
+        
+        // Check if user is within 50m of any disposal center
+        for (const center of disposalCenters) {
+          const siteWithCoords = {
+            ...center,
+            lat: center.latitude,
+            lng: center.longitude
+          };
+          
+          if (checkWithinDisposalRange(userLocation, siteWithCoords)) {
+            logger.info('🎯 Auto-detected at disposal site:', center.name);
+            setSelectedDisposalCenter(siteWithCoords);
+            return;
+          }
+        }
+      } catch (err) {
+        logger.error('Error auto-detecting disposal site:', err);
+      }
+    };
+    
+    autoDetectDisposalSite();
+  }, [userLocation, activeTab, requests.picked_up, selectedDisposalCenter, checkWithinDisposalRange]);
+
   // OPTIMIZATION: Handle tab change with memoization to avoid unnecessary operations
   const handleTabChange = useCallback((tab) => {
     if (tab !== activeTab) {
@@ -2785,7 +2829,7 @@ const GeofenceErrorModal = ({
           isOpen={showDisposalModal}
           onClose={() => {
             setShowDisposalModal(false);
-            setSelectedDisposalCenter(null);
+            // Don't clear selectedDisposalCenter - keep it for FAB and subsequent disposals
             setCurrentDisposalRequestId(null);
           }}
           onDispose={async (assignmentId, site) => {
