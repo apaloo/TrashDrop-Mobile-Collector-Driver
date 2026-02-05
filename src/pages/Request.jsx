@@ -2678,10 +2678,11 @@ const GeofenceErrorModal = ({
       </main>
       
       {/* Dispose All FAB - Only shows when at disposal site with items to dispose */}
+      {/* z-[70] ensures it stays above modals (z-50/z-60) so collectors always see it */}
       {activeTab === 'picked_up' && isAtDisposalSite && itemsToDisposeCount > 0 && (
         <button
           onClick={handleDisposeAll}
-          className="fixed bottom-24 right-4 z-40 bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-full shadow-lg flex items-center gap-2 transition-all duration-300 animate-pulse hover:animate-none"
+          className="fixed bottom-24 right-4 z-[70] bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-full shadow-lg flex items-center gap-2 transition-all duration-300 animate-pulse hover:animate-none"
           style={{ boxShadow: '0 4px 14px rgba(34, 197, 94, 0.4)' }}
         >
           {/* Trash/Dispose icon */}
