@@ -13,6 +13,27 @@ const PROFILE_CACHE_KEY = 'trashdrop_user_profile';
  */
 export const TopNavBar = ({ user }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isDropdownOpen]);
+  
   // Initialize from localStorage cache for instant display on refresh
   const [userProfile, setUserProfile] = useState(() => {
     try {
@@ -89,7 +110,7 @@ export const TopNavBar = ({ user }) => {
   }, [user?.id]);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 bg-white shadow-md px-4 py-2 z-10 nav-top-bar">
+    <nav className="fixed top-0 left-0 right-0 bg-white shadow-md px-4 py-2 z-[2500] nav-top-bar">
       <div className="flex justify-between items-center">
         {/* Logo */}
         <Link to="/" className="flex items-center">
@@ -98,7 +119,7 @@ export const TopNavBar = ({ user }) => {
         </Link>
 
         {/* Profile Dropdown */}
-        <div className="relative">
+        <div className="relative" ref={dropdownRef}>
           <button
             className="flex items-center focus:outline-none"
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -117,7 +138,7 @@ export const TopNavBar = ({ user }) => {
           </button>
 
           {isDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20">
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-[3000]">
               <Link
                 to="/profile"
                 className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"

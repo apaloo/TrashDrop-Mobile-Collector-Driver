@@ -1820,7 +1820,7 @@ const MapPage = () => {
             {/* Request count display - shows filtered requests count */}
             
           {/* Enhanced Online/Offline Status Button */}
-          <div className="absolute top-2 right-0 flex flex-col items-end gap-1 z-[2000] pointer-events-auto" style={{ marginRight: '0.4rem' }}>
+          <div className="absolute top-2 right-0 flex flex-col items-end gap-1 z-20 pointer-events-auto" style={{ marginRight: '0.4rem' }}>
             <StatusButton 
               showSessionInfo={true}
               className="transition-all duration-300 hover:scale-105"

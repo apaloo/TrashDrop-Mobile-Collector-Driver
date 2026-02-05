@@ -111,6 +111,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
   // Refs for map and tile layer
   const mapRef = useRef(null);
   const offlineTileLayerRef = useRef(null);
+  const hasShownTooFarWarning = useRef(false);
   
   // Using SVG-based marker icons imported from markerIcons.js
   // These replace the previous PNG-based icons that were missing
@@ -234,19 +235,22 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
         isNaN: isNaN(distance) || isNaN(time)
       });
       
-      // Show warning with actual values - simplified for low literacy
-      toast.warning(
-        <div className="text-center">
-          <div className="text-2xl mb-1">⚠️ Too Far!</div>
-          <div className="text-base font-bold">{distance.toFixed(0)} km • {Math.round(time/60)} hours</div>
-          <div className="text-sm mt-1">📍 Pick closer jobs</div>
-        </div>, 
-        {
-          position: "top-center",
-          autoClose: 10000,
-          style: { fontSize: '16px', padding: '16px' }
-        }
-      );
+      // Show warning only once (prevents duplicate toasts from StrictMode)
+      if (!hasShownTooFarWarning.current) {
+        hasShownTooFarWarning.current = true;
+        toast.warning(
+          <div className="text-center">
+            <div className="text-2xl mb-1">⚠️ Too Far!</div>
+            <div className="text-base font-bold">{distance.toFixed(0)} km • {Math.round(time/60)} hours</div>
+            <div className="text-sm mt-1">📍 Pick closer jobs</div>
+          </div>, 
+          {
+            position: "top-center",
+            autoClose: 10000,
+            style: { fontSize: '16px', padding: '16px' }
+          }
+        );
+      }
       
       // Still show the route but warn user
       setOptimizedRoute(route);
