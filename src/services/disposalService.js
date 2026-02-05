@@ -217,16 +217,23 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
     // If no payment record found, create a fallback using bin data
     let paymentData = payment;
     if (!paymentData) {
-      logger.warn('No bin_payments record found, using fallback from digital_bin data:', binId);
-      // Create fallback payment object from digital_bin's fee/total_bill
+      // Get actual fee from digital_bin - DO NOT use hardcoded fallback
+      const actualFee = parseFloat(digitalBin.fee) || parseFloat(digitalBin.payout) || parseFloat(digitalBin.total_bill);
+      
+      if (!actualFee || actualFee <= 0) {
+        logger.error('CRITICAL: No valid fee found for bin disposal:', { binId, digitalBin });
+        throw new Error(`Cannot dispose bin ${binId}: No valid fee data found. Fee must be set on the digital_bin record.`);
+      }
+      
+      logger.warn('No bin_payments record found, using fallback from digital_bin data:', { binId, fee: actualFee });
       paymentData = {
         id: `fallback_${binId}`,
         digital_bin_id: binId,
         collector_id: collectorId,
         type: 'collection',
-        payment_mode: 'digital', // Default to digital
-        total_bill: digitalBin.fee || digitalBin.total_bill || 10, // Use bin's fee or default
-        status: 'success', // Assume paid since bin was picked up
+        payment_mode: 'digital',
+        total_bill: actualFee,
+        status: 'success',
         created_at: digitalBin.created_at
       };
     }
