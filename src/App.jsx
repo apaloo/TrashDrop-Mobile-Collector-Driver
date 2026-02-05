@@ -12,6 +12,7 @@ import { AppStateProvider, useAppState } from './context/AppStateContext';
 
 // Components
 import AppLayout from './components/AppLayout';
+import InstallPrompt from './components/InstallPrompt';
 import ImageManager from './utils/imageManager';
 import { logger } from './utils/logger';
 
@@ -87,6 +88,7 @@ function App() {
           <FilterProvider>
             <Router>
               <AppStateProvider>
+              <InstallPrompt />
               <AppLayout>
                 <RouteCleanup />
                 <Routes>
