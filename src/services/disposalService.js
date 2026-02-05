@@ -53,15 +53,15 @@ const PAYMENT_SPLITS = {
 function calculatePaymentSharing(digitalBin, payment, actualTips = 0) {
   logger.info('Calculating payment sharing for bin:', digitalBin.id);
   
-  const totalBill = parseFloat(payment.total_bill) || 0;
-  const bagsCollected = parseInt(payment.bags_collected) || 1;
+  const totalBill = parseFloat(payment.total_bill) || parseFloat(digitalBin.fee) || 0;
+  const bagsCollected = parseInt(payment.bags_collected) || parseInt(digitalBin.bags_collected) || 1;
   const isUrgent = digitalBin.is_urgent || false;
   const deadheadKm = parseFloat(digitalBin.deadhead_km) || 0;
   const surgeMultiplier = parseFloat(digitalBin.surge_multiplier) || 1.0;
   
-  // Component 1: Core Collection Fee (base rate per bag)
-  const baseRatePerBag = 5.0; // GHS 5 per bag
-  const coreCollectionFee = baseRatePerBag * bagsCollected;
+  // Component 1: Core Collection Fee - USE ACTUAL TOTAL BILL, not hardcoded rate
+  // The total_bill represents what the user paid, collector gets deadhead share of this
+  const coreCollectionFee = totalBill;
   
   // Calculate collector's core share based on deadhead distance (85-92%)
   const deadheadShare = getDeadheadShare(deadheadKm);
