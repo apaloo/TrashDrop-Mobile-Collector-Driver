@@ -11,6 +11,7 @@ const PAYMENT_SPLITS = {
   RECYCLABLES_COLLECTOR_SHARE: 0.60, // 60% of recyclables to collector
   RECYCLABLES_USER_SHARE: 0.25,      // 25% of recyclables to user
   DISTANCE_COLLECTOR_SHARE: 1.0,     // 100% of distance bonus to collector
+  DEFAULT_DEADHEAD_SHARE: 0.87,      // Average of 85-92% for legacy data without deadhead info (matches earningsService)
   
   // Platform shares (App Bucket)
   URGENT_PLATFORM_SHARE: 0.25,       // 25% of urgent surcharge to platform
@@ -53,8 +54,10 @@ const PAYMENT_SPLITS = {
 function calculatePaymentSharing(digitalBin, payment, actualTips = 0) {
   logger.info('Calculating payment sharing for bin:', digitalBin.id);
   
-  const totalBill = parseFloat(payment.total_bill) || parseFloat(digitalBin.fee) || 0;
-  const bagsCollected = parseInt(payment.bags_collected) || parseInt(digitalBin.bags_collected) || 1;
+  // IMPORTANT: Use digitalBin.fee as PRIMARY source (the actual amount user paid)
+  // bin_payments.total_bill may contain incorrect/partial values
+  const totalBill = parseFloat(digitalBin.fee) || parseFloat(digitalBin.payout) || parseFloat(payment.total_bill) || 0;
+  const bagsCollected = parseInt(digitalBin.bags_collected) || parseInt(payment.bags_collected) || 1;
   const isUrgent = digitalBin.is_urgent || false;
   const deadheadKm = parseFloat(digitalBin.deadhead_km) || 0;
   const surgeMultiplier = parseFloat(digitalBin.surge_multiplier) || 1.0;
@@ -64,7 +67,8 @@ function calculatePaymentSharing(digitalBin, payment, actualTips = 0) {
   const coreCollectionFee = totalBill;
   
   // Calculate collector's core share based on deadhead distance (85-92%)
-  const deadheadShare = getDeadheadShare(deadheadKm);
+  // Use DEFAULT_DEADHEAD_SHARE (0.87) for legacy data without deadhead info (matches earningsService)
+  const deadheadShare = deadheadKm > 0 ? getDeadheadShare(deadheadKm) : PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
   const collectorCorePayout = coreCollectionFee * deadheadShare;
   const platformCoreMargin = coreCollectionFee - collectorCorePayout;
   
@@ -93,7 +97,8 @@ function calculatePaymentSharing(digitalBin, payment, actualTips = 0) {
   const collectorTips = tipsAmount * PAYMENT_SPLITS.TIPS_COLLECTOR_SHARE;
   
   // Component 6: Recyclables Bonus - 60/25/15 split (collector/user/platform)
-  const recyclablesBonus = bagsCollected * 2.0; // GHS 2 per bag estimate
+  // Use actual recycler_gross_payout if available, otherwise skip (no hardcoded values)
+  const recyclablesBonus = parseFloat(digitalBin.recycler_gross_payout) || 0;
   const collectorRecyclablesPayout = recyclablesBonus * PAYMENT_SPLITS.RECYCLABLES_COLLECTOR_SHARE;
   const userRecyclablesCredit = recyclablesBonus * PAYMENT_SPLITS.RECYCLABLES_USER_SHARE;
   const platformRecyclablesShare = recyclablesBonus * PAYMENT_SPLITS.RECYCLABLES_PLATFORM_SHARE;
