@@ -325,7 +325,7 @@ const RouteOptimizationPage = () => {
       </div>
         
       {/* Content area with top padding to account for fixed header */}
-      <div className="pt-28">
+      <div style={{ paddingTop: '3.5rem' }}>
         <PullToRefresh onRefresh={handleRefresh}>
           <div className="max-w-7xl mx-auto px-4 py-2">
             {isLoading ? (

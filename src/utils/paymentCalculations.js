@@ -13,19 +13,24 @@
  */
 
 /**
- * Calculate collector's core payout share based on deadhead distance
- * Implements the deadhead curve: 85% at ≤5km → 92% at 10km
+ * Calculate collector's share based on deadhead distance (SOP v4.5.6)
+ * LONGER deadhead = HIGHER share (compensates for travel cost)
+ * 
+ * | Deadhead Distance | Collector Share |
+ * |-------------------|-----------------|
+ * | 0-2 km            | 85%             |
+ * | 2-5 km            | 87%             |
+ * | 5-10 km           | 89%             |
+ * | 10+ km            | 92%             |
  * 
  * @param {number} deadheadKm - Distance from collector to pickup in kilometers
  * @returns {number} Share percentage (0.85 to 0.92)
  */
 export function getDeadheadShare(deadheadKm) {
-  if (!deadheadKm || deadheadKm <= 5) return 0.85;
-  if (deadheadKm >= 10) return 0.92;
-  
-  // Linear interpolation between 5km and 10km
-  const t = (deadheadKm - 5) / 5;
-  return 0.85 + t * (0.92 - 0.85);
+  if (!deadheadKm || deadheadKm <= 2) return 0.85;
+  if (deadheadKm <= 5) return 0.87;
+  if (deadheadKm <= 10) return 0.89;
+  return 0.92; // 10+ km
 }
 
 /**

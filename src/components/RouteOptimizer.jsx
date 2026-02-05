@@ -620,7 +620,7 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
       )}
       
       {/* Fixed position container for route info and navigation button */}
-      <div className="sticky top-0 z-[1000] bg-white shadow-md border-b border-gray-200 mb-2">
+      <div className="sticky top-0 bg-white shadow-md border-b border-gray-200 mb-2">
         {isLoading ? (
           <div className="flex justify-center items-center py-4">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>

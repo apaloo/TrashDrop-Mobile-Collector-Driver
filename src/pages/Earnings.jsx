@@ -276,7 +276,7 @@ const EarningsLineChart = ({ data, period }) => {
     <div className="mt-4 mb-6">
       <div className="flex justify-between mb-2">
         <span className="text-sm text-gray-500">Earnings ({period})</span>
-        <span className="text-sm text-gray-500">Max: ₵{maxValue}</span>
+        <span className="text-sm text-gray-500">Max: ₵{maxValue.toFixed(2)}</span>
       </div>
       <div className="flex items-end h-32 space-x-1">
         {data.map((item, index) => (
@@ -322,7 +322,7 @@ const TransactionItem = ({ transaction }) => {
         </div>
         <div className="text-right">
           <p className={`font-bold ${transaction.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {transaction.amount > 0 ? '+' : ''}₵{transaction.amount}
+            {transaction.amount > 0 ? '+' : ''}₵{parseFloat(transaction.amount).toFixed(2)}
           </p>
           <p className="text-xs text-gray-500">{new Date(transaction.date).toLocaleDateString()}</p>
         </div>
@@ -412,8 +412,13 @@ const EarningsPage = () => {
     platformEarnings, grossRevenue, 
     chartData: earningsData, transactions,
     detailedEarnings, loyaltyTier,
+    paymentModeBreakdown,
     ...stats 
   } = earningsState;
+  
+  // Calculate actual withdrawable amount after commission reconciliation
+  // This is the NET amount platform will pay to collector via MoMo
+  const actualWithdrawableAmount = paymentModeBreakdown?.reconciliation?.netPayoutToCollector ?? disposedEarnings;
   
   // Fix: Filter transactions by period
   const filteredTransactions = transactions.filter(transaction => {
@@ -714,14 +719,14 @@ const EarningsPage = () => {
         </div>
         
         {/* Scrollable Content Section with padding to account for fixed header */}
-        <div className="px-4 pt-[172px] pb-3">
+        <div className="px-4 pt-[193px] pb-3">
         
         {/* Cash Out Modal */}
         <CashOutModal 
           isOpen={showCashOutModal} 
           onClose={() => setShowCashOutModal(false)} 
           totalEarnings={totalEarnings}
-          availableForWithdrawal={disposedEarnings}
+          availableForWithdrawal={actualWithdrawableAmount}
           pendingDisposalAmount={pendingDisposalEarnings}
           onWithdrawalSuccess={handleWithdrawalSuccess}
         />
@@ -774,30 +779,47 @@ const EarningsPage = () => {
           </div>
         </div>
         
-        {/* Disposal Status Breakdown */}
-        <div className="bg-white rounded-lg shadow mb-6 p-4">
-          <h3 className="text-lg font-bold text-gray-800 mb-3">Earnings by Status</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <div className="flex items-center mb-1">
-                <span className="text-amber-600 mr-2">🚚</span>
-                <p className="text-amber-700 text-sm font-bold">Pending Disposal</p>
+        {/* Your Money - Simple & Clear */}
+        <div className="bg-white rounded-xl shadow-lg mb-6 overflow-hidden">
+          {/* Total Earnings - Hero Section */}
+          <div className="bg-gradient-to-r from-green-500 to-green-600 p-5 text-center">
+            <p className="text-green-100 text-sm mb-1">Your Money</p>
+            <p className="text-4xl font-bold text-white">₵{disposedEarnings.toFixed(2)}</p>
+          </div>
+          
+          {/* Simple Breakdown */}
+          <div className="p-4 space-y-3">
+            {/* Cash - Already yours */}
+            <div className="flex items-center justify-between bg-yellow-50 rounded-xl p-4 border-2 border-yellow-200">
+              <div className="flex items-center">
+                <span className="text-3xl mr-3">�</span>
+                <span className="text-lg font-bold text-yellow-800">Cash</span>
               </div>
-              <p className="text-xl font-bold text-amber-600">₵{pendingDisposalEarnings.toFixed(2)}</p>
-              <p className="text-xs text-amber-600">{stats.pendingDisposalJobs || 0} jobs awaiting disposal</p>
-              <p className="text-xs text-amber-500 mt-1 italic">Dispose to unlock funds</p>
+              <span className="text-2xl font-bold text-yellow-700">₵{(paymentModeBreakdown?.cash?.collected || 0).toFixed(2)}</span>
             </div>
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <div className="flex items-center mb-1">
-                <span className="text-green-600 mr-2">💰</span>
-                <p className="text-green-700 text-sm font-bold">Available for Withdrawal</p>
+            
+            {/* MoMo - Ready to withdraw */}
+            <div className="flex items-center justify-between bg-purple-50 rounded-xl p-4 border-2 border-purple-200">
+              <div className="flex items-center">
+                <span className="text-3xl mr-3">�</span>
+                <span className="text-lg font-bold text-purple-800">MoMo</span>
               </div>
-              <p className="text-xl font-bold text-green-600">₵{disposedEarnings.toFixed(2)}</p>
-              <p className="text-xs text-green-600">{stats.disposedJobs || 0} jobs disposed</p>
-              {disposedEarnings > 0 && (
-                <p className="text-xs text-green-500 mt-1 italic">Ready to cash out!</p>
-              )}
+              <span className="text-2xl font-bold text-purple-700">₵{actualWithdrawableAmount.toFixed(2)}</span>
             </div>
+            
+            {/* Pending - If any */}
+            {pendingDisposalEarnings > 0 && (
+              <div className="flex items-center justify-between bg-amber-50 rounded-xl p-4 border-2 border-amber-200">
+                <div className="flex items-center">
+                  <span className="text-3xl mr-3">🚚</span>
+                  <div>
+                    <span className="text-lg font-bold text-amber-800">Pending</span>
+                    <p className="text-xs text-amber-600">Dispose to get</p>
+                  </div>
+                </div>
+                <span className="text-2xl font-bold text-amber-700">₵{pendingDisposalEarnings.toFixed(2)}</span>
+              </div>
+            )}
           </div>
         </div>
         

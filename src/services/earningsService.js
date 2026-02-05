@@ -273,6 +273,7 @@ class EarningsCacheManager {
 }
 
 // SOP v4.5.6 Payment Model Constants
+// CRITICAL: These values must remain consistent with disposalService.js
 const PAYMENT_SPLITS = {
   // Collector shares
   URGENT_COLLECTOR_SHARE: 0.75,      // 75% of urgent surcharge to collector
@@ -287,7 +288,10 @@ const PAYMENT_SPLITS = {
   URGENT_PLATFORM_SHARE: 0.25,       // 25% of urgent surcharge to platform
   SURGE_PLATFORM_SHARE: 0.25,        // 25% of surge uplift to platform
   RECYCLABLES_PLATFORM_SHARE: 0.15,  // 15% of recyclables to platform
-  REQUEST_FEE_PLATFORM_SHARE: 1.0    // 100% of request fee to platform
+  REQUEST_FEE_PLATFORM_SHARE: 1.0,   // 100% of request fee to platform
+  
+  // Platform request fee - excluded from sharing, goes directly to platform
+  PLATFORM_REQUEST_FEE: 1.00,        // GHC 1.00 fixed platform fee
 };
 
 /**
@@ -353,6 +357,7 @@ function calculateCollectorEarnings(pickup) {
 
 /**
  * Calculate collector's earnings from a digital bin applying SOP v4.5.6 percentage shares
+ * CRITICAL: Platform fee (GHC 1.00) is EXCLUDED from sharing - must match disposalService.js
  * @param {Object} bin - Digital bin object
  * @returns {number} Collector's total earnings
  */
@@ -362,9 +367,54 @@ function calculateBinCollectorEarnings(bin) {
     return bin.collector_total_payout;
   }
   
-  // Legacy data: Apply default share
-  const basePayout = bin.payout || bin.fee || 0;
-  return basePayout * PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
+  // Legacy data: Apply percentage sharing algorithm matching disposalService.js
+  const totalBill = parseFloat(bin.fee) || parseFloat(bin.payout) || 0;
+  
+  // CRITICAL: Exclude platform request fee from sharing - it goes directly to platform
+  const platformRequestFee = PAYMENT_SPLITS.PLATFORM_REQUEST_FEE;
+  const shareableAmount = Math.max(0, totalBill - platformRequestFee);
+  if (shareableAmount === 0) return 0;
+  
+  const isUrgent = bin.is_urgent || false;
+  const deadheadKm = parseFloat(bin.deadhead_km) || 0;
+  const deadheadShare = deadheadKm > 0 ? getDeadheadShare(deadheadKm) : PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
+  
+  // Extract base and urgent portions FROM shareable amount (fee already includes urgent)
+  let basePortion, urgentPortion;
+  if (isUrgent) {
+    // shareableAmount = base + (base * 0.30) = base * 1.30
+    basePortion = shareableAmount / 1.30;
+    urgentPortion = shareableAmount - basePortion;
+  } else {
+    basePortion = shareableAmount;
+    urgentPortion = 0;
+  }
+  
+  // Collector core payout (deadhead share of base)
+  const collectorCore = basePortion * deadheadShare;
+  
+  // Collector urgent payout (75% of urgent portion)
+  const collectorUrgent = urgentPortion * PAYMENT_SPLITS.URGENT_COLLECTOR_SHARE;
+  
+  // Total payout from fee (before external sources)
+  let collectorTotal = collectorCore + collectorUrgent;
+  
+  // Add tips (100%) - external source
+  if (bin.collector_tips) {
+    collectorTotal += bin.collector_tips * PAYMENT_SPLITS.TIPS_COLLECTOR_SHARE;
+  }
+  
+  // Add recyclables (60%) - external source from recycler
+  if (bin.recycler_gross_payout) {
+    collectorTotal += bin.recycler_gross_payout * PAYMENT_SPLITS.RECYCLABLES_COLLECTOR_SHARE;
+  }
+  
+  // Add loyalty cashback - external source from platform
+  if (bin.collector_loyalty_cashback) {
+    collectorTotal += bin.collector_loyalty_cashback;
+  }
+  
+  return collectorTotal;
 }
 
 /**
@@ -447,21 +497,49 @@ function calculatePlatformEarnings(pickup) {
 
 /**
  * Calculate platform earnings from a digital bin
+ * CRITICAL: Includes platform request fee (GHC 1.00) - must match disposalService.js
  * @param {Object} bin - Digital bin object
  * @returns {Object} Platform earnings breakdown
  */
 function calculateBinPlatformEarnings(bin) {
-  const basePayout = bin.payout || bin.fee || 0;
-  const platformShare = 1 - PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE; // ~13%
-  const platformCore = basePayout * platformShare;
+  const totalBill = parseFloat(bin.fee) || parseFloat(bin.payout) || 0;
+  
+  // Platform request fee is 100% platform revenue
+  const requestFee = PAYMENT_SPLITS.PLATFORM_REQUEST_FEE;
+  const shareableAmount = Math.max(0, totalBill - requestFee);
+  
+  const isUrgent = bin.is_urgent || false;
+  const deadheadKm = parseFloat(bin.deadhead_km) || 0;
+  const deadheadShare = deadheadKm > 0 ? getDeadheadShare(deadheadKm) : PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
+  
+  // Extract base and urgent portions FROM shareable amount
+  let basePortion, urgentPortion;
+  if (isUrgent) {
+    basePortion = shareableAmount / 1.30;
+    urgentPortion = shareableAmount - basePortion;
+  } else {
+    basePortion = shareableAmount;
+    urgentPortion = 0;
+  }
+  
+  // Platform core = base * (1 - deadhead share) = 8-15%
+  const platformCore = basePortion * (1 - deadheadShare);
+  
+  // Platform urgent = 25% of urgent portion
+  const platformUrg = urgentPortion * PAYMENT_SPLITS.URGENT_PLATFORM_SHARE;
+  
+  // Platform recyclables = 15%
+  const platformRecyclables = bin.recycler_gross_payout 
+    ? bin.recycler_gross_payout * PAYMENT_SPLITS.RECYCLABLES_PLATFORM_SHARE 
+    : 0;
   
   return {
     platformCore,
-    platformUrg: 0,
+    platformUrg,
     platformSurge: 0,
-    platformRecyclables: 0,
-    requestFee: 0,
-    total: platformCore
+    platformRecyclables,
+    requestFee, // GHC 1.00 fixed platform fee
+    total: platformCore + platformUrg + platformRecyclables + requestFee
   };
 }
 
@@ -856,8 +934,22 @@ class EarningsService {
       // Total platform earnings (authority assignments are 100% to collector, no platform share)
       const totalPlatformEarnings = pickupPlatformEarnings + binPlatformEarnings;
       
-      // Calculate gross revenue (what user paid)
-      const grossRevenue = totalEarnings + totalPlatformEarnings;
+      // Calculate gross revenue (what user ACTUALLY paid) - use fee fields directly
+      // This is more accurate than summing earnings, especially for historical data
+      // that may have been calculated with different formulas
+      const pickupGrossRevenue = allPickups?.reduce((sum, p) => {
+        const fee = parseFloat(p.fee) || parseFloat(p.base_amount) || 0;
+        return sum + fee;
+      }, 0) || 0;
+      
+      const binGrossRevenue = (digitalBins || []).reduce((sum, b) => {
+        const fee = parseFloat(b.fee) || parseFloat(b.payout) || 0;
+        return sum + fee;
+      }, 0);
+      
+      const assignmentGrossRevenue = authorityAssignments?.reduce((sum, a) => sum + (a.payment || 0), 0) || 0;
+      
+      const grossRevenue = pickupGrossRevenue + binGrossRevenue + assignmentGrossRevenue;
 
       // === PAYMENT MODE TRACKING (Cash vs Digital) ===
       // Track what collector owes platform (cash payments) vs what platform owes collector (digital payments)
@@ -923,15 +1015,21 @@ class EarningsService {
         : 0;
 
       // === CALCULATE REAL COMPLETION RATE ===
-      // Get total accepted jobs (including expired/cancelled)
-      const { data: allAcceptedJobs, error: acceptedError } = await supabase
+      // Include both pickup_requests AND digital_bins in completion rate
+      const { data: allAcceptedPickups, error: acceptedError } = await supabase
         .from('pickup_requests')
         .select('id, status')
         .eq('collector_id', this.collectorId)
         .in('status', ['accepted', 'picked_up', 'disposed', 'expired', 'cancelled']);
 
+      // Digital bins we already fetched above - use them for completion rate too
+      const allAcceptedJobs = [
+        ...(allAcceptedPickups || []),
+        ...(digitalBins || []).map(b => ({ id: b.id, status: b.status }))
+      ];
+
       let completionRate = 0;
-      if (!acceptedError && allAcceptedJobs && allAcceptedJobs.length > 0) {
+      if (allAcceptedJobs.length > 0) {
         const completedCount = allAcceptedJobs.filter(j => 
           j.status === 'picked_up' || j.status === 'disposed'
         ).length;

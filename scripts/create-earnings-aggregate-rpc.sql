@@ -4,7 +4,21 @@
 -- ========================================
 -- This RPC function aggregates all earnings data in a single database call
 -- instead of 5+ separate queries, significantly improving performance.
+--
+-- CRITICAL: Payment Model (SOP v4.5.6)
+-- - Platform fee (GHC 1.00) is EXCLUDED from sharing
+-- - shareableAmount = fee - 1.00
+-- - Collector gets 85-92% of shareableAmount based on deadhead distance
+-- - 87% is used as DEFAULT when deadhead info is unavailable (average of 85-92%)
 -- ========================================
+
+-- Platform fee constant (GHC 1.00)
+-- DO NOT CHANGE without updating earningsService.js and disposalService.js
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'platform_fee_type') THEN
+    CREATE TYPE platform_fee_type AS (fee DECIMAL);
+  END IF;
+END $$;
 
 -- 1. Create the main aggregate function
 CREATE OR REPLACE FUNCTION get_collector_earnings_aggregate(
@@ -23,11 +37,12 @@ DECLARE
 BEGIN
   SELECT json_build_object(
     -- Pickup request earnings (disposed)
-    -- Note: pickup_requests uses 'fee' column, collector share is ~87%
+    -- CRITICAL: Exclude platform fee (GHC 1.00) before applying 87% share
+    -- shareableAmount = fee - 1.00, collector gets 87% of that
     'pickup_earnings', (
       SELECT json_build_object(
-        'total', COALESCE(SUM(fee * 0.87), 0),
-        'core', COALESCE(SUM(fee * 0.70), 0),
+        'total', COALESCE(SUM(GREATEST(fee - 1.00, 0) * 0.87), 0),
+        'core', COALESCE(SUM(GREATEST(fee - 1.00, 0) * 0.70), 0),
         'urgent', 0,
         'distance', 0,
         'surge', 0,
@@ -40,7 +55,7 @@ BEGIN
           'status', status,
           'waste_type', waste_type,
           'fee', fee,
-          'collector_total_payout', fee * 0.87,
+          'collector_total_payout', GREATEST(fee - 1.00, 0) * 0.87,
           'created_at', created_at,
           'disposed_at', updated_at
         ) ORDER BY created_at DESC), '[]'::json)
@@ -52,16 +67,17 @@ BEGIN
     ),
     
     -- Pending pickup earnings (picked_up but not disposed)
+    -- CRITICAL: Exclude platform fee (GHC 1.00) before applying 87% share
     'pending_earnings', (
       SELECT json_build_object(
-        'total', COALESCE(SUM(fee * 0.87), 0),
+        'total', COALESCE(SUM(GREATEST(fee - 1.00, 0) * 0.87), 0),
         'count', COUNT(*),
         'items', COALESCE(json_agg(json_build_object(
           'id', id,
           'status', status,
           'waste_type', waste_type,
           'fee', fee,
-          'collector_total_payout', fee * 0.87,
+          'collector_total_payout', GREATEST(fee - 1.00, 0) * 0.87,
           'created_at', created_at
         ) ORDER BY created_at DESC), '[]'::json)
       )
@@ -108,9 +124,10 @@ BEGIN
         AND status = 'picked_up'
     ),
     
-    -- Platform share (App Bucket) - 13% of fee for pickup_requests
+    -- Platform share (App Bucket) - platform fee (1.00) + 13% of shareable amount
+    -- CRITICAL: Platform gets GHC 1.00 fixed fee + 13% of (fee - 1.00)
     'platform_share', (
-      SELECT COALESCE(SUM(fee * 0.13), 0)
+      SELECT COALESCE(SUM(1.00 + GREATEST(fee - 1.00, 0) * 0.13), 0)
       FROM pickup_requests
       WHERE collector_id = p_collector_id
         AND status = 'disposed'
@@ -167,8 +184,9 @@ BEGIN
     ),
     
     -- Weekly earnings (last 7 days)
+    -- CRITICAL: Exclude platform fee before applying share
     'weekly_earnings', (
-      SELECT COALESCE(SUM(fee * 0.87), 0)
+      SELECT COALESCE(SUM(GREATEST(fee - 1.00, 0) * 0.87), 0)
       FROM pickup_requests
       WHERE collector_id = p_collector_id
         AND status = 'disposed'
@@ -176,8 +194,9 @@ BEGIN
     ),
     
     -- Monthly earnings (last 30 days)
+    -- CRITICAL: Exclude platform fee before applying share
     'monthly_earnings', (
-      SELECT COALESCE(SUM(fee * 0.87), 0)
+      SELECT COALESCE(SUM(GREATEST(fee - 1.00, 0) * 0.87), 0)
       FROM pickup_requests
       WHERE collector_id = p_collector_id
         AND status = 'disposed'
@@ -222,7 +241,7 @@ BEGIN
           DATE(created_at) as day,
           json_build_object(
             'date', DATE(created_at),
-            'amount', COALESCE(SUM(fee * 0.87), 0),
+            'amount', COALESCE(SUM(GREATEST(fee - 1.00, 0) * 0.87), 0),
             'count', COUNT(*)
           ) as day_data
         FROM pickup_requests
@@ -254,11 +273,12 @@ RETURNS JSON
 LANGUAGE sql
 SECURITY DEFINER
 AS $$
+  -- CRITICAL: All calculations exclude platform fee (GHC 1.00) before applying share
   SELECT json_build_object(
     'total_earnings', (
       SELECT COALESCE(SUM(payout), 0)
       FROM (
-        SELECT fee * 0.87 as payout FROM pickup_requests 
+        SELECT GREATEST(fee - 1.00, 0) * 0.87 as payout FROM pickup_requests 
         WHERE collector_id = p_collector_id AND status = 'disposed'
         UNION ALL
         SELECT collector_total_payout as payout FROM digital_bins 
@@ -266,19 +286,19 @@ AS $$
       ) combined
     ),
     'pending_earnings', (
-      SELECT COALESCE(SUM(fee * 0.87), 0)
+      SELECT COALESCE(SUM(GREATEST(fee - 1.00, 0) * 0.87), 0)
       FROM pickup_requests
       WHERE collector_id = p_collector_id AND status = 'picked_up'
     ),
     'weekly_earnings', (
-      SELECT COALESCE(SUM(fee * 0.87), 0)
+      SELECT COALESCE(SUM(GREATEST(fee - 1.00, 0) * 0.87), 0)
       FROM pickup_requests
       WHERE collector_id = p_collector_id 
         AND status = 'disposed'
         AND created_at >= NOW() - INTERVAL '7 days'
     ),
     'monthly_earnings', (
-      SELECT COALESCE(SUM(fee * 0.87), 0)
+      SELECT COALESCE(SUM(GREATEST(fee - 1.00, 0) * 0.87), 0)
       FROM pickup_requests
       WHERE collector_id = p_collector_id 
         AND status = 'disposed'
