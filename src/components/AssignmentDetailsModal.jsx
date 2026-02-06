@@ -160,8 +160,8 @@ const AssignmentDetailsModal = ({
               <p className="font-semibold text-green-600 text-lg">₵{assignment.payment}</p>
             </div>
             <div>
-              <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Estimated Time</p>
-              <p className="font-semibold text-gray-900">{assignment.estimated_time}</p>
+              <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Size of Dumping</p>
+              <p className="font-semibold text-gray-900 capitalize">{assignment.size || 'N/A'}</p>
             </div>
             <div>
               <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Created</p>
@@ -181,12 +181,39 @@ const AssignmentDetailsModal = ({
             )}
           </div>
           
-          {/* Additional Notes */}
+          {/* Type of Waste */}
           <div className="mb-4">
-            <h4 className="font-medium text-gray-700 mb-1">Notes</h4>
-            <p className="text-gray-600 text-sm bg-gray-50 p-3 rounded-md">
-              {assignment.notes || "No additional notes for this assignment."}
+            <h4 className="font-medium text-gray-700 mb-1">Type of Waste</h4>
+            <p className="text-gray-600 text-sm bg-gray-50 p-3 rounded-md capitalize">
+              {assignment.type || 'N/A'}
             </p>
+          </div>
+          
+          {/* Photos */}
+          <div className="mb-4">
+            <h4 className="font-medium text-gray-700 mb-1">Photos</h4>
+            <div className="bg-gray-50 p-3 rounded-md">
+              {assignment.photos && (Array.isArray(assignment.photos) ? assignment.photos.length > 0 : assignment.photos) ? (
+                <div className="space-y-2">
+                  {(Array.isArray(assignment.photos) ? assignment.photos : [assignment.photos]).map((url, index) => (
+                    <a
+                      key={index}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center text-sm text-blue-600 hover:text-blue-800 hover:underline break-all"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      Photo {index + 1}
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm">No photos attached.</p>
+              )}
+            </div>
           </div>
         </div>
         
