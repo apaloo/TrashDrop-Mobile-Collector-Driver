@@ -597,6 +597,42 @@ const MapPage = () => {
     positionRef.current = position;
   }, [position]);
   
+
+  // Broadcast collector location to database every 30 seconds
+  // This ensures collector_profiles stays updated for user tracking
+  useEffect(() => {
+    if (!user?.id || !position || !position[0] || !position[1]) return;
+
+    const broadcastLocation = async () => {
+      try {
+        const { error } = await supabase.rpc("update_collector_location", {
+          p_user_id: user.id,
+          p_longitude: position[1],
+          p_latitude: position[0]
+        });
+        if (error) {
+          // Fallback: update without PostGIS
+          await supabase
+            .from("collector_profiles")
+            .update({
+              current_latitude: position[0].toString(),
+              current_longitude: position[1].toString(),
+              location_updated_at: new Date().toISOString(),
+              last_active: new Date().toISOString()
+            })
+            .eq("user_id", user.id);
+        }
+      } catch (err) {
+        logger.error("Error broadcasting location:", err);
+      }
+    };
+
+    // Broadcast immediately and then every 30 seconds
+    broadcastLocation();
+    const intervalId = setInterval(broadcastLocation, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [user?.id, position]);
   // Fetch user profile
   useEffect(() => {
     const fetchUserProfile = async () => {

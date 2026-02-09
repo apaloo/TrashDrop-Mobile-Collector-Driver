@@ -54,6 +54,22 @@ class LocationBroadcastService {
   }
 
   /**
+   * Fallback: update collector_profiles directly without PostGIS
+   */
+  async fallbackUpdateLocation(position) {
+    await supabase
+      .from('collector_profiles')
+      .update({
+        current_latitude: position.latitude.toString(),
+        current_longitude: position.longitude.toString(),
+        location_updated_at: new Date().toISOString(),
+        last_active: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', this.collectorId);
+  }
+
+  /**
    * Broadcast current location to database
    */
   async broadcastLocation() {
@@ -80,30 +96,23 @@ class LocationBroadcastService {
       if (updateError) {
         // Handle specific PostGIS ambiguity error gracefully
         if (updateError.code === '42725' || updateError.message?.includes('operator is not unique')) {
-          // PostGIS geometry operator ambiguity - try fallback approach
           if (!this.geometryErrorLogged) {
             logger.warn('⚠️ Location broadcast: PostGIS geometry operator issue. Using fallback.');
             this.geometryErrorLogged = true;
           }
-          // Fallback: Update only last_active timestamp
-          await supabase
-            .from('collector_profiles')
-            .update({ last_active: new Date().toISOString() })
-            .eq('user_id', this.collectorId);
+          // Fallback: Update location fields directly (without PostGIS)
+          await this.fallbackUpdateLocation(position);
           return;
         }
         
         // Handle RPC not found - function doesn't exist yet
         if (updateError.code === '42883' || updateError.message?.includes('function') || updateError.message?.includes('does not exist')) {
           if (!this.rpcErrorLogged) {
-            logger.warn('⚠️ Location broadcast RPC not available. Falling back to simple update.');
+            logger.warn('⚠️ Location broadcast RPC not available. Falling back to direct update.');
             this.rpcErrorLogged = true;
           }
-          // Fallback: Just update last_active
-          await supabase
-            .from('collector_profiles')
-            .update({ last_active: new Date().toISOString() })
-            .eq('user_id', this.collectorId);
+          // Fallback: Update location fields directly (without PostGIS)
+          await this.fallbackUpdateLocation(position);
           return;
         }
 
@@ -112,6 +121,8 @@ class LocationBroadcastService {
           logger.error('Failed to broadcast location:', updateError);
           this.otherErrorLogged = true;
         }
+        // Still try fallback for any other error
+        await this.fallbackUpdateLocation(position);
       } else {
         // Only log occasionally to reduce console spam
         if (Math.random() < 0.1) {
