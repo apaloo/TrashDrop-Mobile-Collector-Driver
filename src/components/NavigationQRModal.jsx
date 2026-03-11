@@ -11,6 +11,7 @@ import ErrorBoundary from './ErrorBoundary'; // Import error boundary
 import { logger } from '../utils/logger';
 import useWakeLock from '../hooks/useWakeLock';
 import { useNavigationPersistence } from '../hooks/useNavigationPersistence';
+import { supabase } from '../services/supabase';
 
 // QR Scan Rate Limiting
 const QR_SCAN_RATE_LIMIT = 10; // per minute
@@ -99,11 +100,58 @@ const NavigationQRModal = ({
         logger.info('📢 Notifying parent of arrival for request:', requestId);
         onArrival(requestId);
       }
+      
+      // Update DB status to 'arrived' so client's Active Pickup modal shows step 3
+      const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId);
+      if (isValidUuid) {
+        const tableName = sourceType === 'digital_bin' ? 'digital_bins' : 'pickup_requests';
+        supabase
+          .from(tableName)
+          .update({ status: 'arrived' })
+          .eq('id', requestId)
+          .then(({ error }) => {
+            if (error) {
+              logger.warn('Could not update status to arrived:', error.message);
+            } else {
+              logger.info(`✅ Status updated to arrived in ${tableName}`);
+            }
+          });
+        
+        // Send arrival notification to client
+        supabase
+          .from(tableName)
+          .select('user_id')
+          .eq('id', requestId)
+          .single()
+          .then(({ data: reqData }) => {
+            if (reqData?.user_id) {
+              const collectorName = user?.first_name
+                ? `${user.first_name} ${user.last_name || ''}`.trim()
+                : 'Your collector';
+              supabase
+                .from('notifications')
+                .insert({
+                  user_id: reqData.user_id,
+                  title: 'Collector Arrived 📍',
+                  message: `${collectorName} has arrived at your location and is ready for pickup.`,
+                  type: 'collector_arrived',
+                  read: false
+                })
+                .then(({ error: notifError }) => {
+                  if (notifError) {
+                    logger.warn('Could not send arrival notification:', notifError.message);
+                  } else {
+                    logger.info('✅ Client notified - collector arrived');
+                  }
+                });
+            }
+          });
+      }
     }
     
     logger.debug(`📍 Geofence update from ${source}: ${newValue} (latched: ${hasArrivedRef.current})`);
     setIsWithinGeofence(newValue);
-  }, [onArrival, requestId]);
+  }, [onArrival, requestId, sourceType, user]);
 
   // Toast management
   const showToast = useCallback(({ message, type = 'info' }) => {
@@ -996,9 +1044,32 @@ const requestCameraPermission = useCallback(async () => {
           // Use centralized geofence setter (handles latching automatically)
           updateGeofenceState(withinGeofence, 'mainLocationLoop');
           
-          // Trigger arrival announcement when entering geofence
+          // Trigger arrival announcement and clear route when entering geofence
           if (withinGeofence && wasOutsideGeofence && !position.isFallback) {
             announceArrival();
+            
+            // Clear the blue route line - collector has arrived
+            if (directionsRenderer.current) {
+              directionsRenderer.current.setMap(null);
+            }
+            
+            // Stop voice navigation if active
+            if (isNavigating) {
+              stopVoiceNavigation();
+            }
+            
+            // Zoom map in to show both markers are close together
+            if (mapRef.current && window.google?.maps) {
+              const bounds = new window.google.maps.LatLngBounds();
+              bounds.extend({ lat: coords[0], lng: coords[1] });
+              bounds.extend({ lat: destination[0], lng: destination[1] });
+              mapRef.current.fitBounds(bounds);
+              // Set a minimum zoom so markers don't overlap
+              const listener = window.google.maps.event.addListener(mapRef.current, 'idle', () => {
+                if (mapRef.current.getZoom() > 18) mapRef.current.setZoom(18);
+                window.google.maps.event.removeListener(listener);
+              });
+            }
           }
           
           // Update navigation progress if voice navigation is active
@@ -1195,6 +1266,13 @@ const requestCameraPermission = useCallback(async () => {
                   }}
                   onRouteCalculated={(routeInfo) => {
                     logger.debug('Route calculated:', routeInfo);
+                    // Send ETA to client so Active Pickup modal shows real ETA instead of "Calculating..."
+                    if (routeInfo?.duration) {
+                      const etaMinutes = parseInt(routeInfo.duration) || 0;
+                      if (etaMinutes > 0) {
+                        locationBroadcast.updateETA(etaMinutes);
+                      }
+                    }
                   }}
                   onError={(error) => {
                     logger.warn('Map error:', error);

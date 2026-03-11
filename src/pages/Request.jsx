@@ -396,7 +396,7 @@ const RequestPage = () => {
                   .from('pickup_requests')
                   .select('*')
                   .eq('collector_id', user?.id)
-                  .eq('status', PickupRequestStatus.ACCEPTED)
+                  .in('status', [PickupRequestStatus.ACCEPTED, PickupRequestStatus.EN_ROUTE, PickupRequestStatus.ARRIVED])
                   .order('accepted_at', { ascending: false }),
                 supabase
                   .from('digital_bins')
@@ -408,7 +408,7 @@ const RequestPage = () => {
                     )
                   `)
                   .eq('collector_id', user?.id)
-                  .eq('status', 'accepted')
+                  .in('status', ['accepted', 'en_route', 'arrived'])
                   .order('created_at', { ascending: false })
               ]).then(([pickupResult, binsResult]) => {
                 if (pickupResult.error) {
@@ -705,7 +705,7 @@ const RequestPage = () => {
         }
         
         // Check if bin is already accepted or picked up
-        if (existingBin.status === 'accepted' || existingBin.status === 'picked_up') {
+        if (['accepted', 'en_route', 'arrived', 'picked_up'].includes(existingBin.status)) {
           logger.warn('⚠️ Digital bin already accepted/picked up:', {
             binId: requestId,
             status: existingBin.status,
@@ -1258,6 +1258,24 @@ const RequestPage = () => {
         
         // Mark this request as having navigation started (for visual-first UX)
         setNavigationStartedRequests(prev => new Set([...prev, requestId]));
+        
+        // Update DB status to 'en_route' so the client's Active Pickup modal shows progress
+        const isDigitalBin = request.source_type === 'digital_bin';
+        const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId);
+        if (isValidUuid) {
+          const tableName = isDigitalBin ? 'digital_bins' : 'pickup_requests';
+          supabase
+            .from(tableName)
+            .update({ status: PickupRequestStatus.EN_ROUTE })
+            .eq('id', requestId)
+            .then(({ error }) => {
+              if (error) {
+                logger.warn('Could not update status to en_route:', error.message);
+              } else {
+                logger.info(`✅ Status updated to en_route in ${tableName}`);
+              }
+            });
+        }
         
         // Clear any highlight on this request
         if (highlightDirectionsId === requestId) {
@@ -1917,9 +1935,29 @@ const GeofenceErrorModal = ({
 
   // Handle dispose bag
   const handleDisposeBag = async (requestId) => {
+    // Get FRESH GPS location before any range checks (stale userLocation causes false negatives)
+    let freshLocation = userLocation;
+    try {
+      const location = await getLocationWithRetry(2, 1000);
+      freshLocation = {
+        latitude: location.lat,
+        longitude: location.lng,
+        accuracy: location.accuracy,
+        isFallback: location.isFallback
+      };
+      // Update state so subsequent checks use fresh location
+      setUserLocation(freshLocation);
+    } catch (locErr) {
+      logger.warn('Could not get fresh location for disposal, using cached:', locErr.message);
+    }
+    
     // Get the selected disposal center for this request
     // Use selectedDisposalCenter if it matches this request, otherwise auto-detect
     let targetSite = selectedDisposalCenter;
+    
+    // If user already went through "Locate Site" flow for ANY request AND we have a selected site, trust it
+    // (user is at the same disposal site for all picked_up items - no need to re-locate per request)
+    const siteAlreadyLocated = locatedSiteRequests.size > 0 && targetSite?.lat && targetSite?.lng;
     
     // If no disposal site has been selected yet, try to auto-detect if user is at ANY disposal site
     if (!targetSite || !targetSite.lat || !targetSite.lng) {
@@ -1957,7 +1995,7 @@ const GeofenceErrorModal = ({
               lng: centerLng
             };
             
-            if (checkWithinDisposalRange(userLocation, siteWithCoords)) {
+            if (checkWithinDisposalRange(freshLocation, siteWithCoords)) {
               logger.info('✅ Auto-detected user at disposal site:', center.name);
               targetSite = siteWithCoords;
               // Store for subsequent disposals
@@ -1985,14 +2023,20 @@ const GeofenceErrorModal = ({
       }
     }
     
-    // Check if user is within range of the disposal center
-    const isWithinRange = checkWithinDisposalRange(userLocation, targetSite);
-    
-    if (!isWithinRange) {
-      // Set the target site before showing modal so it displays the correct name
-      setTargetDisposalSite(targetSite);
-      setGeofenceModalOpen(true);
-      return;
+    // Skip 50m range check if user already completed "Locate Site" flow for this request
+    // (they confirmed arrival via the navigation/disposal modal)
+    if (!siteAlreadyLocated) {
+      // Check if user is within range of the disposal center using fresh location
+      const isWithinRange = checkWithinDisposalRange(freshLocation, targetSite);
+      
+      if (!isWithinRange) {
+        // Set the target site before showing modal so it displays the correct name
+        setTargetDisposalSite(targetSite);
+        setGeofenceModalOpen(true);
+        return;
+      }
+    } else {
+      logger.info('✅ Skipping 50m check - site already located for request:', requestId);
     }
     try {
       // Validate input
@@ -2641,11 +2685,12 @@ const GeofenceErrorModal = ({
                         return bTime - aTime;
                       })
                       .map(request => {
-                        // Smart siteLocated: If user is already at ANY disposal center, allow disposing ALL requests
-                        // This enables disposing multiple bags without re-navigating
+                        // Smart siteLocated: If user has located ANY disposal site, allow disposing ALL requests
+                        // This enables disposing multiple bags without re-navigating each one
+                        const anyRequestLocatedSite = locatedSiteRequests.size > 0 && selectedDisposalCenter?.lat && selectedDisposalCenter?.lng;
                         const isAtDisposalSite = selectedDisposalCenter?.lat && selectedDisposalCenter?.lng && 
                           checkWithinDisposalRange(userLocation, selectedDisposalCenter);
-                        const siteLocatedForRequest = locatedSiteRequests.has(request.id) || isAtDisposalSite;
+                        const siteLocatedForRequest = locatedSiteRequests.has(request.id) || anyRequestLocatedSite || isAtDisposalSite;
                         
                         return request && (
                           <RequestCard 

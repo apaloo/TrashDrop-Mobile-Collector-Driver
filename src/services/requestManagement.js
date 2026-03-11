@@ -574,7 +574,7 @@ export class RequestManagementService {
           query = supabase
             .from('pickup_requests')
             .select('*')
-            .eq('status', 'accepted')
+            .in('status', ['accepted', 'en_route', 'arrived'])
             .eq('collector_id', this.collectorId);
           break;
         
@@ -742,7 +742,7 @@ export class RequestManagementService {
       const { data: expiredAssignments, error } = await supabase
         .from('pickup_requests')
         .select('id')
-        .eq('status', 'accepted')
+        .in('status', ['accepted', 'en_route', 'arrived'])
         .lt('assignment_expires_at', new Date().toISOString());
 
       if (error) {

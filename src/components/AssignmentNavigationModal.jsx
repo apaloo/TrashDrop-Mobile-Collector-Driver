@@ -386,6 +386,23 @@ const AssignmentNavigationModal = ({
               stopNavigation();
             }
             
+            // Clear the blue route line even if navigation wasn't formally started
+            if (directionsRenderer.current) {
+              directionsRenderer.current.setMap(null);
+            }
+            
+            // Zoom map in to show both markers are close together
+            if (mapRef.current && window.google?.maps) {
+              const bounds = new window.google.maps.LatLngBounds();
+              bounds.extend({ lat: position.lat || position[0], lng: position.lng || position[1] });
+              bounds.extend({ lat: destinationObj.lat, lng: destinationObj.lng });
+              mapRef.current.fitBounds(bounds);
+              const listener = window.google.maps.event.addListener(mapRef.current, 'idle', () => {
+                if (mapRef.current.getZoom() > 18) mapRef.current.setZoom(18);
+                window.google.maps.event.removeListener(listener);
+              });
+            }
+            
             showToast({
               message: 'You have arrived! You can now start cleaning.',
               type: 'success'

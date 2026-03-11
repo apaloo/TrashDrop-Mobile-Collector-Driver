@@ -1020,7 +1020,7 @@ class EarningsService {
         .from('pickup_requests')
         .select('id, status')
         .eq('collector_id', this.collectorId)
-        .in('status', ['accepted', 'picked_up', 'disposed', 'expired', 'cancelled']);
+        .in('status', ['accepted', 'en_route', 'arrived', 'picked_up', 'disposed', 'expired', 'cancelled']);
 
       // Digital bins we already fetched above - use them for completion rate too
       const allAcceptedJobs = [

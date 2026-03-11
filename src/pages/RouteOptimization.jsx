@@ -178,7 +178,7 @@ const RouteOptimizationPage = () => {
         const { data: diagnosticData, error: diagError } = await supabase
           .from('pickup_requests')
           .select('id, status, collector_id, accepted_at, location')
-          .eq('status', 'accepted');
+          .in('status', ['accepted', 'en_route', 'arrived']);
         
         if (diagError) {
           logger.error('❌ Database query error:', diagError);

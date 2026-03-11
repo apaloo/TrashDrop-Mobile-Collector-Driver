@@ -134,7 +134,7 @@ export class AnalyticsService {
           created_at
         `)
         .eq('collector_id', this.collectorId)
-        .eq('status', 'accepted')
+        .in('status', ['accepted', 'en_route', 'arrived'])
         .order('accepted_at', { ascending: true });
 
       if (pickupsError) {
@@ -160,7 +160,7 @@ export class AnalyticsService {
             )
           `)
           .eq('collector_id', this.collectorId)
-          .eq('status', 'accepted')
+          .in('status', ['accepted', 'en_route', 'arrived'])
           .order('created_at', { ascending: true });
 
         if (binsError) {
@@ -191,12 +191,12 @@ export class AnalyticsService {
       const { data: allAcceptedPickups, error: allError } = await supabase
         .from('pickup_requests')
         .select('id, collector_id, status, location')
-        .eq('status', 'accepted');
+        .in('status', ['accepted', 'en_route', 'arrived']);
       
       const { data: allAcceptedBins, error: allBinsError } = await supabase
         .from('digital_bins')
         .select('id, collector_id, status, location')
-        .eq('status', 'accepted');
+        .in('status', ['accepted', 'en_route', 'arrived']);
       
       const totalAccepted = (allAcceptedPickups?.length || 0) + (allAcceptedBins?.length || 0);
       

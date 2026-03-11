@@ -165,9 +165,9 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
       return;
     }
     
-    // Filter only accepted assignments
+    // Filter only accepted/in-progress assignments
     const acceptedAssignments = assignments.filter(assignment => 
-      assignment && assignment.status === 'accepted'
+      assignment && ['accepted', 'en_route', 'arrived'].includes(assignment.status)
     );
     
     // Filter only pending requests (those that need attention)

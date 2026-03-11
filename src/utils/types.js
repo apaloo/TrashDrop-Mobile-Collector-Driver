@@ -10,6 +10,8 @@
 export const PickupRequestStatus = {
   AVAILABLE: 'available',
   ACCEPTED: 'accepted',
+  EN_ROUTE: 'en_route',
+  ARRIVED: 'arrived',
   PICKED_UP: 'picked_up',
   COMPLETED: 'completed',
   CANCELED: 'canceled'

@@ -199,6 +199,8 @@ const RequestCard = ({
           </div>
         );
       case PickupRequestStatus.ACCEPTED:
+      case PickupRequestStatus.EN_ROUTE:
+      case PickupRequestStatus.ARRIVED:
         // Visual-first pickup flow for low-literacy users
         // Step 1: Directions (navigate to pickup location)
         // Step 2: Scan QR (only active after navigation started)

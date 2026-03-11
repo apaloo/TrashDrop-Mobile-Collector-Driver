@@ -73,6 +73,8 @@ const EnhancedRequestCard = ({
       case 'available':
         return 'bg-green-100 text-green-800';
       case 'accepted':
+      case 'en_route':
+      case 'arrived':
         return 'bg-blue-100 text-blue-800';
       case 'picked_up':
         return 'bg-yellow-100 text-yellow-800';
@@ -206,7 +208,7 @@ const EnhancedRequestCard = ({
         )}
 
         {/* Accepted Status Actions */}
-        {request.status === 'accepted' && (
+        {['accepted', 'en_route', 'arrived'].includes(request.status) && (
           <>
             <button
               onClick={() => onOpenDirections(request.id, request)}

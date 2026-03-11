@@ -41,8 +41,6 @@ const ProfilePage = () => {
           phone: profile.phone,
           region: profile.region,
           id_type: profile.id_type,
-          rating: 0.0, // New users start with 0 rating
-          total_collections: 0, // New users start with 0 collections
           joined_date: profile.created_at || new Date().toISOString(),
           last_active: new Date().toISOString(),
           vehicle: {
@@ -55,14 +53,6 @@ const ProfilePage = () => {
             name: profile.company_name,
             id: profile.company_id,
             role: profile.role
-          },
-          stats: {
-            today_collections: 0,
-            today_earnings: 0,
-            week_collections: 0,
-            week_earnings: 0,
-            month_collections: 0,
-            month_earnings: 0
           }
         };
         
@@ -160,31 +150,19 @@ const ProfilePage = () => {
             {user.first_name[0]}{user.last_name[0]}
           </div>
           <h1 className="text-2xl font-bold">{user.first_name} {user.last_name}</h1>
-          <div className="flex items-center mt-1">
-            <span className="text-yellow-500 mr-1">★</span>
-            <span>{user.rating}</span>
-            <span className="mx-2">•</span>
-            <span>{user.total_collections} Collections</span>
-          </div>
           <p className="text-sm text-gray-500 mt-1">Member since {new Date(user.joined_date).toLocaleDateString()}</p>
         </div>
         
         {/* Tab Navigation */}
-        <div className="flex border-b mb-4">
+        <div className="flex border-b mb-4 overflow-x-auto">
           <button
-            className={`px-4 py-2 ${activeTab === 'personal' ? 'border-b-2 border-primary text-primary' : 'text-gray-500'}`}
+            className={`flex-1 px-4 py-2 text-sm sm:text-base whitespace-nowrap ${activeTab === 'personal' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'}`}
             onClick={() => setActiveTab('personal')}
           >
             Personal Info
           </button>
           <button
-            className={`px-4 py-2 ${activeTab === 'stats' ? 'border-b-2 border-primary text-primary' : 'text-gray-500'}`}
-            onClick={() => setActiveTab('stats')}
-          >
-            Stats
-          </button>
-          <button
-            className={`px-4 py-2 ${activeTab === 'vehicle' ? 'border-b-2 border-primary text-primary' : 'text-gray-500'}`}
+            className={`flex-1 px-4 py-2 text-sm sm:text-base whitespace-nowrap ${activeTab === 'vehicle' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'}`}
             onClick={() => setActiveTab('vehicle')}
           >
             Vehicle
@@ -298,70 +276,6 @@ const ProfilePage = () => {
                 </div>
               </div>
             )}
-          </div>
-        )}
-        
-        {/* Stats Tab */}
-        {activeTab === 'stats' && (
-          <div className="space-y-4">
-            <div className="card">
-              <h3 className="text-lg font-bold mb-3">Today's Summary</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Collections</p>
-                  <p className="text-2xl font-bold">{user.stats.today_collections}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Earnings</p>
-                  <p className="text-2xl font-bold text-primary">₵{user.stats.today_earnings}</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="card">
-              <h3 className="text-lg font-bold mb-3">This Week</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Collections</p>
-                  <p className="text-2xl font-bold">{user.stats.week_collections}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Earnings</p>
-                  <p className="text-2xl font-bold text-primary">₵{user.stats.week_earnings}</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="card">
-              <h3 className="text-lg font-bold mb-3">This Month</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Collections</p>
-                  <p className="text-2xl font-bold">{user.stats.month_collections}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Earnings</p>
-                  <p className="text-2xl font-bold text-primary">₵{user.stats.month_earnings}</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="card">
-              <h3 className="text-lg font-bold mb-3">All Time</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Total Collections</p>
-                  <p className="text-2xl font-bold">{user.total_collections}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Rating</p>
-                  <div className="flex items-center">
-                    <span className="text-2xl font-bold mr-1">{user.rating}</span>
-                    <span className="text-yellow-500">★</span>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         )}
         
