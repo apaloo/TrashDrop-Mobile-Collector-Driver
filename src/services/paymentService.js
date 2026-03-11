@@ -19,7 +19,7 @@ const ENABLE_TRENDIPAY = import.meta.env.VITE_ENABLE_TRENDIPAY === 'true';
  * @param {Object} paymentData - Payment details
  * @param {string} paymentData.digitalBinId - Digital bin UUID
  * @param {string} paymentData.collectorId - Collector profile UUID
- * @param {number} paymentData.bagsCollected - Number of bags
+ * @param {number} paymentData.binsCollected - Number of bins collected
  * @param {number} paymentData.totalBill - Amount in GHS
  * @param {string} paymentData.paymentMode - 'momo' | 'e_cash' | 'cash'
  * @param {string} paymentData.clientMomo - Client phone number (for MoMo/e-cash)
@@ -57,7 +57,8 @@ export async function initiateCollection(paymentData) {
     const paymentRecord = {
       digital_bin_id: paymentData.digitalBinId,
       collector_id: paymentData.collectorId,
-      bags_collected: paymentData.bagsCollected,
+      bags_collected: paymentData.binsCollected || paymentData.bagsCollected || 1,
+      scanned_bag_ids: paymentData.scannedBinIds || paymentData.scannedBagIds || [],
       total_bill: paymentData.totalBill,
       payment_mode: paymentData.paymentMode,
       client_momo: paymentData.clientMomo || null,

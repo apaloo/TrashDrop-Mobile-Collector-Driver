@@ -50,6 +50,9 @@ const NavigationQRModal = ({
   const [isScanning, setIsScanning] = useState(false);
   const [locationRetryCount, setLocationRetryCount] = useState(0);
   
+  // Scan feedback overlay state - prominent visual feedback for low-literacy users
+  const [scanFeedback, setScanFeedback] = useState(null); // { type: 'success'|'error'|'warning', message: string, subMessage: string }
+  
   // Turn-by-turn navigation state (adopted from AssignmentNavigationModal)
   const [isNavigating, setIsNavigating] = useState(false);
   const [navigationRoute, setNavigationRoute] = useState(null);
@@ -79,6 +82,7 @@ const NavigationQRModal = ({
   const hasArrivedRef = useRef(false); // Ref to track arrival state inside useEffect closures
   const speechSynthesis = useRef(window.speechSynthesis);
   const currentUtterance = useRef(null);
+  const scanFeedbackTimer = useRef(null); // Timer for auto-dismissing scan feedback overlay
 
   // CENTRALIZED geofence setter that ALWAYS respects the latch
   // This prevents any code from accidentally setting isWithinGeofence to false after arrival
@@ -475,6 +479,44 @@ const NavigationQRModal = ({
     }
   }, []);
 
+  // Show prominent scan feedback overlay with voice + haptic
+  const showScanFeedback = useCallback((type, message, subMessage, autoRestartScanner = false) => {
+    // Clear any existing feedback timer
+    if (scanFeedbackTimer.current) {
+      clearTimeout(scanFeedbackTimer.current);
+    }
+
+    // Set the visual overlay
+    setScanFeedback({ type, message, subMessage });
+
+    // Haptic feedback
+    if (navigator.vibrate) {
+      if (type === 'success') {
+        navigator.vibrate([100, 50, 100]); // Double short buzz
+      } else if (type === 'error') {
+        navigator.vibrate([300, 100, 300]); // Two long buzzes = something wrong
+      } else {
+        navigator.vibrate([200]); // Single medium buzz
+      }
+    }
+
+    // Voice feedback for low-literacy users
+    speak(message, 'high');
+
+    // Auto-dismiss after delay and optionally restart scanner
+    const dismissDelay = type === 'error' ? 3500 : 2500;
+    scanFeedbackTimer.current = setTimeout(() => {
+      setScanFeedback(null);
+      scanFeedbackTimer.current = null;
+
+      // Restart scanner after mismatch by changing the key
+      if (autoRestartScanner) {
+        logger.info('🔄 Auto-restarting scanner after failed scan...');
+        setScanStartTime(Date.now());
+      }
+    }, dismissDelay);
+  }, [speak]);
+
   const handleQRScanSuccess = useCallback(async (decodedText) => {
     // Handle scan success with rate limiting
     if (isQRScanRateLimited()) {
@@ -485,8 +527,8 @@ const NavigationQRModal = ({
     qrScanAttempts.current.push(Date.now());
     
     // Process the scanned code
-    const scanStartTime = Date.now();
-    logger.debug(`⚡ QR scan processed in ${Date.now() - scanStartTime}ms`, decodedText);
+    const processStartTime = Date.now();
+    logger.debug(`⚡ QR scan processed in ${Date.now() - processStartTime}ms`, decodedText);
     
     // Extract ID from scanned text (handles both full URLs and plain IDs)
     const extractId = (text) => {
@@ -508,14 +550,25 @@ const NavigationQRModal = ({
     // Validate scanned QR code (only if expected value is set)
     if (expectedQRValue && scannedId !== expectedQRValue) {
       logger.error('❌ QR code mismatch! Expected:', expectedQRValue, 'Got:', scannedId);
-      showToast({
-        message: 'Invalid QR code. Please scan the correct code.',
-        type: 'error'
-      });
+      
+      // Show prominent error feedback with auto-restart
+      showScanFeedback(
+        'error',
+        'Wrong bin! Try again.',
+        'This is not the right QR code. Point your camera at the correct bin.',
+        true // auto-restart scanner after feedback dismisses
+      );
       return;
     }
     
     logger.info('✅ Validation passed, continuing to success logic...');
+    
+    // Show prominent success feedback
+    showScanFeedback(
+      'success',
+      'Bin scanned!',
+      'QR code matched. Processing...'
+    );
     
     // Add to scanned items
     const newItem = { code: decodedText, timestamp: Date.now() };
@@ -525,15 +578,17 @@ const NavigationQRModal = ({
     // Call the parent callback - Request.jsx will handle closing this modal and opening payment modal
     await onQRScanned([decodedText]);
     logger.info('✅ QR scan callback completed - parent component will handle modal transitions');
-  }, [expectedQRValue, onQRScanned, onClose]);
+  }, [expectedQRValue, onQRScanned, onClose, showScanFeedback]);
   
   const handleQRScanError = useCallback((error) => {
     logger.error('QR scan error:', error);
-    showToast({
-      message: `QR scan error: ${error.message || error}`,
-      type: 'error'
-    });
-  }, []);
+    showScanFeedback(
+      'warning',
+      'Scan problem',
+      'Could not read QR code. Please try again.',
+      true // auto-restart scanner
+    );
+  }, [showScanFeedback]);
 
   // Handle map instance ready
   const setMapInstance = useCallback((map) => {
@@ -1142,6 +1197,7 @@ const requestCameraPermission = useCallback(async () => {
       setDistanceToDestination(null);
       setScanStartTime(null);
       setIsScanning(false);
+      setScanFeedback(null);
       
       // Reset voice navigation state
       setIsNavigating(false);
@@ -1163,6 +1219,10 @@ const requestCameraPermission = useCallback(async () => {
       if (toastTimeout.current) {
         clearTimeout(toastTimeout.current);
         toastTimeout.current = null;
+      }
+      if (scanFeedbackTimer.current) {
+        clearTimeout(scanFeedbackTimer.current);
+        scanFeedbackTimer.current = null;
       }
       if (qrScanner.current) {
         try {
@@ -1391,7 +1451,7 @@ const requestCameraPermission = useCallback(async () => {
           ) : (
             <div className="flex flex-col items-center justify-center h-full rounded-lg overflow-hidden">
               {mode === 'qr' && (
-                <div className={`w-full ${
+                <div className={`w-full relative ${
                   isCameraPreloading ? 'opacity-75' : 'opacity-100'
                 }`}>
                   <ErrorBoundary
@@ -1424,6 +1484,53 @@ const requestCameraPermission = useCallback(async () => {
                       </div>
                     )}
                   </ErrorBoundary>
+
+                  {/* Prominent Scan Feedback Overlay - covers the scanner area */}
+                  {scanFeedback && (
+                    <div className={`absolute inset-0 flex flex-col items-center justify-center z-30 rounded-lg transition-opacity duration-300 ${
+                      scanFeedback.type === 'success'
+                        ? 'bg-green-600/95'
+                        : scanFeedback.type === 'error'
+                        ? 'bg-red-600/95'
+                        : 'bg-yellow-500/95'
+                    }`}>
+                      {/* Big icon */}
+                      {scanFeedback.type === 'success' ? (
+                        <svg className="w-24 h-24 text-white mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : scanFeedback.type === 'error' ? (
+                        <svg className="w-24 h-24 text-white mb-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      ) : (
+                        <svg className="w-24 h-24 text-white mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      )}
+                      {/* Main message - large, clear text */}
+                      <p className="text-white text-2xl font-bold text-center px-6 mb-2">
+                        {scanFeedback.message}
+                      </p>
+                      {/* Sub message */}
+                      {scanFeedback.subMessage && (
+                        <p className="text-white/90 text-base text-center px-8">
+                          {scanFeedback.subMessage}
+                        </p>
+                      )}
+                      {/* Auto-restart indicator for errors */}
+                      {scanFeedback.type === 'error' && (
+                        <div className="mt-6 flex items-center text-white/80 text-sm">
+                          <svg className="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Scanner will restart automatically...
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="mt-4 text-center">
                     <p className="text-white text-sm mb-2">Position the QR code within the scanner frame</p>
                     {scannedItems.length > 0 && (
@@ -1600,16 +1707,14 @@ const requestCameraPermission = useCallback(async () => {
           </div>
         </div>
 
-        {/* Error Toast */}
-        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50">
-          {error && (
-            <Toast
-              message={typeof error === 'object' ? error.message : error}
-              type={typeof error === 'object' ? error.type : 'error'}
-              onClose={() => setError(null)}
-            />
-          )}
-        </div>
+        {/* Error Toast - Toast component handles its own fixed positioning */}
+        {error && (
+          <Toast
+            message={typeof error === 'object' ? error.message : error}
+            type={typeof error === 'object' ? error.type : 'error'}
+            onClose={() => setError(null)}
+          />
+        )}
       </div>
     </div>
   );

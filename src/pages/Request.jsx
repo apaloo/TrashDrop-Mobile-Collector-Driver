@@ -152,6 +152,7 @@ const RequestPage = () => {
   // Payment modal state (for digital bin client collection)
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [currentPaymentBinId, setCurrentPaymentBinId] = useState(null);
+  const [initialScannedBags, setInitialScannedBags] = useState([]);
 
   // Show toast notification
   const showToast = (message, type = 'info', duration = 3000) => {
@@ -2857,6 +2858,8 @@ const GeofenceErrorModal = ({
                     // Open payment modal for client collection
                     logger.info('💰 Opening payment modal for digital bin:', navigationRequestId);
                     setCurrentPaymentBinId(navigationRequestId);
+                    // Pass the first scanned QR code as initial bag
+                    setInitialScannedBags(scannedValues.map(code => ({ code, timestamp: Date.now() })));
                     setShowPaymentModal(true);
                     logger.info('✅ Payment modal state set to open');
                   } else if (request) {
@@ -2960,10 +2963,12 @@ const GeofenceErrorModal = ({
           onClose={() => {
             setShowPaymentModal(false);
             setCurrentPaymentBinId(null);
+            setInitialScannedBags([]);
           }}
           digitalBinId={currentPaymentBinId}
           collectorId={user?.id}
           onSubmit={handlePaymentSubmit}
+          initialScannedBags={initialScannedBags}
         />
       )}
     </div>
