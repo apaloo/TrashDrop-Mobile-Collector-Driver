@@ -539,6 +539,17 @@ const GoogleMapsNavigation = ({
         if (status === window.google.maps.DirectionsStatus.OK && directionsRendererRef.current) {
           directionsRendererRef.current.setDirections(result);
 
+          // Re-apply track-up camera after setDirections resets tilt/heading
+          if (isTrackUpRef.current && mapInstanceRef.current && window.google?.maps?.event) {
+            window.google.maps.event.addListenerOnce(mapInstanceRef.current, 'idle', () => {
+              if (isTrackUpRef.current) {
+                mapInstanceRef.current.setTilt(45);
+                mapInstanceRef.current.setHeading(currentHeading);
+                if (mapInstanceRef.current.getZoom() < 18) mapInstanceRef.current.setZoom(18);
+              }
+            });
+          }
+
           // Update stored polyline path from new route
           const overviewPath = result.routes[0]?.overview_path;
           if (overviewPath) {
@@ -918,6 +929,17 @@ const GoogleMapsNavigation = ({
         (result, status) => {
           if (status === window.google.maps.DirectionsStatus.OK) {
             directionsRendererRef.current.setDirections(result);
+
+            // Re-apply track-up camera after setDirections resets tilt/heading
+            if (isTrackUpRef.current && mapInstanceRef.current && window.google?.maps?.event) {
+              window.google.maps.event.addListenerOnce(mapInstanceRef.current, 'idle', () => {
+                if (isTrackUpRef.current) {
+                  mapInstanceRef.current.setTilt(45);
+                  mapInstanceRef.current.setHeading(currentHeading);
+                  if (mapInstanceRef.current.getZoom() < 18) mapInstanceRef.current.setZoom(18);
+                }
+              });
+            }
             
             // Extract route information
             const route = result.routes[0];
@@ -1535,17 +1557,34 @@ const GoogleMapsNavigation = ({
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
+    let idleListener = null;
 
     if (isTrackUp) {
       wasEverTrackUpRef.current = true;
-      // Transition to heading-up 3D perspective
-      map.setTilt(45);
-      map.setHeading(currentHeading);
-      const currentZoom = map.getZoom();
-      if (currentZoom < 18) map.setZoom(18);
-      if (userLocation) {
-        map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
+
+      const applyTrackUpCamera = () => {
+        map.setTilt(45);
+        map.setHeading(currentHeading);
+        const currentZoom = map.getZoom();
+        if (currentZoom < 18) map.setZoom(18);
+        if (userLocation) {
+          map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
+        }
+      };
+
+      // Apply immediately
+      applyTrackUpCamera();
+
+      // Re-apply after map settles — guards against setDirections()/fitBounds()
+      // asynchronously resetting tilt/heading after our initial application
+      if (window.google?.maps?.event) {
+        idleListener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
+          if (isTrackUpRef.current) {
+            applyTrackUpCamera();
+          }
+        });
       }
+
       logger.info('🧭 Track-Up mode enabled: heading-up with 3D tilt');
     } else if (wasEverTrackUpRef.current) {
       // Only reset camera when transitioning FROM track-up (not on initial mount)
@@ -1554,6 +1593,12 @@ const GoogleMapsNavigation = ({
       map.setHeading(0);
       logger.info('🧭 North-Up mode restored');
     }
+
+    return () => {
+      if (idleListener && window.google?.maps?.event) {
+        window.google.maps.event.removeListener(idleListener);
+      }
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTrackUp]);
 
