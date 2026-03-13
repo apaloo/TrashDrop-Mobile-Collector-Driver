@@ -768,6 +768,14 @@ const GoogleMapsNavigation = ({
 
       const map = mapInstanceRef.current;
 
+      // Only calculate route if destination changed (prevents infinite loop)
+      if (!shouldCalculateRoute) {
+        logger.debug('📍 Skipping route calculation - already calculated for this destination');
+        setIsLoading(false);
+        return;
+      }
+
+      // --- First-time or destination-changed: create markers & clear old state ---
       // Clear existing markers
       if (userMarkerRef.current) {
         userMarkerRef.current.setMap(null);
@@ -786,12 +794,7 @@ const GoogleMapsNavigation = ({
         walkingPolylineRef.current = null;
       }
 
-      // Add destination marker (red pin)
-      const destLat = Array.isArray(destination) ? destination[0] : destination.lat;
-      const destLng = Array.isArray(destination) ? destination[1] : destination.lng;
-      
       // Calculate initial heading from user position to destination
-      // This ensures the tricycle faces the correct direction when navigation starts
       const initialHeading = calculateBearing(
         userLocation.lat, userLocation.lng,
         destLat, destLng
@@ -799,7 +802,6 @@ const GoogleMapsNavigation = ({
       setCurrentHeading(initialHeading);
       
       // Add user location marker (3D tricycle icon with heading rotation)
-      // Initialize previous position for heading calculation
       previousPositionRef.current = { lat: userLocation.lat, lng: userLocation.lng };
       
       userMarkerRef.current = new window.google.maps.Marker({
@@ -807,7 +809,7 @@ const GoogleMapsNavigation = ({
         map: map,
         title: 'Your Location',
         icon: {
-          url: createTricycleSvgUrl(initialHeading), // Use calculated heading towards destination
+          url: createTricycleSvgUrl(initialHeading),
           scaledSize: new window.google.maps.Size(TRICYCLE_ICON_SIZE, TRICYCLE_ICON_SIZE),
           anchor: new window.google.maps.Point(TRICYCLE_ANCHOR_X, TRICYCLE_ANCHOR_Y),
         },
@@ -873,13 +875,6 @@ const GoogleMapsNavigation = ({
             strokeOpacity: 0.8,
           },
         });
-      }
-
-      // Only calculate route if destination changed (prevents infinite loop)
-      if (!shouldCalculateRoute) {
-        logger.debug('📍 Skipping route calculation - already calculated for this destination');
-        setIsLoading(false);
-        return;
       }
 
       // Calculate and display route
@@ -1025,20 +1020,20 @@ const GoogleMapsNavigation = ({
                     map: mapInstanceRef.current,
                     strokeColor: '#F97316',
                     strokeOpacity: 0,
-                    strokeWeight: 0,
+                    strokeWeight: 3,  // Must be >0 for icons to render on all browsers
                     icons: [{
                       icon: {
                         path: window.google.maps.SymbolPath.CIRCLE,
                         scale: 5,
                         fillColor: '#F97316',
-                        fillOpacity: 0.9,
+                        fillOpacity: 1,
                         strokeColor: '#EA580C',
                         strokeWeight: 1,
                       },
                       offset: '0',
                       repeat: '14px'
                     }],
-                    zIndex: 10
+                    zIndex: 100
                   });
                   
                   logger.info(`🚶 Walking line drawn: ${walkDist.toFixed(0)}m from last road point to bin`);
