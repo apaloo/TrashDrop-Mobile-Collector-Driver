@@ -337,20 +337,14 @@ const NavigationQRModal = ({
       if (directionsRenderer.current && mapRef.current) {
         directionsRenderer.current.setMap(mapRef.current);
         directionsRenderer.current.setDirections(route);
-        
-        // Enable Track-Up AFTER the map viewport settles from setDirections()
-        // setDirections() without preserveViewport resets tilt/heading asynchronously
-        if (window.google?.maps?.event) {
-          window.google.maps.event.addListenerOnce(mapRef.current, 'idle', () => {
-            navigationControlRef.current?.enableTrackUp?.();
-          });
-        } else {
-          navigationControlRef.current?.enableTrackUp?.();
-        }
-      } else {
-        // No route display — enable track-up immediately
-        navigationControlRef.current?.enableTrackUp?.();
       }
+      
+      // Enable Track-Up (heading-up) mode in the map component
+      // Delayed to ensure any async viewport adjustment from setDirections() completes first
+      // (setDirections without preserveViewport resets tilt/heading asynchronously)
+      setTimeout(() => {
+        navigationControlRef.current?.enableTrackUp?.();
+      }, 600);
       
       showToast({
         message: `Voice navigation started! ${steps.length} steps to destination.`,

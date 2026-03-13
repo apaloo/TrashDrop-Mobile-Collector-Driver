@@ -1504,6 +1504,19 @@ const GoogleMapsNavigation = ({
         enableTrackUp: () => {
           setTrackUp(true);
           setIsFollowMode(true);
+          // Apply camera settings directly (don't rely solely on useEffect)
+          // Use refs to avoid stale closure values
+          if (mapInstanceRef.current) {
+            const map = mapInstanceRef.current;
+            map.setTilt(45);
+            if (map.getZoom() < 18) map.setZoom(18);
+            // Pan to last known position if available
+            const lastPos = lastUserLocationRef.current || previousPositionRef.current;
+            if (lastPos) {
+              map.panTo({ lat: lastPos.lat, lng: lastPos.lng });
+            }
+            // Heading will be updated by GPS tracking on next position update
+          }
           logger.info('🧭 Track-Up enabled via parent control');
         },
         disableTrackUp: () => {
