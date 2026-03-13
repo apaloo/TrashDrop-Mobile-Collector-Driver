@@ -33,8 +33,12 @@ const calculateBearing = (lat1, lng1, lat2, lng2) => {
 const TRICYCLE_HORIZONTAL_URL = '/icons/tricycle-3d.png';    // Side view, faces LEFT by default
 const TRICYCLE_VERTICAL_URL = '/icons/tricycle-3d-2.png';    // Top-down view, faces UP by default
 
-// Icon size for accessibility (larger for vision impaired users)
-const TRICYCLE_ICON_SIZE = 130; // Increased for better visibility and easy tracking
+// Icon display size on the map (px). Reduced from 130 for better map legibility.
+const TRICYCLE_ICON_SIZE = 78;
+// Anchor at center (0.5, 0.5) so the icon rotates around its midpoint
+// and the GPS coordinate sits exactly at the icon's center on the road.
+const TRICYCLE_ANCHOR_X = TRICYCLE_ICON_SIZE / 2; // 39
+const TRICYCLE_ANCHOR_Y = TRICYCLE_ICON_SIZE / 2; // 39
 
 // Minimum speed (m/s) before we update heading rotation (2 km/h ≈ 0.56 m/s)
 // This prevents the icon from spinning erratically while the vehicle is stationary
@@ -804,27 +808,27 @@ const GoogleMapsNavigation = ({
         title: 'Your Location',
         icon: {
           url: createTricycleSvgUrl(initialHeading), // Use calculated heading towards destination
-          scaledSize: new window.google.maps.Size(130, 130),
-          anchor: new window.google.maps.Point(65, 65),
+          scaledSize: new window.google.maps.Size(TRICYCLE_ICON_SIZE, TRICYCLE_ICON_SIZE),
+          anchor: new window.google.maps.Point(TRICYCLE_ANCHOR_X, TRICYCLE_ANCHOR_Y),
         },
       });
       
-      // Load the actual tricycle image asynchronously and update marker
+      // Async: load real rotated tricycle image to replace SVG placeholder
       createRotatedTricycleUrl(initialHeading).then((url) => {
         if (userMarkerRef.current) {
           userMarkerRef.current.setIcon({
             url: url,
-            scaledSize: new window.google.maps.Size(130, 130),
-            anchor: new window.google.maps.Point(65, 65),
+            scaledSize: new window.google.maps.Size(TRICYCLE_ICON_SIZE, TRICYCLE_ICON_SIZE),
+            anchor: new window.google.maps.Point(TRICYCLE_ANCHOR_X, TRICYCLE_ANCHOR_Y),
           });
         }
       });
-      
-      // Add destination marker (dustbin icon - matching Request map)
+
+      // Destination marker (dustbin icon)
       destMarkerRef.current = new window.google.maps.Marker({
         position: { lat: destLat, lng: destLng },
         map: map,
-        title: 'Destination',
+        title: destinationName || 'Destination',
         icon: {
           url: createDustbinSvgUrl(wasteType, sourceType),
           scaledSize: new window.google.maps.Size(48, 64),
@@ -1196,8 +1200,8 @@ const GoogleMapsNavigation = ({
       if (userMarkerRef.current) {
         userMarkerRef.current.setIcon({
           url: url,
-          scaledSize: new window.google.maps.Size(130, 130),
-          anchor: new window.google.maps.Point(65, 65),
+          scaledSize: new window.google.maps.Size(TRICYCLE_ICON_SIZE, TRICYCLE_ICON_SIZE),
+          anchor: new window.google.maps.Point(TRICYCLE_ANCHOR_X, TRICYCLE_ANCHOR_Y),
         });
       }
     });
@@ -1306,8 +1310,8 @@ const GoogleMapsNavigation = ({
             if (userMarkerRef.current) {
               userMarkerRef.current.setIcon({
                 url: url,
-                scaledSize: new window.google.maps.Size(130, 130),
-                anchor: new window.google.maps.Point(65, 65),
+                scaledSize: new window.google.maps.Size(TRICYCLE_ICON_SIZE, TRICYCLE_ICON_SIZE),
+                anchor: new window.google.maps.Point(TRICYCLE_ANCHOR_X, TRICYCLE_ANCHOR_Y),
               });
             }
           });

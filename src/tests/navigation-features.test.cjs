@@ -459,7 +459,63 @@ function testGeofenceConsistency() {
 }
 
 // ============================================================
-// TEST 6: Road snapping & rerouting
+// TEST 6: Icon size & anchor point
+// ============================================================
+function testIconSizeAndAnchor() {
+  const results = [];
+  const fs = require('fs');
+  const gmapsContent = fs.readFileSync(
+    '/Users/otisa.apaloo/CascadeProjects/TrashDrop_Mobile_Collector_Driver/src/components/GoogleMapsNavigation.jsx', 'utf8'
+  );
+
+  // Check icon size constant
+  const sizeMatch = gmapsContent.match(/TRICYCLE_ICON_SIZE\s*=\s*(\d+)/);
+  const iconSize = sizeMatch ? parseInt(sizeMatch[1]) : null;
+  results.push({
+    name: 'TRICYCLE_ICON_SIZE reduced to 78px (from 130)',
+    pass: iconSize === 78,
+    detail: `Found: ${iconSize}px`
+  });
+
+  // Check anchor constants exist and use center (0.5, 0.5)
+  results.push({
+    name: 'TRICYCLE_ANCHOR_X = TRICYCLE_ICON_SIZE / 2 (center)',
+    pass: gmapsContent.includes('TRICYCLE_ANCHOR_X = TRICYCLE_ICON_SIZE / 2'),
+    detail: 'Anchor X at 50% of icon width'
+  });
+  results.push({
+    name: 'TRICYCLE_ANCHOR_Y = TRICYCLE_ICON_SIZE / 2 (center)',
+    pass: gmapsContent.includes('TRICYCLE_ANCHOR_Y = TRICYCLE_ICON_SIZE / 2'),
+    detail: 'Anchor Y at 50% of icon height'
+  });
+
+  // Ensure no hardcoded 130 or 65 values remain for icon sizing
+  const hardcoded130 = (gmapsContent.match(/Size\(130/g) || []).length;
+  const hardcoded65 = (gmapsContent.match(/Point\(65/g) || []).length;
+  results.push({
+    name: 'No hardcoded Size(130) remaining',
+    pass: hardcoded130 === 0,
+    detail: `Found ${hardcoded130} occurrences`
+  });
+  results.push({
+    name: 'No hardcoded Point(65) remaining',
+    pass: hardcoded65 === 0,
+    detail: `Found ${hardcoded65} occurrences`
+  });
+
+  // All icon setIcon calls use TRICYCLE_ICON_SIZE constant
+  const setIconCalls = (gmapsContent.match(/scaledSize.*TRICYCLE_ICON_SIZE/g) || []).length;
+  results.push({
+    name: 'All setIcon calls use TRICYCLE_ICON_SIZE constant (expect 4)',
+    pass: setIconCalls === 4,
+    detail: `Found ${setIconCalls} calls`
+  });
+
+  return results;
+}
+
+// ============================================================
+// TEST 7: Road snapping & rerouting
 // ============================================================
 function testRoadSnapping() {
   const results = [];
@@ -531,6 +587,7 @@ const allTests = [
   { name: 'Heading Determination (speed-null fix)', fn: testHeadingDetermination },
   { name: 'Canvas Rotation (fine rotation)', fn: testCanvasRotation },
   { name: 'Walking Line Threshold', fn: testWalkingLineThreshold },
+  { name: 'Icon Size & Anchor Point', fn: testIconSizeAndAnchor },
   { name: 'Zoom-Out on Arrival (prop flow)', fn: testZoomOutPropFlow },
   { name: 'Geofence Radius Consistency', fn: testGeofenceConsistency },
   { name: 'Road Snapping & Rerouting', fn: testRoadSnapping },
