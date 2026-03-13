@@ -307,10 +307,14 @@ function testCanvasRotation() {
 }
 
 // ============================================================
-// TEST 3: Walking line distance threshold
+// TEST 3: Walking line distance threshold & implementation
 // ============================================================
 function testWalkingLineThreshold() {
   const results = [];
+  const fs = require('fs');
+  const gmapsContent = fs.readFileSync(
+    '/Users/otisa.apaloo/CascadeProjects/TrashDrop_Mobile_Collector_Driver/src/components/GoogleMapsNavigation.jsx', 'utf8'
+  );
 
   function calculateGPSDistance(lat1, lon1, lat2, lon2) {
     const R = 6371e3;
@@ -339,6 +343,28 @@ function testWalkingLineThreshold() {
     name: `Route end ${dist2.toFixed(1)}m from bin → draw walking line (> 5m)`,
     pass: dist2 > 5,
     detail: `distance=${dist2.toFixed(1)}m, threshold=5m`
+  });
+
+  // Uses overview_path last point (NOT lastLeg.end_location)
+  results.push({
+    name: 'Uses overview_path last point for route endpoint',
+    pass: gmapsContent.includes('overviewPath[overviewPath.length - 1]') && gmapsContent.includes('const routeEndLat = typeof lastPt.lat'),
+    detail: 'overview_path gives actual road-snapped endpoint where the blue line ends'
+  });
+
+  // Orange color for mobile visibility
+  results.push({
+    name: 'Walking dots use visible orange color (#F97316)',
+    pass: gmapsContent.includes("fillColor: '#F97316'"),
+    detail: 'Orange is visible on any map background'
+  });
+
+  // Dot scale >= 5 for mobile
+  const scaleMatch = gmapsContent.match(/Walking.*?scale:\s*(\d+)/s);
+  results.push({
+    name: 'Walking dot scale >= 5 for mobile visibility',
+    pass: gmapsContent.includes('scale: 5'),
+    detail: 'Dots need to be large enough for mobile screens'
   });
 
   return results;
