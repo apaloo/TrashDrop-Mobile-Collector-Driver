@@ -328,6 +328,9 @@ const NavigationQRModal = ({
       setIsNavigating(true);
       setNavigationStarted(true);
       
+      // Enable Track-Up (heading-up) mode in the map component
+      navigationControlRef.current?.enableTrackUp?.();
+      
       // Announce first instruction
       if (steps.length > 0) {
         speak(`Starting navigation to ${destinationName}. ${steps[0].instruction}`, 'high');
@@ -367,6 +370,9 @@ const NavigationQRModal = ({
     if (directionsRenderer.current) {
       directionsRenderer.current.setMap(null);
     }
+    
+    // Disable Track-Up mode in the map component
+    navigationControlRef.current?.disableTrackUp?.();
     
     logger.debug('🛑 Voice navigation stopped');
     showToast({

@@ -440,6 +440,8 @@ const GoogleMapsNavigation = ({
   const [currentPosition, setCurrentPosition] = useState(null);
   const [isOfflineMode, setIsOfflineMode] = useState(!navigator.onLine);
   const [isFollowMode, setIsFollowMode] = useState(true); // Auto-follow user by default
+  const [isTrackUp, setIsTrackUpState] = useState(false); // Track-Up (heading-up) vs North-Up orientation
+  const isTrackUpRef = useRef(false); // Ref mirror for use inside GPS watchPosition callback
   const [mapInitialized, setMapInitialized] = useState(false); // Track if map has been initialized
   const gpsWatchIdRef = useRef(null);
   const speechSynthesisRef = useRef(null);
@@ -448,6 +450,12 @@ const GoogleMapsNavigation = ({
   const [currentHeading, setCurrentHeading] = useState(270); // Default to 270° (west/left) - will be updated to route direction
   const previousPositionRef = useRef(null); // Track previous position for heading calculation
   const walkingPolylineRef = useRef(null); // Dotted walking line from route endpoint to bin
+
+  // Atomically update both state and ref for track-up mode
+  const setTrackUp = (enabled) => {
+    setIsTrackUpState(enabled);
+    isTrackUpRef.current = enabled;
+  };
 
   // --- Road snapping & dynamic rerouting state ---
   const routePolylineRef = useRef(null);       // Stores the decoded polyline path [{lat, lng}, ...]
@@ -1210,7 +1218,9 @@ const GoogleMapsNavigation = ({
     userMarkerRef.current.setPosition({ lat: displayLat, lng: displayLng });
     
     // Update marker icon with new heading rotation (async load)
-    createRotatedTricycleUrl(newHeading).then((url) => {
+    // In Track-Up mode the map itself rotates, so the icon should face "up" (0°)
+    const iconHeading = isTrackUp ? 0 : newHeading;
+    createRotatedTricycleUrl(iconHeading).then((url) => {
       if (userMarkerRef.current) {
         userMarkerRef.current.setIcon({
           url: url,
@@ -1226,14 +1236,20 @@ const GoogleMapsNavigation = ({
     // Auto-pan map to follow user in follow mode
     if (isFollowMode && mapInstanceRef.current) {
       const map = mapInstanceRef.current;
-      
-      // Use higher zoom for navigation mode (better for parallel roads)
-      const navigationZoom = 17;
-      const currentZoom = map.getZoom();
-      
-      // Only adjust zoom if significantly different or first time
-      if (currentZoom < navigationZoom - 1) {
-        map.setZoom(navigationZoom);
+
+      if (isTrackUp) {
+        // Track-Up: rotate map so travel direction faces top, 3D tilt, higher zoom
+        map.setHeading(newHeading);
+        map.setTilt(45);
+        const currentZoom = map.getZoom();
+        if (currentZoom < 18) map.setZoom(18);
+      } else {
+        // North-Up: standard zoom, flat
+        const navigationZoom = 17;
+        const currentZoom = map.getZoom();
+        if (currentZoom < navigationZoom - 1) {
+          map.setZoom(navigationZoom);
+        }
       }
       
       // Smoothly pan to snapped position
@@ -1241,7 +1257,7 @@ const GoogleMapsNavigation = ({
     }
 
     logger.debug(`📍 Marker updated | Heading: ${newHeading.toFixed(1)}° (${headingSource}) | Speed: ${speed !== null ? (speed * 3.6).toFixed(1) + ' km/h' : 'N/A'} | Off-route: ${offRouteDistance.toFixed(0)}m`);
-  }, [userLocation, isFollowMode, currentHeading, navigationSteps, currentStepIndex, destination]);
+  }, [userLocation, isFollowMode, isTrackUp, currentHeading, navigationSteps, currentStepIndex, destination]);
 
   // GPS tracking for auto-advance navigation
   useEffect(() => {
@@ -1320,7 +1336,9 @@ const GoogleMapsNavigation = ({
         // Update user marker on map with snapped position + heading rotation
         if (userMarkerRef.current && mapInstanceRef.current) {
           userMarkerRef.current.setPosition({ lat: displayLat, lng: displayLng });
-          createRotatedTricycleUrl(heading).then((url) => {
+          // In Track-Up mode icon faces "up" (0°) since the map rotates
+          const gpsIconHeading = isTrackUpRef.current ? 0 : heading;
+          createRotatedTricycleUrl(gpsIconHeading).then((url) => {
             if (userMarkerRef.current) {
               userMarkerRef.current.setIcon({
                 url: url,
@@ -1329,6 +1347,14 @@ const GoogleMapsNavigation = ({
               });
             }
           });
+
+          // Track-Up camera: rotate map bearing + tilt during active navigation
+          if (isTrackUpRef.current) {
+            const map = mapInstanceRef.current;
+            map.setHeading(heading);
+            map.setTilt(45);
+            map.panTo({ lat: displayLat, lng: displayLng });
+          }
         }
 
         // Check if we've reached the next step location
@@ -1420,7 +1446,12 @@ const GoogleMapsNavigation = ({
             
             setIsNavigating(true);
             setCurrentStepIndex(0);
-            logger.info('🧭 Starting turn-by-turn navigation');
+            setIsFollowMode(true);
+            
+            // Activate Track-Up (heading-up) mode for active guidance
+            setTrackUp(true);
+            
+            logger.info('🧭 Starting turn-by-turn navigation (Track-Up enabled)');
             
             // Announce first instruction
             const firstStep = navigationSteps[0];
@@ -1433,7 +1464,11 @@ const GoogleMapsNavigation = ({
         },
         stopNavigation: () => {
           setIsNavigating(false);
-          logger.info('⏹️ Navigation stopped');
+          
+          // Revert to North-Up flat orientation
+          setTrackUp(false);
+          
+          logger.info('⏹️ Navigation stopped (North-Up restored)');
           
           // Stop audio alerts and acknowledge arrival
           audioAlertService.acknowledgeArrival();
@@ -1442,7 +1477,16 @@ const GoogleMapsNavigation = ({
         acknowledgeArrival: () => {
           audioAlertService.acknowledgeArrival();
         },
-        hasSteps: () => navigationSteps.length > 0
+        hasSteps: () => navigationSteps.length > 0,
+        enableTrackUp: () => {
+          setTrackUp(true);
+          setIsFollowMode(true);
+          logger.info('🧭 Track-Up enabled via parent control');
+        },
+        disableTrackUp: () => {
+          setTrackUp(false);
+          logger.info('🧭 Track-Up disabled via parent control');
+        }
       };
     }
   }, [navigationSteps, navigationControlRef]);
@@ -1485,6 +1529,30 @@ const GoogleMapsNavigation = ({
       window.google.maps.event.removeListener(listener);
     };
   }, [isArrived, destination, userLocation]);
+
+  // Handle track-up mode transitions — animate camera when toggling orientation
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    if (isTrackUp) {
+      // Transition to heading-up 3D perspective
+      map.setTilt(45);
+      map.setHeading(currentHeading);
+      const currentZoom = map.getZoom();
+      if (currentZoom < 18) map.setZoom(18);
+      if (userLocation) {
+        map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
+      }
+      logger.info('🧭 Track-Up mode enabled: heading-up with 3D tilt');
+    } else {
+      // Transition back to North-Up flat mode
+      map.setTilt(0);
+      map.setHeading(0);
+      logger.info('🧭 North-Up mode restored');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTrackUp]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1668,6 +1736,8 @@ const GoogleMapsNavigation = ({
             <button
               onClick={() => {
                 setIsNavigating(false);
+                // Revert to North-Up flat orientation
+                setTrackUp(false);
                 if (window.speechSynthesis) {
                   window.speechSynthesis.cancel();
                 }
@@ -1714,12 +1784,24 @@ const GoogleMapsNavigation = ({
                 // Switching to follow mode - recenter and zoom in
                 setIsFollowMode(true);
                 if (mapInstanceRef.current && userLocation) {
-                  mapInstanceRef.current.setZoom(17);
-                  mapInstanceRef.current.panTo({ lat: userLocation.lat, lng: userLocation.lng });
+                  const map = mapInstanceRef.current;
+                  if (isTrackUp) {
+                    // Re-enter track-up: higher zoom, 3D tilt, heading rotation
+                    map.setZoom(18);
+                    map.setHeading(currentHeading);
+                    map.setTilt(45);
+                  } else {
+                    map.setZoom(17);
+                  }
+                  map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
                 }
               } else {
                 // Switching to overview mode - fit bounds to show entire route
                 setIsFollowMode(false);
+                // Flatten to North-Up for overview
+                if (isTrackUp) {
+                  setTrackUp(false);
+                }
                 if (mapInstanceRef.current && userLocation && destination) {
                   const bounds = new window.google.maps.LatLngBounds();
                   bounds.extend({ lat: userLocation.lat, lng: userLocation.lng });
@@ -1752,6 +1834,41 @@ const GoogleMapsNavigation = ({
             )}
           </button>
           
+          {/* Track-Up / North-Up Orientation Toggle */}
+          <button
+            onClick={() => {
+              const newTrackUp = !isTrackUp;
+              setTrackUp(newTrackUp);
+              // When enabling track-up, also enable follow mode
+              if (newTrackUp) {
+                setIsFollowMode(true);
+              }
+            }}
+            className={`p-3 rounded-full shadow-lg transition-all ${
+              isTrackUp
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-100'
+            }`}
+            title={isTrackUp ? 'Switch to North-Up' : 'Switch to Track-Up (heading-up)'}
+          >
+            {isTrackUp ? (
+              // Compass needle icon — track-up active
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="12 2, 15 14, 12 11, 9 14" fill="currentColor" stroke="none" />
+                <polygon points="12 22, 9 14, 12 13, 15 14" fill="none" stroke="currentColor" />
+                <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" />
+              </svg>
+            ) : (
+              // North arrow icon — north-up (default)
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2L12 22" />
+                <path d="M12 2L8 8" />
+                <path d="M12 2L16 8" />
+                <text x="12" y="20" textAnchor="middle" fontSize="8" fill="currentColor" stroke="none" fontWeight="bold">N</text>
+              </svg>
+            )}
+          </button>
+
           {/* Overview button - quick access to see full route */}
           {isFollowMode && (
             <button
@@ -1764,6 +1881,8 @@ const GoogleMapsNavigation = ({
                   bounds.extend({ lat: destLat, lng: destLng });
                   mapInstanceRef.current.fitBounds(bounds, { padding: 50 });
                   setIsFollowMode(false);
+                  // Temporarily disable track-up for overview
+                  setTrackUp(false);
                 }
               }}
               className="p-3 rounded-full shadow-lg bg-white text-gray-700 hover:bg-gray-100 transition-all"
