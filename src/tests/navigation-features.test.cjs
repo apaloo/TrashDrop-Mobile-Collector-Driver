@@ -347,9 +347,9 @@ function testWalkingLineThreshold() {
 
   // Uses overview_path last point (NOT lastLeg.end_location)
   results.push({
-    name: 'Uses overview_path last point for route endpoint',
-    pass: gmapsContent.includes('overviewPath[overviewPath.length - 1]') && gmapsContent.includes('const routeEndLat = typeof lastPt.lat'),
-    detail: 'overview_path gives actual road-snapped endpoint where the blue line ends'
+    name: 'Scans backward through overview_path to find last road point',
+    pass: gmapsContent.includes('for (let i = overviewPath.length - 1; i >= 0; i--)') && gmapsContent.includes('distFromDest > 8'),
+    detail: 'Iterates backward to find first point >8m from destination (the road point)'
   });
 
   // Orange color for mobile visibility

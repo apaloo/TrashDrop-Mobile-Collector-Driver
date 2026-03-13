@@ -979,63 +979,74 @@ const GoogleMapsNavigation = ({
             logger.info('✅ Route calculated successfully:', routeInfo);
             logger.info(`📍 Extracted ${allSteps.length} navigation steps`);
             
-            // --- Draw dotted walking line from route endpoint to actual bin location ---
-            // The Directions API routes to the nearest road, but the bin may be
-            // off-road (inside a compound, down a footpath, etc.). Draw a dotted
-            // line so the driver knows exactly where to walk.
-            //
-            // IMPORTANT: We use the LAST point of overview_path (where the blue
-            // polyline actually ends on the road), NOT lastLeg.end_location
-            // (which Google sets to the requested destination coordinates, so
-            // the gap would always be ~0).
-            const overviewPath = route.overview_path;
+            // --- Draw dotted walking line from last road point to bin ---
+            // Google's Directions API includes the off-road final approach in
+            // BOTH overview_path AND lastLeg.end_location, so comparing either
+            // to the destination always gives ~0m. Instead, we scan backward
+            // through overview_path to find the last point that is meaningfully
+            // away from the destination — that's the real road endpoint.
             const actualDestLat = Array.isArray(destination) ? destination[0] : destination?.lat;
             const actualDestLng = Array.isArray(destination) ? destination[1] : destination?.lng;
+            const overviewPath = route.overview_path;
             
-            if (overviewPath && overviewPath.length > 0 && mapInstanceRef.current && actualDestLat && actualDestLng) {
-              const lastPt = overviewPath[overviewPath.length - 1];
-              const routeEndLat = typeof lastPt.lat === 'function' ? lastPt.lat() : lastPt.lat;
-              const routeEndLng = typeof lastPt.lng === 'function' ? lastPt.lng() : lastPt.lng;
-              
-              // Calculate distance between where the blue line ends and the actual bin
-              const walkDist = calculateGPSDistance(routeEndLat, routeEndLng, actualDestLat, actualDestLng);
-              
-              logger.info(`🚶 Walking gap: ${walkDist.toFixed(1)}m (route end: ${routeEndLat.toFixed(6)},${routeEndLng.toFixed(6)} → bin: ${actualDestLat.toFixed(6)},${actualDestLng.toFixed(6)})`);
-              
-              // Only draw walking line if there's a meaningful gap (>5m)
-              if (walkDist > 5) {
-                // Remove old walking polyline if it exists
-                if (walkingPolylineRef.current) {
-                  walkingPolylineRef.current.setMap(null);
+            if (overviewPath && overviewPath.length >= 2 && mapInstanceRef.current && actualDestLat && actualDestLng) {
+              // Scan backward to find the last road point (first point > 8m from destination)
+              let roadEndLat = null;
+              let roadEndLng = null;
+              for (let i = overviewPath.length - 1; i >= 0; i--) {
+                const pt = overviewPath[i];
+                const ptLat = typeof pt.lat === 'function' ? pt.lat() : pt.lat;
+                const ptLng = typeof pt.lng === 'function' ? pt.lng() : pt.lng;
+                const distFromDest = calculateGPSDistance(ptLat, ptLng, actualDestLat, actualDestLng);
+                if (distFromDest > 8) {
+                  roadEndLat = ptLat;
+                  roadEndLng = ptLng;
+                  logger.info(`🚶 Found road point at index ${i}/${overviewPath.length - 1}, ${distFromDest.toFixed(1)}m from bin`);
+                  break;
                 }
+              }
+              
+              if (roadEndLat !== null) {
+                const walkDist = calculateGPSDistance(roadEndLat, roadEndLng, actualDestLat, actualDestLng);
+                logger.info(`🚶 Walking gap: ${walkDist.toFixed(1)}m (road: ${roadEndLat.toFixed(6)},${roadEndLng.toFixed(6)} → bin: ${actualDestLat.toFixed(6)},${actualDestLng.toFixed(6)})`);
                 
-                walkingPolylineRef.current = new window.google.maps.Polyline({
-                  path: [
-                    { lat: routeEndLat, lng: routeEndLng },
-                    { lat: actualDestLat, lng: actualDestLng }
-                  ],
-                  map: mapInstanceRef.current,
-                  strokeColor: '#F97316',  // Orange — visible on any map background
-                  strokeOpacity: 0,        // Hide solid line (we use icons for dots)
-                  strokeWeight: 0,
-                  icons: [{
-                    icon: {
-                      path: window.google.maps.SymbolPath.CIRCLE,
-                      scale: 5,              // Larger dots for mobile visibility
-                      fillColor: '#F97316',
-                      fillOpacity: 0.9,
-                      strokeColor: '#EA580C',
-                      strokeWeight: 1,
-                    },
-                    offset: '0',
-                    repeat: '14px'          // Dot spacing
-                  }],
-                  zIndex: 5
-                });
-                
-                logger.info(`🚶 Walking line drawn: ${walkDist.toFixed(0)}m from route end to bin`);
+                // Draw walking line if gap > 15m (smaller gaps mean bin is basically on the road)
+                if (walkDist > 15) {
+                  // Remove old walking polyline
+                  if (walkingPolylineRef.current) {
+                    walkingPolylineRef.current.setMap(null);
+                  }
+                  
+                  walkingPolylineRef.current = new window.google.maps.Polyline({
+                    path: [
+                      { lat: roadEndLat, lng: roadEndLng },
+                      { lat: actualDestLat, lng: actualDestLng }
+                    ],
+                    map: mapInstanceRef.current,
+                    strokeColor: '#F97316',
+                    strokeOpacity: 0,
+                    strokeWeight: 0,
+                    icons: [{
+                      icon: {
+                        path: window.google.maps.SymbolPath.CIRCLE,
+                        scale: 5,
+                        fillColor: '#F97316',
+                        fillOpacity: 0.9,
+                        strokeColor: '#EA580C',
+                        strokeWeight: 1,
+                      },
+                      offset: '0',
+                      repeat: '14px'
+                    }],
+                    zIndex: 10
+                  });
+                  
+                  logger.info(`🚶 Walking line drawn: ${walkDist.toFixed(0)}m from last road point to bin`);
+                } else {
+                  logger.info(`🚶 No walking line needed — road point is only ${walkDist.toFixed(1)}m from bin`);
+                }
               } else {
-                logger.info(`🚶 No walking line needed — route end is ${walkDist.toFixed(1)}m from bin (< 5m threshold)`);
+                logger.info('🚶 All overview_path points are within 8m of destination — bin is on the road');
               }
             } else {
               logger.warn('🚶 Could not evaluate walking line — missing overview_path or destination');
