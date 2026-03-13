@@ -442,6 +442,7 @@ const GoogleMapsNavigation = ({
   const [isFollowMode, setIsFollowMode] = useState(true); // Auto-follow user by default
   const [isTrackUp, setIsTrackUpState] = useState(false); // Track-Up (heading-up) vs North-Up orientation
   const isTrackUpRef = useRef(false); // Ref mirror for use inside GPS watchPosition callback
+  const wasEverTrackUpRef = useRef(false); // Guard: only reset camera when transitioning FROM track-up
   const [mapInitialized, setMapInitialized] = useState(false); // Track if map has been initialized
   const gpsWatchIdRef = useRef(null);
   const speechSynthesisRef = useRef(null);
@@ -1536,6 +1537,7 @@ const GoogleMapsNavigation = ({
     const map = mapInstanceRef.current;
 
     if (isTrackUp) {
+      wasEverTrackUpRef.current = true;
       // Transition to heading-up 3D perspective
       map.setTilt(45);
       map.setHeading(currentHeading);
@@ -1545,8 +1547,9 @@ const GoogleMapsNavigation = ({
         map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
       }
       logger.info('🧭 Track-Up mode enabled: heading-up with 3D tilt');
-    } else {
-      // Transition back to North-Up flat mode
+    } else if (wasEverTrackUpRef.current) {
+      // Only reset camera when transitioning FROM track-up (not on initial mount)
+      wasEverTrackUpRef.current = false;
       map.setTilt(0);
       map.setHeading(0);
       logger.info('🧭 North-Up mode restored');
