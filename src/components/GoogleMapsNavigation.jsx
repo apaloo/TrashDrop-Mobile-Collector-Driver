@@ -36,36 +36,41 @@ const TRICYCLE_VERTICAL_URL = '/icons/tricycle-3d-2.png';    // Top-down view, f
 // Icon size for accessibility (larger for vision impaired users)
 const TRICYCLE_ICON_SIZE = 130; // Increased for better visibility and easy tracking
 
+// Minimum speed (m/s) before we update heading rotation (2 km/h ≈ 0.56 m/s)
+// This prevents the icon from spinning erratically while the vehicle is stationary
+const MIN_SPEED_FOR_HEADING = 0.56;
+
 // Cache for the loaded tricycle images (horizontal and vertical)
 let tricycleHorizontalCache = null;
 let tricycleVerticalCache = null;
 let tricycleImagesLoading = false;
 const rotatedImageCache = new Map(); // Cache rotated images by heading
 
-// Determine which image and flip to use based on heading
+// Determine which image and flip to use based on compass heading
+// Compass: 0°=North(up), 90°=East(right), 180°=South(down), 270°=West(left)
 // Returns: { isVertical: boolean, shouldFlip: boolean }
 const getImageOrientation = (heading) => {
   // Normalize heading to 0-360
   const h = ((heading % 360) + 360) % 360;
   
-  // Quadrant logic:
-  // 315-45° (East-ish): Horizontal image, flip to face RIGHT
-  // 45-135° (South-ish): Vertical image, flip to face DOWN
-  // 135-225° (West-ish): Horizontal image, no flip (faces LEFT)
-  // 225-315° (North-ish): Vertical image, no flip (faces UP)
+  // Quadrant logic (compass bearing → screen direction):
+  // 315-45°  (North-ish) → Vertical image, no flip  (faces UP)
+  // 45-135°  (East-ish)  → Horizontal image, flip   (faces RIGHT)
+  // 135-225° (South-ish) → Vertical image, flip     (faces DOWN)
+  // 225-315° (West-ish)  → Horizontal image, no flip(faces LEFT)
   
   if (h >= 315 || h < 45) {
-    // East - use horizontal, flip to face right
-    return { isVertical: false, shouldFlip: true };
-  } else if (h >= 45 && h < 135) {
-    // South - use vertical, flip to face down
-    return { isVertical: true, shouldFlip: true };
-  } else if (h >= 135 && h < 225) {
-    // West - use horizontal, no flip (already faces left)
-    return { isVertical: false, shouldFlip: false };
-  } else {
-    // North (225-315) - use vertical, no flip (already faces up)
+    // North → vertical image, faces up
     return { isVertical: true, shouldFlip: false };
+  } else if (h >= 45 && h < 135) {
+    // East → horizontal image, flip to face right
+    return { isVertical: false, shouldFlip: true };
+  } else if (h >= 135 && h < 225) {
+    // South → vertical image, flip to face down
+    return { isVertical: true, shouldFlip: true };
+  } else {
+    // West (225-315) → horizontal image, no flip (faces left)
+    return { isVertical: false, shouldFlip: false };
   }
 };
 
@@ -128,9 +133,10 @@ const loadTricycleImages = () => {
 // Create rotated tricycle icon using canvas (for Google Maps)
 // Returns a data URL of the rotated image
 // Uses dual-image system: horizontal image for East/West, vertical image for North/South
+// PLUS fine canvas rotation so the icon aligns precisely with the route bearing
 const createRotatedTricycleUrl = async (heading = 270) => {
-  // Round heading to nearest 5 degrees for caching
-  const roundedHeading = Math.round(heading / 5) * 5;
+  // Round heading to nearest 3 degrees for caching (good balance of smoothness vs memory)
+  const roundedHeading = Math.round(heading / 3) * 3;
   
   // Check cache first
   if (rotatedImageCache.has(roundedHeading)) {
@@ -144,6 +150,27 @@ const createRotatedTricycleUrl = async (heading = 270) => {
     // Select the appropriate image
     const img = isVertical ? images.vertical : images.horizontal;
     
+    // Determine the base compass angle of the chosen image+flip combination
+    // Horizontal image faces LEFT (West=270°), flipped faces RIGHT (East=90°)
+    // Vertical image faces UP (North=0°), flipped faces DOWN (South=180°)
+    let baseAngle;
+    if (!isVertical && !shouldFlip) baseAngle = 270;   // West (left)
+    else if (!isVertical && shouldFlip) baseAngle = 90; // East (right)
+    else if (isVertical && !shouldFlip) baseAngle = 0;  // North (up)
+    else baseAngle = 180;                                // South (down)
+    
+    // Fine rotation: difference between actual heading and the base angle
+    // This is always within ±45° thanks to the quadrant selection
+    let fineRotation = heading - baseAngle;
+    // Normalize to -180..+180
+    while (fineRotation > 180) fineRotation -= 360;
+    while (fineRotation < -180) fineRotation += 360;
+    // Clamp to ±45° as safety net (prevents ugly distortion)
+    fineRotation = Math.max(-45, Math.min(45, fineRotation));
+    
+    // Convert to radians for canvas
+    const fineRotationRad = fineRotation * Math.PI / 180;
+    
     // Create canvas for rendering
     const canvas = document.createElement('canvas');
     canvas.width = TRICYCLE_ICON_SIZE;
@@ -153,26 +180,24 @@ const createRotatedTricycleUrl = async (heading = 270) => {
     // Clear canvas
     ctx.clearRect(0, 0, TRICYCLE_ICON_SIZE, TRICYCLE_ICON_SIZE);
     
-    // Draw the image with optional flip
-    ctx.save();
-    
+    const half = TRICYCLE_ICON_SIZE / 2;
     const imgSize = TRICYCLE_ICON_SIZE - 8;
-    const imgX = 4;
-    const imgY = 4;
     
+    ctx.save();
+    // Move origin to center for rotation
+    ctx.translate(half, half);
+    // Apply fine rotation (aligns with route bearing)
+    ctx.rotate(fineRotationRad);
+    // Apply flip if needed
     if (shouldFlip) {
       if (isVertical) {
-        // Vertical flip (for facing down instead of up)
-        ctx.translate(0, TRICYCLE_ICON_SIZE);
-        ctx.scale(1, -1);
+        ctx.scale(1, -1);   // Vertical flip (face down)
       } else {
-        // Horizontal flip (for facing right instead of left)
-        ctx.translate(TRICYCLE_ICON_SIZE, 0);
-        ctx.scale(-1, 1);
+        ctx.scale(-1, 1);   // Horizontal flip (face right)
       }
     }
-    
-    ctx.drawImage(img, imgX, imgY, imgSize, imgSize);
+    // Draw image centered at origin
+    ctx.drawImage(img, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
     ctx.restore();
     
     // Get data URL
@@ -382,7 +407,8 @@ const GoogleMapsNavigation = ({
   onError,
   onNavigationStop, // Callback when navigation ends
   wasteType = 'general', // Waste type for destination icon color
-  sourceType = 'pickup_request' // Source type (pickup_request or digital_bin)
+  sourceType = 'pickup_request', // Source type (pickup_request or digital_bin)
+  isArrived = false // When true, zoom out to show both user and destination markers
 }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -417,6 +443,121 @@ const GoogleMapsNavigation = ({
   const lastUserLocationRef = useRef(null); // Track last user location for smooth updates
   const [currentHeading, setCurrentHeading] = useState(270); // Default to 270° (west/left) - will be updated to route direction
   const previousPositionRef = useRef(null); // Track previous position for heading calculation
+  const walkingPolylineRef = useRef(null); // Dotted walking line from route endpoint to bin
+
+  // --- Road snapping & dynamic rerouting state ---
+  const routePolylineRef = useRef(null);       // Stores the decoded polyline path [{lat, lng}, ...]
+  const lastRerouteTimeRef = useRef(0);        // Debounce rerouting (min 10s between re-routes)
+  const isReroutingRef = useRef(false);        // Prevents concurrent reroute requests
+  const REROUTE_DISTANCE_THRESHOLD = 20;       // meters off-route before triggering reroute
+  const REROUTE_COOLDOWN_MS = 10000;           // minimum ms between reroute requests
+
+  // Find the closest point on the route polyline to a given GPS position.
+  // Returns { point: {lat, lng}, distance: number (meters), segmentIndex: number }
+  const snapToPolyline = (userLat, userLng) => {
+    const path = routePolylineRef.current;
+    if (!path || path.length < 2 || !window.google?.maps?.geometry) return null;
+
+    const userLatLng = new window.google.maps.LatLng(userLat, userLng);
+    let minDist = Infinity;
+    let closestPoint = null;
+    let closestSegment = 0;
+
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = new window.google.maps.LatLng(path[i].lat, path[i].lng);
+      const b = new window.google.maps.LatLng(path[i + 1].lat, path[i + 1].lng);
+
+      // Project userLatLng onto segment a-b
+      const projected = projectPointOnSegment(userLatLng, a, b);
+      const dist = window.google.maps.geometry.spherical.computeDistanceBetween(userLatLng, projected);
+
+      if (dist < minDist) {
+        minDist = dist;
+        closestPoint = { lat: projected.lat(), lng: projected.lng() };
+        closestSegment = i;
+      }
+    }
+
+    return { point: closestPoint, distance: minDist, segmentIndex: closestSegment };
+  };
+
+  // Project a point onto a line segment (returns the closest LatLng on segment a-b)
+  const projectPointOnSegment = (p, a, b) => {
+    const geometry = window.google.maps.geometry.spherical;
+    const headingAB = geometry.computeHeading(a, b);
+    const headingAP = geometry.computeHeading(a, p);
+    const distAB = geometry.computeDistanceBetween(a, b);
+    const distAP = geometry.computeDistanceBetween(a, p);
+
+    // Projection scalar along segment a-b
+    const angle = (headingAP - headingAB) * Math.PI / 180;
+    let projectedDist = distAP * Math.cos(angle);
+
+    // Clamp to segment bounds
+    projectedDist = Math.max(0, Math.min(distAB, projectedDist));
+
+    return geometry.computeOffset(a, projectedDist, headingAB);
+  };
+
+  // Trigger a dynamic reroute from the user's current position to the destination
+  const triggerReroute = (fromLat, fromLng) => {
+    const now = Date.now();
+    if (isReroutingRef.current) return;
+    if (now - lastRerouteTimeRef.current < REROUTE_COOLDOWN_MS) return;
+
+    isReroutingRef.current = true;
+    lastRerouteTimeRef.current = now;
+
+    const destLat = Array.isArray(destination) ? destination[0] : destination?.lat;
+    const destLng = Array.isArray(destination) ? destination[1] : destination?.lng;
+    if (!destLat || !destLng) { isReroutingRef.current = false; return; }
+
+    logger.info(`🔄 Rerouting from (${fromLat.toFixed(5)}, ${fromLng.toFixed(5)}) — driver is off-route`);
+
+    const directionsService = new window.google.maps.DirectionsService();
+    directionsService.route(
+      {
+        origin: { lat: fromLat, lng: fromLng },
+        destination: { lat: destLat, lng: destLng },
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      },
+      (result, status) => {
+        isReroutingRef.current = false;
+        if (status === window.google.maps.DirectionsStatus.OK && directionsRendererRef.current) {
+          directionsRendererRef.current.setDirections(result);
+
+          // Update stored polyline path from new route
+          const overviewPath = result.routes[0]?.overview_path;
+          if (overviewPath) {
+            routePolylineRef.current = overviewPath.map(p => ({ lat: p.lat(), lng: p.lng() }));
+          }
+
+          // Update navigation steps from new route
+          const allSteps = [];
+          result.routes[0].legs.forEach((leg, legIndex) => {
+            leg.steps.forEach((step, stepIndex) => {
+              allSteps.push({
+                legIndex, stepIndex,
+                instruction: step.instructions,
+                distance: step.distance.text,
+                distanceValue: step.distance.value,
+                duration: step.duration.text,
+                maneuver: step.maneuver || 'continue',
+                startLocation: step.start_location,
+                endLocation: step.end_location
+              });
+            });
+          });
+          setNavigationSteps(allSteps);
+          setCurrentStepIndex(0);
+
+          logger.info('✅ Reroute complete — new route displayed');
+        } else {
+          logger.warn('⚠️ Reroute failed:', status);
+        }
+      }
+    );
+  };
 
   // Helper function to check if Google Maps API is fully loaded
   const isGoogleMapsFullyLoaded = () => {
@@ -635,6 +776,11 @@ const GoogleMapsNavigation = ({
         waypointMarkersRef.current.forEach(marker => marker.setMap(null));
         waypointMarkersRef.current = [];
       }
+      // Clear walking polyline
+      if (walkingPolylineRef.current) {
+        walkingPolylineRef.current.setMap(null);
+        walkingPolylineRef.current = null;
+      }
 
       // Add destination marker (red pin)
       const destLat = Array.isArray(destination) ? destination[0] : destination.lat;
@@ -768,6 +914,12 @@ const GoogleMapsNavigation = ({
             // Extract route information
             const route = result.routes[0];
             
+            // Store the overview polyline path for road-snapping & off-route detection
+            if (route.overview_path) {
+              routePolylineRef.current = route.overview_path.map(p => ({ lat: p.lat(), lng: p.lng() }));
+              logger.debug(`📐 Stored route polyline with ${routePolylineRef.current.length} points for snapping`);
+            }
+            
             // Calculate total distance and duration across all legs
             let totalDistance = 0;
             let totalDuration = 0;
@@ -822,6 +974,60 @@ const GoogleMapsNavigation = ({
             
             logger.info('✅ Route calculated successfully:', routeInfo);
             logger.info(`📍 Extracted ${allSteps.length} navigation steps`);
+            
+            // --- Draw dotted walking line from route endpoint to actual bin location ---
+            // The Directions API routes to the nearest road, but the bin may be
+            // off-road (inside a compound, down a footpath, etc.). Draw a dotted
+            // line so the driver knows exactly where to walk.
+            const lastLeg = route.legs[route.legs.length - 1];
+            if (lastLeg && mapInstanceRef.current) {
+              const routeEndLat = typeof lastLeg.end_location.lat === 'function'
+                ? lastLeg.end_location.lat() : lastLeg.end_location.lat;
+              const routeEndLng = typeof lastLeg.end_location.lng === 'function'
+                ? lastLeg.end_location.lng() : lastLeg.end_location.lng;
+              
+              const destLat = Array.isArray(destination) ? destination[0] : destination?.lat;
+              const destLng = Array.isArray(destination) ? destination[1] : destination?.lng;
+              
+              if (destLat && destLng) {
+                // Calculate distance between route end and actual destination
+                const walkDist = calculateGPSDistance(routeEndLat, routeEndLng, destLat, destLng);
+                
+                // Only draw walking line if there's a meaningful gap (>5m)
+                if (walkDist > 5) {
+                  // Remove old walking polyline if it exists
+                  if (walkingPolylineRef.current) {
+                    walkingPolylineRef.current.setMap(null);
+                  }
+                  
+                  walkingPolylineRef.current = new window.google.maps.Polyline({
+                    path: [
+                      { lat: routeEndLat, lng: routeEndLng },
+                      { lat: destLat, lng: destLng }
+                    ],
+                    map: mapInstanceRef.current,
+                    strokeColor: '#6B7280',  // Gray
+                    strokeOpacity: 0,        // Hide solid line (we use icons for dots)
+                    strokeWeight: 0,
+                    icons: [{
+                      icon: {
+                        path: window.google.maps.SymbolPath.CIRCLE,
+                        scale: 3,
+                        fillColor: '#4B5563',
+                        fillOpacity: 0.8,
+                        strokeColor: '#4B5563',
+                        strokeWeight: 1,
+                      },
+                      offset: '0',
+                      repeat: '12px'          // Dot spacing
+                    }],
+                    zIndex: 5
+                  });
+                  
+                  logger.info(`🚶 Walking line drawn: ${walkDist.toFixed(0)}m from route end to bin`);
+                }
+              }
+            }
             
             if (onRouteCalculatedRef.current) {
               onRouteCalculatedRef.current(routeInfo);
@@ -883,58 +1089,107 @@ const GoogleMapsNavigation = ({
       return;
     }
 
-    // Check if location actually changed significantly (>5m) to avoid jitter
+    // Check if location actually changed significantly (>3m) to avoid jitter
     const lastLoc = lastUserLocationRef.current;
     if (lastLoc) {
       const distance = calculateGPSDistance(
         lastLoc.lat, lastLoc.lng,
         userLocation.lat, userLocation.lng
       );
-      if (distance < 5) {
-        return; // Skip tiny movements
+      if (distance < 3) {
+        return; // Skip tiny movements (GPS noise)
       }
     }
 
-    // Calculate heading - PREFER route direction over GPS movement
+    // --- Heading / bearing determination ---
+    // Priority 1: Route-based heading (aligns icon with the blue route line)
+    // Priority 2: GPS-reported heading (device compass/bearing)
+    // Priority 3: Movement-based heading (calculated from consecutive positions)
+    // Stationary hold: only when speed is explicitly reported < threshold
     let newHeading = currentHeading;
+    let headingSource = 'unchanged';
     
-    // First, try to get route-based heading (direction towards next waypoint)
-    const routeHeading = getRouteBasedHeading(userLocation.lat, userLocation.lng);
+    const speed = userLocation.speed ?? null; // m/s from Geolocation API or null
+    const gpsHeading = userLocation.heading ?? null; // degrees from Geolocation API or null
     
-    if (routeHeading !== null) {
-      // Use route-based heading - this makes tricycle face the direction of travel on the route
-      newHeading = routeHeading;
-      setCurrentHeading(newHeading);
-      logger.debug(`🧭 Route-based heading: ${newHeading.toFixed(1)}° (towards next waypoint)`);
+    // Determine if the driver is moving:
+    // - If speed is reported: use the 2 km/h threshold
+    // - If speed is NOT reported (null, common from getCurrentLocation): infer from position delta
+    let isMoving;
+    const prevPos = previousPositionRef.current;
+    if (speed !== null) {
+      isMoving = speed >= MIN_SPEED_FOR_HEADING;
+    } else if (prevPos) {
+      const movedDist = calculateGPSDistance(prevPos.lat, prevPos.lng, userLocation.lat, userLocation.lng);
+      isMoving = movedDist >= 3; // Moved ≥3m between updates → in motion
     } else {
-      // Fallback: Calculate heading from GPS movement (previous position to current)
-      const prevPos = previousPositionRef.current;
-      if (prevPos) {
-        const distance = calculateGPSDistance(
+      isMoving = true; // First position update — assume moving to set initial heading
+    }
+    
+    // Priority 1: Route-based heading (best visual alignment with blue route line)
+    if (isMoving) {
+      const routeHeading = getRouteBasedHeading(userLocation.lat, userLocation.lng);
+      if (routeHeading !== null) {
+        newHeading = routeHeading;
+        headingSource = 'route';
+      }
+    }
+    
+    // Priority 2: GPS-reported heading (if route heading not available)
+    if (headingSource === 'unchanged' && isMoving && gpsHeading !== null && gpsHeading >= 0) {
+      newHeading = gpsHeading;
+      headingSource = 'GPS-bearing';
+    }
+    
+    // Priority 3: Movement vector (fallback)
+    if (headingSource === 'unchanged' && isMoving && prevPos) {
+      const moveDist = calculateGPSDistance(
+        prevPos.lat, prevPos.lng,
+        userLocation.lat, userLocation.lng
+      );
+      if (moveDist >= 3) {
+        newHeading = calculateBearing(
           prevPos.lat, prevPos.lng,
           userLocation.lat, userLocation.lng
         );
-        
-        // Only update heading if moved at least 3 meters (to avoid jitter from GPS noise)
-        if (distance >= 3) {
-          newHeading = calculateBearing(
-            prevPos.lat, prevPos.lng,
-            userLocation.lat, userLocation.lng
-          );
-          setCurrentHeading(newHeading);
-          logger.debug(`🧭 GPS-based heading: ${newHeading.toFixed(1)}°`);
-        }
+        headingSource = 'movement';
       }
+    }
+    
+    // Stationary: only when speed is explicitly reported as < threshold
+    if (headingSource === 'unchanged' && speed !== null && speed < MIN_SPEED_FOR_HEADING) {
+      headingSource = 'stationary-hold';
+    }
+    
+    if (headingSource !== 'unchanged' && headingSource !== 'stationary-hold') {
+      setCurrentHeading(newHeading);
     }
     
     // Update previous position for next heading calculation
     previousPositionRef.current = { lat: userLocation.lat, lng: userLocation.lng };
 
-    // Update marker position smoothly
-    userMarkerRef.current.setPosition({ 
-      lat: userLocation.lat, 
-      lng: userLocation.lng 
-    });
+    // --- Road snapping & off-route detection ---
+    let displayLat = userLocation.lat;
+    let displayLng = userLocation.lng;
+    let offRouteDistance = 0;
+
+    const snapResult = snapToPolyline(userLocation.lat, userLocation.lng);
+    if (snapResult && snapResult.point) {
+      offRouteDistance = snapResult.distance;
+
+      if (offRouteDistance <= REROUTE_DISTANCE_THRESHOLD) {
+        // Within tolerance — snap marker to the road (polyline)
+        displayLat = snapResult.point.lat;
+        displayLng = snapResult.point.lng;
+      } else {
+        // Off-route by >20m — keep raw GPS position and trigger reroute
+        logger.info(`⚠️ Off-route by ${offRouteDistance.toFixed(0)}m (threshold: ${REROUTE_DISTANCE_THRESHOLD}m) — requesting reroute`);
+        triggerReroute(userLocation.lat, userLocation.lng);
+      }
+    }
+
+    // Update marker position (snapped or raw)
+    userMarkerRef.current.setPosition({ lat: displayLat, lng: displayLng });
     
     // Update marker icon with new heading rotation (async load)
     createRotatedTricycleUrl(newHeading).then((url) => {
@@ -963,11 +1218,11 @@ const GoogleMapsNavigation = ({
         map.setZoom(navigationZoom);
       }
       
-      // Smoothly pan to user location
-      map.panTo({ lat: userLocation.lat, lng: userLocation.lng });
+      // Smoothly pan to snapped position
+      map.panTo({ lat: displayLat, lng: displayLng });
     }
 
-    logger.debug(`📍 Marker updated to: ${userLocation.lat.toFixed(6)}, ${userLocation.lng.toFixed(6)} | Heading: ${newHeading.toFixed(1)}°`);
+    logger.debug(`📍 Marker updated | Heading: ${newHeading.toFixed(1)}° (${headingSource}) | Speed: ${speed !== null ? (speed * 3.6).toFixed(1) + ' km/h' : 'N/A'} | Off-route: ${offRouteDistance.toFixed(0)}m`);
   }, [userLocation, isFollowMode, currentHeading, navigationSteps, currentStepIndex, destination]);
 
   // GPS tracking for auto-advance navigation
@@ -988,34 +1243,65 @@ const GoogleMapsNavigation = ({
       (position) => {
         const userLat = position.coords.latitude;
         const userLng = position.coords.longitude;
+        const gpsSpeed = position.coords.speed; // m/s or null
+        const gpsBearing = position.coords.heading; // degrees or null
         
-        setCurrentPosition({ lat: userLat, lng: userLng });
+        setCurrentPosition({ lat: userLat, lng: userLng, speed: gpsSpeed, heading: gpsBearing });
 
-        // Calculate heading - PREFER route direction over GPS movement
+        // --- Heading determination (same priority as marker update useEffect) ---
+        // Priority 1: Route-based (aligns with blue line)
+        // Priority 2: GPS bearing
+        // Priority 3: Movement vector
         let heading = currentHeading;
+        let headingUpdated = false;
         
-        // First, try route-based heading (direction towards next waypoint on route)
-        const routeHeading = getRouteBasedHeading(userLat, userLng);
+        const prevPos = previousPositionRef.current;
+        const isMoving = gpsSpeed !== null
+          ? gpsSpeed >= MIN_SPEED_FOR_HEADING
+          : (prevPos ? calculateGPSDistance(prevPos.lat, prevPos.lng, userLat, userLng) >= 3 : true);
         
-        if (routeHeading !== null) {
-          heading = routeHeading;
-          setCurrentHeading(heading);
-        } else {
-          // Fallback: Calculate from GPS movement
-          const prevPos = previousPositionRef.current;
-          if (prevPos) {
+        if (isMoving) {
+          // Priority 1: Route-based heading
+          const routeHeading = getRouteBasedHeading(userLat, userLng);
+          if (routeHeading !== null) {
+            heading = routeHeading;
+            headingUpdated = true;
+          }
+          // Priority 2: GPS bearing
+          if (!headingUpdated && gpsBearing !== null && gpsBearing >= 0) {
+            heading = gpsBearing;
+            headingUpdated = true;
+          }
+          // Priority 3: Movement vector
+          if (!headingUpdated && prevPos) {
             const movementDistance = calculateGPSDistance(prevPos.lat, prevPos.lng, userLat, userLng);
             if (movementDistance >= 3) {
               heading = calculateBearing(prevPos.lat, prevPos.lng, userLat, userLng);
-              setCurrentHeading(heading);
+              headingUpdated = true;
             }
           }
         }
+        if (headingUpdated) setCurrentHeading(heading);
         previousPositionRef.current = { lat: userLat, lng: userLng };
 
-        // Update user marker on map with heading rotation (async load)
+        // --- Road snapping & off-route detection (same as marker update useEffect) ---
+        let displayLat = userLat;
+        let displayLng = userLng;
+
+        const snapResult = snapToPolyline(userLat, userLng);
+        if (snapResult && snapResult.point) {
+          if (snapResult.distance <= REROUTE_DISTANCE_THRESHOLD) {
+            displayLat = snapResult.point.lat;
+            displayLng = snapResult.point.lng;
+          } else {
+            // Off-route — trigger reroute
+            triggerReroute(userLat, userLng);
+          }
+        }
+
+        // Update user marker on map with snapped position + heading rotation
         if (userMarkerRef.current && mapInstanceRef.current) {
-          userMarkerRef.current.setPosition({ lat: userLat, lng: userLng });
+          userMarkerRef.current.setPosition({ lat: displayLat, lng: displayLng });
           createRotatedTricycleUrl(heading).then((url) => {
             if (userMarkerRef.current) {
               userMarkerRef.current.setIcon({
@@ -1143,6 +1429,45 @@ const GoogleMapsNavigation = ({
     }
   }, [navigationSteps, navigationControlRef]);
 
+  // Zoom out to show both user marker and bin marker on arrival
+  useEffect(() => {
+    if (!isArrived || !mapInstanceRef.current) return;
+
+    // Disable follow mode so the zoom-out isn't overridden by auto-pan
+    setIsFollowMode(false);
+
+    const map = mapInstanceRef.current;
+    const bounds = new window.google.maps.LatLngBounds();
+
+    // Include user location
+    if (userLocation) {
+      bounds.extend({ lat: userLocation.lat, lng: userLocation.lng });
+    }
+
+    // Include destination
+    const destLat = Array.isArray(destination) ? destination[0] : destination?.lat;
+    const destLng = Array.isArray(destination) ? destination[1] : destination?.lng;
+    if (destLat && destLng) {
+      bounds.extend({ lat: destLat, lng: destLng });
+    }
+
+    // Fit bounds with padding so both markers are comfortably visible
+    map.fitBounds(bounds, { top: 60, bottom: 60, left: 40, right: 40 });
+
+    // Cap the zoom so it doesn't zoom in too much if markers are very close
+    const listener = window.google.maps.event.addListenerOnce(map, 'idle', () => {
+      if (map.getZoom() > 18) {
+        map.setZoom(18);
+      }
+    });
+
+    logger.info('🔍 Map zoomed out to show both user and bin markers on arrival');
+
+    return () => {
+      window.google.maps.event.removeListener(listener);
+    };
+  }, [isArrived, destination, userLocation]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -1159,6 +1484,11 @@ const GoogleMapsNavigation = ({
       }
       if (directionsRendererRef.current) {
         directionsRendererRef.current.setMap(null);
+      }
+      // Clean up walking polyline (dotted line to bin)
+      if (walkingPolylineRef.current) {
+        walkingPolylineRef.current.setMap(null);
+        walkingPolylineRef.current = null;
       }
       // Cleanup audio alerts
       audioAlertService.acknowledgeArrival();

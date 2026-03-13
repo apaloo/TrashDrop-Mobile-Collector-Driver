@@ -156,6 +156,8 @@ export const getCurrentLocation = () => {
             lat: position.coords.latitude,
             lng: position.coords.longitude,
             accuracy: position.coords.accuracy,
+            speed: position.coords.speed,     // m/s or null
+            heading: position.coords.heading,  // degrees or null
             isFallback: false,
             source: 'google'
           };
@@ -188,6 +190,8 @@ export const getCurrentLocation = () => {
               lat: position.coords.latitude,
               lng: position.coords.longitude,
               accuracy: position.coords.accuracy,
+              speed: position.coords.speed,     // m/s or null
+              heading: position.coords.heading,  // degrees or null
               isFallback: false,
               source: 'browser'
             });

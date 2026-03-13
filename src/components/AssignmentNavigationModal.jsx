@@ -7,7 +7,7 @@ import { logger } from '../utils/logger';
 import useWakeLock from '../hooks/useWakeLock';
 import { useNavigationPersistence } from '../hooks/useNavigationPersistence';
 
-const GEOFENCE_RADIUS = 50; // 50 meters radius for auto-completion
+const GEOFENCE_RADIUS = 15; // 15 meters radius for auto-completion - driver must be at the location
 const LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
 
 const AssignmentNavigationModal = ({
@@ -326,8 +326,8 @@ const AssignmentNavigationModal = ({
     
     const distanceToNextStep = getDistanceToNextStep();
     
-    // If user is within 50m of next step, advance to next instruction
-    if (distanceToNextStep && distanceToNextStep <= 0.05 && currentStep < navigationInstructions.length - 1) {
+    // If user is within 15m of next step, advance to next instruction
+    if (distanceToNextStep && distanceToNextStep <= 0.015 && currentStep < navigationInstructions.length - 1) {
       setCurrentStep(prev => prev + 1);
       logger.debug(`📍 Advanced to step ${currentStep + 1}/${navigationInstructions.length}`);
       
@@ -361,8 +361,8 @@ const AssignmentNavigationModal = ({
           const distance = calculateDistance(position, destinationObj);
           setDistanceToDestination(distance);
           
-          // Check if within 50m radius (0.05km)
-          const withinGeofence = distance <= 0.05;
+          // Check if within 15m radius (0.015km)
+          const withinGeofence = distance <= 0.015;
           
           // Update geofence status - only if using real coordinates
           const usingFallbackDestination = destinationObj.isFallback === true;
@@ -379,7 +379,7 @@ const AssignmentNavigationModal = ({
           }
           
           if (userWithinGeofence && !hasArrived) {
-            logger.info('✅ User arrived within 50m - ready to start cleaning');
+            logger.info('✅ User arrived within 15m - ready to start cleaning');
             
             // Auto-stop navigation when arrived
             if (isNavigating) {
@@ -587,6 +587,7 @@ const AssignmentNavigationModal = ({
                 navigationControlRef={navigationControlRef}
                 wasteType="general"
                 sourceType="assignment"
+                isArrived={hasArrived}
                 onMapReady={(map) => {
                   logger.debug(`✅ Google Maps loaded for ${assignmentTitle} navigation`);
                   mapRef.current = map;

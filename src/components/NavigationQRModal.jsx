@@ -17,7 +17,7 @@ import { supabase } from '../services/supabase';
 const QR_SCAN_RATE_LIMIT = 10; // per minute
 const LOCATION_RETRY_MAX_ATTEMPTS = 3;
 const CAMERA_INIT_TIMEOUT = 2000;
-const GEOFENCE_RADIUS = 50; // 50 meters radius for geofence
+const GEOFENCE_RADIUS = 15; // 15 meters radius for geofence - driver must be at the bin
 const LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
 
 const NavigationQRModal = ({
@@ -395,8 +395,8 @@ const NavigationQRModal = ({
     
     const distanceToNextStep = getDistanceToNextStep();
     
-    // If user is within 50m of next step, advance to next instruction
-    if (distanceToNextStep && distanceToNextStep <= 0.05 && currentStep < navigationInstructions.length - 1) {
+    // If user is within 15m of next step, advance to next instruction
+    if (distanceToNextStep && distanceToNextStep <= 0.015 && currentStep < navigationInstructions.length - 1) {
       setCurrentStep(prev => prev + 1);
       logger.debug(`📍 Advanced to step ${currentStep + 1}/${navigationInstructions.length}`);
       
@@ -627,7 +627,7 @@ const NavigationQRModal = ({
     if (!isWithinGeofence) {
       setError({
         type: 'error',
-        message: 'You must be within 50 meters of the pickup location to scan QR codes.'
+        message: 'You must be within 15 meters of the pickup location to scan QR codes.'
       });
       return;
     }
@@ -674,7 +674,7 @@ const NavigationQRModal = ({
     if (!isWithinGeofence) {
       setError({
         type: 'error',
-        message: 'You must be within 50 meters of the pickup location to scan QR codes.'
+        message: 'You must be within 15 meters of the pickup location to scan QR codes.'
       });
       return;
     }
@@ -758,10 +758,10 @@ const NavigationQRModal = ({
         
         // Calculate distance and check geofence
         const distance = calculateDistance({ lat: coords[0], lng: coords[1] }, { lat: destination[0], lng: destination[1] });
-        const within50m = distance <= 0.05; // 50 meters = 0.05 km
+        const within15m = distance <= 0.015; // 15 meters = 0.015 km
         
         // Use actual distance check (don't force geofence in dev mode for QR scanning)
-        const isWithin = within50m;
+        const isWithin = within15m;
         
         setDistanceToDestination(distance);
         updateGeofenceState(isWithin, 'retryLocationUpdate');
@@ -897,7 +897,7 @@ const NavigationQRModal = ({
           );
           setDistanceToDestination(distance);
           
-          const withinGeofence = distance <= 0.05;
+          const withinGeofence = distance <= 0.015;
           updateGeofenceState(withinGeofence, 'debouncedUpdateLocation');
         }
       } catch (err) {
@@ -1085,12 +1085,12 @@ const requestCameraPermission = useCallback(async () => {
           
           setDistanceToDestination(distance);
           
-          // Use distance-based check for geofence (50m = 0.05km)
-          const withinGeofence = distance <= 0.05;
+          // Use distance-based check for geofence (15m = 0.015km)
+          const withinGeofence = distance <= 0.015;
           
           // Only log geofence status occasionally
           if (consecutiveFallbackUpdates < 2) {
-            logger.debug('🎯 Geofence check - Within 50m:', withinGeofence, `| Distance: ${distance.toFixed(3)}km (${Math.round(distance * 1000)}m)`);
+            logger.debug('🎯 Geofence check - Within 15m:', withinGeofence, `| Distance: ${distance.toFixed(3)}km (${Math.round(distance * 1000)}m)`);
           }
           
           // Check if we just entered the geofence (transition from outside to inside)
@@ -1320,6 +1320,7 @@ const requestCameraPermission = useCallback(async () => {
                   navigationControlRef={navigationControlRef}
                   wasteType={wasteType}
                   sourceType={sourceType}
+                  isArrived={hasArrivedAtDestination}
                   onMapReady={(map) => {
                     logger.debug('Google Maps loaded in modal');
                     mapRef.current = map;
@@ -1479,7 +1480,7 @@ const requestCameraPermission = useCallback(async () => {
                     {process.env.NODE_ENV === 'development' && (
                       <div className="mt-2 p-2 bg-gray-800 text-white text-xs rounded">
                         <div>Distance: {distanceToDestination ? `${Math.round(distanceToDestination * 1000)}m` : 'Calculating...'}</div>
-                        <div>Within 50m: {isWithinGeofence ? '✅ Yes' : '❌ No'}</div>
+                        <div>Within 15m: {isWithinGeofence ? '✅ Yes' : '❌ No'}</div>
                         <div>Mode: {mode}</div>
                       </div>
                     )}
@@ -1607,7 +1608,7 @@ const requestCameraPermission = useCallback(async () => {
                       </div>
                     </button>
                   )}
-                  {/* Only show Scan Now button when within 50m geofence */}
+                  {/* Only show Scan Now button when within 15m geofence */}
                   {isWithinGeofence ? (
                     <button
                       onClick={handleSwitchToQR}
