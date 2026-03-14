@@ -22,6 +22,7 @@ import { registerConnectivityListeners } from '../utils/offlineUtils';
 import { supabase, authService } from '../services/supabase';
 import usePhotoCapture from '../hooks/usePhotoCapture';
 import { logger } from '../utils/logger';
+import { DISPOSAL_SITE_RADIUS_KM, GEOFENCE_DESCRIPTIONS } from '../config/geofenceConfig';
 import { initiateCollection } from '../services/paymentService';
 import { disposeDigitalBin } from '../services/disposalService';
 
@@ -934,9 +935,9 @@ const RequestPage = () => {
     logger.info('📍 Distance to disposal site:', {
       siteName: site.name,
       distance: `${(distance * 1000).toFixed(0)}m`,
-      withinRange: distance <= 0.05
+      withinRange: distance <= DISPOSAL_SITE_RADIUS_KM
     });
-    return distance <= 0.05; // 50 meters in km
+    return distance <= DISPOSAL_SITE_RADIUS_KM;
   }, [calculateDistance]);
 
   // AUTO-DETECT: Check if user is near any disposal site and set selectedDisposalCenter
@@ -964,7 +965,7 @@ const RequestPage = () => {
         
         if (error || !disposalCenters) return;
         
-        // Check if user is within 50m of any disposal center
+        // Check if user is within disposal site radius of any disposal center
         for (const center of disposalCenters) {
           const siteWithCoords = {
             ...center,
@@ -2199,7 +2200,7 @@ const GeofenceErrorModal = ({
     
     const isWithinRange = checkWithinDisposalRange(userLocation, selectedDisposalCenter);
     if (!isWithinRange) {
-      showToast('You must be within 50m of the disposal site', 'warning');
+      showToast(`You must be within ${GEOFENCE_DESCRIPTIONS.disposalSite} of the disposal site`, 'warning');
       return;
     }
     
@@ -2282,7 +2283,7 @@ const GeofenceErrorModal = ({
     }
   };
 
-  // Check if user is within 50m of a disposal site (for FAB visibility)
+  // Check if user is within disposal site radius (for FAB visibility)
   const isAtDisposalSite = selectedDisposalCenter?.lat && selectedDisposalCenter?.lng && 
     checkWithinDisposalRange(userLocation, selectedDisposalCenter);
   

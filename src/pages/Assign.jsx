@@ -11,6 +11,7 @@ import { supabase, authService } from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logger } from '../utils/logger';
 import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
+import { ASSIGNMENT_COMPLETION_RADIUS_KM, GEOFENCE_DESCRIPTIONS, kmToMeters } from '../config/geofenceConfig';
 
 const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNavigate, onDumpingSite, onDispose, onViewReport }) => {
   const [expanded, setExpanded] = useState(false);
@@ -524,7 +525,7 @@ const AssignPage = () => {
     return null;
   }, []);
 
-  // Check if user is within 50m geofence of assignment location
+  // Check if user is within assignment completion geofence
   const isWithinGeofence = useCallback((assignmentId) => {
     // FIRST: Check if arrival was already confirmed via navigation modal
     // The navigation modal uses accurate real-time GPS and is more reliable
@@ -576,13 +577,13 @@ const AssignPage = () => {
     const distance = calculateDistance(userLocation, assignmentCoords);
     const distanceMeters = Math.round(distance * 1000);
     
-    logger.info(`📍 Distance to assignment: ${distanceMeters}m (geofence: 50m)`);
+    logger.info(`📍 Distance to assignment: ${distanceMeters}m (geofence: ${GEOFENCE_DESCRIPTIONS.assignmentCompletion})`);
 
-    // Check if within 50m (0.05km)
-    const isWithin = distance <= 0.05;
+    // Check if within assignment completion radius
+    const isWithin = distance <= ASSIGNMENT_COMPLETION_RADIUS_KM;
     
     if (!isWithin) {
-      logger.info(`❌ User is ${distanceMeters}m away - outside 50m geofence`);
+      logger.info(`❌ User is ${distanceMeters}m away - outside ${GEOFENCE_DESCRIPTIONS.assignmentCompletion} geofence`);
     } else {
       logger.info(`✅ User is within geofence (${distanceMeters}m)`);
     }
@@ -795,7 +796,7 @@ const AssignPage = () => {
   const handleComplete = (assignmentId) => {
     // Check if user is within geofence
     if (!isWithinGeofence(assignmentId)) {
-      showToast('You must be within 50m of the assignment location to complete it', 'error');
+      showToast(`You must be within ${GEOFENCE_DESCRIPTIONS.assignmentCompletion} of the assignment location to complete it`, 'error');
       return;
     }
     

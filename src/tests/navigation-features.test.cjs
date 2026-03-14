@@ -443,42 +443,71 @@ function testGeofenceConsistency() {
     '/Users/otisa.apaloo/CascadeProjects/TrashDrop_Mobile_Collector_Driver/src/components/AssignmentNavigationModal.jsx', 'utf8'
   );
 
-  // Check GEOFENCE_RADIUS constant
-  const navRadius = navQR.match(/GEOFENCE_RADIUS\s*=\s*(\d+)/);
+  // Check centralized geofence config imports (no hardcoded GEOFENCE_RADIUS)
+  const navUsesConfig = navQR.includes('PICKUP_ARRIVAL_RADIUS_KM');
   results.push({
-    name: 'NavigationQRModal GEOFENCE_RADIUS = 15',
-    pass: navRadius && navRadius[1] === '15',
-    detail: `Found: ${navRadius ? navRadius[1] : 'NOT FOUND'}`
+    name: 'NavigationQRModal imports centralized geofence config',
+    pass: navUsesConfig,
+    detail: navUsesConfig ? 'Uses PICKUP_ARRIVAL_RADIUS_KM from config' : 'Missing config import'
   });
 
-  const assignRadius = assignNav.match(/GEOFENCE_RADIUS\s*=\s*(\d+)/);
+  const assignUsesConfig = assignNav.includes('ASSIGNMENT_ARRIVAL_RADIUS_KM');
   results.push({
-    name: 'AssignmentNavigationModal GEOFENCE_RADIUS = 15',
-    pass: assignRadius && assignRadius[1] === '15',
-    detail: `Found: ${assignRadius ? assignRadius[1] : 'NOT FOUND'}`
+    name: 'AssignmentNavigationModal imports centralized geofence config',
+    pass: assignUsesConfig,
+    detail: assignUsesConfig ? 'Uses ASSIGNMENT_ARRIVAL_RADIUS_KM from config' : 'Missing config import'
   });
 
-  // Check no stale 0.05 references in these files
+  // Check no hardcoded GEOFENCE_RADIUS remains
+  const navHardcoded = navQR.match(/GEOFENCE_RADIUS\s*=\s*\d+/);
+  results.push({
+    name: 'NavigationQRModal has no hardcoded GEOFENCE_RADIUS',
+    pass: !navHardcoded,
+    detail: navHardcoded ? `Still has: ${navHardcoded[0]}` : 'Clean - uses config'
+  });
+
+  const assignHardcoded = assignNav.match(/GEOFENCE_RADIUS\s*=\s*\d+/);
+  results.push({
+    name: 'AssignmentNavigationModal has no hardcoded GEOFENCE_RADIUS',
+    pass: !assignHardcoded,
+    detail: assignHardcoded ? `Still has: ${assignHardcoded[0]}` : 'Clean - uses config'
+  });
+
+  // Check no hardcoded 0.05 or 0.015 distance checks remain
   const stale05NavQR = (navQR.match(/distance\s*<=\s*0\.05/g) || []).length;
   results.push({
-    name: 'NavigationQRModal has no stale 0.05 geofence checks',
+    name: 'NavigationQRModal has no hardcoded 0.05 geofence checks',
     pass: stale05NavQR === 0,
     detail: `Found ${stale05NavQR} occurrences of "distance <= 0.05"`
   });
 
+  const stale015NavQR = (navQR.match(/distance\s*<=\s*0\.015/g) || []).length;
+  results.push({
+    name: 'NavigationQRModal has no hardcoded 0.015 geofence checks',
+    pass: stale015NavQR === 0,
+    detail: `Found ${stale015NavQR} occurrences of "distance <= 0.015"`
+  });
+
   const stale05Assign = (assignNav.match(/distance\s*<=\s*0\.05/g) || []).length;
   results.push({
-    name: 'AssignmentNavigationModal has no stale 0.05 geofence checks',
+    name: 'AssignmentNavigationModal has no hardcoded 0.05 geofence checks',
     pass: stale05Assign === 0,
     detail: `Found ${stale05Assign} occurrences of "distance <= 0.05"`
   });
 
-  // Check error messages say 15m not 50m
-  const stale50mNavQR = (navQR.match(/within 50 meters/gi) || []).length;
+  const stale015Assign = (assignNav.match(/distance\s*<=\s*0\.015/g) || []).length;
   results.push({
-    name: 'NavigationQRModal error messages say 15m not 50m',
-    pass: stale50mNavQR === 0,
-    detail: `Found ${stale50mNavQR} occurrences of "within 50 meters"`
+    name: 'AssignmentNavigationModal has no hardcoded 0.015 geofence checks',
+    pass: stale015Assign === 0,
+    detail: `Found ${stale015Assign} occurrences of "distance <= 0.015"`
+  });
+
+  // Check error messages use config descriptions, not hardcoded meters
+  const staleHardcodedMeters = (navQR.match(/within \d+ meters/gi) || []).length;
+  results.push({
+    name: 'NavigationQRModal error messages use config descriptions',
+    pass: staleHardcodedMeters === 0,
+    detail: `Found ${staleHardcodedMeters} occurrences of hardcoded "within N meters"`
   });
 
   return results;

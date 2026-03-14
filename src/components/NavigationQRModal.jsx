@@ -12,12 +12,19 @@ import { logger } from '../utils/logger';
 import useWakeLock from '../hooks/useWakeLock';
 import { useNavigationPersistence } from '../hooks/useNavigationPersistence';
 import { supabase } from '../services/supabase';
+import {
+  PICKUP_ARRIVAL_RADIUS_KM,
+  PICKUP_MANUAL_ARRIVAL_RADIUS_KM,
+  NAV_STEP_ADVANCE_RADIUS_KM,
+  GEOFENCE_DESCRIPTIONS,
+  kmToMeters
+} from '../config/geofenceConfig';
 
 // QR Scan Rate Limiting
 const QR_SCAN_RATE_LIMIT = 10; // per minute
 const LOCATION_RETRY_MAX_ATTEMPTS = 3;
 const CAMERA_INIT_TIMEOUT = 2000;
-const GEOFENCE_RADIUS = 15; // 15 meters radius for geofence - driver must be at the bin
+// Geofence radii imported from ../config/geofenceConfig.js — do NOT hardcode here
 const LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
 
 const NavigationQRModal = ({
@@ -40,6 +47,7 @@ const NavigationQRModal = ({
   const [isUsingFallbackLocation, setIsUsingFallbackLocation] = useState(false); // Track if using fallback GPS
   const [navigationStarted, setNavigationStarted] = useState(false);
   const [isWithinGeofence, setIsWithinGeofence] = useState(false);
+  const [isWithinManualRange, setIsWithinManualRange] = useState(false); // Within manual "I'm Here" range but outside auto-arrival
   const [hasArrivedAtDestination, setHasArrivedAtDestination] = useState(false); // Latched arrival state - once true, stays true
   const [isCameraPreloading, setIsCameraPreloading] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState(null);
@@ -405,8 +413,8 @@ const NavigationQRModal = ({
     
     const distanceToNextStep = getDistanceToNextStep();
     
-    // If user is within 15m of next step, advance to next instruction
-    if (distanceToNextStep && distanceToNextStep <= 0.015 && currentStep < navigationInstructions.length - 1) {
+    // If user is within nav-step-advance radius of next step, advance to next instruction
+    if (distanceToNextStep && distanceToNextStep <= NAV_STEP_ADVANCE_RADIUS_KM && currentStep < navigationInstructions.length - 1) {
       setCurrentStep(prev => prev + 1);
       logger.debug(`📍 Advanced to step ${currentStep + 1}/${navigationInstructions.length}`);
       
@@ -443,6 +451,28 @@ const NavigationQRModal = ({
     
     logger.info(`🎯 Arrival announced for ${destinationName}`);
   }, [hasAnnouncedArrival, destinationName, speak, isNavigating, stopVoiceNavigation]);
+
+  // Manual "I'm Here" confirmation - for when collector is close but GPS won't trigger auto-arrival
+  const handleManualArrival = useCallback(() => {
+    logger.info(`👆 Manual arrival confirmed by collector at ${distanceToDestination ? Math.round(distanceToDestination * 1000) + 'm' : 'unknown distance'}`);
+    
+    // Haptic feedback
+    if (navigator.vibrate) {
+      navigator.vibrate([100, 50, 100]); // Confirmation pattern
+    }
+    
+    // Force arrival state via the centralized geofence setter (handles latching + DB update + parent notification)
+    updateGeofenceState(true, 'manualArrivalConfirmation');
+    setIsWithinManualRange(false);
+    
+    // Announce arrival
+    announceArrival();
+    
+    showToast({
+      message: 'Location confirmed! You can now scan the QR code.',
+      type: 'success'
+    });
+  }, [distanceToDestination, updateGeofenceState, announceArrival, showToast]);
 
   // Rate limiting check for QR scans
   const isQRScanRateLimited = () => {
@@ -623,26 +653,6 @@ const NavigationQRModal = ({
     });
     
     // Start broadcasting location to user
-    if (requestId && user?.id) {
-      await locationBroadcast.startTracking(requestId, user.id);
-      logger.info('📡 Started real-time location tracking for user');
-    }
-    
-    // Show toast notification
-    setError({
-      type: 'success',
-      message: 'Navigation started. Follow the route to the pickup location.'
-    });
-    
-    if (!isWithinGeofence) {
-      setError({
-        type: 'error',
-        message: 'You must be within 15 meters of the pickup location to scan QR codes.'
-      });
-      return;
-    }
-    
-    // Preload camera
     setIsCameraPreloading(true);
     
     // Set a timeout for camera initialization
@@ -684,7 +694,7 @@ const NavigationQRModal = ({
     if (!isWithinGeofence) {
       setError({
         type: 'error',
-        message: 'You must be within 15 meters of the pickup location to scan QR codes.'
+        message: `You must be within ${GEOFENCE_DESCRIPTIONS.pickupArrival} of the pickup location to scan QR codes.`
       });
       return;
     }
@@ -768,12 +778,14 @@ const NavigationQRModal = ({
         
         // Calculate distance and check geofence
         const distance = calculateDistance({ lat: coords[0], lng: coords[1] }, { lat: destination[0], lng: destination[1] });
-        const within15m = distance <= 0.015; // 15 meters = 0.015 km
+        const withinAutoArrival = distance <= PICKUP_ARRIVAL_RADIUS_KM;
+        const withinManualRange = distance <= PICKUP_MANUAL_ARRIVAL_RADIUS_KM;
         
         // Use actual distance check (don't force geofence in dev mode for QR scanning)
-        const isWithin = within15m;
+        const isWithin = withinAutoArrival;
         
         setDistanceToDestination(distance);
+        setIsWithinManualRange(withinManualRange && !withinAutoArrival);
         updateGeofenceState(isWithin, 'retryLocationUpdate');
         
         // Only clear error if we have a non-fallback location
@@ -907,7 +919,8 @@ const NavigationQRModal = ({
           );
           setDistanceToDestination(distance);
           
-          const withinGeofence = distance <= 0.015;
+          const withinGeofence = distance <= PICKUP_ARRIVAL_RADIUS_KM;
+          setIsWithinManualRange(distance <= PICKUP_MANUAL_ARRIVAL_RADIUS_KM && !withinGeofence);
           updateGeofenceState(withinGeofence, 'debouncedUpdateLocation');
         }
       } catch (err) {
@@ -1095,12 +1108,14 @@ const requestCameraPermission = useCallback(async () => {
           
           setDistanceToDestination(distance);
           
-          // Use distance-based check for geofence (15m = 0.015km)
-          const withinGeofence = distance <= 0.015;
+          // Use distance-based check for geofence
+          const withinGeofence = distance <= PICKUP_ARRIVAL_RADIUS_KM;
+          const withinManual = distance <= PICKUP_MANUAL_ARRIVAL_RADIUS_KM && !withinGeofence;
+          setIsWithinManualRange(withinManual);
           
           // Only log geofence status occasionally
           if (consecutiveFallbackUpdates < 2) {
-            logger.debug('🎯 Geofence check - Within 15m:', withinGeofence, `| Distance: ${distance.toFixed(3)}km (${Math.round(distance * 1000)}m)`);
+            logger.debug(`🎯 Geofence check - Within ${GEOFENCE_DESCRIPTIONS.pickupArrival}:`, withinGeofence, `| Manual range (${GEOFENCE_DESCRIPTIONS.pickupManual}):`, withinManual, `| Distance: ${distance.toFixed(3)}km (${Math.round(distance * 1000)}m)`);
           }
           
           // Check if we just entered the geofence (transition from outside to inside)
@@ -1198,6 +1213,7 @@ const requestCameraPermission = useCallback(async () => {
       setIsUsingFallbackLocation(false); // Reset fallback state for fresh start
       setNavigationStarted(false);
       setIsWithinGeofence(false);
+      setIsWithinManualRange(false);
       setHasArrivedAtDestination(false); // Reset latched state when modal closes
       hasArrivedRef.current = false; // Reset ref too
       setIsCameraPreloading(false);
@@ -1490,7 +1506,7 @@ const requestCameraPermission = useCallback(async () => {
                     {process.env.NODE_ENV === 'development' && (
                       <div className="mt-2 p-2 bg-gray-800 text-white text-xs rounded">
                         <div>Distance: {distanceToDestination ? `${Math.round(distanceToDestination * 1000)}m` : 'Calculating...'}</div>
-                        <div>Within 15m: {isWithinGeofence ? '✅ Yes' : '❌ No'}</div>
+                        <div>Within {GEOFENCE_DESCRIPTIONS.pickupArrival}: {isWithinGeofence ? '✅ Yes' : '❌ No'} | Manual range ({GEOFENCE_DESCRIPTIONS.pickupManual}): {isWithinManualRange ? '✅ Yes' : '❌ No'}</div>
                         <div>Mode: {mode}</div>
                       </div>
                     )}
@@ -1618,7 +1634,7 @@ const requestCameraPermission = useCallback(async () => {
                       </div>
                     </button>
                   )}
-                  {/* Only show Scan Now button when within 15m geofence */}
+                  {/* Show Scan Now when within auto-arrival geofence, or I'm Here when in manual range */}
                   {isWithinGeofence ? (
                     <button
                       onClick={handleSwitchToQR}
@@ -1644,6 +1660,21 @@ const requestCameraPermission = useCallback(async () => {
                             <span className="truncate">Scan Now</span>
                           </>
                         )}
+                      </div>
+                    </button>
+                  ) : isWithinManualRange ? (
+                    /* "I'm Here" button - collector is close but GPS won't trigger auto-arrival */
+                    <button
+                      onClick={handleManualArrival}
+                      className="flex-1 min-w-0 px-3 py-2 text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-all duration-300 font-medium shadow-sm transform hover:scale-105 animate-pulse"
+                      aria-label="Confirm you have arrived at the pickup location"
+                    >
+                      <div className="flex items-center justify-center min-w-0">
+                        <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span className="truncate">I'm Here</span>
                       </div>
                     </button>
                   ) : isNavigating ? (

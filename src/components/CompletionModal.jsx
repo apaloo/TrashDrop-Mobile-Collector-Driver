@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { isWithinRadius } from '../utils/locationUtils';
 import usePhotoCapture from '../hooks/usePhotoCapture';
 import { logger } from '../utils/logger';
+import { ASSIGNMENT_COMPLETION_RADIUS_KM, GEOFENCE_DESCRIPTIONS, kmToMeters } from '../config/geofenceConfig';
 
 /**
  * Modal component for completing an assignment
@@ -16,7 +17,7 @@ const CompletionModal = ({
   isOpen, 
   onClose, 
   onSubmit,
-  isGeofenceVerified = false // Pass true if Assign.jsx already verified the user is within 50m
+  isGeofenceVerified = false // Pass true if Assign.jsx already verified the user is within geofence
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [locationVerified, setLocationVerified] = useState(isGeofenceVerified);
@@ -25,7 +26,7 @@ const CompletionModal = ({
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [shouldZoomToUser, setShouldZoomToUser] = useState(false);
   const cameraInputRef = useRef(null);
-  const RADIUS_METERS = 50; // 50 meter radius requirement
+  const RADIUS_METERS = kmToMeters(ASSIGNMENT_COMPLETION_RADIUS_KM); // From centralized config
   
   // Component to control map zoom to user location
   const MapController = ({ userCoords, shouldZoom, onZoomComplete }) => {
@@ -462,7 +463,7 @@ const CompletionModal = ({
             <div className="mb-6">
               <h3 className="font-medium text-gray-700 mb-2">Verify Location</h3>
               <p className="text-sm text-gray-500 mb-4">
-                Please verify that you are at the assignment location. You must be within 50m of the reported location.
+                Please verify that you are at the assignment location. You must be within {GEOFENCE_DESCRIPTIONS.assignmentCompletion} of the reported location.
               </p>
               
               {/* Map */}

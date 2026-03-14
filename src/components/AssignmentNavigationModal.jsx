@@ -6,8 +6,15 @@ import { debounce } from 'lodash';
 import { logger } from '../utils/logger';
 import useWakeLock from '../hooks/useWakeLock';
 import { useNavigationPersistence } from '../hooks/useNavigationPersistence';
+import {
+  ASSIGNMENT_ARRIVAL_RADIUS_KM,
+  ASSIGNMENT_MANUAL_ARRIVAL_RADIUS_KM,
+  NAV_STEP_ADVANCE_RADIUS_KM,
+  GEOFENCE_DESCRIPTIONS,
+  kmToMeters
+} from '../config/geofenceConfig';
 
-const GEOFENCE_RADIUS = 15; // 15 meters radius for auto-completion - driver must be at the location
+// Geofence radii imported from ../config/geofenceConfig.js — do NOT hardcode here
 const LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
 
 const AssignmentNavigationModal = ({
@@ -26,6 +33,7 @@ const AssignmentNavigationModal = ({
   const [hasArrived, setHasArrived] = useState(false);
   const [arrivalProcessing, setArrivalProcessing] = useState(false);
   const [withinGeofence, setWithinGeofence] = useState(false);
+  const [isWithinManualRange, setIsWithinManualRange] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [navigationRoute, setNavigationRoute] = useState(null);
   const [currentStep, setCurrentStep] = useState(0);
@@ -64,6 +72,33 @@ const AssignmentNavigationModal = ({
     }
     return `${distance.toFixed(1)}km`;
   }, []);
+
+  // Manual "I'm Here" confirmation - for when collector is close but GPS won't trigger auto-arrival
+  const handleManualArrival = useCallback(() => {
+    logger.info(`👆 Manual arrival confirmed by collector at ${distanceToDestination ? Math.round(distanceToDestination * 1000) + 'm' : 'unknown distance'}`);
+    
+    if (navigator.vibrate) {
+      navigator.vibrate([100, 50, 100]);
+    }
+    
+    setWithinGeofence(true);
+    setIsWithinManualRange(false);
+    
+    // Auto-stop navigation when arrived
+    if (isNavigating) {
+      stopNavigation();
+    }
+    
+    // Clear the blue route line
+    if (directionsRenderer.current) {
+      directionsRenderer.current.setMap(null);
+    }
+    
+    showToast({
+      message: 'Location confirmed! You can now start cleaning.',
+      type: 'success'
+    });
+  }, [distanceToDestination, isNavigating, showToast]);
 
   // Handle when user clicks "Start Cleaning" button
   const handleStartCleaning = useCallback(async () => {
@@ -326,8 +361,8 @@ const AssignmentNavigationModal = ({
     
     const distanceToNextStep = getDistanceToNextStep();
     
-    // If user is within 15m of next step, advance to next instruction
-    if (distanceToNextStep && distanceToNextStep <= 0.015 && currentStep < navigationInstructions.length - 1) {
+    // If user is within nav-step-advance radius, advance to next instruction
+    if (distanceToNextStep && distanceToNextStep <= NAV_STEP_ADVANCE_RADIUS_KM && currentStep < navigationInstructions.length - 1) {
       setCurrentStep(prev => prev + 1);
       logger.debug(`📍 Advanced to step ${currentStep + 1}/${navigationInstructions.length}`);
       
@@ -361,13 +396,15 @@ const AssignmentNavigationModal = ({
           const distance = calculateDistance(position, destinationObj);
           setDistanceToDestination(distance);
           
-          // Check if within 15m radius (0.015km)
-          const withinGeofence = distance <= 0.015;
-          
           // Update geofence status - only if using real coordinates
           const usingFallbackDestination = destinationObj.isFallback === true;
           const usingFallbackUserLocation = position.isFallback === true;
           const canDetectArrival = !usingFallbackDestination && !usingFallbackUserLocation;
+          
+          // Check if within auto-arrival radius
+          const withinGeofence = distance <= ASSIGNMENT_ARRIVAL_RADIUS_KM;
+          const withinManual = distance <= ASSIGNMENT_MANUAL_ARRIVAL_RADIUS_KM && !withinGeofence;
+          setIsWithinManualRange(withinManual && canDetectArrival);
           const userWithinGeofence = withinGeofence && canDetectArrival;
           
           // Update geofence state for UI
@@ -379,7 +416,7 @@ const AssignmentNavigationModal = ({
           }
           
           if (userWithinGeofence && !hasArrived) {
-            logger.info('✅ User arrived within 15m - ready to start cleaning');
+            logger.info(`✅ User arrived within ${GEOFENCE_DESCRIPTIONS.assignmentArrival} - ready to start cleaning`);
             
             // Auto-stop navigation when arrived
             if (isNavigating) {
@@ -476,6 +513,7 @@ const AssignmentNavigationModal = ({
       setIsLoading(false);
       setDistanceToDestination(null);
       setArrivalProcessing(false);
+      setIsWithinManualRange(false);
 
       // Clear all timers
       if (locationInterval.current) {
@@ -763,6 +801,26 @@ const AssignmentNavigationModal = ({
               </div>
             )}
           </div>
+
+          {/* "I'm Here" manual arrival button - shown when close but GPS won't auto-trigger */}
+          {!hasArrived && !withinGeofence && isWithinManualRange && (
+            <div className="mb-3">
+              <button
+                onClick={handleManualArrival}
+                className="w-full px-4 py-3 text-white bg-orange-500 rounded-lg hover:bg-orange-600 active:bg-orange-700 transition-all duration-200 font-medium text-base shadow-md animate-pulse"
+                aria-label="Confirm you have arrived at the assignment location"
+              >
+                <div className="flex items-center justify-center space-x-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>I'm Here</span>
+                </div>
+              </button>
+              <p className="text-xs text-gray-500 text-center mt-1">Tap if you're at the location but GPS is inaccurate</p>
+            </div>
+          )}
 
           {/* Row 2: Refresh and In-App Navigation */}
           {!hasArrived && !withinGeofence && userLocation && parseDestination(destination) && !isNavigating && (
