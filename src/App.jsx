@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { saveLastPage, getLastPage } from './utils/pagePersistence';
 
 // Context providers
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -53,6 +54,18 @@ const RouteCleanup = () => {
   return null;
 };
 
+// Component to handle page persistence
+const PagePersistence = () => {
+  const location = useLocation();
+  
+  useEffect(() => {
+    // Save the current page whenever it changes
+    saveLastPage(location.pathname);
+  }, [location.pathname]);
+  
+  return null;
+};
+
 // RouteGuard components to protect routes
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, hasLoggedOut } = useAuth();
@@ -91,6 +104,7 @@ function App() {
               <InstallPrompt />
               <AppLayout>
                 <RouteCleanup />
+                <PagePersistence />
                 <Routes>
                   <Route path="/" element={<DefaultRedirect />} />
                   <Route path="/welcome" element={<WelcomePage />} />
@@ -235,6 +249,14 @@ const DefaultRedirect = () => {
       logger.debug('DefaultRedirect: Restoring to previous route:', restoredRoute);
       return <Navigate to={restoredRoute} replace />;
     }
+    
+    // Check for last saved page (for app resume from background)
+    const lastPage = getLastPage();
+    if (lastPage && lastPage !== '/' && lastPage !== '/login') {
+      logger.debug('DefaultRedirect: Restoring to last saved page:', lastPage);
+      return <Navigate to={lastPage} replace />;
+    }
+    
     logger.debug('DefaultRedirect: Redirecting authenticated user to map');
     return <Navigate to="/map" replace />;
   }

@@ -132,6 +132,7 @@ const RequestPage = () => {
   const [navigationRequestId, setNavigationRequestId] = useState(savedNavState?.requestId || null);
   const [navigationWasteType, setNavigationWasteType] = useState(savedNavState?.wasteType || 'general');
   const [navigationSourceType, setNavigationSourceType] = useState(savedNavState?.sourceType || 'pickup_request');
+  const [navigationUserLocation, setNavigationUserLocation] = useState(savedNavState?.userLocation || null); // Restore user location
   
   // Log restoration for debugging
   if (savedNavState?.isOpen) {
@@ -1126,7 +1127,7 @@ const RequestPage = () => {
   }, [user?.id, fetchRequests]);
 
   // Handle opening directions with in-app navigation
-  const handleOpenDirections = (requestId, location) => {
+  const handleOpenDirections = async (requestId, location) => {
     // Find the request to get GPS coordinates
     let request = null;
     
@@ -1241,12 +1242,27 @@ const RequestPage = () => {
       
       // If we have valid coordinates, open in-app navigation
       if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
+        // Get current user location
+        let currentUserLocation = null;
+        try {
+          // Try to get current location from geoUtils
+          const location = await getCurrentLocation();
+          if (location && location.length === 2) {
+            currentUserLocation = location;
+          }
+        } catch (error) {
+          logger.warn('Could not get current location for navigation:', error);
+        }
+        
+        logger.debug('📍 Current user location for navigation:', currentUserLocation);
+        
         const navState = {
           isOpen: true,
           destination: [lat, lng],
           requestId: requestId,
           wasteType: request.waste_type || 'general',
-          sourceType: request.source_type || 'pickup_request'
+          sourceType: request.source_type || 'pickup_request',
+          userLocation: currentUserLocation // Save current location for faster restoration
         };
         
         // CRITICAL: Save to localStorage FIRST (synchronous) for app switch persistence
@@ -2760,6 +2776,7 @@ const GeofenceErrorModal = ({
           requestId={navigationRequestId}
           wasteType={navigationWasteType}
           sourceType={navigationSourceType}
+          initialUserLocation={navigationUserLocation}
           onArrival={(requestId) => {
             // Mark this request as arrived so external "Scan QR" button works
             logger.info('📍 User arrived at request location:', requestId);

@@ -37,7 +37,8 @@ const NavigationQRModal = ({
   expectedQRValue,
   wasteType = 'general', // Waste type for destination icon color
   sourceType = 'pickup_request', // Source type (pickup_request or digital_bin)
-  onArrival // Callback when user arrives at destination - used to share arrival state with parent
+  onArrival, // Callback when user arrives at destination - used to share arrival state with parent
+  initialUserLocation = null // Initial user location from saved state
 }) => {
   const { user } = useAuth();
   const { saveNavigationState, restoreNavigationState, clearNavigationState } = useNavigationPersistence();
@@ -46,6 +47,25 @@ const NavigationQRModal = ({
   const [userLocation, setUserLocation] = useState(null);
   const [isUsingFallbackLocation, setIsUsingFallbackLocation] = useState(false); // Track if using fallback GPS
   const [navigationStarted, setNavigationStarted] = useState(false);
+  
+  // Restore navigation state on mount
+  useEffect(() => {
+    const restoreState = async () => {
+      const state = await restoreNavigationState();
+      // Use initialUserLocation from props first, then from saved state
+      const locationToRestore = initialUserLocation || (state && state.userLocation);
+      if (locationToRestore) {
+        setUserLocation(locationToRestore);
+        logger.info('🔄 Restored userLocation:', locationToRestore, {
+          source: initialUserLocation ? 'props' : 'saved state'
+        });
+      }
+    };
+    
+    if (isOpen) {
+      restoreState();
+    }
+  }, [isOpen, restoreNavigationState, initialUserLocation]);
   const [isWithinGeofence, setIsWithinGeofence] = useState(false);
   const [isWithinManualRange, setIsWithinManualRange] = useState(false); // Within manual "I'm Here" range but outside auto-arrival
   const [hasArrivedAtDestination, setHasArrivedAtDestination] = useState(false); // Latched arrival state - once true, stays true

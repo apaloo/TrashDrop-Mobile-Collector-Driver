@@ -4,6 +4,18 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // Add cache busting for development
+  server: {
+    fs: {
+      // Allow serving files from one level up
+      allow: ['..']
+    },
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
+  },
   build: {
     // CRITICAL: Aggressive mobile optimization for instant startup
     minify: 'terser',
@@ -83,7 +95,7 @@ export default defineConfig({
         background_color: '#f8f9fa',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/?v=2.0.1',
+        start_url: '/',
         scope: '/',
         icons: [
           {
