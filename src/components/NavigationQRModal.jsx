@@ -1575,177 +1575,197 @@ const requestCameraPermission = useCallback(async () => {
 
         {/* Status Bar */}
         <div className="bg-white border-t p-5 shadow-inner">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              {mode === 'navigation' && (
-                <div className="text-gray-700">
-                  {isWithinGeofence ? (
-                    <div className="flex items-center text-green-600">
-                      <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      </svg>
-                      You've arrived!
-                    </div>
-                  ) : (
-                    <span>
-                      {distanceToDestination !== null ? (
-                        `${distanceToDestination < 1 ? (
-                          `${Math.round(distanceToDestination * 1000)}m`
-                        ) : (
-                          `${distanceToDestination.toFixed(1)}km`
-                        )} to destination`
+          {/* Distance Display - Centered Above Buttons */}
+          <div className="text-center mb-4">
+            {mode === 'navigation' && (
+              <div className="text-gray-700">
+                {isWithinGeofence ? (
+                  <div className="flex items-center justify-center text-green-600">
+                    <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    You've arrived!
+                  </div>
+                ) : (
+                  <span className="text-lg font-medium">
+                    {distanceToDestination !== null ? (
+                      `${distanceToDestination < 1 ? (
+                        `${Math.round(distanceToDestination * 1000)}m`
                       ) : (
-                        'Calculating...'
-                      )}
-                    </span>
-                  )}
-                </div>
-              )}
-              {mode === 'qr' && (
-                <div className="text-gray-700">
-                  {scannedItems.length > 0 ? (
-                    `${scannedItems.length} item${scannedItems.length > 1 ? 's' : ''} scanned`
-                  ) : (
-                    'Ready to scan'
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="flex space-x-2 min-w-0">
-              {mode === 'navigation' && (
-                <>
-                  {error && !isWithinGeofence && (
-                    <button
-                      onClick={handleRetryLocation}
-                      className="relative p-2 text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 hover:shadow-md active:scale-95 active:bg-blue-100 transition-all duration-200 font-medium flex-shrink-0 transform hover:scale-105 overflow-hidden group"
-                      disabled={isLoading}
-                      title={isLoading ? 'Retrying...' : 'Retry Location'}
-                    >
-                      {/* Ripple effect overlay */}
-                      <div className="absolute inset-0 rounded-lg opacity-0 group-active:opacity-100 group-active:animate-ping bg-blue-200 transition-opacity duration-300"></div>
-                      
-                      {/* Pulse effect on click */}
-                      <div className={`absolute inset-0 rounded-lg transition-all duration-500 ${isLoading ? 'animate-pulse bg-blue-100' : ''}`}></div>
-                      
-                      <div className={`relative transition-all duration-300 ${isLoading ? 'animate-spin' : 'hover:rotate-180 group-active:rotate-90 group-active:scale-110'}`}>
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                      </div>
-                    </button>
-                  )}
-                  {/* Show Scan Now when within auto-arrival geofence, or I'm Here when in manual range */}
-                  {isWithinGeofence ? (
-                    <button
-                      onClick={handleSwitchToQR}
-                      className={`flex-1 min-w-0 px-3 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm transform hover:scale-105 ${
-                        isCameraPreloading
-                          ? 'bg-green-500 opacity-75'
-                          : 'bg-green-600 hover:bg-green-700 hover:shadow-lg'
-                      }`}
-                      aria-label="Switch to QR code scanning"
-                      disabled={isLoading || hasCameraPermission === false || isCameraPreloading}
-                    >
-                      <div className="flex items-center justify-center min-w-0">
-                        {isCameraPreloading ? (
-                          <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2 flex-shrink-0"></div>
-                            <span className="truncate">Preparing Camera...</span>
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m0 14v1m8-8h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" />
-                            </svg>
-                            <span className="truncate">Scan Now</span>
-                          </>
-                        )}
-                      </div>
-                    </button>
-                  ) : isWithinManualRange ? (
-                    /* "I'm Here" button - collector is close but GPS won't trigger auto-arrival */
-                    <button
-                      onClick={handleManualArrival}
-                      className="flex-1 min-w-0 px-3 py-2 text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-all duration-300 font-medium shadow-sm transform hover:scale-105 animate-pulse"
-                      aria-label="Confirm you have arrived at the pickup location"
-                    >
-                      <div className="flex items-center justify-center min-w-0">
-                        <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        <span className="truncate">I'm Here</span>
-                      </div>
-                    </button>
-                  ) : isNavigating ? (
-                    /* Stop Voice Navigation button when navigation is active */
-                    <button
-                      onClick={stopVoiceNavigation}
-                      className="flex-1 min-w-0 px-3 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 transition-all duration-300 font-medium shadow-sm"
-                      aria-label="Stop voice navigation"
-                    >
-                      <div className="flex items-center justify-center min-w-0">
-                        <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        <span className="truncate">Stop Navigation</span>
-                      </div>
-                    </button>
-                  ) : (
-                    /* Voice Navigation button */
-                    <button
-                      onClick={startVoiceNavigation}
-                      className={`flex-1 min-w-0 px-3 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm ${
-                        isLoading
-                          ? 'bg-blue-500 opacity-75'
-                          : 'bg-blue-600 hover:bg-blue-700'
-                      }`}
-                      aria-label="Start voice navigation"
-                      disabled={isLoading || !userLocation}
-                    >
-                      <div className="flex items-center justify-center min-w-0">
-                        {isLoading ? (
-                          <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2 flex-shrink-0"></div>
-                            <span className="truncate">Loading...</span>
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                            </svg>
-                            <span className="truncate">Voice Navigation</span>
-                          </>
-                        )}
-                      </div>
-                    </button>
-                  )}
-                </>
-              )}
-              {mode === 'qr' && (
-                <div className="flex space-x-2">
+                        `${distanceToDestination.toFixed(1)}km`
+                      )} to destination`
+                    ) : (
+                      'Calculating...'
+                    )}
+                  </span>
+                )}
+              </div>
+            )}
+            {mode === 'qr' && (
+              <div className="text-gray-700">
+                {scannedItems.length > 0 ? (
+                  `${scannedItems.length} item${scannedItems.length > 1 ? 's' : ''} scanned`
+                ) : (
+                  'Ready to scan'
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Buttons Row - Below Distance Text */}
+          <div className="flex flex-col space-y-3">
+            {mode === 'navigation' && (
+              <>
+                {error && !isWithinGeofence && (
                   <button
-                    onClick={handleBackToNavigation}
-                    className="px-5 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
-                    aria-label="Return to navigation"
+                    onClick={handleRetryLocation}
+                    className="w-full px-3 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-all duration-300 font-medium shadow-sm transform hover:scale-105 flex items-center justify-center"
+                    disabled={isLoading}
                   >
-                    Back to Map
+                    <div className={`flex items-center justify-center ${isLoading ? 'animate-spin' : ''}`}>
+                      <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span>{isLoading ? 'Refreshing...' : 'Refresh GPS'}</span>
+                    </div>
                   </button>
-                  {scannedItems.length > 0 && (
-                    <button
-                      onClick={() => {
-                        onQRScanned(scannedItems.map(item => item.code));
-                        onClose();
-                      }}
-                      className="px-5 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors font-medium shadow-sm"
-                      aria-label="Complete scanning"
-                    >
-                      Complete ({scannedItems.length})
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+                )}
+                {/* Show Scan Now when within auto-arrival geofence, or I'm Here when in manual range */}
+                {isWithinGeofence ? (
+                  <button
+                    onClick={handleSwitchToQR}
+                    className={`flex-1 min-w-0 px-3 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm transform hover:scale-105 ${
+                      isCameraPreloading
+                        ? 'bg-green-500 opacity-75'
+                        : 'bg-green-600 hover:bg-green-700 hover:shadow-lg'
+                    }`}
+                    aria-label="Switch to QR code scanning"
+                    disabled={isLoading || hasCameraPermission === false || isCameraPreloading}
+                  >
+                    <div className="flex items-center justify-center min-w-0">
+                      {isCameraPreloading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2 flex-shrink-0"></div>
+                          <span className="truncate">Preparing Camera...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m0 14v1m8-8h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" />
+                          </svg>
+                          <span className="truncate">Scan Now</span>
+                        </>
+                      )}
+                    </div>
+                  </button>
+                ) : isWithinManualRange ? (
+                  /* "I'm Here" button - collector is close but GPS won't trigger auto-arrival */
+                  <button
+                    onClick={handleManualArrival}
+                    className="flex-1 min-w-0 px-3 py-2 text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-all duration-300 font-medium shadow-sm transform hover:scale-105 animate-pulse"
+                    aria-label="Confirm you have arrived at the pickup location"
+                  >
+                    <div className="flex items-center justify-center min-w-0">
+                      <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="truncate">I'm Here</span>
+                    </div>
+                  </button>
+                ) : isNavigating ? (
+                  /* Stop Voice Navigation button when navigation is active */
+                  <button
+                    onClick={stopVoiceNavigation}
+                    className="flex-1 min-w-0 px-3 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 transition-all duration-300 font-medium shadow-sm"
+                    aria-label="Stop voice navigation"
+                  >
+                    <div className="flex items-center justify-center min-w-0">
+                      <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      <span className="truncate">Stop Navigation</span>
+                    </div>
+                  </button>
+                ) : (
+                  /* Voice Navigation button - full width */
+                  <button
+                    onClick={startVoiceNavigation}
+                    className={`w-full px-3 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm ${
+                      isLoading
+                        ? 'bg-blue-500 opacity-75'
+                        : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
+                    aria-label="Start voice navigation"
+                    disabled={isLoading || !userLocation}
+                  >
+                    <div className="flex items-center justify-center">
+                      {isLoading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2 flex-shrink-0"></div>
+                          <span>Loading...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                          </svg>
+                          <span>Voice Navigation</span>
+                        </>
+                      )}
+                    </div>
+                  </button>
+                )}
+                {/* Google Maps Navigation button - always visible in separate row */}
+                {userLocation && destination && !isNavigating && (
+                  <button
+                    onClick={() => {
+                      const destLat = Array.isArray(destination) ? destination[0] : destination.lat;
+                      const destLng = Array.isArray(destination) ? destination[1] : destination.lng;
+                      const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${destLat},${destLng}&travelmode=driving`;
+                      window.open(mapsUrl, '_blank');
+                      showToast({
+                        message: 'Opening Google Maps for turn-by-turn directions',
+                        type: 'info'
+                      });
+                    }}
+                    className="w-full px-3 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-all duration-300 font-medium shadow-sm"
+                    aria-label="Open Google Maps for navigation"
+                    disabled={isLoading || !userLocation || !destination}
+                  >
+                    <div className="flex items-center justify-center">
+                      <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                      <span>Google Maps Navigation</span>
+                    </div>
+                  </button>
+                )}
+              </>
+            )}
+            {mode === 'qr' && (
+              <div className="flex space-x-2">
+                <button
+                  onClick={handleBackToNavigation}
+                  className="px-5 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
+                  aria-label="Return to navigation"
+                >
+                  Back to Map
+                </button>
+                {scannedItems.length > 0 && (
+                  <button
+                    onClick={() => {
+                      onQRScanned(scannedItems.map(item => item.code));
+                      onClose();
+                    }}
+                    className="px-5 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors font-medium shadow-sm"
+                    aria-label="Complete scanning"
+                  >
+                    Complete ({scannedItems.length})
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

@@ -902,11 +902,15 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
             
             {/* Modal Footer - Hidden during turn-by-turn */}
             {!isInTurnByTurn && (
-              <div className="bg-gray-50 p-3 flex justify-between items-center flex-shrink-0 border-t">
-                <div className="text-sm text-gray-600">
-                  <span className="font-medium">{totalDistance.toFixed(1)} km</span> · 
-                  <span className="ml-1 font-medium">{estimatedTime} min</span>
+              <div className="bg-gray-50 p-3 space-y-3 flex-shrink-0 border-t">
+                <div className="flex justify-between items-center">
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">{totalDistance.toFixed(1)} km</span> · 
+                    <span className="ml-1 font-medium">{estimatedTime} min</span>
+                  </div>
                 </div>
+                
+                {/* In-App Turn-by-Turn Navigation Button - Full Width */}
                 <button
                   onClick={async () => {
                     // Start in-app turn-by-turn navigation
@@ -935,12 +939,59 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
                       });
                     }
                   }}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm font-medium flex items-center shadow-sm"
+                  className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-300 font-medium shadow-sm transform hover:scale-105 flex items-center justify-center"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                   </svg>
-                  Start Turn-by-Turn
+                  <span>Voice Navigation</span>
+                </button>
+                
+                {/* Google Maps Navigation Button - Full Width */}
+                <button
+                  onClick={() => {
+                    const finalWaypoint = navigationWaypoints[navigationWaypoints.length - 1];
+                    if (finalWaypoint?.position) {
+                      const destLat = typeof finalWaypoint.position.lat === 'function' 
+                        ? finalWaypoint.position.lat() 
+                        : finalWaypoint.position.lat;
+                      const destLng = typeof finalWaypoint.position.lng === 'function' 
+                        ? finalWaypoint.position.lng() 
+                        : finalWaypoint.position.lng;
+                      
+                      // Build waypoints parameter for Google Maps
+                      const waypointsParams = navigationWaypoints.slice(0, -1).map(wp => {
+                        const wpLat = typeof wp.position.lat === 'function' 
+                          ? wp.position.lat() 
+                          : wp.position.lat;
+                        const wpLng = typeof wp.position.lng === 'function' 
+                          ? wp.position.lng() 
+                          : wp.position.lng;
+                        return `${wpLat},${wpLng}`;
+                      }).join('|');
+                      
+                      const mapsUrl = waypointsParams
+                        ? `https://www.google.com/maps/dir/?api=1&origin=${userLocation.latitude},${userLocation.longitude}&destination=${destLat},${destLng}&waypoints=${waypointsParams}&travelmode=driving`
+                        : `https://www.google.com/maps/dir/?api=1&origin=${userLocation.latitude},${userLocation.longitude}&destination=${destLat},${destLng}&travelmode=driving`;
+                      
+                      window.open(mapsUrl, '_blank');
+                      toast.success('Opening Google Maps for multi-stop navigation', {
+                        position: "top-center",
+                        autoClose: 2000,
+                      });
+                    } else {
+                      toast.error('Invalid route data for Google Maps', {
+                        position: "top-center",
+                        autoClose: 3000,
+                      });
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-300 font-medium shadow-sm transform hover:scale-105 flex items-center justify-center"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  <span>Google Maps Navigation</span>
                 </button>
               </div>
             )}

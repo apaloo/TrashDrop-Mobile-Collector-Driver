@@ -824,49 +824,48 @@ const AssignmentNavigationModal = ({
 
           {/* Row 2: Refresh and In-App Navigation */}
           {!hasArrived && !withinGeofence && userLocation && parseDestination(destination) && !isNavigating && (
-            <div className="mb-3">
-              <div className="flex space-x-2">
-                {/* Refresh Button */}
-                {error && (
-                  <button
-                    onClick={handleRetryLocation}
-                    className="p-2 text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 hover:shadow-md active:scale-95 active:bg-blue-100 transition-all duration-200 font-medium flex-shrink-0"
-                    disabled={isLoading}
-                  >
-                    <div className={`transition-transform duration-300 ${isLoading ? 'animate-spin' : 'hover:rotate-180'}`}>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                    </div>
-                  </button>
-                )}
-                
-                {/* Automated Voice Navigation Button */}
+            <div className="mb-3 space-y-3">
+              {/* Refresh Button - Full width when there's an error */}
+              {error && (
                 <button
-                  onClick={() => {
-                    if (navigationControlRef.current?.startNavigation) {
-                      setIsNavigating(true);
-                      navigationControlRef.current.startNavigation();
-                      showToast({
-                        message: 'Starting hands-free navigation with voice guidance...',
-                        type: 'success'
-                      });
-                    } else {
-                      // Fallback to old method
-                      startInAppNavigation();
-                    }
-                  }}
-                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-all duration-200 font-medium text-sm"
+                  onClick={handleRetryLocation}
+                  className="w-full px-3 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-all duration-300 font-medium shadow-sm transform hover:scale-105 flex items-center justify-center"
                   disabled={isLoading}
                 >
-                  <div className="flex items-center justify-center space-x-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  <div className={`flex items-center justify-center ${isLoading ? 'animate-spin' : ''}`}>
+                    <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
-                    <span>Voice Navigation</span>
+                    <span>{isLoading ? 'Refreshing...' : 'Refresh GPS'}</span>
                   </div>
                 </button>
-              </div>
+              )}
+              
+              {/* Automated Voice Navigation Button */}
+              <button
+                onClick={() => {
+                  if (navigationControlRef.current?.startNavigation) {
+                    setIsNavigating(true);
+                    navigationControlRef.current.startNavigation();
+                    showToast({
+                      message: 'Starting hands-free navigation with voice guidance...',
+                      type: 'success'
+                    });
+                  } else {
+                    // Fallback to old method
+                    startInAppNavigation();
+                  }
+                }}
+                className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-300 font-medium shadow-sm transform hover:scale-105"
+                disabled={isLoading}
+              >
+                <div className="flex items-center justify-center space-x-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                  <span>Voice Navigation</span>
+                </div>
+              </button>
             </div>
           )}
 
