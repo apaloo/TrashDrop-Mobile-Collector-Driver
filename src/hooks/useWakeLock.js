@@ -59,6 +59,12 @@ const useWakeLock = (autoEnable = false) => {
       // Try native Wake Lock API first
       if ('wakeLock' in navigator) {
         try {
+          // Check if document is visible before requesting wake lock
+          if (document.visibilityState === 'hidden') {
+            console.warn('🔆 Document not visible - deferring wake lock request');
+            return false;
+          }
+          
           wakeLockRef.current = await navigator.wakeLock.request('screen');
           
           wakeLockRef.current.addEventListener('release', () => {
@@ -70,7 +76,11 @@ const useWakeLock = (autoEnable = false) => {
           console.log('🔆 Wake Lock enabled - screen will stay on');
           return true;
         } catch (err) {
-          console.warn('🔆 Wake Lock API failed, using fallback:', err.message);
+          if (err.name === 'NotAllowedError') {
+            console.warn('🔆 Wake Lock not allowed - document not visible or user denied permission');
+          } else {
+            console.warn('🔆 Wake Lock API failed, using fallback:', err.message);
+          }
         }
       }
 

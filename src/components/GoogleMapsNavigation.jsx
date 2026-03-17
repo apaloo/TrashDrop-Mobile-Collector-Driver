@@ -824,16 +824,33 @@ const GoogleMapsNavigation = ({
       // Add user location marker (3D tricycle icon with heading rotation)
       previousPositionRef.current = { lat: userLocation.lat, lng: userLocation.lng };
       
-      userMarkerRef.current = new window.google.maps.Marker({
-        position: { lat: userLocation.lat, lng: userLocation.lng },
-        map: map,
-        title: 'Your Location',
-        icon: {
-          url: createTricycleSvgUrl(initialHeading),
-          scaledSize: new window.google.maps.Size(TRICYCLE_ICON_SIZE, TRICYCLE_ICON_SIZE),
-          anchor: new window.google.maps.Point(TRICYCLE_ANCHOR_X, TRICYCLE_ANCHOR_Y),
-        },
-      });
+      // Try to use modern AdvancedMarkerElement if available
+      if (window.google.maps.marker && window.google.maps.marker.AdvancedMarkerElement) {
+        const userPin = document.createElement('div');
+        userPin.innerHTML = '🛵';
+        userPin.style.fontSize = '32px';
+        userPin.style.transform = `rotate(${initialHeading}deg)`;
+        userPin.style.transition = 'transform 0.3s ease';
+        
+        userMarkerRef.current = new window.google.maps.marker.AdvancedMarkerElement({
+          position: { lat: userLocation.lat, lng: userLocation.lng },
+          map: map,
+          content: userPin,
+          title: 'Your Location',
+        });
+      } else {
+        // Fallback to legacy Marker
+        userMarkerRef.current = new window.google.maps.Marker({
+          position: { lat: userLocation.lat, lng: userLocation.lng },
+          map: map,
+          title: 'Your Location',
+          icon: {
+            url: createTricycleSvgUrl(initialHeading),
+            scaledSize: new window.google.maps.Size(TRICYCLE_ICON_SIZE, TRICYCLE_ICON_SIZE),
+            anchor: new window.google.maps.Point(TRICYCLE_ANCHOR_X, TRICYCLE_ANCHOR_Y),
+          },
+        });
+      }
       
       // Async: load real rotated tricycle image to replace SVG placeholder
       createRotatedTricycleUrl(initialHeading).then((url) => {
@@ -847,16 +864,30 @@ const GoogleMapsNavigation = ({
       });
 
       // Destination marker (dustbin icon)
-      destMarkerRef.current = new window.google.maps.Marker({
-        position: { lat: destLat, lng: destLng },
-        map: map,
-        title: destinationName || 'Destination',
-        icon: {
-          url: createDustbinSvgUrl(wasteType, sourceType),
-          scaledSize: new window.google.maps.Size(48, 64),
-          anchor: new window.google.maps.Point(24, 64),
-        },
-      });
+      if (window.google.maps.marker && window.google.maps.marker.AdvancedMarkerElement) {
+        const destPin = document.createElement('div');
+        destPin.innerHTML = '🗑️';
+        destPin.style.fontSize = '32px';
+        
+        destMarkerRef.current = new window.google.maps.marker.AdvancedMarkerElement({
+          position: { lat: destLat, lng: destLng },
+          map: map,
+          content: destPin,
+          title: destinationName || 'Destination',
+        });
+      } else {
+        // Fallback to legacy Marker
+        destMarkerRef.current = new window.google.maps.Marker({
+          position: { lat: destLat, lng: destLng },
+          map: map,
+          title: destinationName || 'Destination',
+          icon: {
+            url: createDustbinSvgUrl(wasteType, sourceType),
+            scaledSize: new window.google.maps.Size(48, 64),
+            anchor: new window.google.maps.Point(24, 64),
+          },
+        });
+      }
       
       // Add waypoint markers (intermediate stops along the route)
       if (waypoints && waypoints.length > 0) {
@@ -865,22 +896,36 @@ const GoogleMapsNavigation = ({
           const wpLat = wp.lat;
           const wpLng = wp.lng;
           
-          return new window.google.maps.Marker({
-            position: { lat: wpLat, lng: wpLng },
-            map: map,
-            title: `Stop ${index + 1}`,
-            icon: {
-              url: createDustbinSvgUrl(wasteType, sourceType),
-              scaledSize: new window.google.maps.Size(48, 64),
-              anchor: new window.google.maps.Point(24, 64),
-            },
-            label: {
-              text: `${index + 1}`,
-              color: '#FFFFFF',
-              fontWeight: 'bold',
-              fontSize: '12px',
-            },
-          });
+          // Try to use modern AdvancedMarkerElement if available
+          if (window.google.maps.marker && window.google.maps.marker.AdvancedMarkerElement) {
+            const wpPin = document.createElement('div');
+            wpPin.innerHTML = '📍';
+            wpPin.style.fontSize = '24px';
+            
+            return new window.google.maps.marker.AdvancedMarkerElement({
+              position: { lat: wpLat, lng: wpLng },
+              map: map,
+              content: wpPin,
+              title: `Stop ${index + 1}`,
+            });
+          } else {
+            // Fallback to legacy Marker
+            return new window.google.maps.Marker({
+              position: { lat: wpLat, lng: wpLng },
+              map: map,
+              title: `Stop ${index + 1}`,
+              icon: {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="8" fill="#4A90E2" stroke="white" stroke-width="2"/>
+                    <circle cx="12" cy="12" r="3" fill="white"/>
+                  </svg>
+                `),
+                scaledSize: new window.google.maps.Size(24, 24),
+                anchor: new window.google.maps.Point(12, 12),
+              },
+            });
+          }
         });
       }
 

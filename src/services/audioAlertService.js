@@ -41,7 +41,9 @@ class AudioAlertService {
       
       // Resume AudioContext if suspended (required by browsers)
       if (this.audioContext.state === 'suspended') {
-        await this.audioContext.resume();
+        // Don't auto-resume - wait for user interaction
+        logger.warn('AudioContext suspended - waiting for user interaction');
+        return false;
       }
 
       // Pre-generate arrival sound
@@ -55,6 +57,37 @@ class AudioAlertService {
       logger.error('Failed to initialize audio service:', error);
       return false;
     }
+  }
+
+  /**
+   * Resume AudioContext on user interaction
+   * Call this when user interacts with the page (click, tap, etc.)
+   */
+  async resumeOnUserInteraction() {
+    if (!this.audioContext) {
+      return await this.initialize();
+    }
+    
+    if (this.audioContext.state === 'suspended') {
+      try {
+        await this.audioContext.resume();
+        logger.info('🔊 AudioContext resumed on user interaction');
+        
+        // Complete initialization if not already done
+        if (!this.isInitialized) {
+          this.arrivalSound = this.createArrivalTone();
+          this.alertSound = this.createAlertTone();
+          this.isInitialized = true;
+          logger.info('🔊 Audio alert service fully initialized');
+        }
+        return true;
+      } catch (error) {
+        logger.error('Failed to resume AudioContext:', error);
+        return false;
+      }
+    }
+    
+    return this.isInitialized;
   }
 
   /**
@@ -248,19 +281,22 @@ class AudioAlertService {
 
     logger.info('🎉 Announcing arrival at:', locationName);
 
-    // Ensure audio context is initialized
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
-    // Resume audio context if needed
-    if (this.audioContext?.state === 'suspended') {
-      await this.audioContext.resume();
+    // Try to resume audio context on user interaction
+    if (!this.isInitialized || this.audioContext?.state === 'suspended') {
+      const resumed = await this.resumeOnUserInteraction();
+      if (!resumed && playSound) {
+        logger.warn('🔊 Audio not available - skipping sound');
+        playSound = false;
+      }
     }
 
     // Play arrival sound
     if (playSound && this.arrivalSound) {
-      this.arrivalSound();
+      try {
+        this.arrivalSound();
+      } catch (error) {
+        logger.warn('🔊 Failed to play arrival sound:', error);
+      }
     }
 
     // Vibrate device

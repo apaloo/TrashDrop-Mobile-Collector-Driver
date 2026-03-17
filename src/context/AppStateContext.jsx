@@ -8,6 +8,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useLocation } from 'react-router-dom';
 import { statePersistence } from '../services/statePersistence';
 import { logger } from '../utils/logger';
+import { debounce } from 'lodash';
+import { saveLastPage, getLastPage } from '../utils/pagePersistence'; // Add for validation
 
 const AppStateContext = createContext();
 
@@ -57,6 +59,86 @@ const getLastRouteSync = () => {
   }
 };
 
+// ENHANCED: Navigation modal state persistence (synchronous)
+const NAV_MODAL_STATE_KEY = 'trashdrop_nav_modal_state';
+const NAV_MODAL_TIME_KEY = 'trashdrop_nav_modal_time';
+const NAV_MODAL_EXPIRY_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+const saveNavigationModalStateSync = (state) => {
+  try {
+    if (state && state.isOpen) {
+      localStorage.setItem(NAV_MODAL_STATE_KEY, JSON.stringify(state));
+      localStorage.setItem(NAV_MODAL_TIME_KEY, Date.now().toString());
+    } else {
+      localStorage.removeItem(NAV_MODAL_STATE_KEY);
+      localStorage.removeItem(NAV_MODAL_TIME_KEY);
+    }
+  } catch (e) {
+    // localStorage might be full, ignore
+  }
+};
+
+const getNavigationModalState = () => {
+  try {
+    const stateStr = localStorage.getItem(NAV_MODAL_STATE_KEY);
+    const timeStr = localStorage.getItem(NAV_MODAL_TIME_KEY);
+    
+    if (!stateStr || !timeStr) return null;
+    
+    // Check expiry (2 hours)
+    const savedTime = parseInt(timeStr, 10);
+    if (Date.now() - savedTime > NAV_MODAL_EXPIRY_MS) {
+      localStorage.removeItem(NAV_MODAL_STATE_KEY);
+      localStorage.removeItem(NAV_MODAL_TIME_KEY);
+      return null;
+    }
+    
+    return JSON.parse(stateStr);
+  } catch (e) {
+    return null;
+  }
+};
+
+// ENHANCED: User location persistence (synchronous)
+const USER_LOCATION_KEY = 'trashdrop_user_location';
+const USER_LOCATION_TIME_KEY = 'trashdrop_user_location_time';
+const USER_LOCATION_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes
+
+const saveUserLocationSync = (location) => {
+  try {
+    if (location && location.lat && location.lng) {
+      localStorage.setItem(USER_LOCATION_KEY, JSON.stringify(location));
+      localStorage.setItem(USER_LOCATION_TIME_KEY, Date.now().toString());
+    } else {
+      localStorage.removeItem(USER_LOCATION_KEY);
+      localStorage.removeItem(USER_LOCATION_TIME_KEY);
+    }
+  } catch (e) {
+    // localStorage might be full, ignore
+  }
+};
+
+const getCurrentUserLocation = () => {
+  try {
+    const locationStr = localStorage.getItem(USER_LOCATION_KEY);
+    const timeStr = localStorage.getItem(USER_LOCATION_TIME_KEY);
+    
+    if (!locationStr || !timeStr) return null;
+    
+    // Check expiry (30 minutes)
+    const savedTime = parseInt(timeStr, 10);
+    if (Date.now() - savedTime > USER_LOCATION_EXPIRY_MS) {
+      localStorage.removeItem(USER_LOCATION_KEY);
+      localStorage.removeItem(USER_LOCATION_TIME_KEY);
+      return null;
+    }
+    
+    return JSON.parse(locationStr);
+  } catch (e) {
+    return null;
+  }
+};
+
 export const AppStateProvider = ({ children }) => {
   const location = useLocation();
   const [isRestoring, setIsRestoring] = useState(true);
@@ -80,10 +162,17 @@ export const AppStateProvider = ({ children }) => {
     lastRoute: null,
     activeTab: null,
     activeModal: null,
+    activeModalData: null, // Add for complete modal rehydration
     activeTaskId: null,
     activeTaskData: null,
     navigationState: null,
-    formDrafts: {}
+    formDrafts: {},
+    // Enhanced metadata for better restoration
+    sessionMetadata: {
+      lastBackgroundedAt: null,
+      lastRestoredAt: null,
+      restorationCount: 0
+    }
   });
 
   // Initialize persistence service and restore state on mount
@@ -149,19 +238,60 @@ export const AppStateProvider = ({ children }) => {
     }
   }, [location.pathname, isRestoring]);
 
-  // Handle visibility change (app going to background)
+  // Handle visibility change (app going to background) - ENHANCED for PWA restoration
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // CRITICAL: Save current route to localStorage FIRST (synchronous, guaranteed)
+        logger.info('📱 App backgrounded - executing comprehensive state flush');
+        
+        // CRITICAL LAYER 1: Save current route to localStorage IMMEDIATELY (synchronous)
         saveRouteSync(location.pathname);
         
-        // Then save full state to IndexedDB (async)
-        statePersistence.saveEmergencyState(appState);
-        logger.debug('📱 App backgrounded - route & state saved');
+        // CRITICAL LAYER 2: Save modal state if navigation modal is open
+        const navModalState = getNavigationModalState();
+        if (navModalState && navModalState.isOpen) {
+          saveNavigationModalStateSync(navModalState);
+        }
+        
+        // CRITICAL LAYER 3: Save user location if available
+        const userLocation = getCurrentUserLocation();
+        if (userLocation) {
+          saveUserLocationSync(userLocation);
+        }
+        
+        // LAYER 4: Save full app state to IndexedDB (async, best effort)
+        statePersistence.saveEmergencyState({
+          ...appState,
+          lastRoute: location.pathname,
+          navigationModalState: navModalState,
+          userLocation: userLocation,
+          backgroundedAt: Date.now(),
+          sessionMetadata: {
+            ...appState.sessionMetadata,
+            lastBackgroundedAt: Date.now()
+          }
+        });
+        
+        logger.debug('✅ Comprehensive state flush completed');
       } else {
         // App returning to foreground - could refresh critical data here
-        logger.debug('📱 App foregrounded - checking state');
+        logger.debug('📱 App foregrounded - checking state integrity');
+        
+        // Update restoration metadata
+        setAppState(prev => ({
+          ...prev,
+          sessionMetadata: {
+            ...prev.sessionMetadata,
+            lastRestoredAt: Date.now(),
+            restorationCount: (prev.sessionMetadata.restorationCount || 0) + 1
+          }
+        }));
+        
+        // Verify state integrity after resume
+        const restoredRoute = getLastRouteSync();
+        if (restoredRoute && restoredRoute !== location.pathname) {
+          logger.warn('⚠️ Route mismatch detected - may need to redirect');
+        }
       }
     };
 
@@ -230,18 +360,32 @@ export const AppStateProvider = ({ children }) => {
     return () => clearInterval(autoSaveInterval);
   }, [appState, isRestoring]);
 
-  // State update functions
-  const setActiveTab = useCallback((tab) => {
-    setAppState(prev => ({ ...prev, activeTab: tab }));
-  }, []);
-
+  // State update functions with debounced persistence
   const setActiveModal = useCallback((modal, modalData = null) => {
     setAppState(prev => ({ 
       ...prev, 
       activeModal: modal,
       activeModalData: modalData
     }));
+    
+    // DEBOUNCED: Save modal state changes immediately (critical for navigation modal)
+    if (modal === 'navigation' && modalData) {
+      debouncedSaveNavigationModalState({
+        isOpen: true,
+        ...modalData
+      });
+    } else if (!modal) {
+      debouncedSaveNavigationModalState(null);
+    }
   }, []);
+
+  // Debounced navigation modal state saver (third layer protection)
+  const debouncedSaveNavigationModalState = useCallback(
+    debounce((state) => {
+      saveNavigationModalStateSync(state);
+    }, 500), // 500ms debounce
+    []
+  );
 
   const clearActiveModal = useCallback(() => {
     setAppState(prev => ({ 
@@ -249,6 +393,7 @@ export const AppStateProvider = ({ children }) => {
       activeModal: null,
       activeModalData: null
     }));
+    debouncedSaveNavigationModalState(null);
   }, []);
 
   const setActiveTask = useCallback((taskId, taskData = null) => {
@@ -284,6 +429,10 @@ export const AppStateProvider = ({ children }) => {
     await statePersistence.clearState(statePersistence.KEYS.NAVIGATION_STATE);
   }, []);
 
+  const setActiveTab = useCallback((tab) => {
+    setAppState(prev => ({ ...prev, activeTab: tab }));
+  }, []);
+
   const saveFormDraft = useCallback((formId, data) => {
     setAppState(prev => ({
       ...prev,
@@ -310,6 +459,10 @@ export const AppStateProvider = ({ children }) => {
     try {
       localStorage.removeItem(LAST_ROUTE_KEY);
       localStorage.removeItem(LAST_ROUTE_TIME_KEY);
+      localStorage.removeItem(NAV_MODAL_STATE_KEY);
+      localStorage.removeItem(NAV_MODAL_TIME_KEY);
+      localStorage.removeItem(USER_LOCATION_KEY);
+      localStorage.removeItem(USER_LOCATION_TIME_KEY);
     } catch (e) {
       // Ignore localStorage errors
     }
@@ -325,10 +478,70 @@ export const AppStateProvider = ({ children }) => {
       activeTaskId: null,
       activeTaskData: null,
       navigationState: null,
-      formDrafts: {}
+      formDrafts: {},
+      sessionMetadata: {
+        lastBackgroundedAt: null,
+        lastRestoredAt: null,
+        restorationCount: 0
+      }
     });
     
     logger.debug('🗑️ All state cleared including route persistence');
+  }, []);
+
+  // VALIDATION: Test restoration data integrity
+  const validateRestorationData = useCallback(() => {
+    const validation = {
+      timestamp: Date.now(),
+      results: {
+        lastPage: null,
+        navModalState: null,
+        userLocation: null,
+        routeIntegrity: false,
+        navModalIntegrity: false,
+        userLocationIntegrity: false,
+        overallIntegrity: false
+      }
+    };
+
+    try {
+      // Test 1: Check getLastPage() from pagePersistence
+      const lastPage = getLastPage();
+      validation.results.lastPage = lastPage;
+      
+      // Test 2: Check navigation modal state
+      const navModalState = getNavigationModalState();
+      validation.results.navModalState = navModalState;
+      
+      // Test 3: Check user location
+      const userLocation = getCurrentUserLocation();
+      validation.results.userLocation = userLocation;
+      
+      // Test 4: Validate route integrity
+      if (lastPage && RESTORABLE_ROUTES.some(route => lastPage.startsWith(route))) {
+        validation.results.routeIntegrity = true;
+      }
+      
+      // Test 5: Validate nav modal integrity
+      if (navModalState && navModalState.isOpen && navModalState.destination) {
+        validation.results.navModalIntegrity = true;
+      }
+      
+      // Test 6: Validate user location integrity
+      if (userLocation && userLocation.lat && userLocation.lng) {
+        validation.results.userLocationIntegrity = true;
+      }
+      
+      // Test 7: Overall integrity
+      validation.results.overallIntegrity = validation.results.routeIntegrity;
+      
+      logger.info('🔍 State restoration validation:', validation);
+      return validation;
+    } catch (error) {
+      logger.error('❌ State restoration validation failed:', error);
+      validation.error = error.message;
+      return validation;
+    }
   }, []);
 
   // Get restored route (for use by router)
@@ -388,6 +601,9 @@ export const AppStateProvider = ({ children }) => {
       getFormDraft,
       clearFormDraft,
       
+      // Validation and testing
+      validateRestorationData,
+      
       // Clear all
       clearAllState
     }}>
@@ -402,6 +618,116 @@ export const useAppState = () => {
     throw new Error('useAppState must be used within AppStateProvider');
   }
   return context;
+};
+
+// Global testing function for manual validation (accessible from browser console)
+window.validatePWARestoration = () => {
+  try {
+    const validation = {
+      timestamp: Date.now(),
+      localStorage: {},
+      results: {
+        lastPage: null,
+        navModalState: null,
+        userLocation: null,
+        routeIntegrity: false,
+        navModalIntegrity: false,
+        userLocationIntegrity: false,
+        overallIntegrity: false
+      }
+    };
+
+    // Check localStorage contents
+    validation.localStorage.lastRoute = localStorage.getItem('trashdrop_last_route');
+    validation.localStorage.lastRouteTime = localStorage.getItem('trashdrop_last_route_time');
+    validation.localStorage.navModalState = localStorage.getItem('trashdrop_nav_modal_state');
+    validation.localStorage.navModalTime = localStorage.getItem('trashdrop_nav_modal_time');
+    validation.localStorage.userLocation = localStorage.getItem('trashdrop_user_location');
+    validation.localStorage.userLocationTime = localStorage.getItem('trashdrop_user_location_time');
+    validation.localStorage.lastPage = localStorage.getItem('trashdrop_last_page');
+
+    // Test pagePersistence
+    try {
+      const pageData = localStorage.getItem('trashdrop_last_page');
+      if (pageData) {
+        const parsed = JSON.parse(pageData);
+        validation.results.lastPage = parsed.pathname;
+        if (parsed.timestamp && (Date.now() - parsed.timestamp < 30 * 60 * 1000)) { // 30 min expiry
+          validation.results.routeIntegrity = ['/map', '/request', '/assign', '/earnings', '/profile', '/route-optimization'].some(route => parsed.pathname.startsWith(route));
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse last page data:', e);
+    }
+
+    // Test nav modal state
+    try {
+      const navStateStr = localStorage.getItem('trashdrop_nav_modal_state');
+      if (navStateStr) {
+        const navState = JSON.parse(navStateStr);
+        validation.results.navModalState = navState;
+        if (navState.isOpen && navState.destination) {
+          validation.results.navModalIntegrity = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse nav modal state:', e);
+    }
+
+    // Test user location
+    try {
+      const locStr = localStorage.getItem('trashdrop_user_location');
+      if (locStr) {
+        const location = JSON.parse(locStr);
+        validation.results.userLocation = location;
+        if (location.lat && location.lng) {
+          validation.results.userLocationIntegrity = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse user location:', e);
+    }
+
+    validation.results.overallIntegrity = validation.results.routeIntegrity;
+
+    console.group('🔍 PWA State Restoration Validation');
+    console.log('Timestamp:', new Date(validation.timestamp));
+    console.log('LocalStorage Contents:', validation.localStorage);
+    console.log('Validation Results:', validation.results);
+    console.log('✅ Overall Integrity:', validation.results.overallIntegrity ? 'PASS' : 'FAIL');
+    console.groupEnd();
+
+    return validation;
+  } catch (error) {
+    console.error('❌ Validation failed:', error);
+    return { error: error.message, timestamp: Date.now() };
+  }
+};
+
+// Global function to simulate app backgrounding (for testing)
+window.simulateAppBackgrounding = () => {
+  console.log('📱 Simulating app backgrounding...');
+  if (typeof document !== 'undefined' && document.hidden !== undefined) {
+    // Trigger visibility change event
+    Object.defineProperty(document, 'hidden', { value: true, writable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    console.log('✅ Visibility change event dispatched');
+  } else {
+    console.warn('❌ Cannot simulate backgrounding in this environment');
+  }
+};
+
+// Global function to simulate app foregrounding
+window.simulateAppForegrounding = () => {
+  console.log('📱 Simulating app foregrounding...');
+  if (typeof document !== 'undefined' && document.hidden !== undefined) {
+    // Trigger visibility change event
+    Object.defineProperty(document, 'hidden', { value: false, writable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    console.log('✅ Visibility change event dispatched');
+  } else {
+    console.warn('❌ Cannot simulate foregrounding in this environment');
+  }
 };
 
 export default AppStateContext;

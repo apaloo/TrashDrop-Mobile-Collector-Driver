@@ -20,6 +20,10 @@ class RealtimeNotificationService {
     this.lastNotificationTime = 0;
     this.NOTIFICATION_COOLDOWN = 3000; // 3 seconds between alerts
     this.audioInitialized = false;
+    this.reconnectAttempts = 0;
+    this.MAX_RECONNECT_ATTEMPTS = 10;
+    this.reconnectDelay = 5000; // Start with 5 seconds
+    this.MAX_RECONNECT_DELAY = 30000; // Max 30 seconds
   }
 
   /**
@@ -107,6 +111,8 @@ class RealtimeNotificationService {
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
             this.isListening = true;
+            this.reconnectAttempts = 0; // Reset on successful connection
+            this.reconnectDelay = 5000; // Reset delay
             logger.info('✅ Subscribed to new request alerts');
           } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
             this.isListening = false;
@@ -301,15 +307,35 @@ class RealtimeNotificationService {
   }
 
   /**
-   * Schedule reconnection attempt
+   * Schedule reconnection attempt with exponential backoff
    */
   scheduleReconnect() {
+    this.reconnectAttempts++;
+    
+    // Stop trying after max attempts
+    if (this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
+      logger.error(`❌ Max reconnection attempts (${this.MAX_RECONNECT_ATTEMPTS}) reached. Stopping reconnection.`);
+      return;
+    }
+    
+    // Exponential backoff with jitter
+    const delay = Math.min(
+      this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+      this.MAX_RECONNECT_DELAY
+    );
+    
+    // Add jitter to prevent thundering herd
+    const jitter = Math.random() * 1000;
+    const finalDelay = delay + jitter;
+    
+    logger.info(`🔄 Scheduling reconnection attempt ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS} in ${Math.round(finalDelay/1000)}s`);
+    
     setTimeout(() => {
       if (!this.isListening && this.collectorId) {
-        logger.info('🔄 Attempting to reconnect notification service...');
+        logger.info(`🔄 Attempting to reconnect notification service (attempt ${this.reconnectAttempts})...`);
         this.setupRealtimeSubscription();
       }
-    }, 5000);
+    }, finalDelay);
   }
 
   /**

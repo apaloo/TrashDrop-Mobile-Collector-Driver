@@ -11,6 +11,9 @@ import { CurrencyProvider } from './context/CurrencyContext';
 import { FilterProvider } from './context/FilterContext';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
 
+// Services
+import { audioAlertService } from './services/audioAlertService';
+
 // Components
 import AppLayout from './components/AppLayout';
 import InstallPrompt from './components/InstallPrompt';
@@ -101,118 +104,119 @@ function App() {
           <FilterProvider>
             <Router>
               <AppStateProvider>
-              <InstallPrompt />
-              <AppLayout>
-                <RouteCleanup />
-                <PagePersistence />
-                <Routes>
-                  <Route path="/" element={<DefaultRedirect />} />
-                  <Route path="/welcome" element={<WelcomePage />} />
-                  <Route path="/terms" element={<TermsPage />} />
-                  <Route path="/privacy" element={<PrivacyPage />} />
-                  <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-                  <Route path="/signup" element={<PublicRoute><SignupPage /></PublicRoute>} />
-                  <Route path="/map" element={
-                    <ProtectedRoute>
-                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
-                        <div className="text-center">
-                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-                          <p className="mt-4 text-gray-700 font-medium">🗺️ Loading Map...</p>
-                        </div>
-                      </div>}>
-                        <MapPage />
-                      </Suspense>
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/request" element={
-                    <ProtectedRoute>
-                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
-                        <div className="text-center">
-                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-                          <p className="mt-4 text-gray-700 font-medium">📋 Loading Requests...</p>
-                        </div>
-                      </div>}>
-                        <RequestPage />
-                      </Suspense>
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/request/:id" element={
-                    <ProtectedRoute>
-                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
-                        <div className="text-center">
-                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-                          <p className="mt-4 text-gray-700 font-medium">📋 Loading Request...</p>
-                        </div>
-                      </div>}>
-                        <RequestPage />
-                      </Suspense>
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/assign" element={
-                    <ProtectedRoute>
-                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
-                        <div className="text-center">
-                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-                          <p className="mt-4 text-gray-700 font-medium">📦 Loading Assignments...</p>
-                        </div>
-                      </div>}>
-                        <AssignPage />
-                      </Suspense>
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/earnings" element={
-                    <ProtectedRoute>
-                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
-                        <div className="text-center">
-                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-                          <p className="mt-4 text-gray-700 font-medium">💰 Loading Earnings...</p>
-                        </div>
-                      </div>}>
-                        <EarningsPage />
-                      </Suspense>
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/profile" element={
-                    <ProtectedRoute>
-                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
-                        <div className="text-center">
-                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-                          <p className="mt-4 text-gray-700 font-medium">👤 Loading Profile...</p>
-                        </div>
-                      </div>}>
-                        <ProfilePage />
-                      </Suspense>
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/diagnostic" element={<DiagnosticPage />} />
-                  <Route path="/payment-test" element={<PaymentTest />} />
-                  <Route path="/route-optimization" element={
-                    <ProtectedRoute>
-                      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
-                        <div className="text-center">
-                          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-                          <p className="mt-4 text-gray-700 font-medium">🚗 Loading Route Optimization...</p>
-                        </div>
-                      </div>}>
-                        <RouteOptimizationPage />
-                      </Suspense>
-                    </ProtectedRoute>
-                  } />
-                  <Route path="*" element={
-                    <div className="flex flex-col h-screen items-center justify-center p-4">
-                      <h1 className="text-2xl font-bold mb-4">Page Not Found</h1>
-                      <p className="mb-6">The page you are looking for doesn't exist or has been moved.</p>
-                      <button 
-                        onClick={() => window.location.href = '/'}
-                        className="btn btn-primary"
-                      >
-                        Go Home
-                      </button>
-                    </div>
-                  } />
-                </Routes>
-                <ToastContainer position="top-center" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
-              </AppLayout>
+                <AudioInteractionHandler />
+                <InstallPrompt />
+                <AppLayout>
+                  <RouteCleanup />
+                  <PagePersistence />
+                  <Routes>
+                    <Route path="/" element={<DefaultRedirect />} />
+                    <Route path="/welcome" element={<WelcomePage />} />
+                    <Route path="/terms" element={<TermsPage />} />
+                    <Route path="/privacy" element={<PrivacyPage />} />
+                    <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+                    <Route path="/signup" element={<PublicRoute><SignupPage /></PublicRoute>} />
+                    <Route path="/map" element={
+                      <ProtectedRoute>
+                        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                          <div className="text-center">
+                            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                            <p className="mt-4 text-gray-700 font-medium">🗺️ Loading Map...</p>
+                          </div>
+                        </div>}>
+                          <MapPage />
+                        </Suspense>
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/request" element={
+                      <ProtectedRoute>
+                        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                          <div className="text-center">
+                            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                            <p className="mt-4 text-gray-700 font-medium">📋 Loading Requests...</p>
+                          </div>
+                        </div>}>
+                          <RequestPage />
+                        </Suspense>
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/request/:id" element={
+                      <ProtectedRoute>
+                        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                          <div className="text-center">
+                            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                            <p className="mt-4 text-gray-700 font-medium">📋 Loading Request...</p>
+                          </div>
+                        </div>}>
+                          <RequestPage />
+                        </Suspense>
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/assign" element={
+                      <ProtectedRoute>
+                        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                          <div className="text-center">
+                            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                            <p className="mt-4 text-gray-700 font-medium">📦 Loading Assignments...</p>
+                          </div>
+                        </div>}>
+                          <AssignPage />
+                        </Suspense>
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/earnings" element={
+                      <ProtectedRoute>
+                        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                          <div className="text-center">
+                            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                            <p className="mt-4 text-gray-700 font-medium">💰 Loading Earnings...</p>
+                          </div>
+                        </div>}>
+                          <EarningsPage />
+                        </Suspense>
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/profile" element={
+                      <ProtectedRoute>
+                        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                          <div className="text-center">
+                            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                            <p className="mt-4 text-gray-700 font-medium">👤 Loading Profile...</p>
+                          </div>
+                        </div>}>
+                          <ProfilePage />
+                        </Suspense>
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/diagnostic" element={<DiagnosticPage />} />
+                    <Route path="/payment-test" element={<PaymentTest />} />
+                    <Route path="/route-optimization" element={
+                      <ProtectedRoute>
+                        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
+                          <div className="text-center">
+                            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                            <p className="mt-4 text-gray-700 font-medium">🚗 Loading Route Optimization...</p>
+                          </div>
+                        </div>}>
+                          <RouteOptimizationPage />
+                        </Suspense>
+                      </ProtectedRoute>
+                    } />
+                    <Route path="*" element={
+                      <div className="flex flex-col h-screen items-center justify-center p-4">
+                        <h1 className="text-2xl font-bold mb-4">Page Not Found</h1>
+                        <p className="mb-6">The page you are looking for doesn't exist or has been moved.</p>
+                        <button 
+                          onClick={() => window.location.href = '/'}
+                          className="btn btn-primary"
+                        >
+                          Go Home
+                        </button>
+                      </div>
+                    } />
+                  </Routes>
+                  <ToastContainer position="top-center" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
+                </AppLayout>
               </AppStateProvider>
             </Router>
           </FilterProvider>
@@ -222,17 +226,57 @@ function App() {
   );
 }
 
+// Component to handle user interactions for AudioContext
+const AudioInteractionHandler = () => {
+  const audioInitializedRef = useRef(false);
+  
+  useEffect(() => {
+    const handleUserInteraction = async () => {
+      if (!audioInitializedRef.current) {
+        try {
+          await audioAlertService.resumeOnUserInteraction();
+          audioInitializedRef.current = true;
+          logger.info('🔊 AudioContext resumed on user interaction');
+        } catch (error) {
+          logger.warn('🔊 Failed to resume AudioContext:', error);
+        }
+      }
+    };
+
+    // Add event listeners for user interactions
+    const events = ['click', 'touchstart', 'keydown', 'mousedown'];
+    events.forEach(event => {
+      document.addEventListener(event, handleUserInteraction, { once: true });
+    });
+
+    return () => {
+      events.forEach(event => {
+        document.removeEventListener(event, handleUserInteraction);
+      });
+    };
+  }, []);
+
+  return null;
+};
+
 // Component to handle default route redirect based on auth state
 const DefaultRedirect = () => {
   const { isAuthenticated, hasLoggedOut, user, isCompletingSignup } = useAuth();
   const { getRestoredRoute, isRestoring } = useAppState();
   
   // Log state for debugging
-  logger.debug('DefaultRedirect:', { isAuthenticated, hasLoggedOut, hasUser: !!user, isCompletingSignup });
+  logger.debug('DefaultRedirect:', { isAuthenticated, hasLoggedOut, hasUser: !!user, isCompletingSignup, isRestoring });
   
-  // Wait for state restoration before redirecting
+  // ENHANCED: Show loading state during restoration to prevent flash
   if (isRestoring) {
-    return null;
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+          <p className="mt-4 text-gray-700 font-medium">🔄 Restoring session...</p>
+        </div>
+      </div>
+    );
   }
   
   // If user is completing signup, redirect to signup page

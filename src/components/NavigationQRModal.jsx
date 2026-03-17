@@ -4,13 +4,13 @@ import { getCurrentLocation, isWithinRadius, calculateDistance } from '../utils/
 import Toast from './Toast';
 import { debounce } from 'lodash';
 import { useAuth } from '../context/AuthContext';
+import { useAppState } from '../context/AppStateContext'; // Changed from useNavigationPersistence
 import { locationBroadcast } from '../services/locationBroadcast';
 import './navigation-modal.css'; // Custom CSS for better readability
 import QRCodeScanner from './QRCodeScanner'; // Import our existing QR scanner component
 import ErrorBoundary from './ErrorBoundary'; // Import error boundary
 import { logger } from '../utils/logger';
 import useWakeLock from '../hooks/useWakeLock';
-import { useNavigationPersistence } from '../hooks/useNavigationPersistence';
 import { supabase } from '../services/supabase';
 import {
   PICKUP_ARRIVAL_RADIUS_KM,
@@ -41,7 +41,7 @@ const NavigationQRModal = ({
   initialUserLocation = null // Initial user location from saved state
 }) => {
   const { user } = useAuth();
-  const { saveNavigationState, restoreNavigationState, clearNavigationState } = useNavigationPersistence();
+  const { setActiveModal, clearActiveModal, activeModalData } = useAppState(); // Using AppStateContext
   const [mode, setMode] = useState('navigation'); // 'navigation' or 'qr'
   const [error, setError] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
@@ -50,22 +50,15 @@ const NavigationQRModal = ({
   
   // Restore navigation state on mount
   useEffect(() => {
-    const restoreState = async () => {
-      const state = await restoreNavigationState();
-      // Use initialUserLocation from props first, then from saved state
-      const locationToRestore = initialUserLocation || (state && state.userLocation);
-      if (locationToRestore) {
-        setUserLocation(locationToRestore);
-        logger.info('🔄 Restored userLocation:', locationToRestore, {
-          source: initialUserLocation ? 'props' : 'saved state'
-        });
-      }
-    };
-    
-    if (isOpen) {
-      restoreState();
+    // Use initialUserLocation from props or from activeModalData
+    const locationToRestore = initialUserLocation || (activeModalData && activeModalData.userLocation);
+    if (locationToRestore) {
+      setUserLocation(locationToRestore);
+      logger.info('🔄 Restored userLocation:', locationToRestore, {
+        source: initialUserLocation ? 'props' : 'modalData'
+      });
     }
-  }, [isOpen, restoreNavigationState, initialUserLocation]);
+  }, [isOpen, activeModalData, initialUserLocation]);
   const [isWithinGeofence, setIsWithinGeofence] = useState(false);
   const [isWithinManualRange, setIsWithinManualRange] = useState(false); // Within manual "I'm Here" range but outside auto-arrival
   const [hasArrivedAtDestination, setHasArrivedAtDestination] = useState(false); // Latched arrival state - once true, stays true

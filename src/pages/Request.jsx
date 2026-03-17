@@ -7,6 +7,7 @@ import 'leaflet/dist/leaflet.css';
 
 import { useFilters } from '../context/FilterContext';
 import { useAuth } from '../context/AuthContext';
+import { useAppState } from '../context/AppStateContext'; // Add for modal management
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import RequestCard from '../components/RequestCard';
@@ -86,6 +87,7 @@ const RequestPage = () => {
   const { id: requestId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { setActiveModal, clearActiveModal, activeModal, activeModalData } = useAppState(); // Add modal management
   const [userProfile, setUserProfile] = useState(null);
   
   // Access filter context - hooks must be called unconditionally
@@ -1268,6 +1270,17 @@ const RequestPage = () => {
         // CRITICAL: Save to localStorage FIRST (synchronous) for app switch persistence
         saveNavModalState(navState);
         
+        // Use AppStateContext for modal management
+        setActiveModal('navigation', {
+          destination: [lat, lng],
+          requestId: requestId,
+          wasteType: request.waste_type || 'general',
+          sourceType: request.source_type || 'pickup_request',
+          destinationName: location,
+          userLocation: currentUserLocation // Save current user location
+        });
+        
+        // Keep local state for compatibility during transition
         setNavigationDestination([lat, lng]);
         setNavigationRequestId(requestId);
         setNavigationWasteType(request.waste_type || 'general');
