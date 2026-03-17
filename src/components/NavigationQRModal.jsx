@@ -1729,8 +1729,8 @@ const requestCameraPermission = useCallback(async () => {
                     </div>
                   </button>
                 )}
-                {/* Google Maps Navigation button - always visible in separate row */}
-                {userLocation && destination && !isNavigating && (
+                {/* Google Maps Navigation button - hide once Scan Now is active */}
+                {userLocation && destination && !isNavigating && !isWithinGeofence && (
                   <button
                     onClick={() => {
                       const destLat = Array.isArray(destination) ? destination[0] : destination.lat;
@@ -1757,10 +1757,10 @@ const requestCameraPermission = useCallback(async () => {
               </>
             )}
             {mode === 'qr' && (
-              <div className="flex space-x-2">
+              <div className="flex flex-col space-y-3 md:flex-row md:space-y-0 md:space-x-2">
                 <button
                   onClick={handleBackToNavigation}
-                  className="px-5 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
+                  className="w-full px-5 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm text-center"
                   aria-label="Return to navigation"
                 >
                   Back to Map
@@ -1771,7 +1771,7 @@ const requestCameraPermission = useCallback(async () => {
                       onQRScanned(scannedItems.map(item => item.code));
                       onClose();
                     }}
-                    className="px-5 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors font-medium shadow-sm"
+                    className="w-full md:w-auto px-5 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors font-medium shadow-sm"
                     aria-label="Complete scanning"
                   >
                     Complete ({scannedItems.length})
