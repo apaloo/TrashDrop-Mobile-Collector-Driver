@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useRef } from 'react';
+import React, { Suspense, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -13,6 +13,7 @@ import { AppStateProvider, useAppState } from './context/AppStateContext';
 
 // Services
 import { audioAlertService } from './services/audioAlertService';
+import { lazyWithRetry, prefetchLazyRoutes } from './utils/lazyWithRetry';
 
 // Components
 import AppLayout from './components/AppLayout';
@@ -30,12 +31,12 @@ import DiagnosticPage from './pages/DiagnosticPage';
 import PaymentTest from './pages/PaymentTest';
 
 // LAZY: Heavy pages loaded on demand to reduce initial bundle
-const MapPage = lazy(() => import('./pages/Map'));
-const RequestPage = lazy(() => import('./pages/Request'));
-const AssignPage = lazy(() => import('./pages/Assign'));
-const EarningsPage = lazy(() => import('./pages/Earnings'));
-const ProfilePage = lazy(() => import('./pages/Profile'));
-const RouteOptimizationPage = lazy(() => import('./pages/RouteOptimization'));
+const MapPage = lazyWithRetry(() => import('./pages/Map'));
+const RequestPage = lazyWithRetry(() => import('./pages/Request'));
+const AssignPage = lazyWithRetry(() => import('./pages/Assign'));
+const EarningsPage = lazyWithRetry(() => import('./pages/Earnings'));
+const ProfilePage = lazyWithRetry(() => import('./pages/Profile'));
+const RouteOptimizationPage = lazyWithRetry(() => import('./pages/RouteOptimization'));
 
 // Clean up image resources when navigating away from request pages
 const RouteCleanup = () => {
@@ -96,6 +97,15 @@ const PublicRoute = ({ children }) => {
 function App() {
   const startTime = Date.now();
   logger.debug('🏁 App component rendering at:', startTime);
+
+  useEffect(() => {
+    prefetchLazyRoutes([
+      () => import('./pages/Map'),
+      () => import('./pages/Request'),
+      () => import('./pages/Assign'),
+      () => import('./pages/Profile')
+    ]);
+  }, []);
   
   return (
     <AuthProvider>

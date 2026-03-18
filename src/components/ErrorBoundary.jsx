@@ -13,6 +13,8 @@ class ErrorBoundary extends Component {
       error: null,
       errorInfo: null
     };
+
+    this.lastGoodChildren = null;
   }
 
   static getDerivedStateFromError(error) {
@@ -55,8 +57,21 @@ class ErrorBoundary extends Component {
   render() {
     const { hasError, error } = this.state;
     const { fallback, children } = this.props;
+
+    // Keep a snapshot of the last successfully rendered tree so we can fall back to it
+    if (!hasError) {
+      this.lastGoodChildren = children;
+    }
+
+    const isChunkLoadFailure = error?.message?.includes('Failed to fetch dynamically imported module');
     
     if (hasError) {
+      // If we previously rendered a good tree, keep showing it (useful when a lazy chunk can’t load)
+      if (this.lastGoodChildren && isChunkLoadFailure) {
+        logger.warn('⚠️ Keeping previous UI while lazy chunk reloads');
+        return this.lastGoodChildren;
+      }
+      
       // You can render any custom fallback UI
       if (fallback) {
         return fallback(error);
