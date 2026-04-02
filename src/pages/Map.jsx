@@ -388,16 +388,18 @@ const MapPage = () => {
   const { user } = useAuth();
   const { filters, updateFilters, updateFilteredRequests, tempRadiusExtension, getMaxRadius } = useFilters();
   const [map, setMap] = useState(null);
-  // NO DEFAULT/FALLBACK LOCATION - App must use ACTUAL GPS coordinates only
   
   // User profile data
   const [userProfile, setUserProfile] = useState(null);
   
-  const [position, setPosition] = useState(null); // Start with null, only set with REAL GPS location
+  // Fallback location for immediate map load - Accra, Ghana
+  const DEFAULT_POSITION = [5.6037, -0.1870]; // Accra coordinates
+  const [position, setPosition] = useState(DEFAULT_POSITION); // Start with fallback, update to GPS when available
   const [currentHeading, setCurrentHeading] = useState(270); // Default to 270° (West/left) - tricycle faces left horizontally
   const previousPositionRef = useRef(null); // Track previous position for heading calculation
   const [isUsingCachedLocation, setIsUsingCachedLocation] = useState(false); // Track if using cached location
   const [isWaitingForGPS, setIsWaitingForGPS] = useState(true); // Track if waiting for GPS
+  const [isUsingFallbackLocation, setIsUsingFallbackLocation] = useState(true); // Track if using fallback location
   const [error, setError] = useState(null);
   const [showCachedFlash, setShowCachedFlash] = useState(false); // Brief flash for "Using Cached"
   const [hasGoodAccuracy, setHasGoodAccuracy] = useState(false); // Track if we have <=50m accuracy
@@ -492,6 +494,15 @@ const MapPage = () => {
           logger.debug('📍 GPS reading too inaccurate, keeping cached location:', `±${Math.round(accuracy)}m (need ≤50m)`);
           return; // Don't update position if accuracy is poor
         }
+      } else if (isUsingFallbackLocation) {
+        if (isAccurateEnough) {
+          logger.info('🎯 GPS location acquired! Updating from fallback to real position:', newPos, `±${Math.round(accuracy)}m`);
+          setIsUsingFallbackLocation(false); // Mark as no longer using fallback location
+          setIsWaitingForGPS(false); // Got real GPS
+        } else {
+          logger.debug('📍 GPS reading too inaccurate, keeping fallback location:', `±${Math.round(accuracy)}m (need ≤50m)`);
+          return; // Don't update position if accuracy is poor
+        }
       } else if (isWaitingForGPS) {
         if (isAccurateEnough) {
           logger.info('🎯 GPS location acquired! First real position:', newPos, `±${Math.round(accuracy)}m`);
@@ -534,7 +545,7 @@ const MapPage = () => {
       setLocationAttempted(true);
       
       // Flash "Using Cached" briefly, then return to "Getting GPS..." to show continuous effort
-      if (isUsingCachedLocation || isWaitingForGPS) {
+      if (isUsingCachedLocation || isWaitingForGPS || isUsingFallbackLocation) {
         setShowCachedFlash(true);
         logger.debug('⚠️ GPS acquisition failed, continuing to try...');
         
@@ -756,14 +767,14 @@ const MapPage = () => {
         
         // Fetch data from both tables in parallel
         const [pickupRequestsResult, digitalBinsResult] = await Promise.all([
-          // Fetch available pickup requests
+          // Fetch available pickup requests and pending requests
           supabase
             .from('pickup_requests')
             .select('*', { count: 'exact' })
-            .eq('status', 'available')
+            .in('status', ['pending'])
             .order('created_at', { ascending: false }),
           
-          // Fetch digital bins with location data via LEFT JOIN - only available status
+          // Fetch digital bins with location data via LEFT JOIN - available and pending status
           supabase
             .from('digital_bins')
             .select(`
@@ -773,7 +784,7 @@ const MapPage = () => {
                 location_name
               )
             `, { count: 'exact' })
-            .eq('status', 'available')
+            .in('status', ['pending'])
             .order('created_at', { ascending: false })
         ]);
         
@@ -943,6 +954,15 @@ const MapPage = () => {
         
         // Combine both data sources
         data = [...pickupRequests, ...digitalBins];
+        
+        // Debug: Log final data counts
+        logger.info('📊 Final data summary:', {
+          pickupRequests: pickupRequests.length,
+          digitalBins: digitalBins.length,
+          total: data.length,
+          pickupSample: pickupRequests.slice(0, 2).map(p => ({ id: p.id, status: p.status, coordinates: p.coordinates })),
+          digitalBinSample: digitalBins.slice(0, 2).map(d => ({ id: d.id, status: d.status, coordinates: d.coordinates }))
+        });
       } else {
         // Offline - no cache available
         showToast('No internet connection. Please connect to view pickup requests.', 'error');
@@ -1042,6 +1062,20 @@ const MapPage = () => {
         setLastUpdated(new Date());
         // Data loaded successfully
         
+        // Debug: Log transformed data
+        logger.info('🔄 Transformed data summary:', {
+          totalTransformed: transformedData.length,
+          pickupRequests: transformedData.filter(r => r.source_type === 'pickup_request').length,
+          digitalBins: transformedData.filter(r => r.source_type === 'digital_bin').length,
+          sample: transformedData.slice(0, 3).map(r => ({
+            id: r.id,
+            source_type: r.source_type,
+            status: r.status,
+            coordinates: r.coordinates,
+            distance: r.distance
+          }))
+        });
+        
         if (transformedData.length > 0) {
           showToast(`${transformedData.length} pickup requests found`, 'success');
         } else {
@@ -1113,13 +1147,21 @@ const MapPage = () => {
       totalItems: allRequests.length 
     });  
     
-    // Position may be null during initial render before GPS is acquired - this is expected
+    // Position should always be available now (fallback or real GPS)
     if (!position || !position[0] || !position[1]) {
-      // Don't warn during initial startup - only log at debug level
-      // Position will be set once GPS is acquired
+      logger.error('❌ No position available - this should not happen with fallback location');
       setRequests([]);
       updateFilteredRequests([]);
       return;
+    }
+    
+    // Log when we're using fallback vs real GPS location
+    if (isUsingFallbackLocation) {
+      logger.debug('🗺️ Using fallback location (Accra) to show requests');
+    } else if (isUsingCachedLocation) {
+      logger.debug('📍 Using cached location to show requests');
+    } else {
+      logger.debug('🎯 Using real GPS location to show requests');
     }
 
     // Define filter variables
@@ -1154,9 +1196,9 @@ const MapPage = () => {
         logger.debug('🟦 Processing digital bin:', req.id, 'coordinates:', req.coordinates);
         // Digital bins are always "available" for collection, skip status check
       } else {
-        // Filter by status - only show available requests (for pickup requests only)
-        if (req.status !== 'available') {
-          logger.debug('❌ Filtered out - status not available:', req.id, 'status:', req.status);
+        // Filter by status - only show available and pending requests (for pickup requests only)
+        if (req.status !== 'pending') {
+          logger.debug('❌ Filtered out - status not pending:', req.id, 'status:', req.status);
           return false;
         }
       }
@@ -1423,14 +1465,14 @@ const MapPage = () => {
             event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
             schema: 'public',
             table: 'pickup_requests',
-            filter: 'status=eq.available' // Only listen to available requests
+            filter: 'status=eq.pending' // Listen to pending requests only
           }, (payload) => {
             // Handle different event types
             const { eventType, new: newRecord, old: oldRecord } = payload;
             
             switch (eventType) {
               case 'INSERT': {
-                if (newRecord.status === 'available') {
+                if (newRecord.status === 'pending') {
                   const coords = parseCoordinates(newRecord.coordinates);
                   // Transform the new record
                   const transformedRequest = {
@@ -1463,8 +1505,8 @@ const MapPage = () => {
               }
               
               case 'UPDATE': {
-                if (oldRecord.status === 'available' && 
-                    newRecord.status !== 'available') {
+                if (oldRecord.status === 'pending' && 
+                    newRecord.status !== 'pending') {
                   // Request was assigned or cancelled
                   setAllRequests(prev => {
                     const updated = prev.filter(r => r.id !== newRecord.id);
@@ -1476,8 +1518,8 @@ const MapPage = () => {
                   if (newRecord.collector_id !== user?.id) {
                     showToast('A pickup request was claimed by another collector', 'info');
                   }
-                } else if (newRecord.status === 'available' && 
-                          oldRecord.status !== 'available') {
+                } else if (newRecord.status === 'pending' && 
+                          oldRecord.status !== 'pending') {
                   // Request became available again
                   const coords = parseCoordinates(newRecord.coordinates);
                   const transformedRequest = {
@@ -1528,15 +1570,15 @@ const MapPage = () => {
           .on('postgres_changes', {
             event: '*', // Listen to all events (INSERT, UPDATE, DELETE) 
             schema: 'public',
-            table: 'digital_bins'
-            // Removed filter to receive UPDATE events when status changes from 'available' to 'accepted'
+            table: 'digital_bins',
+            filter: 'status=eq.pending' // Listen to pending digital bins only
           }, (payload) => {
             // Handle digital bins changes
             const { eventType, new: newRecord, old: oldRecord } = payload;
             
             switch (eventType) {
               case 'INSERT': {
-                if (newRecord.status === 'available') {
+                if (newRecord.status === 'pending') {
                   const coords = parseCoordinates(newRecord.coordinates);
                   // Transform the new digital bin record
                   const transformedBin = {
@@ -1567,8 +1609,8 @@ const MapPage = () => {
               }
               
               case 'UPDATE': {
-                if (oldRecord.status === 'available' && 
-                    newRecord.status !== 'available') {
+                if (oldRecord.status === 'pending' && 
+                    newRecord.status !== 'pending') {
                   // Digital bin was collected or put in maintenance
                   setAllRequests(prev => {
                     const updated = prev.filter(r => r.id !== newRecord.id);
@@ -1578,8 +1620,8 @@ const MapPage = () => {
                   if (newRecord.collector_id !== user?.id) {
                     showToast('A digital bin was collected by another collector', 'info');
                   }
-                } else if (newRecord.status === 'available' && 
-                          oldRecord.status !== 'available') {
+                } else if (newRecord.status === 'pending' && 
+                          oldRecord.status !== 'pending') {
                   // Digital bin became available again
                   const coords = parseCoordinates(newRecord.coordinates);
                   const transformedBin = {
@@ -1902,18 +1944,23 @@ const MapPage = () => {
                       <p className="text-sm text-gray-600">
                         {isWaitingForGPS 
                           ? 'Waiting for GPS...'
-                          : isUsingCachedLocation 
-                            ? 'Cached Position (Updating...)' 
-                            : hasGoodAccuracy 
-                              ? 'Live GPS Position (High Accuracy ≤50m)'
-                              : 'Live GPS Position'
+                          : isUsingFallbackLocation
+                            ? 'Approximate Location (Accra)'
+                            : isUsingCachedLocation 
+                              ? 'Cached Position (Updating...)' 
+                              : hasGoodAccuracy 
+                                ? 'Live GPS Position (High Accuracy ≤50m)'
+                                : 'Live GPS Position'
                         }
                       </p>
-                      {lastUpdated && !isUsingCachedLocation && !isWaitingForGPS && (
+                      {lastUpdated && !isUsingCachedLocation && !isWaitingForGPS && !isUsingFallbackLocation && (
                         <p className="text-xs text-green-600">Updated: {lastUpdated}</p>
                       )}
-                      {(isUsingCachedLocation || isWaitingForGPS) && !hasGoodAccuracy && (
+                      {(isUsingCachedLocation || isWaitingForGPS || isUsingFallbackLocation) && !hasGoodAccuracy && (
                         <p className="text-xs text-orange-600">🔄 Acquiring GPS...</p>
+                      )}
+                      {isUsingFallbackLocation && (
+                        <p className="text-xs text-blue-600">📍 Using Accra center as approximate location</p>
                       )}
                       {hasGoodAccuracy && (
                         <p className="text-xs text-green-600">✅ Accuracy ≤50m achieved</p>
