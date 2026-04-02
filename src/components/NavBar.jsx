@@ -4,7 +4,7 @@ import logo from '../assets/logo.svg';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/supabase';
 import { logger } from '../utils/logger';
-import { SignoutConfirmationModal } from './SignoutConfirmationModal';
+import { LogoutConfirmationModal } from './LogoutConfirmationModal';
 
 // Cache key for user profile in localStorage
 const PROFILE_CACHE_KEY = 'trashdrop_user_profile';
@@ -14,7 +14,8 @@ const PROFILE_CACHE_KEY = 'trashdrop_user_profile';
  */
 export const TopNavBar = ({ user }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isSignoutModalOpen, setIsSignoutModalOpen] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const dropdownRef = useRef(null);
   
   // Close dropdown when clicking outside
@@ -52,8 +53,37 @@ export const TopNavBar = ({ user }) => {
     }
     return null;
   });
-  const { logout, loading } = useAuth();
+  const { logout } = useAuth();
   const navigate = useNavigate();
+
+  // Handle logout confirmation
+  const handleLogoutClick = () => {
+    setIsDropdownOpen(false);
+    setIsLogoutModalOpen(true);
+  };
+
+  // Handle confirmed logout
+  const handleLogoutConfirm = async () => {
+    setIsLoggingOut(true);
+    try {
+      logger.info('Logging out user from NavBar...');
+      const { success } = await logout();
+      if (success) {
+        logger.info('Logout successful, navigating to login page...');
+        navigate('/login');
+      }
+    } catch (error) {
+      logger.error('Logout failed:', error);
+    } finally {
+      setIsLoggingOut(false);
+      setIsLogoutModalOpen(false);
+    }
+  };
+
+  // Handle logout cancellation
+  const handleLogoutCancel = () => {
+    setIsLogoutModalOpen(false);
+  };
 
   // Fetch user profile to get first_name and last_name
   const hasAttemptedFetch = useRef(false);
@@ -113,86 +143,69 @@ export const TopNavBar = ({ user }) => {
 
   return (
     <>
-      <nav className="bg-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <Link to="/map" className="flex items-center">
-                <img src={logo} alt="TrashDrop" className="h-8 w-auto" />
-              </Link>
-            </div>
-            
-            <div className="flex items-center">
-              <div className="relative" ref={dropdownRef}>
-                <button
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className="flex items-center text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-                >
-                  <div className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center text-white font-medium">
-                    {userProfile?.first_name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
-                  </div>
-                </button>
-                
-                {isDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
-                    <div className="py-1">
-                      <div className="px-4 py-2 text-sm text-gray-700 border-b">
-                        <div className="font-medium">
-                          {userProfile?.first_name || 'User'} {userProfile?.last_name || ''}
-                        </div>
-                        <div className="text-gray-500 truncate">
-                          {user?.phone || user?.email || 'No contact info'}
-                        </div>
-                      </div>
-                      <Link
-                        to="/profile"
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                        onClick={() => setIsDropdownOpen(false)}
-                      >
-                        Profile
-                      </Link>
-                      <Link
-                        to="/earnings"
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                        onClick={() => setIsDropdownOpen(false)}
-                      >
-                        Earnings
-                      </Link>
-                      <button
-                        className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100"
-                        onClick={() => {
-                          setIsDropdownOpen(false);
-                          setIsSignoutModalOpen(true);
-                        }}
-                      >
-                        Logout
-                      </button>
-                    </div>
-                  </div>
-                )}
+      <nav className="fixed top-0 left-0 right-0 bg-white shadow-md px-4 py-2 z-[2500] nav-top-bar">
+        <div className="flex justify-between items-center">
+          {/* Logo */}
+          <Link to="/" className="flex items-center">
+            <img src={logo} alt="TrashDrop Logo" className="h-8 mr-2" />
+            <span className="text-green-500 text-xl font-bold">TrashDrop Carter</span>
+          </Link>
+
+          {/* Profile Dropdown */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              className="flex items-center focus:outline-none"
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            >
+              <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white font-medium">
+                {userProfile?.first_name?.[0]?.toUpperCase() || ''}{userProfile?.last_name?.[0]?.toUpperCase() || (userProfile ? '' : 'U')}
               </div>
-            </div>
+              <span className="ml-2 hidden md:inline text-gray-700">
+                {userProfile?.first_name && userProfile?.last_name 
+                  ? `${userProfile.first_name} ${userProfile.last_name}` 
+                  : 'User'}
+              </span>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {isDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-[3000]">
+                <Link
+                  to="/profile"
+                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  onClick={() => setIsDropdownOpen(false)}
+                >
+                  Profile
+                </Link>
+                <Link
+                  to="/earnings"
+                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  onClick={() => setIsDropdownOpen(false)}
+                >
+                  Earnings
+                </Link>
+                <button
+                  className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100"
+                  onClick={handleLogoutClick}
+                >
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </nav>
       
-      {/* Signout Confirmation Modal */}
-      <SignoutConfirmationModal
-        isOpen={isSignoutModalOpen}
-        onClose={() => setIsSignoutModalOpen(false)}
-        onConfirmSignout={async () => {
-          logger.info('👋 User confirmed signout from modal...');
-          const result = await logout();
-          
-          if (result.success) {
-            logger.info('✅ Signout successful, navigating to login page...');
-            navigate('/login');
-          }
-          
-          return result;
-        }}
-        isLoading={loading}
+      {/* Logout Confirmation Modal */}
+      <LogoutConfirmationModal
+        isOpen={isLogoutModalOpen}
+        onClose={handleLogoutCancel}
+        onConfirm={handleLogoutConfirm}
+        isLoading={isLoggingOut}
       />
     </>
   );
 };
+
