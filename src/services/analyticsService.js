@@ -2,6 +2,61 @@ import { supabase } from './supabase';
 import { logger } from '../utils/logger';
 
 /**
+ * Parse coordinates from any format into { lat, lng }.
+ * Returns null if coordinates are invalid or at [0, 0] (Gulf of Guinea).
+ * Handles: arrays [lat, lng], objects {lat, lng}/{latitude, longitude},
+ * GeoJSON Point, JSON strings, and comma-separated strings.
+ */
+const parseCoordinates = (raw) => {
+  if (!raw) return null;
+
+  let coords = raw;
+
+  // 1. String → try JSON parse, then comma-separated
+  if (typeof coords === 'string') {
+    try {
+      coords = JSON.parse(coords);
+    } catch {
+      // Try "lat,lng" format
+      const parts = coords.split(',').map(Number);
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        coords = { lat: parts[0], lng: parts[1] };
+      } else {
+        return null;
+      }
+    }
+  }
+
+  let lat, lng;
+
+  // 2. GeoJSON Point: { type: 'Point', coordinates: [lng, lat] }
+  if (coords?.type === 'Point' && Array.isArray(coords.coordinates) && coords.coordinates.length === 2) {
+    lng = coords.coordinates[0];
+    lat = coords.coordinates[1];
+  }
+  // 3. Array: [lat, lng]
+  else if (Array.isArray(coords) && coords.length === 2) {
+    lat = coords[0];
+    lng = coords[1];
+  }
+  // 4. Object with lat/lng (or latitude/longitude)
+  else if (coords && typeof coords === 'object') {
+    lat = coords.lat ?? coords.latitude;
+    lng = coords.lng ?? coords.longitude;
+  }
+
+  lat = Number(lat);
+  lng = Number(lng);
+
+  // Reject NaN, [0,0], or clearly out-of-range values
+  if (isNaN(lat) || isNaN(lng)) return null;
+  if (lat === 0 && lng === 0) return null;           // Gulf of Guinea
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+
+  return { lat, lng };
+};
+
+/**
  * Analytics service for route optimization and performance metrics
  */
 export class AnalyticsService {
@@ -260,18 +315,12 @@ export class AnalyticsService {
       if (availableError) throw availableError;
 
       // Transform accepted pickup requests to assignment format
+      // Filter out any with unparseable coordinates to prevent route-from-the-sea bug
       const pickupAssignments = (acceptedPickups || []).map(pickup => {
-        // Parse coordinates if they're stored as JSON string
-        let coords = pickup.coordinates;
-        if (typeof coords === 'string') {
-          try {
-            coords = JSON.parse(coords);
-          } catch (e) {
-            logger.warn(`Failed to parse coordinates for pickup ${pickup.id}:`, e);
-            coords = { lat: 0, lng: 0 };
-          }
+        const coords = parseCoordinates(pickup.coordinates);
+        if (!coords) {
+          logger.warn(`⚠️ Skipping pickup ${pickup.id} — invalid coordinates:`, pickup.coordinates);
         }
-        
         return {
           id: pickup.id,
           type: 'assignment',
@@ -279,8 +328,8 @@ export class AnalyticsService {
           status: pickup.status,
           location: pickup.location || 'Unknown location',
           customer_name: `Customer #${pickup.id}`,
-          latitude: coords?.lat || 0,
-          longitude: coords?.lng || 0,
+          latitude: coords?.lat ?? null,
+          longitude: coords?.lng ?? null,
           fee: pickup.fee || 0,
           waste_type: pickup.waste_type || 'general',
           special_instructions: pickup.special_instructions || '',
@@ -288,7 +337,7 @@ export class AnalyticsService {
           accepted_at: pickup.accepted_at,
           created_at: pickup.created_at
         };
-      });
+      }).filter(a => a.latitude !== null && a.longitude !== null);
 
       // Transform accepted digital bins to assignment format
       const binAssignments = (acceptedDigitalBins || []).map(bin => {
@@ -347,6 +396,12 @@ export class AnalyticsService {
         // Get location name from joined bin_locations table
         const locationName = bin.bin_locations?.location_name || 'Digital Bin Station';
         
+        // Re-parse through the shared helper to catch [0,0] and NaN
+        const validCoords = parseCoordinates(coords);
+        if (!validCoords) {
+          logger.warn(`⚠️ Skipping digital bin ${bin.id} — invalid coordinates:`, coords);
+        }
+
         return {
           id: bin.id,
           type: 'assignment',
@@ -354,8 +409,8 @@ export class AnalyticsService {
           status: bin.status,
           location: locationName,
           customer_name: `Digital Bin - ${wasteType}`,
-          latitude: coords.lat || 0,
-          longitude: coords.lng || 0,
+          latitude: validCoords?.lat ?? null,
+          longitude: validCoords?.lng ?? null,
           fee: bin.fee || 0,
           waste_type: wasteType,
           special_instructions: `${binSize}L bin, ${frequency} pickup${isUrgent ? ' (URGENT)' : ''}${bin.details ? `, ${bin.details}` : ''}`,
@@ -365,8 +420,8 @@ export class AnalyticsService {
         };
       });
 
-      // Combine both types of assignments
-      const assignments = [...pickupAssignments, ...binAssignments].sort((a, b) => {
+      // Combine both types of assignments, filtering out any with null coords
+      const assignments = [...pickupAssignments, ...binAssignments.filter(b => b.latitude !== null && b.longitude !== null)].sort((a, b) => {
         // Sort by accepted_at timestamp (oldest first), fallback to created_at
         const timeA = new Date(a.accepted_at || a.created_at);
         const timeB = new Date(b.accepted_at || b.created_at);
@@ -376,31 +431,25 @@ export class AnalyticsService {
       logger.info(`✅ Transformed ${assignments.length} accepted items for route optimization (${pickupAssignments.length} pickups + ${binAssignments.length} bins)`);
 
       const requests = (availablePickups || []).map(pickup => {
-        // Parse coordinates if they're stored as JSON string
-        let coords = pickup.coordinates;
-        if (typeof coords === 'string') {
-          try {
-            coords = JSON.parse(coords);
-          } catch (e) {
-            coords = { lat: 0, lng: 0 };
-          }
+        const coords = parseCoordinates(pickup.coordinates);
+        if (!coords) {
+          logger.warn(`⚠️ Skipping available pickup ${pickup.id} — invalid coordinates:`, pickup.coordinates);
         }
-        
         return {
           id: pickup.id,
           type: 'request',
           status: pickup.status,
           location: pickup.location || 'Unknown location',
-          customer_name: `Customer #${pickup.id}`, // Generate customer name since it doesn't exist
-          latitude: coords?.lat || 0,
-          longitude: coords?.lng || 0,
+          customer_name: `Customer #${pickup.id}`,
+          latitude: coords?.lat ?? null,
+          longitude: coords?.lng ?? null,
           fee: pickup.fee || 0,
           waste_type: pickup.waste_type || 'general', // Use 'type' field
           special_instructions: pickup.special_instructions || '',
           bag_count: pickup.bag_count || 1,
           created_at: pickup.created_at
         };
-      });
+      }).filter(r => r.latitude !== null && r.longitude !== null);
 
       return {
         success: true,
@@ -488,15 +537,7 @@ export class AnalyticsService {
    * Format pickup data for consistent output
    */
   _formatPickupData(pickup) {
-    // Parse coordinates if they're stored as JSON string
-    let coords = pickup.coordinates;
-    if (typeof coords === 'string') {
-      try {
-        coords = JSON.parse(coords);
-      } catch (e) {
-        coords = [0, 0];
-      }
-    }
+    const coords = parseCoordinates(pickup.coordinates);
     
     return {
       id: pickup.id,
@@ -504,8 +545,8 @@ export class AnalyticsService {
       status: pickup.status,
       location: pickup.location || 'Unknown location',
       customer_name: `Customer #${pickup.id}`,
-      latitude: Array.isArray(coords) ? coords[0] : coords?.lat || 0,
-      longitude: Array.isArray(coords) ? coords[1] : coords?.lng || 0,
+      latitude: coords?.lat ?? null,
+      longitude: coords?.lng ?? null,
       fee: pickup.fee || 0,
       waste_type: pickup.waste_type || 'general',
       special_instructions: pickup.special_instructions || '',

@@ -116,19 +116,21 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
   // Using SVG-based marker icons imported from markerIcons.js
   // These replace the previous PNG-based icons that were missing
   
-  // Initialize offline map storage
+  // Initialize offline map storage and track real connectivity
   useEffect(() => {
     // Initialize offline storage
     initOfflineMapStorage();
     logger.debug('Initializing offline map storage');
     
-    // Check if we have cached tiles
+    // Set offline mode based on ACTUAL network status, not cached tiles
+    setIsOfflineMode(!navigator.onLine);
+    
+    // Check if we have cached tiles (informational only, does NOT control offline mode)
     const checkCachedTiles = async () => {
       try {
         const keys = await localforage.keys();
         logger.debug('Cached tiles found:', keys.length);
         setCachedTileCount(keys.length);
-        setIsOfflineMode(keys.length > 0);
       } catch (error) {
         logger.error('Error checking cached tiles:', error);
       }
@@ -136,8 +138,23 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
     
     checkCachedTiles();
     
-    // Clean up any existing tile layers when component unmounts
+    // Listen for real connectivity changes
+    const handleOnline = () => {
+      logger.info('🌐 RouteOptimizer: Back online - switching to online tiles');
+      setIsOfflineMode(false);
+    };
+    const handleOffline = () => {
+      logger.info('📵 RouteOptimizer: Gone offline - switching to cached tiles');
+      setIsOfflineMode(true);
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    // Clean up any existing tile layers and event listeners when component unmounts
     return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
       if (mapRef.current && offlineTileLayerRef.current) {
         logger.debug('Cleaning up tile layers');
         if (mapRef.current.hasLayer(offlineTileLayerRef.current)) {
@@ -165,14 +182,21 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
       return;
     }
     
-    // Filter only accepted/in-progress assignments
+    // Helper: reject stops with missing/zero coordinates (0,0 = Gulf of Guinea)
+    const hasValidCoords = (item) =>
+      item &&
+      typeof item.latitude === 'number' && typeof item.longitude === 'number' &&
+      !(item.latitude === 0 && item.longitude === 0) &&
+      !isNaN(item.latitude) && !isNaN(item.longitude);
+
+    // Filter only accepted/in-progress assignments with valid coordinates
     const acceptedAssignments = assignments.filter(assignment => 
-      assignment && ['accepted', 'en_route', 'arrived'].includes(assignment.status)
+      assignment && ['accepted', 'en_route', 'arrived'].includes(assignment.status) && hasValidCoords(assignment)
     );
     
-    // Filter only pending requests (those that need attention)
+    // Filter only pending requests with valid coordinates
     const pendingRequests = requests?.filter(request => 
-      request.status === 'pending' || request.status === 'new'
+      (request.status === 'pending' || request.status === 'new') && hasValidCoords(request)
     ) || [];
     
     logger.debug('Accepted assignments:', acceptedAssignments.length);
@@ -501,7 +525,7 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
       return tileLayer.getTileCount();
     }).then((count) => {
       setCachedTileCount(count);
-      setIsOfflineMode(count > 0);
+      // Don't set isOfflineMode here - it's controlled by actual network status
       setIsSavingTiles(false);
       
       // Force a refresh of the map
@@ -718,7 +742,7 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
         <div style={{ height: '100%', width: '100%', position: 'absolute', top: 0, left: 0, backgroundColor: '#f0f0f0', borderRadius: '0.5rem', overflow: 'hidden' }}>
           {!isLoading && (
             <MapContainer 
-              key={`map-${userLocation?.latitude || 0}-${userLocation?.longitude || 0}-${isOfflineMode ? 'offline' : 'online'}-${Date.now()}`}
+              key={`map-${userLocation?.latitude || 0}-${userLocation?.longitude || 0}-${isOfflineMode ? 'offline' : 'online'}`}
               center={mapCenter} 
               zoom={mapZoom} 
               style={{ height: '100%', width: '100%' }}
