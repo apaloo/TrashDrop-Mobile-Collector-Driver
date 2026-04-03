@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { authService } from '../services/supabase';
 import { logger } from '../utils/logger';
+import { SUPPORTED_LANGUAGES } from '../config/languageConfig';
 
 const ProfilePage = () => {
   const { user: authUser } = useAuth();
+  const { language, setLanguage } = useLanguage();
   const [activeTab, setActiveTab] = useState('personal');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -43,6 +46,7 @@ const ProfilePage = () => {
           id_type: profile.id_type,
           joined_date: profile.created_at || new Date().toISOString(),
           last_active: new Date().toISOString(),
+          preferred_language: profile.preferred_language || language,
           vehicle: {
             type: profile.vehicle_type,
             license_plate: profile.license_plate,
@@ -57,6 +61,12 @@ const ProfilePage = () => {
         };
         
         setUser(userData);
+        
+        // Sync stored language preference into LanguageContext
+        if (profile.preferred_language && profile.preferred_language !== language) {
+          setLanguage(profile.preferred_language);
+        }
+        
         logger.debug('✅ Profile loaded successfully:', userData);
       } catch (err) {
         logger.error('❌ Error loading profile:', err);
@@ -101,11 +111,40 @@ const ProfilePage = () => {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setUser(editForm);
     setIsEditing(false);
-    // In real app: update user info in Supabase
+    
+    // Sync language preference to context + localStorage
+    if (editForm.preferred_language) {
+      setLanguage(editForm.preferred_language);
+    }
+    
+    // Persist to Supabase
+    if (authUser?.id) {
+      try {
+        const updateData = {
+          first_name: editForm.first_name,
+          last_name: editForm.last_name,
+          phone: editForm.phone,
+          region: editForm.region,
+          preferred_language: editForm.preferred_language
+        };
+        const result = await authService.updateUserProfile(authUser.id, updateData);
+        
+        // If preferred_language column doesn't exist yet, retry without it
+        if (!result.success && result.error?.includes('preferred_language')) {
+          logger.warn('⚠️ preferred_language column not found, saving without it');
+          const { preferred_language, ...dataWithoutLang } = updateData;
+          await authService.updateUserProfile(authUser.id, dataWithoutLang);
+        }
+        
+        logger.info('✅ Profile updated in Supabase');
+      } catch (err) {
+        logger.error('❌ Failed to update profile:', err);
+      }
+    }
   };
 
   // Show loading state
@@ -234,6 +273,42 @@ const ProfilePage = () => {
                   />
                 </div>
                 
+                <div className="mb-3">
+                  <label className="block text-sm font-medium mb-1">🗣️ Voice Navigation Language</label>
+                  <p className="text-xs text-gray-500 mb-2">Choose the language you hear during navigation</p>
+                  <div className="space-y-1.5">
+                    {SUPPORTED_LANGUAGES.map((lang) => (
+                      <label
+                        key={lang.code}
+                        className={`flex items-center p-2.5 rounded-lg border-2 cursor-pointer transition-colors ${
+                          editForm.preferred_language === lang.code
+                            ? 'border-primary bg-primary/10'
+                            : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="preferred_language"
+                          value={lang.code}
+                          checked={editForm.preferred_language === lang.code}
+                          onChange={handleChange}
+                          className="sr-only"
+                        />
+                        <span className="text-xl mr-2">{lang.flag}</span>
+                        <div className="flex-1">
+                          <span className="font-semibold text-sm">{lang.nativeLabel}</span>
+                          <span className="text-xs text-gray-500 ml-1">({lang.label})</span>
+                        </div>
+                        {editForm.preferred_language === lang.code && (
+                          <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                
                 <div className="flex space-x-2 mt-4">
                   <button 
                     type="submit"
@@ -263,6 +338,16 @@ const ProfilePage = () => {
                 <div>
                   <p className="text-sm text-gray-500">Region</p>
                   <p>{user.region}</p>
+                </div>
+                
+                <div>
+                  <p className="text-sm text-gray-500">🗣️ Voice Navigation Language</p>
+                  <p>
+                    {(() => {
+                      const lang = SUPPORTED_LANGUAGES.find(l => l.code === user.preferred_language);
+                      return lang ? `${lang.flag} ${lang.nativeLabel} (${lang.label})` : 'English';
+                    })()}
+                  </p>
                 </div>
                 
                 <div>

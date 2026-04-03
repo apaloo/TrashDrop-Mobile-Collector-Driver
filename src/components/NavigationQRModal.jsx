@@ -10,6 +10,8 @@ import './navigation-modal.css'; // Custom CSS for better readability
 import QRCodeScanner from './QRCodeScanner'; // Import our existing QR scanner component
 import ErrorBoundary from './ErrorBoundary'; // Import error boundary
 import { logger } from '../utils/logger';
+import { useLanguage } from '../context/LanguageContext';
+import { getPhrase, translateNavInstruction } from '../locales/navigationPhrases';
 import useWakeLock from '../hooks/useWakeLock';
 import { supabase } from '../services/supabase';
 import {
@@ -101,6 +103,7 @@ const NavigationQRModal = ({
   const directionsService = useRef(null);
   const directionsRenderer = useRef(null);
   const hasArrivedRef = useRef(false); // Ref to track arrival state inside useEffect closures
+  const { language: preferredLang, bcp47 } = useLanguage();
   const speechSynthesis = useRef(window.speechSynthesis);
   const currentUtterance = useRef(null);
   const scanFeedbackTimer = useRef(null); // Timer for auto-dismissing scan feedback overlay
@@ -194,7 +197,7 @@ const NavigationQRModal = ({
     }, 3000);
   }, []);
 
-  // Voice announcement function using Web Speech API
+  // Voice announcement function using Web Speech API (language-aware)
   const speak = useCallback((text, priority = 'normal') => {
     if (!speechSynthesis.current) {
       logger.warn('Speech synthesis not available');
@@ -207,10 +210,24 @@ const NavigationQRModal = ({
     }
     
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.0;
+    utterance.rate = 0.9;
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
-    utterance.lang = 'en-US';
+    utterance.lang = bcp47;
+    
+    // Try to find a matching voice for the language
+    const voices = speechSynthesis.current.getVoices();
+    const langPrefix = bcp47.split('-')[0];
+    const preferredVoice = voices.find(v =>
+      v.lang.startsWith(langPrefix) && (v.name.includes('Google') || v.name.includes('Enhanced'))
+    ) || voices.find(v => v.lang.startsWith(langPrefix))
+      || voices.find(v =>
+        v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Enhanced'))
+      ) || voices.find(v => v.lang.startsWith('en'));
+    
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
     
     utterance.onend = () => {
       currentUtterance.current = null;
@@ -223,8 +240,8 @@ const NavigationQRModal = ({
     
     currentUtterance.current = utterance;
     speechSynthesis.current.speak(utterance);
-    logger.debug(`🔊 Speaking: "${text}"`);
-  }, []);
+    logger.debug(`🔊 Speaking [${preferredLang}]: "${text}"`);
+  }, [bcp47, preferredLang]);
 
   // Stop voice announcements
   const stopSpeaking = useCallback(() => {
@@ -349,9 +366,11 @@ const NavigationQRModal = ({
       setIsNavigating(true);
       setNavigationStarted(true);
       
-      // Announce first instruction
+      // Announce first instruction in collector's language
       if (steps.length > 0) {
-        speak(`Starting navigation to ${destinationName}. ${steps[0].instruction}`, 'high');
+        const startMsg = getPhrase('starting_navigation', preferredLang, { destination: destinationName });
+        const firstStep = translateNavInstruction(steps[0], preferredLang);
+        speak(`${startMsg}. ${firstStep}`, 'high');
       }
       
       // Display route on map if available
@@ -381,7 +400,7 @@ const NavigationQRModal = ({
     } finally {
       setIsLoading(false);
     }
-  }, [userLocation, destination, destinationName, getNavigationRoute, showToast, speak]);
+  }, [userLocation, destination, destinationName, getNavigationRoute, showToast, speak, preferredLang]);
 
   // Stop voice navigation
   const stopVoiceNavigation = useCallback(() => {
@@ -431,17 +450,18 @@ const NavigationQRModal = ({
       setCurrentStep(prev => prev + 1);
       logger.debug(`📍 Advanced to step ${currentStep + 1}/${navigationInstructions.length}`);
       
-      // Announce next instruction via voice
+      // Announce next instruction via voice in collector's language
       const nextInstruction = navigationInstructions[currentStep + 1];
       if (nextInstruction) {
-        speak(nextInstruction.instruction, 'high');
+        const translatedStep = translateNavInstruction(nextInstruction, preferredLang);
+        speak(translatedStep, 'high');
         showToast({
-          message: nextInstruction.instruction,
+          message: translatedStep,
           type: 'info'
         });
       }
     }
-  }, [isNavigating, navigationInstructions, userLocation, currentStep, getDistanceToNextStep, speak, showToast]);
+  }, [isNavigating, navigationInstructions, userLocation, currentStep, getDistanceToNextStep, speak, showToast, preferredLang]);
 
   // Voice announcement for arrival within geofence
   const announceArrival = useCallback(() => {
@@ -454,8 +474,9 @@ const NavigationQRModal = ({
       navigator.vibrate([200, 100, 200, 100, 200]); // Triple vibration pattern
     }
     
-    // Voice announcement
-    speak(`You have arrived at ${destinationName}. You can now scan the QR code.`, 'high');
+    // Voice announcement in collector's language
+    const arrivalMsg = getPhrase('arrival_pickup', preferredLang, { destination: destinationName });
+    speak(arrivalMsg, 'high');
     
     // Stop voice navigation if active
     if (isNavigating) {

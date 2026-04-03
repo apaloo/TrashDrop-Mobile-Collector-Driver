@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatPhoneNumber, authService } from '../services/supabase';
 import { logger } from '../utils/logger';
+import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '../config/languageConfig';
 
 const SignupPage = () => {
   const navigate = useNavigate();
@@ -27,6 +28,7 @@ const SignupPage = () => {
     last_name: '',
     phone: '',
     region: '',
+    preferred_language: DEFAULT_LANGUAGE,
     otp: '',
     
     // ID Verification
@@ -237,6 +239,7 @@ const SignupPage = () => {
         last_name: formData.last_name,
         phone: formData.phone,
         region: formData.region,
+        preferred_language: formData.preferred_language,
         id_type: formData.id_type,
         ...photoUrls,
         vehicle_type: formData.vehicle_type,
@@ -605,6 +608,45 @@ const SignupPage = () => {
                 <option value="Central">Central</option>
                 <option value="Northern">Northern</option>
               </select>
+            </div>
+            
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-200">🗣️ Voice Navigation Language</label>
+              <p className="text-sm text-gray-400 mb-3">
+                Choose the language you want to hear during navigation
+              </p>
+              <div className="space-y-2">
+                {SUPPORTED_LANGUAGES.map((lang) => (
+                  <label
+                    key={lang.code}
+                    className={`flex items-center p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+                      formData.preferred_language === lang.code
+                        ? 'border-primary bg-primary/10 text-white'
+                        : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-400'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="preferred_language"
+                      value={lang.code}
+                      checked={formData.preferred_language === lang.code}
+                      onChange={handleChange}
+                      className="sr-only"
+                    />
+                    <span className="text-2xl mr-3">{lang.flag}</span>
+                    <div className="flex-1">
+                      <span className="font-bold text-base">{lang.nativeLabel}</span>
+                      <span className="text-sm text-gray-400 ml-2">({lang.label})</span>
+                      <p className="text-xs text-gray-500">{lang.description}</p>
+                    </div>
+                    {formData.preferred_language === lang.code && (
+                      <svg className="w-5 h-5 text-primary" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </label>
+                ))}
+              </div>
             </div>
             
             <div className="flex space-x-2 mt-4">

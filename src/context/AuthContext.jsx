@@ -285,6 +285,7 @@ export const AuthProvider = ({ children }) => {
         last_name: userData.last_name,
         phone: userData.phone,
         region: userData.region,
+        preferred_language: userData.preferred_language || 'tw',
         id_type: userData.id_type,
         id_front_photo_url: userData.id_front_photo_url,
         id_back_photo_url: userData.id_back_photo_url,
@@ -297,8 +298,16 @@ export const AuthProvider = ({ children }) => {
         role: userData.role?.toLowerCase() || 'driver' // Normalize to lowercase
       };
       
-      const { success: profileSuccess, error: profileError } = 
+      let { success: profileSuccess, error: profileError } = 
         await authService.createUserProfile(user.id, profileData);
+      
+      // If preferred_language column doesn't exist yet, retry without it
+      if (!profileSuccess && profileError?.includes('preferred_language')) {
+        logger.warn('⚠️ preferred_language column not found, creating profile without it');
+        const { preferred_language, ...dataWithoutLang } = profileData;
+        ({ success: profileSuccess, error: profileError } = 
+          await authService.createUserProfile(user.id, dataWithoutLang));
+      }
       
       if (!profileSuccess) {
         throw new Error(profileError || 'Failed to create user profile');

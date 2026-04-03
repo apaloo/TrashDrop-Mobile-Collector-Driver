@@ -5,6 +5,8 @@
  */
 
 import { logger } from '../utils/logger';
+import { getSavedLanguage, getBcp47 } from '../config/languageConfig';
+import { getPhrase, translateNavInstruction } from '../locales/navigationPhrases';
 
 class AudioAlertService {
   constructor() {
@@ -13,6 +15,7 @@ class AudioAlertService {
     this.arrivalSound = null;
     this.alertSound = null;
     this.isSpeaking = false;
+    this.currentLanguage = getSavedLanguage();
     
     // TTS settings for driving
     this.ttsSettings = {
@@ -205,6 +208,15 @@ class AudioAlertService {
   }
 
   /**
+   * Set the active language for voice navigation
+   * @param {string} langCode - Language code (e.g. 'tw', 'ee', 'dag', 'en')
+   */
+  setLanguage(langCode) {
+    this.currentLanguage = langCode;
+    logger.info(`🌍 Audio service language set to: ${langCode}`);
+  }
+
+  /**
    * Speak text using Text-to-Speech
    * @param {string} text - Text to speak
    * @param {Object} options - TTS options
@@ -229,11 +241,20 @@ class AudioAlertService {
       utterance.pitch = options.pitch || this.ttsSettings.pitch;
       utterance.volume = options.volume || this.ttsSettings.volume;
       
-      // Try to use a clear voice
+      // Set language from current preference
+      const lang = options.lang || this.currentLanguage || 'en';
+      const bcp47 = getBcp47(lang);
+      utterance.lang = bcp47;
+      
+      // Try to find a matching voice for the language
       const voices = window.speechSynthesis.getVoices();
-      const preferredVoice = voices.find(v => 
-        v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Enhanced'))
-      ) || voices.find(v => v.lang.startsWith('en'));
+      const langPrefix = bcp47.split('-')[0]; // e.g. 'ak' from 'ak-GH'
+      const preferredVoice = voices.find(v =>
+        v.lang.startsWith(langPrefix) && (v.name.includes('Google') || v.name.includes('Enhanced'))
+      ) || voices.find(v => v.lang.startsWith(langPrefix))
+        || voices.find(v =>
+          v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Enhanced'))
+        ) || voices.find(v => v.lang.startsWith('en'));
       
       if (preferredVoice) {
         utterance.voice = preferredVoice;
@@ -251,8 +272,21 @@ class AudioAlertService {
       };
 
       window.speechSynthesis.speak(utterance);
-      logger.info('🔊 Speaking:', text);
+      logger.info(`🔊 Speaking [${lang}]:`, text);
     });
+  }
+
+  /**
+   * Speak a translated navigation phrase
+   * @param {string} phraseKey - Key from navigationPhrases (e.g. 'turn_left', 'you_have_arrived')
+   * @param {Object} vars - Variable substitutions (e.g. { destination: 'Madina Market' })
+   * @param {Object} options - TTS options
+   * @returns {Promise<boolean>}
+   */
+  speakPhrase(phraseKey, vars = {}, options = {}) {
+    const lang = options.lang || this.currentLanguage || 'en';
+    const text = getPhrase(phraseKey, lang, vars);
+    return this.speak(text, { ...options, lang });
   }
 
   /**
@@ -307,8 +341,7 @@ class AudioAlertService {
     // Voice announcement (after brief delay for sound)
     if (speak) {
       setTimeout(async () => {
-        const message = `You have arrived at ${locationName}. Please proceed with pickup.`;
-        await this.speak(message, {
+        await this.speakPhrase('you_have_arrived', { destination: locationName }, {
           rate: 0.8,  // Even slower for arrival
           pitch: 1.0,
           volume: 1.0
@@ -376,24 +409,35 @@ class AudioAlertService {
 
   /**
    * Announce navigation instruction (for turn-by-turn)
-   * @param {string} instruction - Navigation instruction
+   * @param {string|Object} instruction - Navigation instruction text or step object
    * @param {string} distance - Distance to maneuver
    */
   announceNavigation(instruction, distance) {
     if (!instruction) return;
 
-    // Clean HTML tags from instruction
-    const cleanText = instruction.replace(/<[^>]*>/g, '');
+    const lang = this.currentLanguage || 'en';
+
+    // If instruction is a step object from Google Directions API, use localized translation
+    if (typeof instruction === 'object' && instruction.maneuver !== undefined) {
+      // If a separate distance was provided (e.g. proximity warning), override the step's distance
+      const stepWithDistance = distance ? { ...instruction, distance } : instruction;
+      const translated = translateNavInstruction(stepWithDistance, lang);
+      this.speak(translated, { ...this.ttsSettings, lang });
+      return;
+    }
+
+    // Clean HTML tags from raw instruction text
+    const cleanText = (typeof instruction === 'string' ? instruction : '').replace(/<[^>]*>/g, '');
     
     // Build announcement
     let message = '';
     if (distance && distance !== '0 m' && distance !== '0 meters') {
-      message = `In ${distance}, ${cleanText}`;
+      message = getPhrase('in_distance', lang, { distance, instruction: cleanText });
     } else {
       message = cleanText;
     }
 
-    this.speak(message, this.ttsSettings);
+    this.speak(message, { ...this.ttsSettings, lang });
   }
 
   /**

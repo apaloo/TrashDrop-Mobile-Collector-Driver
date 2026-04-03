@@ -10,6 +10,7 @@ import { OfflineProvider } from './contexts/OfflineContext';
 import { CurrencyProvider } from './context/CurrencyContext';
 import { FilterProvider } from './context/FilterContext';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
+import { LanguageProvider } from './context/LanguageContext';
 
 // Services
 import { audioAlertService } from './services/audioAlertService';
@@ -118,6 +119,7 @@ function App() {
   
   return (
     <AuthProvider>
+      <LanguageProvider>
       <OfflineProvider>
         <CurrencyProvider>
           <FilterProvider>
@@ -241,6 +243,7 @@ function App() {
           </FilterProvider>
         </CurrencyProvider>
       </OfflineProvider>
+      </LanguageProvider>
     </AuthProvider>
   );
 }

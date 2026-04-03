@@ -1456,7 +1456,7 @@ const GoogleMapsNavigation = ({
               // Announce next instruction
               const nextStep = navigationSteps[nextIndex];
               if (nextStep) {
-                announceInstruction(nextStep.instruction, nextStep.distance);
+                announceInstruction(nextStep, nextStep.distance);
               }
             } else {
               // Reached final destination
@@ -1475,7 +1475,7 @@ const GoogleMapsNavigation = ({
           // Voice announcement when 200m away from turn
           else if (distanceToNextPoint < 200 && distanceToNextPoint > 150) {
             const distanceText = `${Math.round(distanceToNextPoint)} meters`;
-            announceInstruction(currentStep.instruction, distanceText);
+            announceInstruction(currentStep, distanceText);
           }
         }
       },
@@ -1524,7 +1524,7 @@ const GoogleMapsNavigation = ({
             // Announce first instruction
             const firstStep = navigationSteps[0];
             if (firstStep) {
-              announceInstruction(firstStep.instruction, firstStep.distance);
+              announceInstruction(firstStep, firstStep.distance);
             }
           } else {
             logger.warn('⚠️ No navigation steps available');

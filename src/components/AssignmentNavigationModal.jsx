@@ -4,6 +4,8 @@ import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
 import Toast from './Toast';
 import { debounce } from 'lodash';
 import { logger } from '../utils/logger';
+import { useLanguage } from '../context/LanguageContext';
+import { getPhrase } from '../locales/navigationPhrases';
 import useWakeLock from '../hooks/useWakeLock';
 import { useNavigationPersistence } from '../hooks/useNavigationPersistence';
 import {
@@ -26,6 +28,7 @@ const AssignmentNavigationModal = ({
   onArrival
 }) => {
   const { saveNavigationState, restoreNavigationState, clearNavigationState } = useNavigationPersistence();
+  const { language: preferredLang } = useLanguage();
   const [userLocation, setUserLocation] = useState(null);
   const [distanceToDestination, setDistanceToDestination] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -95,7 +98,7 @@ const AssignmentNavigationModal = ({
     }
     
     showToast({
-      message: 'Location confirmed! You can now start cleaning.',
+      message: getPhrase('arrival_assignment', preferredLang, { destination: assignmentTitle }),
       type: 'success'
     });
   }, [distanceToDestination, isNavigating, showToast]);
@@ -441,7 +444,7 @@ const AssignmentNavigationModal = ({
             }
             
             showToast({
-              message: 'You have arrived! You can now start cleaning.',
+              message: getPhrase('arrival_assignment', preferredLang, { destination: assignmentTitle }),
               type: 'success'
             });
           } else if (withinGeofence && (usingFallbackDestination || usingFallbackUserLocation)) {

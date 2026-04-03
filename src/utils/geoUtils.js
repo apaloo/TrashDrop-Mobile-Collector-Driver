@@ -292,6 +292,11 @@ export const getLocationWithRetry = async (maxRetries = 3, delay = 2000) => {
       logger.debug(`🔄 Location attempt ${i + 1}/${maxRetries}`);
       const location = await getCurrentLocation();
       
+      // getCurrentLocation can return null when GPS is unavailable
+      if (!location) {
+        throw new Error('getCurrentLocation returned null');
+      }
+      
       // If we got a non-fallback location, return it immediately
       if (!location.isFallback) {
         logger.debug(`✅ Got location from ${location.source}`);
