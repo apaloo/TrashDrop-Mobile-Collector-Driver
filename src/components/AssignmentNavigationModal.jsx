@@ -5,7 +5,7 @@ import Toast from './Toast';
 import { debounce } from 'lodash';
 import { logger } from '../utils/logger';
 import { useLanguage } from '../context/LanguageContext';
-import { getPhrase } from '../locales/navigationPhrases';
+import { getPhrase, translateNavInstruction } from '../locales/navigationPhrases';
 import useWakeLock from '../hooks/useWakeLock';
 import { useNavigationPersistence } from '../hooks/useNavigationPersistence';
 import {
@@ -28,7 +28,7 @@ const AssignmentNavigationModal = ({
   onArrival
 }) => {
   const { saveNavigationState, restoreNavigationState, clearNavigationState } = useNavigationPersistence();
-  const { language: preferredLang } = useLanguage();
+  const { language: preferredLang, t, translateStep } = useLanguage();
   const [userLocation, setUserLocation] = useState(null);
   const [distanceToDestination, setDistanceToDestination] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -314,20 +314,20 @@ const AssignmentNavigationModal = ({
       }
       
       showToast({
-        message: `Navigation started! ${steps.length} steps to destination.`,
+        message: getPhrase('route_calculated', preferredLang, { steps: steps.length }),
         type: 'success'
       });
       
     } catch (error) {
       logger.error('❌ Navigation setup failed:', error);
       showToast({
-        message: 'Failed to start navigation. Please try again.',
+        message: getPhrase('navigation_failed', preferredLang),
         type: 'error'
       });
     } finally {
       setIsLoading(false);
     }
-  }, [userLocation, destination, parseDestination, getNavigationRoute, showToast]);
+  }, [userLocation, destination, parseDestination, getNavigationRoute, showToast, preferredLang]);
 
   // Stop navigation
   const stopNavigation = useCallback(() => {
@@ -343,10 +343,10 @@ const AssignmentNavigationModal = ({
     
     logger.debug('🛑 Navigation stopped');
     showToast({
-      message: 'Navigation stopped',
+      message: getPhrase('navigation_stopped', preferredLang),
       type: 'info'
     });
-  }, [showToast]);
+  }, [showToast, preferredLang]);
 
   // Calculate distance to next step
   const getDistanceToNextStep = useCallback(() => {
@@ -369,16 +369,17 @@ const AssignmentNavigationModal = ({
       setCurrentStep(prev => prev + 1);
       logger.debug(`📍 Advanced to step ${currentStep + 1}/${navigationInstructions.length}`);
       
-      // Announce next instruction
+      // Announce next instruction in collector's language
       const nextInstruction = navigationInstructions[currentStep + 1];
       if (nextInstruction) {
+        const translated = translateNavInstruction(nextInstruction, preferredLang);
         showToast({
-          message: nextInstruction.instruction,
+          message: translated,
           type: 'info'
         });
       }
     }
-  }, [isNavigating, navigationInstructions, userLocation, currentStep, getDistanceToNextStep, showToast]);
+  }, [isNavigating, navigationInstructions, userLocation, currentStep, getDistanceToNextStep, showToast, preferredLang]);
 
   // Location update with arrival detection
   const updateLocation = useCallback(
@@ -719,7 +720,7 @@ const AssignmentNavigationModal = ({
                     </div>
                     <div className="flex-1">
                       <p className="text-gray-800 font-medium">
-                        {navigationInstructions[currentStep]?.instruction}
+                        {navigationInstructions[currentStep] ? translateNavInstruction(navigationInstructions[currentStep], preferredLang) : ''}
                       </p>
                       {getDistanceToNextStep() && (
                         <p className="text-sm text-gray-500 mt-1">
@@ -733,7 +734,7 @@ const AssignmentNavigationModal = ({
                 {/* Next instruction preview */}
                 {currentStep < navigationInstructions.length - 1 && (
                   <div className="mt-3 text-xs text-gray-500">
-                    <span className="font-medium">Next:</span> {navigationInstructions[currentStep + 1]?.instruction}
+                    <span className="font-medium">Next:</span> {navigationInstructions[currentStep + 1] ? translateNavInstruction(navigationInstructions[currentStep + 1], preferredLang) : ''}
                   </div>
                 )}
               </div>
@@ -851,7 +852,7 @@ const AssignmentNavigationModal = ({
                     setIsNavigating(true);
                     navigationControlRef.current.startNavigation();
                     showToast({
-                      message: 'Starting hands-free navigation with voice guidance...',
+                      message: t('start_navigation'),
                       type: 'success'
                     });
                   } else {

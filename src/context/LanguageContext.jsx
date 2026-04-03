@@ -25,11 +25,17 @@ export const useLanguage = () => {
 export const LanguageProvider = ({ children }) => {
   const [language, setLanguageState] = useState(getSavedLanguage);
 
+  // Sync audioAlertService with the initial language on mount
+  useEffect(() => {
+    audioAlertService.setLanguage(language);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Sync from localStorage on mount (in case another tab changed it)
   useEffect(() => {
     const handleStorage = (e) => {
       if (e.key === LANGUAGE_STORAGE_KEY && e.newValue) {
         setLanguageState(e.newValue);
+        audioAlertService.setLanguage(e.newValue);
       }
     };
     window.addEventListener('storage', handleStorage);
