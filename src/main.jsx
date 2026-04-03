@@ -1,78 +1,20 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { registerSW } from 'virtual:pwa-register'
 import { logger } from './utils/logger'
 
 // CRITICAL: Performance logging and aggressive startup optimization
 const startupStartTime = Date.now();
-const criticalPathStartTime = Date.now();
 logger.debug('⚡ main.jsx loading started at:', startupStartTime);
-
-// CRITICAL: Mark app as ready for immediate interaction
-if (typeof window !== 'undefined') {
-  // Tell browser the app is interactive immediately
-  window.dispatchEvent(new Event('app-ready'));
-  
-  // Add performance markers
-  if (window.performance && window.performance.mark) {
-    window.performance.mark('app-startup-begin');
-  }
-}
 
 // CSS styling - loaded synchronously for immediate rendering
 import './index.css'
 import './styles/mapStyles.css' // Global map styles for z-index management
 import App from './App.jsx' // Using real App with proper credentials
 import ErrorBoundary from './components/ErrorBoundary.jsx'
-// import MockAuthContextApp from './MockAuthContextApp.jsx' // Mock auth no longer needed
-// import AuthContextApp from './AuthContextApp.jsx' // Testing component
-// import RouterApp from './RouterApp.jsx' // Testing component
-// import MinimalApp from './MinimalApp.jsx' // Testing component
-// import SimpleApp from './SimpleApp.jsx' // Testing component
-
-// Register service worker for PWA functionality - IMMEDIATE for updates
-const updateSW = registerSW({
-  immediate: true,
-  onNeedRefresh() {
-    // CRITICAL: Force update for blank screen fix
-    logger.info('🔄 New version available with critical fixes! Updating...');
-    
-    // Auto-reload to get fixes
-    updateSW(true).then(() => {
-      window.location.reload();
-    });
-  },
-  onOfflineReady() {
-    logger.info('✅ App ready to work offline')
-  },
-  onRegisteredSW(swUrl, registration) {
-    logger.info('✅ Service Worker registered:', swUrl);
-    
-    // Check for updates every 30 seconds for the first 5 minutes
-    // This ensures users get the blank screen fix quickly
-    let checkCount = 0;
-    const maxChecks = 10; // 10 checks * 30s = 5 minutes
-    
-    const interval = setInterval(() => {
-      checkCount++;
-      if (checkCount >= maxChecks) {
-        clearInterval(interval);
-        return;
-      }
-      
-      registration?.update().then(() => {
-        logger.debug(`🔄 SW update check ${checkCount}/${maxChecks}`);
-      });
-    }, 30000); // Every 30 seconds
-  },
-  onRegisterError(error) {
-    logger.error('❌ Service Worker registration error:', error);
-  }
-});
 
 const renderStartTime = Date.now();
 logger.debug('⚡ Starting React render at:', renderStartTime);
-logger.debug(`⚡ Critical Path completed in ${renderStartTime - criticalPathStartTime}ms`);
+logger.debug(`⚡ Critical Path completed in ${renderStartTime - startupStartTime}ms`);
 
 // CRITICAL: Immediate render without waiting
 const rootElement = document.getElementById('root');
@@ -127,4 +69,37 @@ if (typeof window !== 'undefined') {
     // Dispatch event that app is fully interactive
     window.dispatchEvent(new Event('app-interactive'));
   });
+  
+  // DEFERRED: Register Service Worker AFTER first paint (non-blocking)
+  setTimeout(async () => {
+    try {
+      const { registerSW } = await import('virtual:pwa-register');
+      const updateSW = registerSW({
+        immediate: true,
+        onNeedRefresh() {
+          logger.info('🔄 New version available! Updating...');
+          updateSW(true).then(() => window.location.reload());
+        },
+        onOfflineReady() {
+          logger.info('✅ App ready to work offline');
+        },
+        onRegisteredSW(swUrl, registration) {
+          logger.info('✅ Service Worker registered:', swUrl);
+          let checkCount = 0;
+          const interval = setInterval(() => {
+            checkCount++;
+            if (checkCount >= 10) { clearInterval(interval); return; }
+            registration?.update().then(() => {
+              logger.debug(`🔄 SW update check ${checkCount}/10`);
+            });
+          }, 30000);
+        },
+        onRegisterError(error) {
+          logger.error('❌ Service Worker registration error:', error);
+        }
+      });
+    } catch (err) {
+      logger.warn('⚠️ Service Worker registration deferred or failed:', err);
+    }
+  }, 500);
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
 import { AssignmentStatus } from '../utils/types';
@@ -9,6 +9,7 @@ import ReportModal from '../components/ReportModal';
 import AssignmentNavigationModal from '../components/AssignmentNavigationModal';
 import { supabase, authService } from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useAppState } from '../context/AppStateContext';
 import { logger } from '../utils/logger';
 import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
 import { ASSIGNMENT_COMPLETION_RADIUS_KM, GEOFENCE_DESCRIPTIONS, kmToMeters } from '../config/geofenceConfig';
@@ -258,20 +259,81 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
   );
 };
 
+// CRITICAL: Assignment navigation modal state persistence keys
+const ASSIGN_NAV_MODAL_STATE_KEY = 'trashdrop_assign_nav_modal_state';
+const ASSIGN_NAV_MODAL_TIME_KEY = 'trashdrop_assign_nav_modal_time';
+const ASSIGN_NAV_MODAL_EXPIRY_MS = 2 * 60 * 60 * 1000; // 2 hours
+const ASSIGN_ACTIVE_TAB_KEY = 'trashdrop_assign_active_tab';
+
+// Helper: Save assignment navigation modal state synchronously
+const saveAssignNavModalState = (state) => {
+  try {
+    if (state && state.isOpen) {
+      localStorage.setItem(ASSIGN_NAV_MODAL_STATE_KEY, JSON.stringify(state));
+      localStorage.setItem(ASSIGN_NAV_MODAL_TIME_KEY, Date.now().toString());
+    } else {
+      localStorage.removeItem(ASSIGN_NAV_MODAL_STATE_KEY);
+      localStorage.removeItem(ASSIGN_NAV_MODAL_TIME_KEY);
+    }
+  } catch (e) {
+    // localStorage might be full, ignore
+  }
+};
+
+// Helper: Load assignment navigation modal state synchronously
+const loadAssignNavModalState = () => {
+  try {
+    const stateStr = localStorage.getItem(ASSIGN_NAV_MODAL_STATE_KEY);
+    const timeStr = localStorage.getItem(ASSIGN_NAV_MODAL_TIME_KEY);
+    
+    if (!stateStr || !timeStr) return null;
+    
+    // Check expiry (2 hours)
+    const savedTime = parseInt(timeStr, 10);
+    if (Date.now() - savedTime > ASSIGN_NAV_MODAL_EXPIRY_MS) {
+      localStorage.removeItem(ASSIGN_NAV_MODAL_STATE_KEY);
+      localStorage.removeItem(ASSIGN_NAV_MODAL_TIME_KEY);
+      return null;
+    }
+    
+    return JSON.parse(stateStr);
+  } catch (e) {
+    return null;
+  }
+};
+
+// Helper: Save/load active tab
+const saveAssignActiveTab = (tab) => {
+  try { localStorage.setItem(ASSIGN_ACTIVE_TAB_KEY, tab); } catch (e) {}
+};
+const loadAssignActiveTab = () => {
+  try { return localStorage.getItem(ASSIGN_ACTIVE_TAB_KEY) || 'available'; } catch (e) { return 'available'; }
+};
+
 const AssignPage = () => {
   const { user } = useAuth();
+  const { setActiveModal, clearActiveModal } = useAppState();
   const [userProfile, setUserProfile] = useState(null);
-  const [activeTab, setActiveTab] = useState('available');
+  const [activeTab, setActiveTabState] = useState(loadAssignActiveTab);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date().toISOString());
+  
+  // Wrap setActiveTab to also persist to localStorage
+  const setActiveTab = useCallback((tab) => {
+    setActiveTabState(tab);
+    saveAssignActiveTab(tab);
+  }, []);
+  
+  // CRITICAL: Initialize navigation modal state from localStorage (for app switch persistence)
+  const savedAssignNavState = useMemo(() => loadAssignNavModalState(), []);
   
   // Modal states
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [completionModalOpen, setCompletionModalOpen] = useState(false);
   const [disposalModalOpen, setDisposalModalOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
-  const [navigationModalOpen, setNavigationModalOpen] = useState(false);
-  const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [navigationModalOpen, setNavigationModalOpen] = useState(savedAssignNavState?.isOpen || false);
+  const [selectedAssignment, setSelectedAssignment] = useState(savedAssignNavState?.assignment || null);
   
   // Toast notification state
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
@@ -286,6 +348,49 @@ const AssignPage = () => {
   // Track assignments that have had arrival confirmed via navigation modal
   // This is used as a fallback in geofence check since navigation uses accurate GPS
   const [confirmedArrivals, setConfirmedArrivals] = useState(new Set());
+
+  // Log restoration for debugging
+  useEffect(() => {
+    if (savedAssignNavState?.isOpen) {
+      logger.info('🔄 Restored assignment navigation modal state:', savedAssignNavState);
+    }
+  }, []);
+  
+  // CRITICAL: Save navigation modal state on visibility change (app backgrounding)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && navigationModalOpen && selectedAssignment) {
+        saveAssignNavModalState({
+          isOpen: true,
+          assignment: selectedAssignment,
+          assignmentId: selectedAssignment?.id,
+          assignmentTitle: selectedAssignment?.type,
+          destination: selectedAssignment?.coordinates
+        });
+        logger.debug('📱 Assignment navigation modal state saved on background');
+      }
+    };
+    
+    const handlePageHide = () => {
+      if (navigationModalOpen && selectedAssignment) {
+        saveAssignNavModalState({
+          isOpen: true,
+          assignment: selectedAssignment,
+          assignmentId: selectedAssignment?.id,
+          assignmentTitle: selectedAssignment?.type,
+          destination: selectedAssignment?.coordinates
+        });
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [navigationModalOpen, selectedAssignment]);
 
   // Fetch assignments from Supabase
   // Uses collector_assignments_view which maps illegal_dumping_mobile table
@@ -659,6 +764,24 @@ const AssignPage = () => {
     logger.debug('🗺️ Opening in-app navigation for assignment:', assignment?.id);
     logger.debug('📍 Assignment coordinates data:', assignment?.coordinates);
     
+    const navState = {
+      isOpen: true,
+      assignment: assignment,
+      assignmentId: assignment?.id,
+      assignmentTitle: assignment?.type,
+      destination: assignment?.coordinates
+    };
+    
+    // CRITICAL: Save to localStorage FIRST (synchronous) for app switch persistence
+    saveAssignNavModalState(navState);
+    
+    // Use AppStateContext for modal management
+    setActiveModal('assignment-navigation', {
+      assignmentId: assignment?.id,
+      assignmentTitle: assignment?.type,
+      destination: assignment?.coordinates
+    });
+    
     setSelectedAssignment(assignment);
     setNavigationModalOpen(true);
     setDetailsModalOpen(false); // Close details modal if open
@@ -671,6 +794,10 @@ const AssignPage = () => {
       
       // Mark this assignment as having confirmed arrival (for geofence fallback)
       setConfirmedArrivals(prev => new Set([...prev, assignmentId]));
+      
+      // Clear persisted navigation modal state on arrival
+      saveAssignNavModalState(null);
+      clearActiveModal();
       
       const assignmentToComplete = assignments.accepted.find(assign => assign.id === assignmentId);
       if (!assignmentToComplete) {
@@ -1179,7 +1306,12 @@ const AssignPage = () => {
       {/* Assignment Navigation Modal */}
       <AssignmentNavigationModal
         isOpen={navigationModalOpen}
-        onClose={() => setNavigationModalOpen(false)}
+        onClose={() => {
+          // CRITICAL: Clear localStorage state when modal closes
+          saveAssignNavModalState(null);
+          clearActiveModal();
+          setNavigationModalOpen(false);
+        }}
         destination={selectedAssignment?.coordinates}
         assignmentId={selectedAssignment?.id}
         assignmentTitle={selectedAssignment?.type}

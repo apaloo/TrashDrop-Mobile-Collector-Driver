@@ -6,6 +6,7 @@ import { useCurrency } from '../context/CurrencyContext';
 import { formatCurrency } from '../utils/currencyUtils';
 import { formatLocationAsync } from '../utils/geoUtils';
 import { logger } from '../utils/logger';
+import { PICKUP_ARRIVAL_RADIUS_KM, kmToMeters } from '../config/geofenceConfig';
 
 const RequestCard = ({ 
   request, 
@@ -17,6 +18,8 @@ const RequestCard = ({
   onDisposeBag, 
   onViewReport,
   onViewDetails,
+  onScanQRBlocked,
+  onDisposeBagBlocked,
   selectable = false,
   selected = false,
   onSelect,
@@ -35,7 +38,7 @@ const RequestCard = ({
   const [isWithinRange, setIsWithinRange] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [formattedLocation, setFormattedLocation] = useState('Loading location...');
-  const RADIUS_METERS = 50; // 50 meter radius requirement
+  const RADIUS_METERS = kmToMeters(PICKUP_ARRIVAL_RADIUS_KM); // Use centralized geofence config (25m)
   
   // Format location with reverse geocoding
   useEffect(() => {
@@ -175,11 +178,23 @@ const RequestCard = ({
   
   // Render action buttons based on request status
   const renderActionButtons = () => {
+    // Debug logging for all requests
+    logger.debug('🔍 RequestCard renderActionButtons:', {
+      requestId: request.id,
+      status: request.status,
+      sourceType: request.source_type,
+      hasOnAccept: !!onAccept,
+      hasOnOpenDirections: !!onOpenDirections,
+      hasOnScanQR: !!onScanQR,
+      hasOnCompletePickup: !!onCompletePickup
+    });
+    
     // Check if this is a digital bin (used across multiple cases)
     const isDigitalBin = request.source_type === 'digital_bin';
     
     switch (request.status) {
       case PickupRequestStatus.AVAILABLE:
+      case 'pending': // Handle legacy 'pending' status
         // Different styling for digital bins (but same workflow)
         const buttonClasses = isDigitalBin 
           ? "w-full bg-black hover:bg-gray-800 text-white py-3 px-4 rounded-md flex items-center justify-center"
@@ -201,6 +216,8 @@ const RequestCard = ({
       case PickupRequestStatus.ACCEPTED:
       case PickupRequestStatus.EN_ROUTE:
       case PickupRequestStatus.ARRIVED:
+      case 'accepted': // Handle digital bins with 'accepted' status
+      case 'en_route': // Handle digital bins with 'en_route' status
         // Visual-first pickup flow for low-literacy users
         // Step 1: Directions (navigate to pickup location)
         // Step 2: Scan QR (only active after navigation started)
@@ -253,6 +270,8 @@ const RequestCard = ({
                 if (!navigationStarted) {
                   // Haptic feedback - error pattern
                   if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                  // Notify parent to highlight the Directions button
+                  if (onScanQRBlocked) onScanQRBlocked(request.id);
                   return;
                 }
                 // Success haptic
@@ -368,6 +387,8 @@ const RequestCard = ({
                   if (!siteLocated) {
                     // Haptic feedback - error pattern
                     if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                    // Notify parent to highlight the Locate Site button
+                    if (onDisposeBagBlocked) onDisposeBagBlocked(request.id);
                     return;
                   }
                   // Success haptic
@@ -403,7 +424,38 @@ const RequestCard = ({
           );
         }
       default:
-        return null;
+        // Debug logging for unexpected status values
+        logger.warn('⚠️ Unexpected request status in RequestCard:', {
+          status: request.status,
+          requestId: request.id,
+          sourceType: request.source_type,
+          expectedStatuses: Object.values(PickupRequestStatus)
+        });
+        
+        // Fallback: Show Accept button for unknown statuses that might be available
+        if (request.status === 'available' || request.status === 'pending' || !request.status) {
+          return (
+            <div>
+              <button 
+                onClick={() => onAccept && onAccept(request.id)}
+                className="w-full bg-green-500 hover:bg-green-600 text-white py-3 px-4 rounded-md flex items-center justify-center"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                Accept
+              </button>
+            </div>
+          );
+        }
+        
+        // Show status info for debugging
+        return (
+          <div className="w-full p-3 bg-gray-100 rounded-md text-center">
+            <p className="text-sm text-gray-600">Status: {request.status || 'undefined'}</p>
+            <p className="text-xs text-gray-500 mt-1">Action buttons unavailable</p>
+          </div>
+        );
     }
   };
   

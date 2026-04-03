@@ -88,9 +88,12 @@ class RealtimeNotificationService {
    * Setup Supabase Realtime subscription for pickup requests
    */
   async setupRealtimeSubscription() {
-    // Cleanup existing subscription
+    // Cleanup existing subscription (guard against reconnect cascade)
     if (this.channel) {
-      await supabase.removeChannel(this.channel);
+      this._isReconnecting = true;
+      try { await supabase.removeChannel(this.channel); } catch (e) { /* ignore */ }
+      this.channel = null;
+      this._isReconnecting = false;
     }
 
     try {
@@ -100,23 +103,23 @@ class RealtimeNotificationService {
           event: 'INSERT',
           schema: 'public',
           table: 'pickup_requests',
-          filter: 'status=eq.available'
+          filter: 'status=eq.pending'
         }, (payload) => this.handleNewRequest(payload))
         .on('postgres_changes', {
           event: 'INSERT',
           schema: 'public',
           table: 'digital_bins',
-          filter: 'status=eq.available'
+          filter: 'status=eq.pending'
         }, (payload) => this.handleNewDigitalBin(payload))
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
             this.isListening = true;
-            this.reconnectAttempts = 0; // Reset on successful connection
-            this.reconnectDelay = 5000; // Reset delay
+            this.reconnectAttempts = 0;
+            this.reconnectDelay = 5000;
             logger.info('✅ Subscribed to new request alerts');
-          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          } else if ((status === 'CLOSED' || status === 'CHANNEL_ERROR') && !this._isReconnecting) {
             this.isListening = false;
-            logger.warn('⚠️ Request alert subscription closed, attempting reconnect...');
+            logger.warn('⚠️ Request alert subscription closed, scheduling reconnect...');
             this.scheduleReconnect();
           }
         });
@@ -372,14 +375,17 @@ class RealtimeNotificationService {
    * Cleanup and stop listening
    */
   async destroy() {
+    this.isListening = false;
+    this.collectorId = null;
+    
     if (this.channel) {
-      await supabase.removeChannel(this.channel);
+      this._isReconnecting = true; // Prevent CLOSED callback from triggering reconnect
+      try { await supabase.removeChannel(this.channel); } catch (e) { /* ignore */ }
       this.channel = null;
+      this._isReconnecting = false;
     }
     
-    this.isListening = false;
     this.callbacks.clear();
-    this.collectorId = null;
     
     logger.info('🔕 RealtimeNotificationService destroyed');
   }

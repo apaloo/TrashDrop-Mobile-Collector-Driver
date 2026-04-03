@@ -21,16 +21,25 @@ import InstallPrompt from './components/InstallPrompt';
 import ImageManager from './utils/imageManager';
 import { logger } from './utils/logger';
 
-// IMMEDIATE: Critical pages loaded immediately for fast startup
-import WelcomePage from './pages/Welcome';
-import TermsPage from './pages/Terms';
-import PrivacyPage from './pages/Privacy';
-import LoginPage from './pages/Login';
-import SignupPage from './pages/Signup';
-import DiagnosticPage from './pages/DiagnosticPage';
-import PaymentTest from './pages/PaymentTest';
+// Reusable loading fallback for Suspense boundaries
+const PageLoader = ({ message = 'Loading...' }) => (
+  <div className="flex h-screen items-center justify-center bg-gray-50">
+    <div className="text-center">
+      <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+      <p className="mt-4 text-gray-700 font-medium">{message}</p>
+    </div>
+  </div>
+);
 
-// LAZY: Heavy pages loaded on demand to reduce initial bundle
+// LAZY: All pages loaded on demand to minimize initial bundle
+const WelcomePage = lazyWithRetry(() => import('./pages/Welcome'));
+const TermsPage = lazyWithRetry(() => import('./pages/Terms'));
+const PrivacyPage = lazyWithRetry(() => import('./pages/Privacy'));
+const LoginPage = lazyWithRetry(() => import('./pages/Login'));
+const SignupPage = lazyWithRetry(() => import('./pages/Signup'));
+const DiagnosticPage = lazyWithRetry(() => import('./pages/DiagnosticPage'));
+const PaymentTest = lazyWithRetry(() => import('./pages/PaymentTest'));
+
 const MapPage = lazyWithRetry(() => import('./pages/Map'));
 const RequestPage = lazyWithRetry(() => import('./pages/Request'));
 const AssignPage = lazyWithRetry(() => import('./pages/Assign'));
@@ -121,11 +130,11 @@ function App() {
                   <PagePersistence />
                   <Routes>
                     <Route path="/" element={<DefaultRedirect />} />
-                    <Route path="/welcome" element={<WelcomePage />} />
-                    <Route path="/terms" element={<TermsPage />} />
-                    <Route path="/privacy" element={<PrivacyPage />} />
-                    <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-                    <Route path="/signup" element={<PublicRoute><SignupPage /></PublicRoute>} />
+                    <Route path="/welcome" element={<Suspense fallback={<PageLoader />}><WelcomePage /></Suspense>} />
+                    <Route path="/terms" element={<Suspense fallback={<PageLoader />}><TermsPage /></Suspense>} />
+                    <Route path="/privacy" element={<Suspense fallback={<PageLoader />}><PrivacyPage /></Suspense>} />
+                    <Route path="/login" element={<PublicRoute><Suspense fallback={<PageLoader message="Loading login..." />}><LoginPage /></Suspense></PublicRoute>} />
+                    <Route path="/signup" element={<PublicRoute><Suspense fallback={<PageLoader message="Loading signup..." />}><SignupPage /></Suspense></PublicRoute>} />
                     <Route path="/map" element={
                       <ProtectedRoute>
                         <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
@@ -198,8 +207,8 @@ function App() {
                         </Suspense>
                       </ProtectedRoute>
                     } />
-                    <Route path="/diagnostic" element={<DiagnosticPage />} />
-                    <Route path="/payment-test" element={<PaymentTest />} />
+                    <Route path="/diagnostic" element={<Suspense fallback={<PageLoader />}><DiagnosticPage /></Suspense>} />
+                    <Route path="/payment-test" element={<Suspense fallback={<PageLoader />}><PaymentTest /></Suspense>} />
                     <Route path="/route-optimization" element={
                       <ProtectedRoute>
                         <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">

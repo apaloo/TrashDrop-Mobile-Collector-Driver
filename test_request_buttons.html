@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request Button Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        .button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>TrashDrop Request Button Fixes</h1>
+    
+    <div class="test-section">
+        <h2>Fixes Applied</h2>
+        <div class="status success">
+            ✅ Fixed default status in transformRequestsData from 'pending' to 'available'
+        </div>
+        <div class="status success">
+            ✅ Added debugging and fallback handling in RequestCard renderActionButtons
+        </div>
+        <div class="status success">
+            ✅ Fixed data consistency - all tabs now use local requests state
+        </div>
+        <div class="status success">
+            ✅ Added comprehensive debugging logs
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test Instructions</h2>
+        <ol>
+            <li>Open the app at <a href="http://localhost:5173" target="_blank">http://localhost:5173</a></li>
+            <li>Navigate to the Request page</li>
+            <li>Check the "Available" tab - should show Accept buttons</li>
+            <li>Check the "Accepted" tab - should show Directions and Scan QR buttons</li>
+            <li>Check the "Picked Up" tab - should show disposal buttons</li>
+            <li>Open browser console (F12) to see debug logs</li>
+        </ol>
+    </div>
+
+    <div class="test-section">
+        <h2>Expected Debug Logs</h2>
+        <div class="status info">
+            Look for these logs in the browser console:
+            <ul>
+                <li>🔍 RequestCard renderActionButtons: (shows request details)</li>
+                <li>🎯 handleAcceptRequest called: (when Accept button clicked)</li>
+                <li>🔍 Request lookup result: (shows request finding process)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Button Status Guide</h2>
+        <table border="1" cellpadding="10" style="border-collapse: collapse; width: 100%;">
+            <thead>
+                <tr>
+                    <th>Request Status</th>
+                    <th>Expected Buttons</th>
+                    <th>Styling</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>available</td>
+                    <td>Accept</td>
+                    <td>Green (pickup) / Black (digital bin)</td>
+                </tr>
+                <tr>
+                    <td>accepted</td>
+                    <td>Directions, Scan QR</td>
+                    <td>Blue → Purple (when navigation started)</td>
+                </tr>
+                <tr>
+                    <td>en_route</td>
+                    <td>Directions, Scan QR</td>
+                    <td>Green checkmark on Directions</td>
+                </tr>
+                <tr>
+                    <td>arrived</td>
+                    <td>Directions, Scan QR</td>
+                    <td>Green checkmark on Directions</td>
+                </tr>
+                <tr>
+                    <td>picked_up</td>
+                    <td>Locate Site, Dispose Bag</td>
+                    <td>Amber → Green (when site located)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="test-section">
+        <h2>Quick Test</h2>
+        <button class="button" onclick="window.open('http://localhost:5173', '_blank')">
+            Open App in New Tab
+        </button>
+        <button class="button" onclick="alert('Remember to check the browser console (F12) for debug logs!')">
+            Show Debug Reminder
+        </button>
+    </div>
+
+    <script>
+        console.log('🧪 Request Button Test Page Loaded');
+        console.log('📝 Fixes applied:');
+        console.log('  1. Default status changed from "pending" to "available"');
+        console.log('  2. Added fallback handling for unexpected statuses');
+        console.log('  3. Fixed data consistency across tabs');
+        console.log('  4. Added comprehensive debugging');
+    </script>
+</body>
+</html>

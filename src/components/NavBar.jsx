@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import logo from '../assets/logo.svg';
+import { useState, useEffect, useRef, memo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+// Use public logo.png (preloaded in index.html) for instant rendering during navigation
+const logo = '/logo.png';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/supabase';
 import { logger } from '../utils/logger';
@@ -12,7 +13,7 @@ const PROFILE_CACHE_KEY = 'trashdrop_user_profile';
 /**
  * Top navigation bar component with logo and profile dropdown
  */
-export const TopNavBar = ({ user }) => {
+export const TopNavBar = memo(({ user }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -147,7 +148,7 @@ export const TopNavBar = ({ user }) => {
         <div className="flex justify-between items-center">
           {/* Logo */}
           <Link to="/" className="flex items-center">
-            <img src={logo} alt="TrashDrop Logo" className="h-8 mr-2" />
+            <img src={logo} alt="TrashDrop Logo" className="h-8 mr-2" width="32" height="32" loading="eager" decoding="sync" />
             <span className="text-green-500 text-xl font-bold">TrashDrop Carter</span>
           </Link>
 
@@ -207,5 +208,7 @@ export const TopNavBar = ({ user }) => {
       />
     </>
   );
-};
-
+}, (prevProps, nextProps) => {
+  // Only re-render if user identity actually changes
+  return prevProps.user?.id === nextProps.user?.id;
+});

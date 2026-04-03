@@ -157,7 +157,7 @@ const RecenterButton = ({ onClick }) => {
 };
 
 // New Filter Card component that appears at the bottom of the map
-const FilterCard = ({ filters = {}, updateFilters, applyFilters, getMaxRadius, tempRadiusExtension }) => {
+const FilterCard = ({ filters = {}, updateFilters, applyFilters, getMaxRadius }) => {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   
   // Get current maximum radius (10km standard, 10km during extension)
@@ -386,7 +386,7 @@ const FilterPanel = ({ isOpen, onClose, filters, updateFilters, applyFilters }) 
 const MapPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { filters, updateFilters, updateFilteredRequests, tempRadiusExtension, getMaxRadius } = useFilters();
+  const { filters, updateFilters, updateFilteredRequests, getMaxRadius } = useFilters();
   const [map, setMap] = useState(null);
   
   // User profile data
@@ -416,9 +416,10 @@ const MapPage = () => {
   // Status management is now handled by StatusButton component and statusService
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
   
-  // Refs for error handling
+  // Refs for error handling and fetch dedup
   const lastErrorRef = useRef(null);
   const errorToastShownRef = useRef(false);
+  const isFetchingRef = useRef(false);
   const positionRef = useRef(position);
   
   // Enhanced geolocation with cached position and real-time updates
@@ -748,6 +749,9 @@ const MapPage = () => {
   
   // Fetch requests from Supabase
   const fetchRequests = useCallback(async () => {
+    // Prevent duplicate simultaneous fetches
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     try {
       setIsLoading(true);
       setError(null);
@@ -791,8 +795,7 @@ const MapPage = () => {
         const { data: pickupData, error: pickupError, count: pickupCount } = pickupRequestsResult;
         const { data: binsData, error: binsError, count: binsCount } = digitalBinsResult;
         
-        logger.debug('Pickup requests query results:', { data: pickupData, error: pickupError, count: pickupCount });
-        logger.debug('Digital bins query results:', { data: binsData, error: binsError, count: binsCount });
+        logger.debug('Supabase results:', { pickups: pickupCount, bins: binsCount });
         
         // Handle errors
         if (pickupError) {
@@ -810,11 +813,6 @@ const MapPage = () => {
           source_type: 'pickup_request'
         }));
         
-        logger.debug('📦 Processed pickup requests:', {
-          count: pickupRequests.length,
-          sample: pickupRequests[0],
-          coordinates: pickupRequests.map(r => ({ id: r.id, coords: r.coordinates })).slice(0, 3)
-        });
         
         const digitalBins = (binsData || [])
           .map(item => {
@@ -824,63 +822,22 @@ const MapPage = () => {
             
             if (item.bin_locations && item.bin_locations.coordinates) {
               const binCoords = item.bin_locations.coordinates;
-              logger.debug('🔵 Digital bin coordinate data:', {
-                id: item.id,
-                rawCoords: binCoords,
-                coordsType: typeof binCoords
-              });
               
               // Handle GeoJSON Point format (most common from Supabase PostGIS)
               if (binCoords && binCoords.type === 'Point' && Array.isArray(binCoords.coordinates)) {
                 const [lng, lat] = binCoords.coordinates;
-                logger.debug('🔵 GeoJSON Point parsing:', {
-                  id: item.id,
-                  lng: lng,
-                  lat: lat
-                });
-                
-                // Skip digital bins with invalid coordinates (0,0)
                 if (lng !== 0 || lat !== 0) {
-                  coordinates = [lat, lng]; // Convert to [lat, lng] format
-                  logger.debug('🔵 Valid GeoJSON coordinates:', {
-                    id: item.id,
-                    coordinates: coordinates
-                  });
-                } else {
-                  logger.debug('🔵 Skipping GeoJSON (0,0):', {
-                    id: item.id,
-                    lng: lng,
-                    lat: lat
-                  });
+                  coordinates = [lat, lng];
                 }
               }
               // Handle POINT coordinates from PostGIS geometry field (string format)
               else if (typeof binCoords === 'string' && binCoords.includes('POINT(')) {
-                // Parse PostGIS POINT format: "POINT(lng lat)"
                 const pointMatch = binCoords.match(/POINT\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
-                logger.debug('🔵 POINT parsing result:', {
-                  id: item.id,
-                  binCoords: binCoords,
-                  pointMatch: pointMatch
-                });
-                
                 if (pointMatch) {
                   const lng = parseFloat(pointMatch[1]);
                   const lat = parseFloat(pointMatch[2]);
-                  
-                  // Skip digital bins with invalid coordinates (0,0)
                   if (lng !== 0 || lat !== 0) {
-                    coordinates = [lat, lng]; // Convert to [lat, lng] format
-                    logger.debug('🔵 Valid coordinates parsed:', {
-                      id: item.id,
-                      coordinates: coordinates
-                    });
-                  } else {
-                    logger.debug('🔵 Skipping POINT(0 0):', {
-                      id: item.id,
-                      lng: lng,
-                      lat: lat
-                    });
+                    coordinates = [lat, lng];
                   }
                 }
               } 
@@ -888,26 +845,8 @@ const MapPage = () => {
               else if (binCoords && binCoords.x !== undefined && binCoords.y !== undefined) {
                 const lng = binCoords.x;
                 const lat = binCoords.y;
-                
-                logger.debug('🔵 Object coordinate data:', {
-                  id: item.id,
-                  lng: lng,
-                  lat: lat
-                });
-                
-                // Skip digital bins with invalid coordinates (0,0)
                 if (lng !== 0 || lat !== 0) {
-                  coordinates = [lat, lng]; // y=lat, x=lng
-                  logger.debug('🔵 Valid object coordinates:', {
-                    id: item.id,
-                    coordinates: coordinates
-                  });
-                } else {
-                  logger.debug('🔵 Skipping object (0,0):', {
-                    id: item.id,
-                    lng: lng,
-                    lat: lat
-                  });
+                  coordinates = [lat, lng];
                 }
               }
             }
@@ -923,46 +862,14 @@ const MapPage = () => {
               fee: item.fee || 0
             };
             
-            logger.debug('🔵 Digital bin result:', {
-              id: item.id,
-              coordinates: digitalBinResult.coordinates,
-              source_type: digitalBinResult.source_type
-            });
-            
             return digitalBinResult;
           })
-          .filter(bin => {
-            // Only include digital bins with valid coordinates
-            if (!bin.coordinates || !Array.isArray(bin.coordinates)) {
-              logger.debug('🔵 Skipping digital bin with invalid coordinates:', {
-                id: bin.id,
-                coordinates: bin.coordinates
-              });
-              return false;
-            }
-            logger.debug('🔵 Digital bin passed filter:', {
-              id: bin.id,
-              coordinates: bin.coordinates
-            });
-            return true;
-          });
-        
-        logger.debug('🔵 Final digital bins count:', {
-          totalFromDB: binsData?.length || 0,
-          afterFiltering: digitalBins.length
-        });
+          .filter(bin => bin.coordinates && Array.isArray(bin.coordinates));
         
         // Combine both data sources
         data = [...pickupRequests, ...digitalBins];
         
-        // Debug: Log final data counts
-        logger.info('📊 Final data summary:', {
-          pickupRequests: pickupRequests.length,
-          digitalBins: digitalBins.length,
-          total: data.length,
-          pickupSample: pickupRequests.slice(0, 2).map(p => ({ id: p.id, status: p.status, coordinates: p.coordinates })),
-          digitalBinSample: digitalBins.slice(0, 2).map(d => ({ id: d.id, status: d.status, coordinates: d.coordinates }))
-        });
+        logger.info('📊 Fetched:', pickupRequests.length, 'pickups +', digitalBins.length, 'bins =', data.length, 'total');
       } else {
         // Offline - no cache available
         showToast('No internet connection. Please connect to view pickup requests.', 'error');
@@ -1062,37 +969,15 @@ const MapPage = () => {
         setLastUpdated(new Date());
         // Data loaded successfully
         
-        // Debug: Log transformed data
-        logger.info('🔄 Transformed data summary:', {
-          totalTransformed: transformedData.length,
-          pickupRequests: transformedData.filter(r => r.source_type === 'pickup_request').length,
-          digitalBins: transformedData.filter(r => r.source_type === 'digital_bin').length,
-          sample: transformedData.slice(0, 3).map(r => ({
-            id: r.id,
-            source_type: r.source_type,
-            status: r.status,
-            coordinates: r.coordinates,
-            distance: r.distance
-          }))
-        });
-        
-        if (transformedData.length > 0) {
-          showToast(`${transformedData.length} pickup requests found`, 'success');
-        } else {
-          showToast('No pickup requests found', 'info');
-        }
-        
-        // Apply filters to populate the requests state with filtered data
-        setTimeout(() => applyFilters(), 0);
+        logger.debug('🔄 Transformed:', transformedData.length, 'items');
     } catch (error) {
       logger.error('Error fetching pickup requests:', error);
       showToast('Failed to load pickup requests', 'error');
       
-      // No cache available - show error
-      // Apply filters to populate the requests state with filtered data
-      setTimeout(() => applyFilters(), 0);
+      // No cache available - applyFilters will run via debounced useEffect
     } finally {
       setIsLoading(false);
+      isFetchingRef.current = false;
     }
   }, [position]);
 
@@ -1134,222 +1019,87 @@ const MapPage = () => {
 
   // Apply filters to requests
   const applyFilters = useCallback(async () => {
-    logger.debug('🔍 Applying filters...', { filters, allRequestsCount: allRequests.length, position });
-    
-    // Debug: Check what types of data we're processing
-    const digitalBinCount = allRequests.filter(r => r.source_type === 'digital_bin').length;
-    const pickupCount = allRequests.filter(r => r.source_type === 'pickup_request').length;
-    const undefinedSourceCount = allRequests.filter(r => !r.source_type).length;
-    logger.debug('🔍 applyFilters input data:', { 
-      digitalBins: digitalBinCount, 
-      pickupRequests: pickupCount,
-      undefinedSource: undefinedSourceCount,
-      totalItems: allRequests.length 
-    });  
-    
     // Position should always be available now (fallback or real GPS)
     if (!position || !position[0] || !position[1]) {
-      logger.error('❌ No position available - this should not happen with fallback location');
       setRequests([]);
       updateFilteredRequests([]);
       return;
-    }
-    
-    // Log when we're using fallback vs real GPS location
-    if (isUsingFallbackLocation) {
-      logger.debug('🗺️ Using fallback location (Accra) to show requests');
-    } else if (isUsingCachedLocation) {
-      logger.debug('📍 Using cached location to show requests');
-    } else {
-      logger.debug('🎯 Using real GPS location to show requests');
     }
 
     // Define filter variables
     const safeFilters = filters || {};
     const activeFilter = safeFilters.activeFilter || 'all';
-    const radiusKm = parseFloat(safeFilters.searchRadius) || 5;
+    const radiusKm = parseFloat(safeFilters.searchRadius) || 10;
 
     // Check collector status - only show requests if online (Uber-like behavior)
     const statusInfo = statusService.getStatus();
     if (!statusInfo.isOnline) {
-      logger.debug('👤 Collector is offline - hiding all requests (Uber-style)');
       setRequests([]);
       updateFilteredRequests([]);
       return;
     }
-    // Filter criteria logging
-    logger.debug('🎯 Filter criteria:', { activeFilter, radiusKm, collectorStatus: statusInfo.status });
-    logger.debug('DEBUG: Sample requests:', allRequests.slice(0, 2));
-    logger.debug('🗂️ Waste types in requests:', allRequests.map(r => r.waste_type || r.type).filter(Boolean));
-    
-    const searchRadius = filters.searchRadius || filters.maxDistance || 5; // Use searchRadius with fallback to maxDistance
     
     const filteredRequests = allRequests.filter(req => {
       // Skip if request is invalid  
-      if (!req || !req.coordinates) {
-        logger.debug('❌ Filtered out - invalid request or no coordinates:', req?.id);
+      if (!req || !req.coordinates) return false;
+      
+      // Digital bins skip status check; pickup requests must be pending
+      if (req.source_type !== 'digital_bin' && req.status !== 'pending') return false;
+      
+      // Filter by distance
+      try {
+        const distance = calculateDistance(
+          [position[0], position[1]],
+          req.coordinates
+        );
+        if (distance > radiusKm) return false;
+        req.distance = distance;
+      } catch (error) {
         return false;
-      }
-      
-      // Digital bins use different filtering logic
-      if (req.source_type === 'digital_bin') {
-        logger.debug('🟦 Processing digital bin:', req.id, 'coordinates:', req.coordinates);
-        // Digital bins are always "available" for collection, skip status check
-      } else {
-        // Filter by status - only show available and pending requests (for pickup requests only)
-        if (req.status !== 'pending') {
-          logger.debug('❌ Filtered out - status not pending:', req.id, 'status:', req.status);
-          return false;
-        }
-      }
-      
-      // Filter by distance (only apply strict filtering if using real GPS location)
-      if (position && position[0] && position[1]) {
-        try {
-          const distance = calculateDistance(
-            [position[0], position[1]],
-            req.coordinates
-          );
-          
-          // Apply distance filtering properly
-          if (distance > radiusKm) {
-            // Log digital bins outside range
-            if (req.source_type === 'digital_bin') {
-              logger.debug('🔵 Digital bin outside filter range:', {
-                id: req.id,
-                location: req.location,
-                waste_type: req.waste_type,
-                distance: distance.toFixed(2) + 'km',
-                limit: radiusKm + 'km',
-                coordinates: req.coordinates
-              });
-            } else {
-              logger.debug('❌ Filtered out - distance too far:', req.id, 'distance:', distance.toFixed(2) + 'km', 'limit:', radiusKm + 'km');
-            }
-            return false;
-          }
-          
-          // Add distance to request for sorting
-          req.distance = distance;
-          
-          // Log items that pass distance filter
-          if (req.source_type === 'digital_bin') {
-            logger.debug('🟦 Digital bin passed distance filter:', {
-              id: req.id,
-              location: req.location,
-              waste_type: req.waste_type,
-              distance: distance.toFixed(2) + 'km',
-              coordinates: req.coordinates
-            });
-          } else {
-            if (isWaitingForGPS) {
-              logger.debug('📍 Request passed filter (waiting for GPS):', req.id, 'distance:', distance.toFixed(2) + 'km');
-            } else {
-              logger.debug('✅ Passed distance filter:', req.id, 'distance:', distance.toFixed(2) + 'km');
-            }
-          }
-        } catch (error) {
-          logger.error('❌ Filtered out - distance calculation error:', {
-            error: error.message,
-            requestId: req?.id,
-            sourceType: req?.source_type,
-            coordinates: req?.coordinates
-          });
-          return false; // Skip items that cause distance errors
-        }
       }
       
       // Filter by waste type using activeFilter
       if (activeFilter && activeFilter !== 'all') {
         const requestWasteType = req.waste_type || req.type;
-        if (requestWasteType !== activeFilter) {
-          // Log digital bins filtered by waste type
-          if (req.source_type === 'digital_bin') {
-            logger.debug('🔵 Digital bin filtered by waste type:', {
-              id: req.id,
-              location: req.location,
-              waste_type: requestWasteType,
-              filter: activeFilter,
-              coordinates: req.coordinates
-            });
-          } else {
-            logger.debug('❌ Filtered out - waste type mismatch:', req.id, 'request type:', requestWasteType, 'filter:', activeFilter);
-          }
-          return false;
-        }
+        if (requestWasteType !== activeFilter) return false;
       }
       
       // Also filter by waste types array (if provided)
       if (filters.wasteTypes?.length > 0 && !filters.wasteTypes.includes('All Types')) {
         const requestWasteType = req.waste_type || req.type;
-        if (!filters.wasteTypes.includes(requestWasteType)) {
-          logger.debug('❌ Filtered out - not in wasteTypes array:', req.id, 'request type:', requestWasteType, 'allowed types:', filters.wasteTypes);
-          return false;
-        }
+        if (!filters.wasteTypes.includes(requestWasteType)) return false;
       }
       
       // Filter by minimum payment
       const minPayment = parseFloat(filters.minPayment) || 0;
-      if (minPayment > 0 && (parseFloat(req.fee) || 0) < minPayment) {
-        logger.debug('❌ Filtered out - payment too low:', req.id, 'fee:', req.fee, 'minimum:', minPayment);
-        return false;
-      }
+      if (minPayment > 0 && (parseFloat(req.fee) || 0) < minPayment) return false;
       
       // Filter by priority
-      if (filters.priority && filters.priority !== 'all' && req.priority !== filters.priority) {
-        logger.debug('❌ Filtered out - priority mismatch:', req.id, 'request priority:', req.priority, 'filter:', filters.priority);
-        return false;
-      }
+      if (filters.priority && filters.priority !== 'all' && req.priority !== filters.priority) return false;
       
-      // Log success differently for digital bins vs pickup requests
-      if (req.source_type === 'digital_bin') {
-        logger.debug('🟦 Digital bin passed all filters:', req.id, 'type:', req.waste_type || req.type, 'distance:', req.distance?.toFixed(2) + 'km');
-      } else {
-        logger.debug('✅ Request passed all filters:', req.id, 'type:', req.waste_type || req.type, 'distance:', req.distance?.toFixed(2) + 'km');
-      }
       return true;
     });
     
-    // Sort by distance if we have a position
-    if (position && position[0] && position[1]) {
-      filteredRequests.sort((a, b) => (a.distance || 0) - (b.distance || 0));
-    }
+    // Sort by distance
+    filteredRequests.sort((a, b) => (a.distance || 0) - (b.distance || 0));
     
-    // Debug: Check what types survived filtering
-    const finalDigitalBins = filteredRequests.filter(r => r.source_type === 'digital_bin').length;
-    const finalPickupRequests = filteredRequests.filter(r => r.source_type === 'pickup_request').length;
-    logger.debug('🔍 applyFilters output data:', { 
-      digitalBins: finalDigitalBins, 
-      pickupRequests: finalPickupRequests, 
-      total: filteredRequests.length 
-    });
+    // Single summary log instead of per-item logging
+    logger.debug('🔍 Filtered requests:', filteredRequests.length, 'of', allRequests.length,
+      '| radius:', radiusKm + 'km | filter:', activeFilter);
     
-    logger.debug('Filtered requests:', filteredRequests.length, 'out of', allRequests.length);
     setRequests(filteredRequests);
-    
-    // DEBUG: Log what we're sharing with Request page
-    logger.debug('DEBUG: Sharing filtered requests with Request page:', {
-      available: filteredRequests,
-      count: filteredRequests.length,
-      firstRequest: filteredRequests[0] || 'none'
-    });
-    
-    // Update filtered requests in context
     updateFilteredRequests({ available: filteredRequests });
-  }, [allRequests, filters, position, isWaitingForGPS, updateFilteredRequests]);
+  }, [allRequests, filters, position, updateFilteredRequests]);
 
-  // Effect to apply filters when filter criteria OR position changes
+  // Debounced filter application — batches rapid GPS/state changes into one run
+  const filterTimerRef = useRef(null);
   useEffect(() => {
-    applyFilters();
+    if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
+    filterTimerRef.current = setTimeout(() => {
+      applyFilters();
+    }, 150); // 150ms debounce batches GPS ticks
+    return () => { if (filterTimerRef.current) clearTimeout(filterTimerRef.current); };
   }, [applyFilters]);
-  
-  // Effect to reapply filters when position becomes available
-  useEffect(() => {
-    if (position && position[0] && position[1] && allRequests.length > 0) {
-      logger.debug('DEBUG: Position loaded, reapplying filters');
-      setTimeout(() => applyFilters(), 100); // Small delay to ensure state is updated
-    }
-  }, [position, allRequests]);
   
   // Helper function to parse PostGIS POINT string to [lat, lng] array
   const parseCoordinates = (pointString) => {
@@ -1889,7 +1639,6 @@ const MapPage = () => {
               updateFilters={updateFilters} 
               applyFilters={applyFilters}
               getMaxRadius={getMaxRadius}
-              tempRadiusExtension={tempRadiusExtension} 
             />
             
             {/* Waste type legend - moved outside map container */}

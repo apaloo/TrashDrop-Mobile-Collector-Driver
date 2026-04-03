@@ -315,7 +315,7 @@ export class RequestManagementService {
         throw new Error('Request not found in database');
       }
 
-      if (existingRequest.status !== 'available') {
+      if (existingRequest.status !== 'available' && existingRequest.status !== 'pending') {
         throw new Error(`Request is no longer available - current status: ${existingRequest.status}`);
       }
 
@@ -426,14 +426,14 @@ export class RequestManagementService {
       logger.info(`📊 DIAGNOSTIC: Setting collector_id in database to: ${this.collectorId}`);
 
       // Try simple update first (without RLS restrictions)
+      // NOTE: pickup_requests table doesn't have payment calculation columns
       const { data, error } = await supabase
         .from('pickup_requests')
         .update({
           status: 'accepted',
           collector_id: this.collectorId,
           accepted_at: currentTime,
-          assignment_expires_at: assignmentExpiry,
-          ...paymentFields // Merge in calculated payment fields
+          assignment_expires_at: assignmentExpiry
         })
         .eq('id', requestId)
         .select();

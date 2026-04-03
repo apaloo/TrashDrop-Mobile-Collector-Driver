@@ -288,29 +288,30 @@ const RequestPage = () => {
       }
       
       // Get user location with retry and fallback
+      // Store in local var because setUserLocation is async and won't update until next render
+      let resolvedLocation = { latitude: 5.6037, longitude: -0.1870, isFallback: true };
       try {
         const location = await getLocationWithRetry(2, 1000);
-        setUserLocation({
-          latitude: location.lat,
-          longitude: location.lng,
-          accuracy: location.accuracy,
-          isFallback: location.isFallback
-        });
-        
-        // Log fallback location usage
-        if (location.isFallback && (!window.lastFallbackLog || Date.now() - window.lastFallbackLog > 300000)) {
-          logger.warn('[Location] Using fallback location due to GPS unavailability');
-          window.lastFallbackLog = Date.now();
+        if (location && location.lat && location.lng) {
+          resolvedLocation = {
+            latitude: location.lat,
+            longitude: location.lng,
+            accuracy: location.accuracy,
+            isFallback: location.isFallback
+          };
+          
+          // Log fallback location usage
+          if (location.isFallback && (!window.lastFallbackLog || Date.now() - window.lastFallbackLog > 300000)) {
+            logger.warn('[Location] Using fallback location due to GPS unavailability');
+            window.lastFallbackLog = Date.now();
+          }
+        } else {
+          logger.warn('Location returned invalid data, using default');
         }
       } catch (error) {
         logger.error('Error getting location:', error);
-        // Set default location if location fails
-        setUserLocation({
-          latitude: 5.6037,
-          longitude: -0.1870,
-          isFallback: true
-        });
       }
+      setUserLocation(resolvedLocation);
       
       // Check if we're online
       const online = navigator.onLine;
@@ -340,7 +341,7 @@ const RequestPage = () => {
                     supabase
                       .from('pickup_requests')
                       .select('*')
-                      .eq('status', PickupRequestStatus.AVAILABLE)
+                      .in('status', [PickupRequestStatus.AVAILABLE, 'pending'])
                       .order('created_at', { ascending: false }),
                     // Fetch available digital bins only
                     supabase
@@ -352,7 +353,7 @@ const RequestPage = () => {
                           location_name
                         )
                       `)
-                      .eq('status', 'available')
+                      .in('status', ['available', 'pending'])
                       .order('created_at', { ascending: false })
                   ]).then(([pickupResult, binsResult]) => {
                     if (pickupResult.error) {
@@ -370,20 +371,57 @@ const RequestPage = () => {
                       digitalBinsSample: binsResult.data?.[0] || 'none'
                     });
                     
-                    // Combine data and add source type identification
+                    // Helper: normalize any coordinate format to {lat, lng}
+                    const normalizeCoords = (raw) => {
+                      if (!raw) return null;
+                      // GeoJSON Point {type:'Point', coordinates:[lng,lat]}
+                      if (raw.type === 'Point' && Array.isArray(raw.coordinates)) {
+                        const [lng, lat] = raw.coordinates;
+                        return (lng !== 0 || lat !== 0) ? { lat, lng } : null;
+                      }
+                      // PostGIS POINT string
+                      // NOTE: This DB stores POINT(lat lng) not the standard POINT(lng lat)
+                      if (typeof raw === 'string') {
+                        const m = raw.match(/POINT\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
+                        if (m) {
+                          let v1 = parseFloat(m[1]), v2 = parseFloat(m[2]);
+                          // Detect format: if v1 looks like latitude (~5-7 for Ghana)
+                          // and v2 looks like longitude (~-0.x), it's POINT(lat lng)
+                          let lat, lng;
+                          if (Math.abs(v1) > Math.abs(v2)) {
+                            lat = v1; lng = v2; // POINT(lat lng) — this DB's format
+                          } else {
+                            lat = v2; lng = v1; // POINT(lng lat) — standard PostGIS
+                          }
+                          return (lng !== 0 || lat !== 0) ? { lat, lng } : null;
+                        }
+                      }
+                      // {lat, lng} already
+                      if (raw.lat !== undefined && raw.lng !== undefined) return raw;
+                      // {x, y} PostGIS object
+                      if (raw.x !== undefined && raw.y !== undefined) {
+                        return (raw.x !== 0 || raw.y !== 0) ? { lat: raw.y, lng: raw.x } : null;
+                      }
+                      // [lat, lng] array
+                      if (Array.isArray(raw) && raw.length === 2) return { lat: raw[0], lng: raw[1] };
+                      return null;
+                    };
+
+                    // Combine data and add source type + normalized coordinates
                     const pickupRequests = (pickupResult.data || []).map(item => ({
                       ...item,
-                      source_type: 'pickup_request'
+                      source_type: 'pickup_request',
+                      coordinates: normalizeCoords(item.coordinates) || item.coordinates
                     }));
                     
                     const digitalBins = (binsResult.data || []).map(item => ({
                       ...item,
                       source_type: 'digital_bin',
-                      // Ensure digital bins have required fields for compatibility
-                      status: item.status || 'available', // Use actual status from database
-                      waste_type: item.waste_type || 'general', // Default waste type if not specified
-                      fee: item.fee || 0, // Default fee if not specified
-                      location: item.bin_locations?.location_name || 'Digital Bin Station' // Get location from joined table
+                      status: item.status || 'available',
+                      waste_type: item.waste_type || 'general',
+                      fee: item.fee || 0,
+                      location: item.bin_locations?.location_name || 'Digital Bin Station',
+                      coordinates: normalizeCoords(item.bin_locations?.coordinates) || normalizeCoords(item.coordinates)
                     }));
                     
                     logger.info('📦 PROCESSED DATA FOR REQUEST PAGE:', {
@@ -511,15 +549,23 @@ const RequestPage = () => {
             filteredCount: filteredRequests.available?.length || 0
           });
           
-          // OPTIMIZATION: Use filtered data from Map if available
-          if (filteredRequests.available && filteredRequests.available.length > 0) {
-            logger.debug('⚡ TURBO: Using pre-filtered requests');
-            availableRequests = filteredRequests.available;
-          } else {
-            availableRequests = transformRequestsData(availableResult.data);
-          }
+          // Transform all fetched data
+          const allAvailable = transformRequestsData(availableResult.data);
           
-          logger.debug('📋 Final available requests to display:', availableRequests.length);
+          // Use Map page's radius-filtered results from FilterContext
+          // If Map has filtered data, only show items that passed the Map's filter
+          const mapFilteredIds = filteredRequests.available?.length > 0
+            ? new Set(filteredRequests.available.map(r => r.id))
+            : null;
+          
+          if (mapFilteredIds) {
+            availableRequests = allAvailable.filter(r => mapFilteredIds.has(r.id));
+            logger.debug('📋 Available requests (Map-filtered):', availableRequests.length, 'of', allAvailable.length);
+          } else {
+            // Fallback: Map hasn't loaded/filtered yet — show all
+            availableRequests = allAvailable;
+            logger.debug('📋 Available requests (all, Map not ready):', availableRequests.length);
+          }
           
           // Update request cache for snappy UX - immediate update
           setRequestCache(prev => ({
@@ -660,9 +706,18 @@ const RequestPage = () => {
   
   // Handle request acceptance with smart request type detection
   const handleAcceptRequest = useCallback(async (requestId, showToasts = true) => {
+    logger.info('🎯 handleAcceptRequest called:', { requestId, showToasts });
+    
     try {
       // Find the request in the available list
       const requestToAccept = requests.available.find(req => req.id === requestId);
+      
+      logger.info('🔍 Request lookup result:', {
+        requestId,
+        found: !!requestToAccept,
+        availableCount: requests.available?.length,
+        availableIds: requests.available?.map(req => req.id)
+      });
       
       if (!requestToAccept) {
         showToast('Request not found', 'error');
@@ -731,7 +786,7 @@ const RequestPage = () => {
           return;
         }
         
-        // NOTE: digital_bins table doesn't have accepted_at column - only status and collector_id
+        // Now that accepted_at column exists, set status properly in DB
         const updateData = {
           status: 'accepted',
           collector_id: user?.id
@@ -828,7 +883,7 @@ const RequestPage = () => {
       const updatedRequest = {
         ...requestToAccept,
         status: isPickupRequest ? PickupRequestStatus.ACCEPTED : 
-                isDigitalBin ? 'accepted' : 
+                isDigitalBin ? 'accepted' :
                 AssignmentStatus.ACCEPTED,
         accepted_at: new Date().toISOString(),
         collector_id: user?.id
@@ -1330,6 +1385,28 @@ const RequestPage = () => {
       showToast(`Opening directions to ${location || 'pickup location'}`, 'info');
     }
   };
+
+  // Handle Scan QR blocked - collector tapped Scan QR before starting navigation
+  // Highlights the Directions button with pulsing animation + pointer for 3 seconds
+  const handleScanQRBlocked = useCallback((requestId) => {
+    logger.info('🚫 Scan QR blocked - navigation not started yet, highlighting Directions for:', requestId);
+    setHighlightDirectionsId(requestId);
+    // Auto-clear highlight after 3 seconds
+    setTimeout(() => {
+      setHighlightDirectionsId(prev => prev === requestId ? null : prev);
+    }, 3000);
+  }, []);
+
+  // Handle Dispose Bag blocked - collector tapped Dispose Bag before locating disposal site
+  // Highlights the Locate Site button with pulsing animation + pointer for 3 seconds
+  const handleDisposeBagBlocked = useCallback((requestId) => {
+    logger.info('🚫 Dispose Bag blocked - site not located yet, highlighting Locate Site for:', requestId);
+    setHighlightRequestId(requestId);
+    // Auto-clear highlight after 3 seconds
+    setTimeout(() => {
+      setHighlightRequestId(prev => prev === requestId ? null : prev);
+    }, 3000);
+  }, []);
 
   // Handle QR scan - Optimized for better performance
   const handleScanQR = async (requestId, scannedBags) => {
@@ -2630,9 +2707,9 @@ const GeofenceErrorModal = ({
             <>
               {activeTab === 'available' && (
                 <div>
-                  {/* Use filtered requests from Map page context */}
-                  {Array.isArray(filteredRequests?.available) && filteredRequests.available.length > 0 ? (
-                    filteredRequests.available.map(request => (
+                  {/* Use local requests state for consistency with other tabs */}
+                  {Array.isArray(requests.available) && requests.available.length > 0 ? (
+                    requests.available.map(request => (
                       request && (
                         <MemoizedRequestCard 
                           key={`available-${request.id}`} 
@@ -2645,7 +2722,7 @@ const GeofenceErrorModal = ({
                         />
                       )
                     ))
-                  ) : filteredRequests?.available && filteredRequests.available.length === 0 ? (
+                  ) : requests.available && requests.available.length === 0 ? (
                     <div className="p-4 text-center text-gray-500">
                       <div className="mb-2">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2657,7 +2734,7 @@ const GeofenceErrorModal = ({
                     </div>
                   ) : (
                     <div className="p-4 text-center text-gray-500">
-                      <div className="animate-pulse">Loading filtered requests...</div>
+                      <div className="animate-pulse">Loading available requests...</div>
                     </div>
                   )}
                 </div>
@@ -2678,6 +2755,8 @@ const GeofenceErrorModal = ({
                           onLocateSite={handleLocateSite}
                           onDisposeBag={handleDisposeBag}
                           onViewReport={handleViewReport}
+                          onScanQRBlocked={handleScanQRBlocked}
+                          onDisposeBagBlocked={handleDisposeBagBlocked}
                           siteLocated={locatedSiteRequests.has(request.id)}
                           highlightLocateSite={highlightRequestId === request.id}
                           navigationStarted={navigationStartedRequests.has(request.id)}
@@ -2734,6 +2813,8 @@ const GeofenceErrorModal = ({
                             onLocateSite={handleLocateSite}
                             onDisposeBag={handleDisposeBag}
                             onViewReport={handleViewReport}
+                            onScanQRBlocked={handleScanQRBlocked}
+                            onDisposeBagBlocked={handleDisposeBagBlocked}
                             siteLocated={siteLocatedForRequest}
                             highlightLocateSite={highlightRequestId === request.id}
                             navigationStarted={navigationStartedRequests.has(request.id)}
