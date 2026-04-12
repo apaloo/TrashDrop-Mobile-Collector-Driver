@@ -21,10 +21,11 @@ export const FilterProvider = ({ children }) => {
   });
   
   // Store filtered requests in context (derived data — NOT persisted to localStorage)
+  // Initialize as null to distinguish "not yet filtered" from "filtered with 0 results"
   const [filteredRequests, setFilteredRequests] = useState({
-    available: [],
-    accepted: [],
-    picked_up: []
+    available: null,
+    accepted: null,
+    picked_up: null
   });
 
   // Load saved filter preferences from localStorage once on mount

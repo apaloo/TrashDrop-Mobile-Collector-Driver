@@ -150,12 +150,12 @@ const ProfilePage = () => {
   // Show loading state
   if (loading) {
     return (
-      <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="flex flex-col min-h-screen bg-gray-50">
         <TopNavBar user={null} />
         <div className="flex-grow mt-14 mb-16 px-4 py-3 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-gray-600 dark:text-gray-400">Loading profile...</p>
+            <p className="text-gray-600">Loading profile...</p>
           </div>
         </div>
         <BottomNavBar />
@@ -166,12 +166,12 @@ const ProfilePage = () => {
   // Show error state
   if (error || !user) {
     return (
-      <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="flex flex-col min-h-screen bg-gray-50">
         <TopNavBar user={null} />
         <div className="flex-grow mt-14 mb-16 px-4 py-3 flex items-center justify-center">
           <div className="text-center">
             <p className="text-red-500 mb-4">{error || 'Profile not found'}</p>
-            <p className="text-gray-600 dark:text-gray-400">Please try logging in again.</p>
+            <p className="text-gray-600">Please try logging in again.</p>
           </div>
         </div>
         <BottomNavBar />
@@ -180,7 +180,7 @@ const ProfilePage = () => {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="flex flex-col min-h-screen bg-gray-50">
       <TopNavBar user={user} />
       
       <div className="flex-grow mt-14 mb-16 px-4 py-3">
@@ -283,7 +283,7 @@ const ProfilePage = () => {
                         className={`flex items-center p-2.5 rounded-lg border-2 cursor-pointer transition-colors ${
                           editForm.preferred_language === lang.code
                             ? 'border-primary bg-primary/10'
-                            : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
+                            : 'border-gray-200 hover:border-gray-300'
                         }`}
                       >
                         <input

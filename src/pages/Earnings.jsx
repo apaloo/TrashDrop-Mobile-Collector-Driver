@@ -314,7 +314,7 @@ const TransactionItem = ({ transaction }) => {
   };
 
   return (
-    <div className="py-3 border-b border-gray-200 dark:border-gray-700">
+    <div className="py-3 border-b border-gray-200">
       <div className="flex justify-between">
         <div>
           <p className="font-medium">{formatTransactionType(transaction.type)}</p>
@@ -634,7 +634,7 @@ const EarningsPage = () => {
   // Show loading state only during initial auth check or first data load
   if (!hasInitiallyChecked || (isLoading && transactions.length === 0)) {
     return (
-      <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="flex flex-col min-h-screen bg-gray-50">
         <div className="flex-grow mt-14 mb-16 flex items-center justify-center">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -651,7 +651,7 @@ const EarningsPage = () => {
   // Show authentication required state (redirect handled by useEffect above)
   if (!user?.id) {
     return (
-      <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="flex flex-col min-h-screen bg-gray-50">
         <div className="flex-grow mt-14 mb-16 flex items-center justify-center">
           <div className="text-center">
             <p className="text-gray-600">Authentication required to view earnings</p>
@@ -664,22 +664,22 @@ const EarningsPage = () => {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900 relative">
+    <div className="flex flex-col min-h-screen bg-gray-50 relative">
       <TopNavBar user={user} />
       
       {/* Overlay loader for refresh - keeps content visible */}
       {isRefreshing && (
-        <div className="fixed inset-0 bg-white/70 dark:bg-gray-900/70 z-50 flex items-center justify-center">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg flex flex-col items-center">
+        <div className="fixed inset-0 bg-white/70 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-xl p-6 shadow-lg flex flex-col items-center">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mb-3"></div>
-            <p className="text-gray-700 dark:text-gray-300 font-medium">Refreshing data...</p>
+            <p className="text-gray-700 font-medium">Refreshing data...</p>
           </div>
         </div>
       )}
       
       <div className="flex-grow mt-14 mb-16 flex flex-col">
         {/* Fixed Header Section */}
-        <div className="fixed top-14 left-0 right-0 bg-gray-50 dark:bg-gray-900 z-10 px-4 pt-3 pb-2">
+        <div className="fixed top-14 left-0 right-0 bg-gray-50 z-10 px-4 pt-3 pb-2">
         <h1 className="text-2xl font-bold mb-4">Earnings</h1>
         
         {/* Period Selector */}
@@ -1064,12 +1064,12 @@ const EarningsPage = () => {
         )}
         
         {/* Tab Navigation */}
-        <div className="flex justify-center gap-2 mb-6 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+        <div className="flex justify-center gap-2 mb-6 bg-gray-100 p-1 rounded-xl">
           <button
             className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg text-base font-bold transition-all ${
               activeTab === 'summary' 
                 ? 'bg-green-500 text-white shadow-md' 
-                : 'bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                : 'bg-transparent text-gray-600 hover:bg-gray-200'
             }`}
             onClick={() => setActiveTab('summary')}
           >
@@ -1080,7 +1080,7 @@ const EarningsPage = () => {
             className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg text-base font-bold transition-all ${
               activeTab === 'transactions' 
                 ? 'bg-green-500 text-white shadow-md' 
-                : 'bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                : 'bg-transparent text-gray-600 hover:bg-gray-200'
             }`}
             onClick={() => setActiveTab('transactions')}
           >

@@ -21,7 +21,7 @@
 
 @layer base {
   body {
-    @apply m-0 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200;
+    @apply m-0 bg-white text-gray-800;
   }
   
   h1, h2, h3, h4, h5, h6 {
@@ -59,6 +59,6 @@
   }
   
   .card {
-    @apply bg-white dark:bg-gray-800 rounded-lg shadow p-4;
+    @apply bg-white rounded-lg shadow p-4;
   }
 }
