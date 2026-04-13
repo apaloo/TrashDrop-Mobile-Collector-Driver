@@ -343,10 +343,6 @@ const RequestPage = () => {
                       .select('*')
                       .in('status', [PickupRequestStatus.AVAILABLE, 'pending'])
                       .order('created_at', { ascending: false }),
-                    // Fetch bags for unit_price lookup
-                    supabase
-                      .from('bags')
-                      .select('*'),
                     // Fetch available digital bins only
                     supabase
                       .from('digital_bins')
@@ -359,39 +355,13 @@ const RequestPage = () => {
                       `)
                       .in('status', ['available', 'pending'])
                       .order('created_at', { ascending: false })
-                  ]).then(([pickupResult, bagsResult, binsResult]) => {
+                  ]).then(([pickupResult, binsResult]) => {
                     if (pickupResult.error) {
                       logger.warn('Pickup requests query failed:', pickupResult.error);
-                    }
-                    if (bagsResult.error) {
-                      logger.warn('Bags query failed:', bagsResult.error);
                     }
                     if (binsResult.error) {
                       logger.warn('Digital bins query failed:', binsResult.error);
                     }
-                    
-                    // DEBUG: Log first bag to see structure
-                    if (bagsResult.data && bagsResult.data.length > 0) {
-                      logger.info('🔍 BAGS TABLE STRUCTURE (available):', bagsResult.data[0]);
-                    }
-                    
-                    // Build unit_price lookup from bags data
-                    // pickup_requests.bag_id references bags.id
-                    const unitPriceMap = new Map();
-                    (bagsResult.data || []).forEach(bag => {
-                      if (bag.id && bag.unit_price) {
-                        unitPriceMap.set(bag.id, bag.unit_price);
-                      }
-                    });
-                    
-                    // DEBUG: Log raw data from database
-                    logger.info('📊 DATABASE FETCH RESULTS:', {
-                      pickupRequestsCount: pickupResult.data?.length || 0,
-                      bagsCount: bagsResult.data?.length || 0,
-                      digitalBinsCount: binsResult.data?.length || 0,
-                      pickupRequestsSample: pickupResult.data?.[0] || 'none',
-                      digitalBinsSample: binsResult.data?.[0] || 'none'
-                    });
                     
                     // Helper: normalize any coordinate format to {lat, lng}
                     const normalizeCoords = (raw) => {
@@ -430,12 +400,10 @@ const RequestPage = () => {
                     };
 
                     // Combine data and add source type + normalized coordinates
-                    // Merge unit_price from bags lookup (via pickup_requests.bag_id -> bags.id)
                     const pickupRequests = (pickupResult.data || []).map(item => ({
                       ...item,
                       source_type: 'pickup_request',
-                      coordinates: normalizeCoords(item.coordinates) || item.coordinates,
-                      unit_price: unitPriceMap.get(item.bag_id) || item.unit_price || null
+                      coordinates: normalizeCoords(item.coordinates) || item.coordinates
                     }));
                     
                     const digitalBins = (binsResult.data || []).map(item => ({
@@ -447,12 +415,6 @@ const RequestPage = () => {
                       location: item.bin_locations?.location_name || 'Digital Bin Station',
                       coordinates: normalizeCoords(item.bin_locations?.coordinates) || normalizeCoords(item.coordinates)
                     }));
-                    
-                    logger.info('📦 PROCESSED DATA FOR REQUEST PAGE:', {
-                      pickupRequestsCount: pickupRequests.length,
-                      digitalBinsCount: digitalBins.length,
-                      totalAvailable: pickupRequests.length + digitalBins.length
-                    });
                     
                     return { data: [...pickupRequests, ...digitalBins] };
                   }),
@@ -466,9 +428,6 @@ const RequestPage = () => {
                   .in('status', [PickupRequestStatus.ACCEPTED, PickupRequestStatus.EN_ROUTE, PickupRequestStatus.ARRIVED])
                   .order('accepted_at', { ascending: false }),
                 supabase
-                  .from('bags')
-                  .select('*'),
-                supabase
                   .from('digital_bins')
                   .select(`
                     *,
@@ -480,31 +439,17 @@ const RequestPage = () => {
                   .eq('collector_id', user?.id)
                   .in('status', ['accepted', 'en_route', 'arrived'])
                   .order('created_at', { ascending: false })
-              ]).then(([pickupResult, bagsResult, binsResult]) => {
+              ]).then(([pickupResult, binsResult]) => {
                 if (pickupResult.error) {
                   logger.warn('Accepted pickup requests query failed:', pickupResult.error);
-                }
-                if (bagsResult.error) {
-                  logger.warn('Accepted bags query failed:', bagsResult.error);
                 }
                 if (binsResult.error) {
                   logger.warn('Accepted digital bins query failed:', binsResult.error);
                 }
                 
-                // Build unit_price lookup from bags data
-                // pickup_requests.bag_id references bags.id
-                const unitPriceMap = new Map();
-                (bagsResult.data || []).forEach(bag => {
-                  if (bag.id && bag.unit_price) {
-                    unitPriceMap.set(bag.id, bag.unit_price);
-                  }
-                });
-                
-                // Merge unit_price from bags lookup (via pickup_requests.bag_id -> bags.id)
                 const pickupRequests = (pickupResult.data || []).map(item => ({
                   ...item,
-                  source_type: 'pickup_request',
-                  unit_price: unitPriceMap.get(item.bag_id) || item.unit_price || null
+                  source_type: 'pickup_request'
                 }));
                 
                 const digitalBins = (binsResult.data || []).map(item => ({
@@ -527,9 +472,6 @@ const RequestPage = () => {
                   .eq('status', PickupRequestStatus.PICKED_UP)
                   .order('accepted_at', { ascending: false }),
                 supabase
-                  .from('bags')
-                  .select('*'),
-                supabase
                   .from('digital_bins')
                   .select(`
                     *,
@@ -541,31 +483,17 @@ const RequestPage = () => {
                   .eq('collector_id', user?.id)
                   .eq('status', 'picked_up')
                   .order('created_at', { ascending: false })
-              ]).then(([pickupResult, bagsResult, binsResult]) => {
+              ]).then(([pickupResult, binsResult]) => {
                 if (pickupResult.error) {
                   logger.warn('Picked up pickup requests query failed:', pickupResult.error);
-                }
-                if (bagsResult.error) {
-                  logger.warn('Picked up bags query failed:', bagsResult.error);
                 }
                 if (binsResult.error) {
                   logger.warn('Picked up digital bins query failed:', binsResult.error);
                 }
                 
-                // Build unit_price lookup from bags data
-                // pickup_requests.bag_id references bags.id
-                const unitPriceMap = new Map();
-                (bagsResult.data || []).forEach(bag => {
-                  if (bag.id && bag.unit_price) {
-                    unitPriceMap.set(bag.id, bag.unit_price);
-                  }
-                });
-                
-                // Merge unit_price from bags lookup (via pickup_requests.bag_id -> bags.id)
                 const pickupRequests = (pickupResult.data || []).map(item => ({
                   ...item,
-                  source_type: 'pickup_request',
-                  unit_price: unitPriceMap.get(item.bag_id) || item.unit_price || null
+                  source_type: 'pickup_request'
                 }));
                 
                 const digitalBins = (binsResult.data || []).map(item => ({

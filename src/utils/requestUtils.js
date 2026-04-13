@@ -53,10 +53,10 @@ export const transformRequestsData = (
         logger.warn('Error calculating disposal distance:', error);
       }
       
-      // For digital bags (pickup requests), use unit_price if available; for digital bins, use fee
+      // For digital bags (pickup requests), use fee directly from pickup_requests.fee; for digital bins, use fee
       const isDigitalBag = item.source_type !== 'digital_bin';
       const actualFee = isDigitalBag
-        ? (item.unit_price || item.fee || 0)
+        ? (item.fee ?? 0)
         : (item.fee || 0);
 
       return {
