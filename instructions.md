@@ -247,6 +247,7 @@ Follow these instructions to build and deploy the TrashDrop PWA efficiently!
 
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
+-- Last updated: 2026-04-13 (verified with live Supabase instance)
 
 CREATE TABLE public.alerts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -811,12 +812,14 @@ CREATE TABLE public.pickup_requests (
   service_area_id uuid,
   user_id uuid,
   address text,
+  bag_id uuid,
   CONSTRAINT pickup_requests_pkey PRIMARY KEY (id),
   CONSTRAINT pickup_requests_assigned_to_fkey FOREIGN KEY (assigned_to) REFERENCES public.collector_profiles(id),
   CONSTRAINT pickup_requests_payment_method_fkey FOREIGN KEY (payment_method_id) REFERENCES public.payment_methods(id),
   CONSTRAINT pickup_requests_reserved_by_fkey FOREIGN KEY (reserved_by) REFERENCES auth.users(id),
   CONSTRAINT pickup_requests_assigned_to_profiles_fkey FOREIGN KEY (assigned_to) REFERENCES public.profiles(id),
-  CONSTRAINT pickup_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+  CONSTRAINT pickup_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT pickup_requests_bag_id_fkey FOREIGN KEY (bag_id) REFERENCES public.bags(id)
 );
 CREATE TABLE public.pricing_zones (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
