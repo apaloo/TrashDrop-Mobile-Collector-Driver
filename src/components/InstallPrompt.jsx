@@ -8,184 +8,116 @@ const REPROMPT_DELAY_DAYS = 7; // Re-show prompt after 7 days
 
 /**
  * InstallPrompt Component
- * Shows a full-screen prompt to install the app on first launch.
- * Uses the beforeinstallprompt event for native PWA installation.
+ * ALWAYS shows on first visit (not gated on beforeinstallprompt).
+ * Uses native install if available, manual instructions otherwise.
  */
 const InstallPrompt = () => {
   const [showPrompt, setShowPrompt] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showManualInstructions, setShowManualInstructions] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
-  const [isPWAInstallable, setIsPWAInstallable] = useState(false);
-  const deferredPromptRef = useRef(null); // ref to avoid stale closure in timers
-  const timerFiredRef = useRef(false); // prevent double-showing
+  const deferredPromptRef = useRef(null);
 
-  // Check if app is already installed (running in standalone mode)
-  useEffect(() => {
-    const checkStandalone = () => {
-      const standalone = window.matchMedia('(display-mode: standalone)').matches ||
-                        window.navigator.standalone === true ||
-                        document.referrer.includes('android-app://');
-      setIsStandalone(standalone);
-      if (standalone) {
-        logger.debug('📱 App is running in standalone mode (already installed)');
-      }
-    };
-    
-    checkStandalone();
-  }, []);
+  // Detect platform
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isAndroid = /Android/.test(navigator.userAgent);
+  const isStandalone = typeof window !== 'undefined' && (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true ||
+    document.referrer.includes('android-app://')
+  );
 
-  // Capture the beforeinstallprompt event
+  // Capture beforeinstallprompt if browser fires it
   useEffect(() => {
-    const handleBeforeInstallPrompt = (e) => {
-      // Prevent the mini-infobar from appearing on mobile
+    const handler = (e) => {
       e.preventDefault();
-      // Store the event in both state AND ref (ref is always current in closures)
       deferredPromptRef.current = e;
-      setDeferredPrompt(e);
-      setIsPWAInstallable(true);
-      logger.debug('📥 Install prompt captured and ready - PWA is installable');
+      logger.info('📥 Native install prompt captured');
     };
+    window.addEventListener('beforeinstallprompt', handler);
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    // Check if already installed
-    window.addEventListener('appinstalled', () => {
+    const installedHandler = () => {
       logger.info('✅ App was installed successfully');
       setShowPrompt(false);
-      setDeferredPrompt(null);
       localStorage.setItem(INSTALL_PROMPT_KEY, 'installed');
-    });
+    };
+    window.addEventListener('appinstalled', installedHandler);
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('beforeinstallprompt', handler);
+      window.removeEventListener('appinstalled', installedHandler);
     };
   }, []);
 
-  // Determine whether to show the prompt on first visit
+  // ALWAYS show prompt on first visit (no dependency on beforeinstallprompt)
   useEffect(() => {
-    // Don't show if already in standalone mode (installed)
     if (isStandalone) {
       logger.debug('📱 App already installed (standalone mode)');
       return;
     }
 
-    // Check if permanently installed
-    const hasShown = localStorage.getItem(INSTALL_PROMPT_KEY);
-    if (hasShown === 'installed') {
-      logger.debug('📱 App already marked as installed');
+    const hasInstalled = localStorage.getItem(INSTALL_PROMPT_KEY) === 'installed';
+    if (hasInstalled) {
+      logger.debug('📱 App marked as installed');
       return;
     }
-
-    // Check if dismissed AND if enough time has passed for re-prompting
-    const hasDismissed = localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY);
-    const dismissedAt = localStorage.getItem(INSTALL_PROMPT_DISMISSED_TIMESTAMP);
-    
-    if (hasDismissed === 'true' && dismissedAt) {
-      const daysSinceDismissed = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24);
-      
-      if (daysSinceDismissed < REPROMPT_DELAY_DAYS) {
-        logger.debug(`📱 Install prompt dismissed ${Math.floor(daysSinceDismissed)} days ago, waiting ${REPROMPT_DELAY_DAYS} days to re-prompt`);
-        return;
-      } else {
-        // Enough time has passed, allow re-prompting
-        logger.info(`📱 ${REPROMPT_DELAY_DAYS} days passed since dismissal, allowing re-prompt`);
-        localStorage.removeItem(INSTALL_PROMPT_DISMISSED_KEY);
-        localStorage.removeItem(INSTALL_PROMPT_DISMISSED_TIMESTAMP);
-      }
-    }
-
-    // Use ref to check installability inside the timer - avoids stale closure issue
-    const timer = setTimeout(() => {
-      if (timerFiredRef.current) return; // already shown by the fast-path below
-      timerFiredRef.current = true;
-
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-
-      if (deferredPromptRef.current || isIOS) {
-        setShowPrompt(true);
-        localStorage.setItem(INSTALL_PROMPT_KEY, 'shown');
-        logger.info('📱 Showing install prompt for first-time/returning user');
-      } else {
-        logger.warn('📱 PWA not installable (beforeinstallprompt not fired), not showing prompt');
-      }
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, [isStandalone]);
-
-  // Fast-path: if beforeinstallprompt fires BEFORE the 3s timer expires, show immediately
-  useEffect(() => {
-    if (!isPWAInstallable || isStandalone || timerFiredRef.current) return;
-
-    const hasShown = localStorage.getItem(INSTALL_PROMPT_KEY);
-    if (hasShown === 'installed') return;
 
     const hasDismissed = localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY);
     const dismissedAt = localStorage.getItem(INSTALL_PROMPT_DISMISSED_TIMESTAMP);
     if (hasDismissed === 'true' && dismissedAt) {
       const days = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24);
-      if (days < REPROMPT_DELAY_DAYS) return;
+      if (days < REPROMPT_DELAY_DAYS) {
+        logger.debug(`📱 Prompt dismissed ${Math.floor(days)}d ago, re-prompt in ${REPROMPT_DELAY_DAYS}d`);
+        return;
+      }
+      localStorage.removeItem(INSTALL_PROMPT_DISMISSED_KEY);
+      localStorage.removeItem(INSTALL_PROMPT_DISMISSED_TIMESTAMP);
     }
 
-    timerFiredRef.current = true;
-    setShowPrompt(true);
-    localStorage.setItem(INSTALL_PROMPT_KEY, 'shown');
-    logger.info('📱 Fast-path: showing install prompt immediately (beforeinstallprompt fired early)');
-  }, [isPWAInstallable, isStandalone]);
+    // Show after 2 seconds regardless of beforeinstallprompt
+    const timer = setTimeout(() => {
+      setShowPrompt(true);
+      localStorage.setItem(INSTALL_PROMPT_KEY, 'shown');
+      logger.info('📱 Showing install prompt (always-show mode)');
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [isStandalone]);
 
   // Handle install button click
   const handleInstall = useCallback(async () => {
-    if (!deferredPrompt) {
-      // Fallback: Show manual installation instructions
-      logger.warn('📥 No deferred prompt available, showing instructions');
-      alert(
-        'To install this app:\n\n' +
-        '📱 iPhone/iPad: Tap the Share button, then "Add to Home Screen"\n\n' +
-        '📱 Android: Tap the menu (⋮), then "Add to Home Screen" or "Install App"'
-      );
-      handleDismiss();
-      return;
-    }
-
-    setIsInstalling(true);
-
-    try {
-      // Show the native install prompt
-      deferredPrompt.prompt();
-      
-      // Wait for the user's response
-      const { outcome } = await deferredPrompt.userChoice;
-      
-      logger.info(`📥 User response to install prompt: ${outcome}`);
-      
-      if (outcome === 'accepted') {
-        logger.info('✅ User accepted the install prompt');
-        localStorage.setItem(INSTALL_PROMPT_KEY, 'installed');
-      } else {
-        logger.info('❌ User dismissed the install prompt');
-        localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, 'true');
+    // Try native prompt first
+    if (deferredPromptRef.current) {
+      setIsInstalling(true);
+      try {
+        deferredPromptRef.current.prompt();
+        const { outcome } = await deferredPromptRef.current.userChoice;
+        logger.info(`📥 Native install result: ${outcome}`);
+        if (outcome === 'accepted') {
+          localStorage.setItem(INSTALL_PROMPT_KEY, 'installed');
+          setShowPrompt(false);
+          return;
+        }
+      } catch (err) {
+        logger.error('❌ Native prompt error:', err);
+      } finally {
+        deferredPromptRef.current = null;
+        setIsInstalling(false);
       }
-      
-      // Clear the deferred prompt
-      setDeferredPrompt(null);
-      setShowPrompt(false);
-    } catch (error) {
-      logger.error('❌ Error showing install prompt:', error);
-    } finally {
-      setIsInstalling(false);
     }
-  }, [deferredPrompt]);
+
+    // Fallback: show manual instructions inline
+    setShowManualInstructions(true);
+  }, []);
 
   // Handle dismiss/skip
   const handleDismiss = useCallback(() => {
     localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, 'true');
     localStorage.setItem(INSTALL_PROMPT_DISMISSED_TIMESTAMP, Date.now().toString());
     setShowPrompt(false);
-    logger.info(`📱 User skipped install prompt, will re-prompt in ${REPROMPT_DELAY_DAYS} days`);
+    setShowManualInstructions(false);
+    logger.info(`📱 User skipped install prompt, re-prompt in ${REPROMPT_DELAY_DAYS} days`);
   }, []);
 
-  // Don't render if not showing
   if (!showPrompt || isStandalone) {
     return null;
   }
@@ -262,30 +194,64 @@ const InstallPrompt = () => {
           </div>
         </div>
 
+        {/* Manual Instructions (shown when native prompt is not available) */}
+        {showManualInstructions && (
+          <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+            <h3 className="font-semibold text-blue-800 mb-2 text-sm">How to install:</h3>
+            {isIOS ? (
+              <div className="text-sm text-blue-700 space-y-2">
+                <p>1. Tap the <strong>Share</strong> button <span className="inline-block bg-blue-100 px-1.5 py-0.5 rounded text-xs">↑</span> at the bottom of Safari</p>
+                <p>2. Scroll down and tap <strong>"Add to Home Screen"</strong></p>
+                <p>3. Tap <strong>"Add"</strong> in the top right</p>
+              </div>
+            ) : isAndroid ? (
+              <div className="text-sm text-blue-700 space-y-2">
+                <p>1. Tap the <strong>menu</strong> button <span className="inline-block bg-blue-100 px-1.5 py-0.5 rounded text-xs">⋮</span> in Chrome</p>
+                <p>2. Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong></p>
+                <p>3. Tap <strong>"Install"</strong> to confirm</p>
+              </div>
+            ) : (
+              <div className="text-sm text-blue-700 space-y-2">
+                <p>1. Click the <strong>install icon</strong> in your browser's address bar</p>
+                <p>2. Or open browser menu → <strong>"Install TrashDrop Carter"</strong></p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Buttons */}
         <div className="space-y-3">
-          <button
-            onClick={handleInstall}
-            disabled={isInstalling}
-            className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl transition-colors duration-200 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed"
-          >
-            {isInstalling ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Installing...
-              </>
-            ) : (
-              <>
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Install App
-              </>
-            )}
-          </button>
+          {!showManualInstructions ? (
+            <button
+              onClick={handleInstall}
+              disabled={isInstalling}
+              className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl transition-colors duration-200 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {isInstalling ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Installing...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Install App
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={handleDismiss}
+              className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl transition-colors duration-200"
+            >
+              Got it, I'll install now
+            </button>
+          )}
           
           <button
             onClick={handleDismiss}
