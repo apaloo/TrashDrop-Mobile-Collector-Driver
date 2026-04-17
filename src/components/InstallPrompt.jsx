@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { logger } from '../utils/logger';
 
 const INSTALL_PROMPT_KEY = 'trashdrop_install_prompt_shown';
@@ -17,6 +17,8 @@ const InstallPrompt = () => {
   const [isInstalling, setIsInstalling] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isPWAInstallable, setIsPWAInstallable] = useState(false);
+  const deferredPromptRef = useRef(null); // ref to avoid stale closure in timers
+  const timerFiredRef = useRef(false); // prevent double-showing
 
   // Check if app is already installed (running in standalone mode)
   useEffect(() => {
@@ -38,7 +40,8 @@ const InstallPrompt = () => {
     const handleBeforeInstallPrompt = (e) => {
       // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
-      // Store the event for later use
+      // Store the event in both state AND ref (ref is always current in closures)
+      deferredPromptRef.current = e;
       setDeferredPrompt(e);
       setIsPWAInstallable(true);
       logger.debug('📥 Install prompt captured and ready - PWA is installable');
@@ -92,23 +95,44 @@ const InstallPrompt = () => {
       }
     }
 
-    // Wait longer for PWA installability check (beforeinstallprompt event)
-    // On some devices this event takes 2-3 seconds to fire
+    // Use ref to check installability inside the timer - avoids stale closure issue
     const timer = setTimeout(() => {
-      // Only show if PWA is actually installable OR if we're on iOS (no beforeinstallprompt)
+      if (timerFiredRef.current) return; // already shown by the fast-path below
+      timerFiredRef.current = true;
+
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-      
-      if (isPWAInstallable || isIOS) {
+
+      if (deferredPromptRef.current || isIOS) {
         setShowPrompt(true);
         localStorage.setItem(INSTALL_PROMPT_KEY, 'shown');
         logger.info('📱 Showing install prompt for first-time/returning user');
       } else {
         logger.warn('📱 PWA not installable (beforeinstallprompt not fired), not showing prompt');
       }
-    }, 3000); // Increased to 3 seconds to wait for beforeinstallprompt
+    }, 3000);
 
     return () => clearTimeout(timer);
-  }, [isStandalone, isPWAInstallable]);
+  }, [isStandalone]);
+
+  // Fast-path: if beforeinstallprompt fires BEFORE the 3s timer expires, show immediately
+  useEffect(() => {
+    if (!isPWAInstallable || isStandalone || timerFiredRef.current) return;
+
+    const hasShown = localStorage.getItem(INSTALL_PROMPT_KEY);
+    if (hasShown === 'installed') return;
+
+    const hasDismissed = localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY);
+    const dismissedAt = localStorage.getItem(INSTALL_PROMPT_DISMISSED_TIMESTAMP);
+    if (hasDismissed === 'true' && dismissedAt) {
+      const days = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24);
+      if (days < REPROMPT_DELAY_DAYS) return;
+    }
+
+    timerFiredRef.current = true;
+    setShowPrompt(true);
+    localStorage.setItem(INSTALL_PROMPT_KEY, 'shown');
+    logger.info('📱 Fast-path: showing install prompt immediately (beforeinstallprompt fired early)');
+  }, [isPWAInstallable, isStandalone]);
 
   // Handle install button click
   const handleInstall = useCallback(async () => {
