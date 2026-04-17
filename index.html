@@ -26,13 +26,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json" />
+    <!-- PWA Manifest is injected by VitePWA plugin (manifest.webmanifest) -->
+    <!-- Do NOT add a manual manifest link here - it causes duplicate manifest conflict -->
     
     <!-- REMOVED: Google Maps API - now loaded dynamically when needed -->
     <!-- This was causing 15-25 second blocking delays due to invalid API key -->
-    
-    <!-- PWA Manifest -->
   </head>
   <body>
     <!-- CRITICAL: Static HTML that shows INSTANTLY while JS loads -->
