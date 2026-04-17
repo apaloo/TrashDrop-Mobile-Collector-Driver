@@ -99,20 +99,16 @@ export default defineConfig({
         scope: '/',
         icons: [
           {
-            src: 'icons/logo-02.jpg?v=3.0.0',
-            sizes: '512x512',
-            type: 'image/jpeg',
-            purpose: 'any'
-          },
-          {
             src: 'icons/icon-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
             src: 'icons/icon-512x512.png',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
             src: 'icons/maskable_icon.png',
