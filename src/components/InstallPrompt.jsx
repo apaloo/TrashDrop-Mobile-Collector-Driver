@@ -3,6 +3,8 @@ import { logger } from '../utils/logger';
 
 const INSTALL_PROMPT_KEY = 'trashdrop_install_prompt_shown';
 const INSTALL_PROMPT_DISMISSED_KEY = 'trashdrop_install_prompt_dismissed';
+const INSTALL_PROMPT_DISMISSED_TIMESTAMP = 'trashdrop_install_prompt_dismissed_at';
+const REPROMPT_DELAY_DAYS = 7; // Re-show prompt after 7 days
 
 /**
  * InstallPrompt Component
@@ -14,6 +16,7 @@ const InstallPrompt = () => {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstalling, setIsInstalling] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [isPWAInstallable, setIsPWAInstallable] = useState(false);
 
   // Check if app is already installed (running in standalone mode)
   useEffect(() => {
@@ -37,7 +40,8 @@ const InstallPrompt = () => {
       e.preventDefault();
       // Store the event for later use
       setDeferredPrompt(e);
-      logger.debug('📥 Install prompt captured and ready');
+      setIsPWAInstallable(true);
+      logger.debug('📥 Install prompt captured and ready - PWA is installable');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -59,27 +63,52 @@ const InstallPrompt = () => {
   useEffect(() => {
     // Don't show if already in standalone mode (installed)
     if (isStandalone) {
+      logger.debug('📱 App already installed (standalone mode)');
       return;
     }
 
-    // Check if user has already dismissed or installed
+    // Check if permanently installed
     const hasShown = localStorage.getItem(INSTALL_PROMPT_KEY);
-    const hasDismissed = localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY);
-    
-    if (hasShown === 'installed' || hasDismissed === 'true') {
-      logger.debug('📱 Install prompt already handled, not showing');
+    if (hasShown === 'installed') {
+      logger.debug('📱 App already marked as installed');
       return;
     }
 
-    // Show the prompt after a brief delay to let the app load
+    // Check if dismissed AND if enough time has passed for re-prompting
+    const hasDismissed = localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY);
+    const dismissedAt = localStorage.getItem(INSTALL_PROMPT_DISMISSED_TIMESTAMP);
+    
+    if (hasDismissed === 'true' && dismissedAt) {
+      const daysSinceDismissed = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24);
+      
+      if (daysSinceDismissed < REPROMPT_DELAY_DAYS) {
+        logger.debug(`📱 Install prompt dismissed ${Math.floor(daysSinceDismissed)} days ago, waiting ${REPROMPT_DELAY_DAYS} days to re-prompt`);
+        return;
+      } else {
+        // Enough time has passed, allow re-prompting
+        logger.info(`📱 ${REPROMPT_DELAY_DAYS} days passed since dismissal, allowing re-prompt`);
+        localStorage.removeItem(INSTALL_PROMPT_DISMISSED_KEY);
+        localStorage.removeItem(INSTALL_PROMPT_DISMISSED_TIMESTAMP);
+      }
+    }
+
+    // Wait longer for PWA installability check (beforeinstallprompt event)
+    // On some devices this event takes 2-3 seconds to fire
     const timer = setTimeout(() => {
-      setShowPrompt(true);
-      localStorage.setItem(INSTALL_PROMPT_KEY, 'shown');
-      logger.info('📱 Showing install prompt for first-time user');
-    }, 1000);
+      // Only show if PWA is actually installable OR if we're on iOS (no beforeinstallprompt)
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      
+      if (isPWAInstallable || isIOS) {
+        setShowPrompt(true);
+        localStorage.setItem(INSTALL_PROMPT_KEY, 'shown');
+        logger.info('📱 Showing install prompt for first-time/returning user');
+      } else {
+        logger.warn('📱 PWA not installable (beforeinstallprompt not fired), not showing prompt');
+      }
+    }, 3000); // Increased to 3 seconds to wait for beforeinstallprompt
 
     return () => clearTimeout(timer);
-  }, [isStandalone]);
+  }, [isStandalone, isPWAInstallable]);
 
   // Handle install button click
   const handleInstall = useCallback(async () => {
@@ -127,8 +156,9 @@ const InstallPrompt = () => {
   // Handle dismiss/skip
   const handleDismiss = useCallback(() => {
     localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, 'true');
+    localStorage.setItem(INSTALL_PROMPT_DISMISSED_TIMESTAMP, Date.now().toString());
     setShowPrompt(false);
-    logger.info('📱 User skipped install prompt');
+    logger.info(`📱 User skipped install prompt, will re-prompt in ${REPROMPT_DELAY_DAYS} days`);
   }, []);
 
   // Don't render if not showing
