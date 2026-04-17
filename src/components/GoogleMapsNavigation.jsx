@@ -451,6 +451,7 @@ const GoogleMapsNavigation = ({
   const [currentHeading, setCurrentHeading] = useState(270); // Default to 270° (west/left) - will be updated to route direction
   const previousPositionRef = useRef(null); // Track previous position for heading calculation
   const walkingPolylineRef = useRef(null); // Dotted walking line from route endpoint to bin
+  const lastCachedRouteKeyRef = useRef(null); // Prevent re-caching tiles for the same route
 
   // Atomically update both state and ref for track-up mode
   const setTrackUp = (enabled) => {
@@ -1690,8 +1691,19 @@ const GoogleMapsNavigation = ({
   }, []);
 
   // Cache route for offline use when calculated
+  // NOTE: userLocation intentionally excluded from deps — it's only metadata.
+  // Including it caused 357 tiles to re-cache on every GPS update.
   useEffect(() => {
     if (navigationSteps.length > 0 && navigator.onLine) {
+      // Build a stable key from destination + step count to avoid redundant caching
+      const routeKey = `${destination?.lat || destination}-${destination?.lng || ''}-${navigationSteps.length}`;
+      if (routeKey === lastCachedRouteKeyRef.current) {
+        return; // Already cached this exact route
+      }
+
+      // Set key IMMEDIATELY (synchronously) to prevent concurrent runs
+      lastCachedRouteKeyRef.current = routeKey;
+
       const cacheRouteData = async () => {
         try {
           await offlineMapService.initialize();
@@ -1726,21 +1738,20 @@ const GoogleMapsNavigation = ({
             } : null
           }));
           
-          // Save route data
+          // Save route data (use ref for latest userLocation)
           await offlineMapService.saveRoute('current-navigation', {
             steps: serializedSteps,
             polylineCoords,
             destination,
             destinationName,
-            userLocation
+            userLocation: lastUserLocationRef.current || userLocation
           });
           
           // Cache tiles along the route
           if (polylineCoords.length > 0) {
             logger.info('📦 Caching tiles for offline navigation...');
-            let lastLoggedPercent = -1; // Track last logged percentage to avoid spam
+            let lastLoggedPercent = -1;
             await offlineMapService.cacheRouteArea(polylineCoords, (progress) => {
-              // Only log at 25%, 50%, 75%, 100% milestones (not every batch)
               const milestone = Math.floor(progress.percent / 25) * 25;
               if (milestone > lastLoggedPercent && milestone <= 100) {
                 lastLoggedPercent = milestone;
@@ -1748,14 +1759,17 @@ const GoogleMapsNavigation = ({
               }
             });
           }
+
         } catch (error) {
+          // Reset key so a retry is possible on next render
+          lastCachedRouteKeyRef.current = null;
           logger.warn('Failed to cache route for offline use:', error);
         }
       };
       
       cacheRouteData();
     }
-  }, [navigationSteps, destination, destinationName, userLocation]);
+  }, [navigationSteps, destination, destinationName]);
 
   // Render offline map when Google Maps fails to load (API error or offline)
   // This provides a fallback navigation experience using Leaflet/OpenStreetMap

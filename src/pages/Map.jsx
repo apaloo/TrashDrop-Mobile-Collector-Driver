@@ -397,12 +397,22 @@ const MapPage = () => {
   const [position, setPosition] = useState(DEFAULT_POSITION); // Start with fallback, update to GPS when available
   const [currentHeading, setCurrentHeading] = useState(270); // Default to 270° (West/left) - tricycle faces left horizontally
   const previousPositionRef = useRef(null); // Track previous position for heading calculation
-  const [isUsingCachedLocation, setIsUsingCachedLocation] = useState(false); // Track if using cached location
-  const [isWaitingForGPS, setIsWaitingForGPS] = useState(true); // Track if waiting for GPS
-  const [isUsingFallbackLocation, setIsUsingFallbackLocation] = useState(true); // Track if using fallback location
+  const [isUsingCachedLocation, setIsUsingCachedLocationState] = useState(false); // Track if using cached location
+  const [isWaitingForGPS, setIsWaitingForGPSState] = useState(true); // Track if waiting for GPS
+  const [isUsingFallbackLocation, setIsUsingFallbackLocationState] = useState(true); // Track if using fallback location
   const [error, setError] = useState(null);
   const [showCachedFlash, setShowCachedFlash] = useState(false); // Brief flash for "Using Cached"
-  const [hasGoodAccuracy, setHasGoodAccuracy] = useState(false); // Track if we have <=50m accuracy
+  const [hasGoodAccuracy, setHasGoodAccuracyState] = useState(false); // Track if we have <=50m accuracy
+  // Synchronous refs mirror the state above so the watchPosition callback
+  // always sees the latest value (state is stale between renders).
+  const isUsingCachedLocationRef = useRef(false);
+  const isWaitingForGPSRef = useRef(true);
+  const isUsingFallbackLocationRef = useRef(true);
+  const hasGoodAccuracyRef = useRef(false);
+  const setIsUsingCachedLocation = (v) => { isUsingCachedLocationRef.current = v; setIsUsingCachedLocationState(v); };
+  const setIsWaitingForGPS = (v) => { isWaitingForGPSRef.current = v; setIsWaitingForGPSState(v); };
+  const setIsUsingFallbackLocation = (v) => { isUsingFallbackLocationRef.current = v; setIsUsingFallbackLocationState(v); };
+  const setHasGoodAccuracy = (v) => { hasGoodAccuracyRef.current = v; setHasGoodAccuracyState(v); };
   const [watchId, setWatchId] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [locationAttempted, setLocationAttempted] = useState(false);
@@ -433,6 +443,7 @@ const MapPage = () => {
           logger.debug('📍 Using cached position temporarily while fetching GPS:', cachedPos);
           setPosition(cachedPos);
           setIsUsingCachedLocation(true); // Mark as using cached location
+          setIsUsingFallbackLocation(false); // Cached and fallback are mutually exclusive
           setIsWaitingForGPS(false); // Got real location
           return true;
         }
@@ -475,18 +486,24 @@ const MapPage = () => {
       // Only switch from cached/fallback to live GPS if accuracy is better than 50m
       const isAccurateEnough = accuracy <= 50;
       
+      // Use refs for synchronous reads inside this callback
+      const _usingCached = isUsingCachedLocationRef.current;
+      const _usingFallback = isUsingFallbackLocationRef.current;
+      const _waitingGPS = isWaitingForGPSRef.current;
+      const _goodAccuracy = hasGoodAccuracyRef.current;
+      
       // Track when we achieve good accuracy (≤50m) to hide "Getting GPS..." indicator
-      if (isAccurateEnough && !hasGoodAccuracy) {
+      if (isAccurateEnough && !_goodAccuracy) {
         setHasGoodAccuracy(true);
         logger.debug('✅ GPS accuracy achieved! ±' + Math.round(accuracy) + 'm - hiding "Getting GPS..." indicator');
-      } else if (!isAccurateEnough && hasGoodAccuracy) {
+      } else if (!isAccurateEnough && _goodAccuracy) {
         // Show indicator again when accuracy degrades beyond 50m
         setHasGoodAccuracy(false);
         logger.debug('⚠️ GPS accuracy degraded to ±' + Math.round(accuracy) + 'm - showing "Getting GPS..." again');
       }
       
       // Check if this is a significant location update
-      if (isUsingCachedLocation) {
+      if (_usingCached) {
         if (isAccurateEnough) {
           logger.info('🎯 GPS location acquired! Updating from cached to real position:', newPos, `±${Math.round(accuracy)}m`);
           setIsUsingCachedLocation(false); // Mark as no longer using cached location
@@ -495,7 +512,7 @@ const MapPage = () => {
           logger.debug('📍 GPS reading too inaccurate, keeping cached location:', `±${Math.round(accuracy)}m (need ≤50m)`);
           return; // Don't update position if accuracy is poor
         }
-      } else if (isUsingFallbackLocation) {
+      } else if (_usingFallback) {
         if (isAccurateEnough) {
           logger.info('🎯 GPS location acquired! Updating from fallback to real position:', newPos, `±${Math.round(accuracy)}m`);
           setIsUsingFallbackLocation(false); // Mark as no longer using fallback location
@@ -504,7 +521,7 @@ const MapPage = () => {
           logger.debug('📍 GPS reading too inaccurate, keeping fallback location:', `±${Math.round(accuracy)}m (need ≤50m)`);
           return; // Don't update position if accuracy is poor
         }
-      } else if (isWaitingForGPS) {
+      } else if (_waitingGPS) {
         if (isAccurateEnough) {
           logger.info('🎯 GPS location acquired! First real position:', newPos, `±${Math.round(accuracy)}m`);
           logger.debug('💾 Position cached for next time');
