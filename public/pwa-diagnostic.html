@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Diagnostic Tool</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            background: #f5f5f5;
+        }
+        .test {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #ccc;
+        }
+        .test.pass {
+            border-left-color: #4caf50;
+        }
+        .test.fail {
+            border-left-color: #f44336;
+        }
+        .test.warn {
+            border-left-color: #ff9800;
+        }
+        h1 { color: #333; }
+        h3 { margin: 0 0 10px 0; }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        button {
+            background: #2196f3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        button:hover {
+            background: #1976d2;
+        }
+        .icon-preview {
+            display: inline-block;
+            margin: 5px;
+            text-align: center;
+        }
+        .icon-preview img {
+            display: block;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 PWA Install Diagnostic</h1>
+    <p>This tool checks if your PWA meets all installation requirements.</p>
+    
+    <div id="results"></div>
+    
+    <button onclick="runTests()">🔄 Run Tests</button>
+    <button onclick="clearAllData()">🗑️ Clear All PWA Data</button>
+    <button onclick="forcePrompt()">🚀 Force Install Prompt</button>
+
+    <script>
+        const results = document.getElementById('results');
+        let deferredPrompt = null;
+
+        // Capture beforeinstallprompt
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            console.log('✅ beforeinstallprompt captured!');
+            addTest('beforeinstallprompt Event', 'Event captured successfully!', 'pass');
+        });
+
+        async function runTests() {
+            results.innerHTML = '<h2>Running diagnostics...</h2>';
+            
+            // Test 1: HTTPS
+            const isHTTPS = window.location.protocol === 'https:';
+            addTest('HTTPS', isHTTPS ? 'Site is served over HTTPS ✓' : 'Site must be served over HTTPS ✗', isHTTPS ? 'pass' : 'fail');
+            
+            // Test 2: Service Worker
+            const hasSW = 'serviceWorker' in navigator;
+            addTest('Service Worker Support', hasSW ? 'Browser supports Service Workers ✓' : 'Service Workers not supported ✗', hasSW ? 'pass' : 'fail');
+            
+            if (hasSW) {
+                const registration = await navigator.serviceWorker.getRegistration();
+                addTest('Service Worker Registered', registration ? `Registered at: ${registration.scope} ✓` : 'No service worker registered ✗', registration ? 'pass' : 'fail');
+            }
+            
+            // Test 3: Manifest
+            try {
+                const manifestLink = document.querySelector('link[rel="manifest"]');
+                if (!manifestLink) {
+                    addTest('Manifest Link', 'No manifest link found in HTML ✗', 'fail');
+                } else {
+                    const manifestUrl = manifestLink.href;
+                    addTest('Manifest Link', `Found: ${manifestUrl} ✓`, 'pass');
+                    
+                    // Fetch and validate manifest
+                    const response = await fetch(manifestUrl);
+                    const manifest = await response.json();
+                    
+                    addTest('Manifest Loaded', 'Manifest parsed successfully ✓', 'pass');
+                    addTest('Manifest Content', `<pre>${JSON.stringify(manifest, null, 2)}</pre>`, 'pass');
+                    
+                    // Check required fields
+                    const hasName = manifest.name || manifest.short_name;
+                    addTest('Manifest Name', hasName ? `Name: ${manifest.name || manifest.short_name} ✓` : 'Missing name ✗', hasName ? 'pass' : 'fail');
+                    
+                    const hasIcons = manifest.icons && manifest.icons.length > 0;
+                    addTest('Manifest Icons', hasIcons ? `${manifest.icons.length} icons found ✓` : 'No icons ✗', hasIcons ? 'pass' : 'fail');
+                    
+                    if (hasIcons) {
+                        let iconHtml = '<div>';
+                        for (const icon of manifest.icons) {
+                            const isPNG = icon.type === 'image/png';
+                            const size = icon.sizes;
+                            const isValidSize = size === '192x192' || size === '512x512';
+                            
+                            iconHtml += `<div class="icon-preview">
+                                <img src="${icon.src}" width="64" height="64" onerror="this.style.border='2px solid red'">
+                                <div>${size}</div>
+                                <div>${icon.type}</div>
+                                <div style="color: ${isPNG && isValidSize ? 'green' : 'red'}">
+                                    ${isPNG ? '✓ PNG' : '✗ Not PNG'}
+                                </div>
+                            </div>`;
+                        }
+                        iconHtml += '</div>';
+                        addTest('Icon Details', iconHtml, 'pass');
+                        
+                        // Check for required sizes
+                        const has192 = manifest.icons.some(i => i.sizes === '192x192' && i.type === 'image/png');
+                        const has512 = manifest.icons.some(i => i.sizes === '512x512' && i.type === 'image/png');
+                        
+                        addTest('192x192 PNG Icon', has192 ? 'Found ✓' : 'Missing (REQUIRED) ✗', has192 ? 'pass' : 'fail');
+                        addTest('512x512 PNG Icon', has512 ? 'Found ✓' : 'Missing (REQUIRED) ✗', has512 ? 'pass' : 'fail');
+                    }
+                    
+                    const hasStartUrl = manifest.start_url;
+                    addTest('Manifest start_url', hasStartUrl ? `${manifest.start_url} ✓` : 'Missing start_url ✗', hasStartUrl ? 'pass' : 'warn');
+                    
+                    const hasDisplay = manifest.display;
+                    addTest('Manifest display', hasDisplay ? `${manifest.display} ✓` : 'Missing display mode ✗', hasDisplay ? 'pass' : 'warn');
+                }
+            } catch (error) {
+                addTest('Manifest Error', `Failed to load manifest: ${error.message} ✗`, 'fail');
+            }
+            
+            // Test 4: Standalone mode
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+            addTest('Already Installed', isStandalone ? 'App is already installed ⚠️' : 'App not installed yet ✓', isStandalone ? 'warn' : 'pass');
+            
+            // Test 5: beforeinstallprompt
+            setTimeout(() => {
+                if (!deferredPrompt) {
+                    addTest('beforeinstallprompt Event', 'Event has NOT fired yet. This could mean:<br>• Chrome has blocked it on this device<br>• PWA criteria not fully met<br>• App already installed<br>• User previously dismissed prompt', 'fail');
+                }
+            }, 3000);
+            
+            // Test 6: localStorage check
+            const promptShown = localStorage.getItem('trashdrop_install_prompt_shown');
+            const promptDismissed = localStorage.getItem('trashdrop_install_prompt_dismissed');
+            addTest('localStorage State', `
+                <div>Prompt Shown: ${promptShown || 'null'}</div>
+                <div>Prompt Dismissed: ${promptDismissed || 'null'}</div>
+            `, promptShown === 'installed' ? 'warn' : 'pass');
+        }
+
+        function addTest(name, message, status) {
+            const div = document.createElement('div');
+            div.className = `test ${status}`;
+            div.innerHTML = `<h3>${name}</h3><div>${message}</div>`;
+            results.appendChild(div);
+        }
+
+        function clearAllData() {
+            if (confirm('This will clear all PWA data, service workers, and cache. Continue?')) {
+                localStorage.clear();
+                sessionStorage.clear();
+                
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(registrations => {
+                        registrations.forEach(reg => reg.unregister());
+                    });
+                }
+                
+                if ('caches' in window) {
+                    caches.keys().then(names => {
+                        names.forEach(name => caches.delete(name));
+                    });
+                }
+                
+                alert('All PWA data cleared! Please refresh the page.');
+                setTimeout(() => window.location.reload(), 1000);
+            }
+        }
+
+        function forcePrompt() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then(choice => {
+                    alert(`User choice: ${choice.outcome}`);
+                    deferredPrompt = null;
+                });
+            } else {
+                alert('No install prompt available. The beforeinstallprompt event has not fired yet.');
+            }
+        }
+
+        // Run tests on load
+        setTimeout(runTests, 500);
+    </script>
+</body>
+</html>
