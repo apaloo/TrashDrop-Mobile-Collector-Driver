@@ -145,7 +145,7 @@ const EnhancedRequestPage = () => {
       
       if (result.success) {
         const statusMessages = {
-          'picked_up': 'Request marked as picked up!',
+          'collecting': 'Request marked as picked up!',
           'disposed': 'Request completed successfully!'
         };
         

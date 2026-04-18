@@ -13,6 +13,8 @@ import * as TrendiPayService from './trendiPayService';
 // Feature flag for TrendiPay integration
 const ENABLE_TRENDIPAY = import.meta.env.VITE_ENABLE_TRENDIPAY === 'true';
 
+console.log('💰 [PaymentService] Loaded. ENABLE_TRENDIPAY:', ENABLE_TRENDIPAY, '(raw env:', import.meta.env.VITE_ENABLE_TRENDIPAY, ')');
+
 /**
  * Initiate client collection payment
  * 
@@ -29,27 +31,29 @@ const ENABLE_TRENDIPAY = import.meta.env.VITE_ENABLE_TRENDIPAY === 'true';
  */
 export async function initiateCollection(paymentData) {
   try {
-    logger.info('Initiating collection payment:', {
-      digitalBinId: paymentData.digitalBinId,
-      amount: paymentData.totalBill,
-      mode: paymentData.paymentMode
-    });
+    console.log('💰 [PaymentService] === INITIATE COLLECTION ===');
+    console.log('💰 [PaymentService] Input paymentData:', JSON.stringify(paymentData, null, 2));
+    console.log('💰 [PaymentService] ENABLE_TRENDIPAY:', ENABLE_TRENDIPAY);
 
     // Validate required fields
     if (!paymentData.digitalBinId || !paymentData.collectorId) {
+      console.error('❌ [PaymentService] Missing IDs:', { digitalBinId: paymentData.digitalBinId, collectorId: paymentData.collectorId });
       throw new Error('Missing required IDs');
     }
 
     if (!paymentData.totalBill || paymentData.totalBill <= 0) {
+      console.error('❌ [PaymentService] Invalid amount:', paymentData.totalBill);
       throw new Error('Invalid amount');
     }
 
     if (!['momo', 'e_cash', 'cash'].includes(paymentData.paymentMode)) {
+      console.error('❌ [PaymentService] Invalid payment mode:', paymentData.paymentMode);
       throw new Error('Invalid payment mode');
     }
 
     // For MoMo/e-cash, validate phone number
     if ((paymentData.paymentMode === 'momo' || paymentData.paymentMode === 'e_cash') && !paymentData.clientMomo) {
+      console.error('❌ [PaymentService] MoMo number missing for mode:', paymentData.paymentMode);
       throw new Error('Client MoMo number required');
     }
 
@@ -68,6 +72,8 @@ export async function initiateCollection(paymentData) {
       status: 'pending'
     };
 
+    console.log('💰 [PaymentService] Inserting bin_payments record:', JSON.stringify(paymentRecord, null, 2));
+
     const { data, error } = await supabase
       .from('bin_payments')
       .insert([paymentRecord])
@@ -75,14 +81,17 @@ export async function initiateCollection(paymentData) {
       .single();
 
     if (error) {
-      logger.error('Error creating payment record:', error);
+      console.error('❌ [PaymentService] DB insert failed:', { code: error.code, message: error.message, details: error.details, hint: error.hint });
       throw new Error(`Database error: ${error.message}`);
     }
 
-    logger.info('Payment record created:', data.id);
+    console.log('✅ [PaymentService] Payment record created:', { id: data.id, status: data.status });
 
     // Handle cash vs MoMo/e-cash
+    console.log('💰 [PaymentService] Payment mode:', paymentData.paymentMode);
+    
     if (paymentData.paymentMode === 'cash') {
+      console.log('💰 [PaymentService] Cash payment — marking as success immediately');
       // Cash payment - immediate success
       const { error: updateError } = await supabase
         .from('bin_payments')
@@ -90,7 +99,7 @@ export async function initiateCollection(paymentData) {
         .eq('id', data.id);
 
       if (updateError) {
-        logger.error('Error updating cash payment:', updateError);
+        console.error('❌ [PaymentService] Error updating cash payment:', updateError);
       }
 
       return {
@@ -102,20 +111,26 @@ export async function initiateCollection(paymentData) {
     } else {
       // MoMo/e-cash - Call TrendiPay API
       if (ENABLE_TRENDIPAY) {
-        logger.info('Calling TrendiPay collection API...');
+        console.log('💰 [PaymentService] TrendiPay ENABLED — calling gateway...');
         
-        const gatewayResult = await TrendiPayService.initiateCollection({
+        const gatewayParams = {
           reference: data.id,
           accountNumber: paymentData.clientMomo,
           rSwitch: paymentData.clientRSwitch,
           amount: paymentData.totalBill,
           description: `Digital bin ${paymentData.digitalBinId.substring(0, 8)}`,
           currency: 'GHS'
-        });
+        };
+        console.log('💰 [PaymentService] Gateway params:', JSON.stringify(gatewayParams, null, 2));
+        
+        const gatewayResult = await TrendiPayService.initiateCollection(gatewayParams);
+
+        console.log('💰 [PaymentService] Gateway result:', JSON.stringify(gatewayResult, null, 2));
 
         if (!gatewayResult.success) {
+          console.error('❌ [PaymentService] Gateway failed, updating DB with error...');
           // Update payment record with error
-          await supabase
+          const { error: failError } = await supabase
             .from('bin_payments')
             .update({ 
               status: 'failed',
@@ -123,39 +138,46 @@ export async function initiateCollection(paymentData) {
             })
             .eq('id', data.id);
 
+          if (failError) {
+            console.error('❌ [PaymentService] Failed to update payment as failed:', failError);
+          }
+
           throw new Error(gatewayResult.error || 'Payment gateway error');
         }
 
         // Update payment record with gateway details
+        console.log('💰 [PaymentService] Updating DB with gateway details...');
+        const updatePayload = { 
+          status: gatewayResult.status,
+          gateway_reference: gatewayResult.gatewayReference,
+          gateway_transaction_id: gatewayResult.transactionId
+        };
+        console.log('💰 [PaymentService] DB update payload:', updatePayload);
+        
         const { error: updateError } = await supabase
           .from('bin_payments')
-          .update({ 
-            status: gatewayResult.status, // 'pending', 'processing', etc.
-            gateway_reference: gatewayResult.gatewayReference,
-            gateway_transaction_id: gatewayResult.transactionId
-          })
+          .update(updatePayload)
           .eq('id', data.id);
 
         if (updateError) {
-          logger.warn('Failed to update gateway reference:', updateError);
+          console.warn('⚠️ [PaymentService] Failed to update gateway reference:', { code: updateError.code, message: updateError.message, details: updateError.details });
+        } else {
+          console.log('✅ [PaymentService] DB updated with gateway details');
         }
 
-        logger.info('TrendiPay collection initiated:', {
-          paymentId: data.id,
-          transactionId: gatewayResult.transactionId,
-          status: gatewayResult.status
-        });
-
-        return {
+        const finalResult = {
           success: true,
           paymentId: data.id,
           status: gatewayResult.status,
           message: gatewayResult.message || 'Payment initiated. Awaiting client approval.',
-          transactionId: gatewayResult.transactionId
+          transactionId: gatewayResult.transactionId,
+          authorizationSteps: gatewayResult.authorizationSteps // MoMo approval steps for user
         };
+        console.log('✅ [PaymentService] Returning to caller:', JSON.stringify(finalResult, null, 2));
+
+        return finalResult;
       } else {
-        // Stub mode: Mark as pending for testing
-        logger.warn('TrendiPay disabled - using stub mode');
+        console.warn('⚠️ [PaymentService] TrendiPay DISABLED — using stub mode');
         
         return {
           success: true,
@@ -167,7 +189,7 @@ export async function initiateCollection(paymentData) {
     }
 
   } catch (error) {
-    logger.error('Error initiating collection:', error);
+    console.error('❌ [PaymentService] Collection error:', error.message, error);
     return {
       success: false,
       error: error.message || 'Failed to initiate payment'
@@ -183,6 +205,8 @@ export async function initiateCollection(paymentData) {
  */
 export async function checkPaymentStatus(paymentId) {
   try {
+    console.log('🔍 [PaymentService] Checking status for paymentId:', paymentId);
+    
     const { data, error } = await supabase
       .from('bin_payments')
       .select('*')
@@ -190,8 +214,11 @@ export async function checkPaymentStatus(paymentId) {
       .single();
 
     if (error) {
+      console.error('❌ [PaymentService] Status check DB error:', { code: error.code, message: error.message });
       throw new Error(`Database error: ${error.message}`);
     }
+
+    console.log('🔍 [PaymentService] Payment status:', { id: data.id, status: data.status, gateway_error: data.gateway_error, gateway_transaction_id: data.gateway_transaction_id });
 
     return {
       success: true,
@@ -200,7 +227,7 @@ export async function checkPaymentStatus(paymentId) {
     };
 
   } catch (error) {
-    logger.error('Error checking payment status:', error);
+    console.error('❌ [PaymentService] checkPaymentStatus error:', error.message);
     return {
       success: false,
       error: error.message

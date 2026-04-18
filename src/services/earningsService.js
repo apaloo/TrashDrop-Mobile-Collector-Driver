@@ -846,12 +846,12 @@ class EarningsService {
         .from('pickup_requests')
         .select('*')
         .eq('collector_id', this.collectorId)
-        .in('status', ['picked_up', 'disposed']);
+        .in('status', ['collecting', 'disposed']);
 
       if (pickupsError) throw pickupsError;
 
       // Separate by status
-      const pickedUpRequests = allPickups?.filter(p => p.status === 'picked_up') || [];
+      const pickedUpRequests = allPickups?.filter(p => p.status === 'collecting') || [];
       const disposedRequests = allPickups?.filter(p => p.status === 'disposed') || [];
 
       // === DIGITAL BINS ===
@@ -860,14 +860,14 @@ class EarningsService {
         .from('digital_bins')
         .select('*')
         .eq('collector_id', this.collectorId)
-        .in('status', ['picked_up', 'disposed']);
+        .in('status', ['collecting', 'disposed']);
 
       if (binsError) {
         logger.warn('Error fetching digital bins:', binsError);
       }
 
       // Separate digital bins by status
-      const pickedUpBins = digitalBins?.filter(b => b.status === 'picked_up') || [];
+      const pickedUpBins = digitalBins?.filter(b => b.status === 'collecting') || [];
       const disposedBins = digitalBins?.filter(b => b.status === 'disposed') || [];
 
       // === BIN PAYMENTS (for payment mode tracking) ===
@@ -1020,7 +1020,7 @@ class EarningsService {
         .from('pickup_requests')
         .select('id, status')
         .eq('collector_id', this.collectorId)
-        .in('status', ['accepted', 'en_route', 'arrived', 'picked_up', 'disposed', 'expired', 'cancelled']);
+        .in('status', ['accepted', 'en_route', 'arrived', 'collecting', 'disposed', 'expired', 'cancelled']);
 
       // Digital bins we already fetched above - use them for completion rate too
       const allAcceptedJobs = [
@@ -1031,7 +1031,7 @@ class EarningsService {
       let completionRate = 0;
       if (allAcceptedJobs.length > 0) {
         const completedCount = allAcceptedJobs.filter(j => 
-          j.status === 'picked_up' || j.status === 'disposed'
+          j.status === 'collecting' || j.status === 'disposed'
         ).length;
         completionRate = Math.round((completedCount / allAcceptedJobs.length) * 100);
       }
@@ -1075,7 +1075,7 @@ class EarningsService {
           status: pickup.status,
           date: pickup.picked_up_at || pickup.disposed_at || pickup.updated_at,
           location: pickup.location,
-          note: pickup.status === 'picked_up' ? 'Pending disposal' : 'Disposed'
+          note: pickup.status === 'collecting' ? 'Pending disposal' : 'Disposed'
         })),
         // Digital bins
         ...(digitalBins || []).map(bin => ({
@@ -1085,7 +1085,7 @@ class EarningsService {
           status: bin.status,
           date: bin.picked_up_at || bin.disposed_at || bin.updated_at,
           location: bin.location_id,
-          note: bin.status === 'picked_up' ? 'Pending disposal' : 'Disposed'
+          note: bin.status === 'collecting' ? 'Pending disposal' : 'Disposed'
         })),
         // Authority assignments
         ...(authorityAssignments || []).map(assignment => ({
@@ -1285,7 +1285,7 @@ class EarningsService {
         .from('pickup_requests')
         .select('*')
         .eq('collector_id', this.collectorId)
-        .in('status', ['picked_up', 'disposed']);
+        .in('status', ['collecting', 'disposed']);
 
       if (pickupsError) throw pickupsError;
 
@@ -1294,7 +1294,7 @@ class EarningsService {
         .from('digital_bins')
         .select('*')
         .eq('collector_id', this.collectorId)
-        .in('status', ['picked_up', 'disposed']);
+        .in('status', ['collecting', 'disposed']);
 
       if (binsError) {
         logger.warn('Error fetching digital bins for breakdown:', binsError);
@@ -1377,8 +1377,8 @@ class EarningsService {
       }));
 
       // Separate counts by status
-      const pendingDisposalCount = (allPickups?.filter(p => p.status === 'picked_up').length || 0) + 
-                                   (digitalBins?.filter(b => b.status === 'picked_up').length || 0);
+      const pendingDisposalCount = (allPickups?.filter(p => p.status === 'collecting').length || 0) + 
+                                   (digitalBins?.filter(b => b.status === 'collecting').length || 0);
       const disposedCount = (allPickups?.filter(p => p.status === 'disposed').length || 0) + 
                            (digitalBins?.filter(b => b.status === 'disposed').length || 0);
 

@@ -130,6 +130,7 @@ const NavigationQRModal = ({
       }
       
       // Update DB status to 'arrived' so client's Active Pickup modal shows step 3
+      // DB trigger enforces transitions, so walk through intermediate steps if needed
       const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId);
       if (isValidUuid) {
         const tableName = sourceType === 'digital_bin' ? 'digital_bins' : 'pickup_requests';
@@ -137,9 +138,27 @@ const NavigationQRModal = ({
           .from(tableName)
           .update({ status: 'arrived' })
           .eq('id', requestId)
-          .then(({ error }) => {
+          .then(async ({ error }) => {
             if (error) {
-              logger.warn('Could not update status to arrived:', error.message);
+              // Transition failed — likely still 'accepted', try en_route first
+              logger.warn('Direct arrived update failed, trying en_route first:', error.message);
+              const { error: enRouteErr } = await supabase
+                .from(tableName)
+                .update({ status: 'en_route' })
+                .eq('id', requestId);
+              if (!enRouteErr) {
+                const { error: arrivedErr } = await supabase
+                  .from(tableName)
+                  .update({ status: 'arrived' })
+                  .eq('id', requestId);
+                if (arrivedErr) {
+                  logger.warn('Could not update status to arrived after en_route:', arrivedErr.message);
+                } else {
+                  logger.info(`✅ Status updated to arrived in ${tableName} (via en_route)`);
+                }
+              } else {
+                logger.warn('Could not update status to en_route:', enRouteErr.message);
+              }
             } else {
               logger.info(`✅ Status updated to arrived in ${tableName}`);
             }

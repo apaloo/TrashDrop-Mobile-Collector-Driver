@@ -248,9 +248,9 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
       throw new Error(`Digital bin not found: ${binError?.message || 'Unknown error'}`);
     }
     
-    // 2. Verify bin is in picked_up status
-    if (digitalBin.status !== 'picked_up') {
-      throw new Error(`Bin must be in 'picked_up' status. Current status: ${digitalBin.status}`);
+    // 2. Verify bin is in collecting status
+    if (digitalBin.status !== 'collecting') {
+      throw new Error(`Bin must be in 'collecting' status. Current status: ${digitalBin.status}`);
     }
     
     // 3. Verify collector ownership

@@ -26,11 +26,11 @@ export default function PaymentTest() {
       try {
         setLoadingBin(true);
         
-        // Get a real digital bin from database (status: available)
+        // Get a real digital bin from database (status: pending)
         const { data: bins, error: binError } = await supabase
           .from('digital_bins')
           .select('id, user_id, status')
-          .eq('status', 'available')
+          .eq('status', 'pending')
           .limit(1);
         
         if (binError) {
@@ -309,7 +309,7 @@ export default function PaymentTest() {
           {!loadingBin && !collectionForm.digitalBinId && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
               <p className="text-sm text-red-800 mb-2">❌ No available digital bins found</p>
-              <p className="text-xs text-red-600">Create a test digital bin in the database with status='available' first.</p>
+              <p className="text-xs text-red-600">Create a test digital bin in the database with status='pending' first.</p>
             </div>
           )}
 

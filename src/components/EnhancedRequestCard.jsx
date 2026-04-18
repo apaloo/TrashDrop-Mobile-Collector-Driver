@@ -76,7 +76,7 @@ const EnhancedRequestCard = ({
       case 'en_route':
       case 'arrived':
         return 'bg-blue-100 text-blue-800';
-      case 'picked_up':
+      case 'collecting':
         return 'bg-yellow-100 text-yellow-800';
       case 'disposed':
         return 'bg-gray-100 text-gray-800';
@@ -185,7 +185,7 @@ const EnhancedRequestCard = ({
       {/* Action Buttons */}
       <div className="flex items-center space-x-2">
         {/* Available Status Actions */}
-        {request.status === 'available' && (
+        {request.status === 'pending' && (
           <>
             <button
               onClick={() => onOpenDirections(request.id, request)}
@@ -217,7 +217,7 @@ const EnhancedRequestCard = ({
               🧭 Navigate
             </button>
             <button
-              onClick={() => onStatusUpdate(request.id, 'picked_up')}
+              onClick={() => onStatusUpdate(request.id, 'collecting')}
               className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
             >
               📦 Mark Picked Up
@@ -226,7 +226,7 @@ const EnhancedRequestCard = ({
         )}
 
         {/* Picked Up Status Actions */}
-        {request.status === 'picked_up' && (
+        {request.status === 'collecting' && (
           <>
             <button
               onClick={() => onOpenDirections(request.id, { coordinates: [36.8219, -1.2921] })} // Disposal site

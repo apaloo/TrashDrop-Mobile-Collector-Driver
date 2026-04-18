@@ -104,7 +104,7 @@ export class AnalyticsService {
           created_at
         `)
         .eq('collector_id', this.collectorId)
-        .eq('status', 'picked_up')
+        .eq('status', 'collecting')
         .gte('picked_up_at', startDate.toISOString())
         .lte('picked_up_at', endDate.toISOString())
         .order('picked_up_at', { ascending: false });
@@ -308,7 +308,7 @@ export class AnalyticsService {
           special_instructions,
           created_at
         `)
-        .eq('status', 'available')
+        .eq('status', 'pending')
         .order('created_at', { ascending: false })
         .limit(50); // Limit to prevent too many markers
 
@@ -541,7 +541,7 @@ export class AnalyticsService {
     
     return {
       id: pickup.id,
-      type: pickup.status === 'available' ? 'request' : 'assignment',
+      type: pickup.status === 'pending' ? 'request' : 'assignment',
       status: pickup.status,
       location: pickup.location || 'Unknown location',
       customer_name: `Customer #${pickup.id}`,

@@ -874,7 +874,7 @@ const MapPage = () => {
               location,
               source_type: 'digital_bin',
               // Ensure digital bins have required fields for compatibility
-              status: item.status || 'available',
+              status: item.status || 'pending',
               waste_type: item.waste_type || 'general',
               fee: item.fee || 0
             };
@@ -951,7 +951,7 @@ const MapPage = () => {
                     coordinates: coords,
                     location: locationName,
                     fee: Number(item.fee) || 0,
-                    status: item.status || 'available',
+                    status: item.status || 'pending',
                     priority: item.priority || 'medium',
                     bag_count: Number(item.bag_count) || 1,
                     special_instructions: item.special_instructions || '',

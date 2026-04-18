@@ -8,7 +8,7 @@ let mockPickupRequests = [
   {
     id: '74faaadc-73aa-4830-aca9-fb0aad5b9e8c',
     waste_type: 'recyclable',
-    status: 'available',
+    status: 'pending',
     coordinates: [5.617959595507786, -0.19255473872904202],
     location: 'East Legon, Accra',
     fee: 150,
@@ -21,7 +21,7 @@ let mockPickupRequests = [
   {
     id: 'b6f0317b-8264-47a9-a2df-f5a4b325d14f',
     waste_type: 'general',
-    status: 'available', 
+    status: 'pending', 
     coordinates: [5.620000, -0.190000],
     location: 'Osu, Accra',
     fee: 120,
@@ -34,7 +34,7 @@ let mockPickupRequests = [
   {
     id: '85d1795b-834c-44ca-bfa5-551ecbcdfa49',
     waste_type: 'hazardous',
-    status: 'available',
+    status: 'pending',
     coordinates: [5.615000, -0.195000], 
     location: 'Adabraka, Accra',
     fee: 200,
@@ -47,7 +47,7 @@ let mockPickupRequests = [
   {
     id: '3193e0ee-7eb1-4483-85db-76fd004a8567',
     waste_type: 'recyclable',
-    status: 'available',
+    status: 'pending',
     coordinates: [5.625000, -0.185000],
     location: 'Labadi, Accra', 
     fee: 175,
@@ -182,7 +182,7 @@ export class RequestManagementService {
       let query = supabase
         .from('pickup_requests')
         .select('*')
-        .eq('status', 'available')
+        .eq('status', 'pending')
         .is('reserved_by', null)
         .or(`exclusion_until.is.null,exclusion_until.lt.${currentTime}`);
 
@@ -315,7 +315,7 @@ export class RequestManagementService {
         throw new Error('Request not found in database');
       }
 
-      if (existingRequest.status !== 'available' && existingRequest.status !== 'pending') {
+      if (existingRequest.status !== 'pending') {
         throw new Error(`Request is no longer available - current status: ${existingRequest.status}`);
       }
 
@@ -582,7 +582,7 @@ export class RequestManagementService {
           query = supabase
             .from('pickup_requests')
             .select('*')
-            .in('status', ['picked_up', 'disposed'])
+            .in('status', ['collecting', 'completed'])
             .eq('collector_id', this.collectorId);
           break;
         
@@ -682,7 +682,7 @@ export class RequestManagementService {
       const { data: expiredReservations, error } = await supabase
         .from('pickup_requests')
         .select('id')
-        .eq('status', 'available')
+        .eq('status', 'pending')
         .not('reserved_by', 'is', null)
         .lt('reserved_until', currentTime);
 
@@ -761,7 +761,7 @@ export class RequestManagementService {
       const { error: updateError } = await supabase
         .from('pickup_requests')
         .update({
-          status: 'available',
+          status: 'pending',
           collector_id: null,
           accepted_at: null,
           assignment_expires_at: null
@@ -938,7 +938,7 @@ export class RequestManagementService {
       }
       
       // Request became available again
-      if (newRecord.status === 'available' && oldRecord.status !== 'available') {
+      if (newRecord.status === 'pending' && oldRecord.status !== 'pending') {
         window.dispatchEvent(new CustomEvent('requestAvailable', {
           detail: { requestId: newRecord.id, message: 'Request is now available' }
         }));

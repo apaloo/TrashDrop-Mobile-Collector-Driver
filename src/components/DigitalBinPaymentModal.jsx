@@ -55,6 +55,7 @@ const DigitalBinPaymentModal = ({
   const [paymentId, setPaymentId] = useState(null);
   const [paymentStatus, setPaymentStatus] = useState(null); // 'pending', 'processing', 'success', 'failed'
   const [processingMessage, setProcessingMessage] = useState('');
+  const [authorizationSteps, setAuthorizationSteps] = useState([]);
   const pollingIntervalRef = useRef(null);
 
   // Extract bin ID from QR text (handles URLs and plain IDs)
@@ -123,6 +124,7 @@ const DigitalBinPaymentModal = ({
       setPaymentId(null);
       setPaymentStatus(null);
       setProcessingMessage('');
+      setAuthorizationSteps([]);
 
       // Fetch fee for the bin
       if (uniqueBags.length > 0) {
@@ -161,37 +163,43 @@ const DigitalBinPaymentModal = ({
     
     const pollStatus = async () => {
       try {
+        console.log('🔄 [PaymentModal] Polling status for paymentId:', paymentId);
         const result = await checkPaymentStatus(paymentId);
         
+        console.log('🔄 [PaymentModal] Poll result:', { success: result.success, status: result.status, gateway_error: result.payment?.gateway_error });
+        
         if (result.success) {
-          logger.info('Payment status update:', result.status);
           setPaymentStatus(result.status);
           
           if (result.status === 'success') {
+            console.log('✅ [PaymentModal] Payment SUCCESS via polling!');
             setProcessingMessage('Payment successful! 🎉');
-            // Clear polling interval
             if (pollingIntervalRef.current) {
               clearInterval(pollingIntervalRef.current);
               pollingIntervalRef.current = null;
             }
-            // Close modal after a brief delay to show success message
             setTimeout(() => {
               onClose();
             }, 2000);
           } else if (result.status === 'failed') {
+            console.error('❌ [PaymentModal] Payment FAILED via polling:', result.payment?.gateway_error);
             setProcessingMessage('Payment failed. Please try again.');
             setErrors({ submit: result.payment?.gateway_error || 'Payment failed. Please try again.' });
-            // Clear polling interval
             if (pollingIntervalRef.current) {
               clearInterval(pollingIntervalRef.current);
               pollingIntervalRef.current = null;
             }
           } else if (result.status === 'processing') {
+            console.log('⏳ [PaymentModal] Still processing...');
             setProcessingMessage('Processing payment... Please wait.');
+          } else {
+            console.log('🔄 [PaymentModal] Status:', result.status, '(still polling...)');
           }
+        } else {
+          console.warn('⚠️ [PaymentModal] Poll returned success=false:', result.error);
         }
       } catch (error) {
-        logger.error('Error polling payment status:', error);
+        console.error('❌ [PaymentModal] Poll error:', error.message);
       }
     };
 
@@ -391,6 +399,7 @@ const DigitalBinPaymentModal = ({
     e.preventDefault();
 
     if (!validate()) {
+      console.warn('📝 [PaymentModal] Validation failed:', errors);
       return;
     }
 
@@ -409,28 +418,48 @@ const DigitalBinPaymentModal = ({
         clientRSwitch: (paymentMode === 'momo' || paymentMode === 'e_cash') ? clientRSwitch : null
       };
 
-      logger.info('Submitting payment data:', paymentData);
+      console.log('📝 [PaymentModal] === SUBMITTING PAYMENT ===');
+      console.log('📝 [PaymentModal] paymentData:', JSON.stringify(paymentData, null, 2));
+      console.log('📝 [PaymentModal] onSubmit function:', typeof onSubmit, onSubmit?.name || '(anonymous)');
 
       const result = await onSubmit(paymentData);
 
+      console.log('📝 [PaymentModal] onSubmit result:', JSON.stringify(result, null, 2));
+
       // Capture payment ID and status from result
       if (result && result.paymentId) {
+        console.log('📝 [PaymentModal] Setting paymentId:', result.paymentId, 'status:', result.status);
         setPaymentId(result.paymentId);
         setPaymentStatus(result.status);
         
+        // Store authorization steps if available
+        if (result.authorizationSteps && result.authorizationSteps.length > 0) {
+          console.log('📋 [PaymentModal] Got authorizationSteps:', result.authorizationSteps);
+          setAuthorizationSteps(result.authorizationSteps);
+        }
+
         if (result.status === 'success') {
           // Cash payment - immediate success
+          console.log('✅ [PaymentModal] Immediate success (cash)');
           setProcessingMessage('Payment successful! 🎉');
           setTimeout(() => {
             onClose();
           }, 2000);
         } else if (result.status === 'pending' || result.status === 'processing') {
           // MoMo/e-cash - start polling
-          setProcessingMessage('Awaiting client approval... Please wait.');
+          console.log('⏳ [PaymentModal] Status pending/processing — will poll...');
+          setProcessingMessage('Awaiting client approval...');
+        } else {
+          console.warn('⚠️ [PaymentModal] Unexpected result status:', result.status);
+        }
+      } else {
+        console.warn('⚠️ [PaymentModal] No paymentId in result:', result);
+        if (result && !result.success) {
+          setErrors({ submit: result.error || 'Payment failed' });
         }
       }
     } catch (error) {
-      logger.error('Error submitting payment:', error);
+      console.error('❌ [PaymentModal] Submit error:', error.message, error);
       setErrors({ submit: error.message || 'Failed to process payment' });
     } finally {
       setIsSubmitting(false);
@@ -442,6 +471,7 @@ const DigitalBinPaymentModal = ({
     setPaymentId(null);
     setPaymentStatus(null);
     setProcessingMessage('');
+    setAuthorizationSteps([]);
     setErrors({});
   };
 
@@ -475,10 +505,25 @@ const DigitalBinPaymentModal = ({
                 </>
               )}
               {(paymentStatus === 'pending' || paymentStatus === 'processing') && (
-                <>
-                  <Loader2 className="text-blue-600 animate-spin" size={32} />
-                  <span className="text-blue-700 font-bold text-base">{processingMessage}</span>
-                </>
+                <div className="text-center">
+                  <div className="flex items-center justify-center space-x-3 mb-3">
+                    <Loader2 className="text-blue-600 animate-spin" size={32} />
+                    <span className="text-blue-700 font-bold text-base">{processingMessage}</span>
+                  </div>
+                  {authorizationSteps.length > 0 && (
+                    <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-left">
+                      <p className="text-sm font-bold text-yellow-800 mb-2">📱 Tell client to approve on their phone:</p>
+                      <ol className="space-y-1">
+                        {authorizationSteps.map((step, i) => (
+                          <li key={i} className="text-sm text-yellow-900 flex items-start gap-2">
+                            <span className="font-bold text-yellow-700 flex-shrink-0">{i + 1}.</span>
+                            <span>{step}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                </div>
               )}
               {paymentStatus === 'failed' && (
                 <>

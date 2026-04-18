@@ -8,13 +8,18 @@
  * Pickup Request Model
  */
 export const PickupRequestStatus = {
-  AVAILABLE: 'available',
+  PENDING: 'pending',
+  AVAILABLE: 'pending', // alias — DB schema uses 'pending' not 'available'
   ACCEPTED: 'accepted',
   EN_ROUTE: 'en_route',
   ARRIVED: 'arrived',
-  PICKED_UP: 'picked_up',
+  COLLECTING: 'collecting',
+  PICKED_UP: 'collecting', // alias — DB enum uses 'collecting' not 'picked_up'
   COMPLETED: 'completed',
-  CANCELED: 'canceled'
+  DISPOSED: 'disposed',
+  CANCELLED: 'cancelled',
+  CANCELED: 'cancelled', // alias — DB schema uses 'cancelled'
+  EXPIRED: 'expired'
 };
 
 export const WasteType = {

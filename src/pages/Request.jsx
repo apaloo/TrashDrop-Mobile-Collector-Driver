@@ -353,7 +353,7 @@ const RequestPage = () => {
                           location_name
                         )
                       `)
-                      .in('status', ['available', 'pending'])
+                      .eq('status', 'pending')
                       .order('created_at', { ascending: false })
                   ]).then(([pickupResult, binsResult]) => {
                     if (pickupResult.error) {
@@ -409,7 +409,7 @@ const RequestPage = () => {
                     const digitalBins = (binsResult.data || []).map(item => ({
                       ...item,
                       source_type: 'digital_bin',
-                      status: item.status || 'available',
+                      status: item.status || 'pending',
                       waste_type: item.waste_type || 'general',
                       fee: item.fee || 0,
                       location: item.bin_locations?.location_name || 'Digital Bin Station',
@@ -481,7 +481,7 @@ const RequestPage = () => {
                     )
                   `)
                   .eq('collector_id', user?.id)
-                  .eq('status', 'picked_up')
+                  .eq('status', 'collecting')
                   .order('created_at', { ascending: false })
               ]).then(([pickupResult, binsResult]) => {
                 if (pickupResult.error) {
@@ -751,7 +751,7 @@ const RequestPage = () => {
         }
         
         // Check if bin is already accepted or picked up
-        if (['accepted', 'en_route', 'arrived', 'picked_up'].includes(existingBin.status)) {
+        if (['accepted', 'en_route', 'arrived', 'collecting'].includes(existingBin.status)) {
           logger.warn('⚠️ Digital bin already accepted/picked up:', {
             binId: requestId,
             status: existingBin.status,
@@ -1566,15 +1566,28 @@ const RequestPage = () => {
         const isDigitalBin = requestToComplete.source_type === 'digital_bin';
         
         if (isDigitalBin) {
-          // Update digital bin status in Supabase
-          const { error: binError } = await supabase
+          // Update digital bin status via transition chain
+          // DB trigger enforces: accepted → en_route → arrived → collecting
+          const { data: currentBin } = await supabase
             .from('digital_bins')
-            .update({ 
-              status: 'picked_up'
-            })
-            .eq('id', requestId);
+            .select('status')
+            .eq('id', requestId)
+            .single();
           
-          if (binError) throw binError;
+          const chain = {
+            'accepted': ['en_route', 'arrived', 'collecting'],
+            'en_route': ['arrived', 'collecting'],
+            'arrived': ['collecting'],
+          };
+          const steps = chain[currentBin?.status] || ['collecting'];
+          
+          for (const step of steps) {
+            const { error: stepErr } = await supabase
+              .from('digital_bins')
+              .update({ status: step })
+              .eq('id', requestId);
+            if (stepErr) throw stepErr;
+          }
         } else {
           // Update pickup request in Supabase
           const { error: assignmentError } = await supabase
@@ -2892,7 +2905,7 @@ const GeofenceErrorModal = ({
                     }
                     
                     // Check if already picked up
-                    if (existingBin.status === 'picked_up') {
+                    if (existingBin.status === 'collecting') {
                       logger.warn('⚠️ Bin already picked up:', {
                         binId: navigationRequestId,
                         collectorId: existingBin.collector_id,
@@ -2916,18 +2929,34 @@ const GeofenceErrorModal = ({
                       return;
                     }
                     
-                    // Update digital bin status in Supabase
-                    const { error: binError } = await supabase
-                      .from('digital_bins')
-                      .update({ 
-                        status: 'picked_up'
-                        // Note: digital_bins table doesn't have picked_up_at column
-                      })
-                      .eq('id', navigationRequestId)
-                      .eq('collector_id', user?.id); // Extra safety: only update if collector matches
+                    // Update digital bin status to 'collecting' via proper transition chain
+                    // The DB trigger enforces: accepted → en_route → arrived → collecting
+                    // Walk through any missing intermediate steps based on current status
+                    const transitionChain = {
+                      'accepted': ['en_route', 'arrived', 'collecting'],
+                      'en_route': ['arrived', 'collecting'],
+                      'arrived': ['collecting'],
+                    };
+                    const steps = transitionChain[existingBin.status] || ['collecting'];
+                    let transitionError = null;
                     
-                    if (binError) {
-                      logger.error('Error updating digital bin status:', binError);
+                    for (const step of steps) {
+                      const { error: stepError } = await supabase
+                        .from('digital_bins')
+                        .update({ status: step })
+                        .eq('id', navigationRequestId)
+                        .eq('collector_id', user?.id);
+                      
+                      if (stepError) {
+                        logger.warn(`Status transition to '${step}' failed:`, stepError.message);
+                        transitionError = stepError;
+                        break;
+                      }
+                      logger.info(`✅ Status transitioned to '${step}'`);
+                    }
+                    
+                    if (transitionError) {
+                      logger.error('Error updating digital bin status:', transitionError);
                       showToast('Error updating bin status. Please try again.', 'error');
                       return;
                     }
