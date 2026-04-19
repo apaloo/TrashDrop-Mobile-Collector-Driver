@@ -294,14 +294,17 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
     
     // 5. Verify payment was successful (for MoMo/e-cash)
     if (paymentData.payment_mode !== 'cash' && paymentData.status !== 'success') {
-      logger.warn('Payment not yet confirmed:', {
+      logger.warn('Payment not yet confirmed — blocking disposal:', {
         binId,
         paymentId: paymentData.id,
         status: paymentData.status,
         mode: paymentData.payment_mode
       });
-      // For Phase 2, we'll allow disposal even if payment is pending
-      // In production (Phase 4), you might want to enforce payment success
+      return {
+        success: false,
+        error: `Payment not yet confirmed (status: ${paymentData.status}). Please wait for payment confirmation before disposing.`,
+        binId
+      };
     }
     
     // 6. Fetch actual tips from collector_tips table (Fix #3: no more hardcoded tips)
@@ -367,6 +370,140 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
     return {
       success: false,
       error: error.message || 'Failed to dispose bin'
+    };
+  }
+}
+
+/**
+ * Dispose a regular pickup request
+ * 
+ * Applies the same TrashDrop Pricing Algorithm v4.5.6 sharing model
+ * used for digital bins. The fee on the pickup_request is already paid;
+ * this function calculates and stores the collector/platform split.
+ * 
+ * @param {string} requestId - Pickup request UUID
+ * @param {string} collectorId - Collector user UUID
+ * @param {Object} disposalSiteInfo - { id, name, address } of the disposal center
+ * @returns {Promise<Object>} Result with success status and payout info
+ */
+export async function disposePickupRequest(requestId, collectorId, disposalSiteInfo = {}) {
+  try {
+    logger.info('Starting disposal process for pickup request:', requestId);
+
+    // 1. Fetch the pickup request
+    const { data: request, error: reqError } = await supabase
+      .from('pickup_requests')
+      .select('*')
+      .eq('id', requestId)
+      .single();
+
+    if (reqError || !request) {
+      throw new Error(`Pickup request not found: ${reqError?.message || 'Unknown error'}`);
+    }
+
+    // 2. Verify request is in a disposable status
+    if (!['collecting', 'picked_up'].includes(request.status)) {
+      throw new Error(`Request must be in 'collecting' or 'picked_up' status. Current: ${request.status}`);
+    }
+
+    // 3. Verify collector ownership
+    if (request.collector_id !== collectorId) {
+      throw new Error('This request is assigned to a different collector');
+    }
+
+    // 4. Get the fee (already paid by the user)
+    const fee = parseFloat(request.fee) || 0;
+    if (fee <= 0) {
+      logger.warn('No fee on pickup request, payout will be zero:', { requestId, fee });
+    }
+
+    // 5. Fetch actual tips from collector_tips table
+    let actualTips = 0;
+    const { data: tipsData } = await supabase
+      .from('collector_tips')
+      .select('amount')
+      .eq('collector_id', collectorId)
+      .eq('request_id', requestId)
+      .eq('status', 'confirmed');
+
+    if (tipsData && tipsData.length > 0) {
+      actualTips = tipsData.reduce((sum, tip) => sum + (parseFloat(tip.amount) || 0), 0);
+      logger.info('Fetched actual tips for request:', { requestId, tipsAmount: actualTips });
+    }
+
+    // 6. Map pickup_request fields to calculatePaymentSharing format
+    const binCompatible = {
+      id: request.id,
+      fee: fee,
+      bags_collected: request.bag_count || 1,
+      is_urgent: request.urgent_enabled || request.is_urgent || false,
+      deadhead_km: parseFloat(request.deadhead_km) || parseFloat(request.distance_km) || 0,
+      surge_multiplier: parseFloat(request.surge_multiplier) || 1.0,
+      recycler_gross_payout: parseFloat(request.recycler_gross_payout) || 0,
+      loyalty_rate: parseFloat(request.loyalty_rate) || 0.01,
+    };
+
+    const paymentCompatible = {
+      total_bill: fee,
+      bags_collected: request.bag_count || 1,
+    };
+
+    // 7. Calculate payment sharing (TrashDrop Pricing Algorithm v4.5.6)
+    const payoutBreakdown = calculatePaymentSharing(binCompatible, paymentCompatible, actualTips);
+
+    // 8. Build disposal site string
+    const disposalSite = disposalSiteInfo.name
+      ? `${disposalSiteInfo.name}${disposalSiteInfo.address ? ', ' + disposalSiteInfo.address : ''}`
+      : 'Disposal Center';
+    const disposalTimestamp = new Date().toISOString();
+
+    // 9. Update pickup_requests with disposal info AND payout breakdown
+    const { error: updateError } = await supabase
+      .from('pickup_requests')
+      .update({
+        status: 'disposed',
+        disposal_site: disposalSite,
+        disposal_timestamp: disposalTimestamp,
+        disposed_at: disposalTimestamp,
+        collector_core_payout: payoutBreakdown.collector_core_payout,
+        collector_urgent_payout: payoutBreakdown.collector_urgent_payout,
+        collector_distance_payout: payoutBreakdown.collector_distance_payout,
+        collector_surge_payout: payoutBreakdown.collector_surge_payout,
+        collector_tips: payoutBreakdown.collector_tips,
+        collector_recyclables_payout: payoutBreakdown.collector_recyclables_payout,
+        collector_loyalty_cashback: payoutBreakdown.collector_loyalty_cashback,
+        collector_total_payout: payoutBreakdown.collector_total_payout,
+        platform_share: payoutBreakdown.platform_share,
+        payout_breakdown: payoutBreakdown,
+        updated_at: disposalTimestamp
+      })
+      .eq('id', requestId)
+      .eq('collector_id', collectorId);
+
+    if (updateError) {
+      logger.error('Error updating pickup request with disposal info:', updateError);
+      throw new Error(`Failed to update request: ${updateError.message}`);
+    }
+
+    logger.info('✅ Pickup request disposed successfully:', {
+      requestId,
+      fee,
+      collectorPayout: payoutBreakdown.collector_total_payout,
+      platformShare: payoutBreakdown.platform_share
+    });
+
+    return {
+      success: true,
+      requestId,
+      payoutBreakdown,
+      message: 'Pickup request disposed successfully'
+    };
+
+  } catch (error) {
+    logger.error('Error disposing pickup request:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to dispose pickup request'
     };
   }
 }

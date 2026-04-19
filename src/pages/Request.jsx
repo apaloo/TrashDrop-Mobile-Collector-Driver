@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { Scanner } from '@yudiel/react-qr-scanner';
@@ -25,7 +25,7 @@ import usePhotoCapture from '../hooks/usePhotoCapture';
 import { logger } from '../utils/logger';
 import { DISPOSAL_SITE_RADIUS_KM, GEOFENCE_DESCRIPTIONS } from '../config/geofenceConfig';
 import { initiateCollection } from '../services/paymentService';
-import { disposeDigitalBin } from '../services/disposalService';
+import { disposeDigitalBin, disposePickupRequest } from '../services/disposalService';
 
 // OPTIMIZATION: Memoize RequestCard for better performance
 import { requestManager } from '../services/requestManagement';
@@ -147,6 +147,7 @@ const RequestPage = () => {
   // Visual guidance state for low-literacy users
   const [locatedSiteRequests, setLocatedSiteRequests] = useState(new Set()); // Track which requests have had sites located
   const [highlightRequestId, setHighlightRequestId] = useState(null); // Which request needs "Locate Site" highlight
+  const autoDetectThrottleRef = useRef(0); // Timestamp of last auto-detect run
   const [navigationStartedRequests, setNavigationStartedRequests] = useState(new Set()); // Track which requests have started navigation
   const [highlightDirectionsId, setHighlightDirectionsId] = useState(null); // Which request needs "Directions" highlight
   
@@ -949,6 +950,50 @@ const RequestPage = () => {
     return distance;
   }, []); // Empty dependency array since calculation is pure
 
+  // Robust coordinate parser that handles: numbers, strings, PostGIS geometry objects, arrays
+  const parseSiteCoords = useCallback((site) => {
+    if (!site) return null;
+    const toNum = (v) => {
+      if (typeof v === 'number' && isFinite(v)) return v;
+      if (typeof v === 'string') { const p = parseFloat(v); if (isFinite(p)) return p; }
+      return null;
+    };
+
+    let lat = toNum(site.lat) ?? toNum(site.latitude);
+    let lng = toNum(site.lng) ?? toNum(site.longitude);
+
+    // PostGIS geometry object in latitude column (contains {x: lng, y: lat})
+    if (lat === null && typeof site.latitude === 'object' && site.latitude !== null) {
+      if (site.latitude.x !== undefined && site.latitude.y !== undefined) {
+        lat = toNum(site.latitude.y);
+        lng = lng ?? toNum(site.latitude.x);
+      } else if (Array.isArray(site.latitude.coordinates)) {
+        lng = lng ?? toNum(site.latitude.coordinates[0]);
+        lat = toNum(site.latitude.coordinates[1]);
+      }
+    }
+
+    // PostGIS geometry object in longitude column
+    if (lng === null && typeof site.longitude === 'object' && site.longitude !== null) {
+      if (site.longitude.x !== undefined && site.longitude.y !== undefined) {
+        lat = lat ?? toNum(site.longitude.y);
+        lng = toNum(site.longitude.x);
+      } else if (Array.isArray(site.longitude.coordinates)) {
+        lng = toNum(site.longitude.coordinates[0]);
+        lat = lat ?? toNum(site.longitude.coordinates[1]);
+      }
+    }
+
+    // Fallback to coordinates array [lat, lng]
+    if ((lat === null || lng === null) && Array.isArray(site.coordinates)) {
+      lat = lat ?? toNum(site.coordinates[0]);
+      lng = lng ?? toNum(site.coordinates[1]);
+    }
+
+    if (lat === null || lng === null) return null;
+    return { lat, lng };
+  }, []);
+
   // Check if user is within range of a specific disposal site (50m = 0.05km)
   const checkWithinDisposalRange = useCallback((userCoords, site) => {
     if (!userCoords || !site) return false;
@@ -959,30 +1004,25 @@ const RequestPage = () => {
       lng: userCoords.lng || userCoords.longitude
     };
     
-    // Get site coordinates in the right format
-    const siteCoords = {
-      lat: site.lat || site.latitude || site.coordinates?.[0],
-      lng: site.lng || site.longitude || site.coordinates?.[1]
-    };
+    const siteCoords = parseSiteCoords(site);
     
     if (!normalizedUserCoords.lat || !normalizedUserCoords.lng) {
-      logger.warn('Invalid user coordinates:', userCoords);
       return false;
     }
     
-    if (!siteCoords.lat || !siteCoords.lng) {
-      logger.warn('Invalid disposal site coordinates:', site);
+    if (!siteCoords) {
       return false;
     }
     
     const distance = calculateDistance(normalizedUserCoords, siteCoords);
-    logger.info('📍 Distance to disposal site:', {
+    if (!isFinite(distance)) return false;
+    logger.debug('📍 Distance to disposal site:', {
       siteName: site.name,
       distance: `${(distance * 1000).toFixed(0)}m`,
       withinRange: distance <= DISPOSAL_SITE_RADIUS_KM
     });
     return distance <= DISPOSAL_SITE_RADIUS_KM;
-  }, [calculateDistance]);
+  }, [calculateDistance, parseSiteCoords]);
 
   // AUTO-DETECT: Check if user is near any disposal site and set selectedDisposalCenter
   useEffect(() => {
@@ -994,6 +1034,11 @@ const RequestPage = () => {
       if (!hasValidLocation) return;
       if (activeTab !== 'picked_up') return;
       if (!requests.picked_up || requests.picked_up.length === 0) return;
+      
+      // Throttle: only re-run every 30 seconds to avoid per-GPS-update DB queries
+      const now = Date.now();
+      if (now - autoDetectThrottleRef.current < 30000) return;
+      autoDetectThrottleRef.current = now;
       
       // If already at a disposal site, don't re-fetch
       if (selectedDisposalCenter?.lat && checkWithinDisposalRange(userLocation, selectedDisposalCenter)) {
@@ -1011,11 +1056,9 @@ const RequestPage = () => {
         
         // Check if user is within disposal site radius of any disposal center
         for (const center of disposalCenters) {
-          const siteWithCoords = {
-            ...center,
-            lat: center.latitude,
-            lng: center.longitude
-          };
+          const coords = parseSiteCoords(center);
+          if (!coords) continue;
+          const siteWithCoords = { ...center, lat: coords.lat, lng: coords.lng };
           
           if (checkWithinDisposalRange(userLocation, siteWithCoords)) {
             logger.info('🎯 Auto-detected at disposal site:', center.name);
@@ -1029,7 +1072,7 @@ const RequestPage = () => {
     };
     
     autoDetectDisposalSite();
-  }, [userLocation, activeTab, requests.picked_up, selectedDisposalCenter, checkWithinDisposalRange]);
+  }, [userLocation, activeTab, requests.picked_up, selectedDisposalCenter, checkWithinDisposalRange, parseSiteCoords]);
 
   // OPTIMIZATION: Handle tab change with memoization to avoid unnecessary operations
   const handleTabChange = useCallback((tab) => {
@@ -2062,9 +2105,6 @@ const GeofenceErrorModal = ({
     // Use selectedDisposalCenter if it matches this request, otherwise auto-detect
     let targetSite = selectedDisposalCenter;
     
-    // If user already went through "Locate Site" flow for ANY request AND we have a selected site, trust it
-    // (user is at the same disposal site for all picked_up items - no need to re-locate per request)
-    const siteAlreadyLocated = locatedSiteRequests.size > 0 && targetSite?.lat && targetSite?.lng;
     
     // If no disposal site has been selected yet, try to auto-detect if user is at ANY disposal site
     if (!targetSite || !targetSite.lat || !targetSite.lng) {
@@ -2079,36 +2119,15 @@ const GeofenceErrorModal = ({
       if (!fetchError && disposalCenters && disposalCenters.length > 0) {
         // Check if user is within range of ANY disposal center
         for (const center of disposalCenters) {
-          // Parse coordinates
-          let centerLat = null;
-          let centerLng = null;
+          const coords = parseSiteCoords(center);
+          if (!coords) continue;
+          const siteWithCoords = { ...center, lat: coords.lat, lng: coords.lng };
           
-          if (typeof center.latitude === 'number') {
-            centerLat = center.latitude;
-          } else if (typeof center.latitude === 'string') {
-            centerLat = parseFloat(center.latitude);
-          }
-          
-          if (typeof center.longitude === 'number') {
-            centerLng = center.longitude;
-          } else if (typeof center.longitude === 'string') {
-            centerLng = parseFloat(center.longitude);
-          }
-          
-          if (centerLat && centerLng && !isNaN(centerLat) && !isNaN(centerLng)) {
-            const siteWithCoords = {
-              ...center,
-              lat: centerLat,
-              lng: centerLng
-            };
-            
-            if (checkWithinDisposalRange(freshLocation, siteWithCoords)) {
-              logger.info('✅ Auto-detected user at disposal site:', center.name);
-              targetSite = siteWithCoords;
-              // Store for subsequent disposals
-              setSelectedDisposalCenter(siteWithCoords);
-              break;
-            }
+          if (checkWithinDisposalRange(freshLocation, siteWithCoords)) {
+            logger.info('✅ Auto-detected user at disposal site:', center.name);
+            targetSite = siteWithCoords;
+            setSelectedDisposalCenter(siteWithCoords);
+            break;
           }
         }
       }
@@ -2130,20 +2149,13 @@ const GeofenceErrorModal = ({
       }
     }
     
-    // Skip 50m range check if user already completed "Locate Site" flow for this request
-    // (they confirmed arrival via the navigation/disposal modal)
-    if (!siteAlreadyLocated) {
-      // Check if user is within range of the disposal center using fresh location
-      const isWithinRange = checkWithinDisposalRange(freshLocation, targetSite);
-      
-      if (!isWithinRange) {
-        // Set the target site before showing modal so it displays the correct name
-        setTargetDisposalSite(targetSite);
-        setGeofenceModalOpen(true);
-        return;
-      }
-    } else {
-      logger.info('✅ Skipping 50m check - site already located for request:', requestId);
+    // ALWAYS enforce 50m geofence check - user must be physically at the disposal site
+    const isWithinRange = checkWithinDisposalRange(freshLocation, targetSite);
+    
+    if (!isWithinRange) {
+      setTargetDisposalSite(targetSite);
+      setGeofenceModalOpen(true);
+      return;
     }
     try {
       // Validate input
@@ -2186,7 +2198,8 @@ const GeofenceErrorModal = ({
         const result = await disposeDigitalBin(requestId, user?.id);
         
         if (!result.success) {
-          throw new Error(result.error || 'Failed to dispose bin');
+          showToast(result.error || 'Failed to dispose bin', 'error', 5000);
+          return;
         }
         
         logger.info('Digital bin disposed successfully:', result);
@@ -2205,67 +2218,41 @@ const GeofenceErrorModal = ({
         return; // Exit early for digital bins
       }
       
-      // **EXISTING: Regular pickup request disposal logic**
-      
-      // Show processing toast
-      showToast('Processing disposal...', 'info');
-      
-      // Generate disposal details using the selected disposal center
-      const disposalSite = targetSite?.name ? `${targetSite.name}${targetSite.address ? ', ' + targetSite.address : ''}` : 'Disposal Center';
-      const disposalTimestamp = new Date().toISOString();
-      
-      // Update environmental impact with safe access
-      const existingImpact = request.environmental_impact || {};
-      const environmentalImpact = {
-        ...existingImpact,
-        trees_saved: Math.floor(Math.random() * 3) + 1,
-        landfill_reduced: Math.floor(Math.random() * 20) + 5
-      };
-      
-      // Check if the request ID is a valid UUID (for Supabase) or a custom format (for demo/local data)
+      // **Regular pickup request disposal with v4.5.6 sharing model**
       const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId);
       
       if (isValidUuid) {
-        // Update Supabase only if it's a valid UUID
-        try {
-          const { error } = await supabase
-            .from('pickup_requests') // Use pickup_requests table instead of authority_assignments
-            .update({ 
-              // CRITICAL: Set status to 'disposed' so earningsService counts it
-              status: 'disposed',
-              disposal_site: disposalSite,
-              disposal_timestamp: disposalTimestamp,
-              disposed_at: disposalTimestamp
-            })
-            .eq('id', requestId);
-          
-          if (error) {
-            logger.error('Error updating disposal details:', error);
-            showToast('Failed to update disposal details. Please try again.', 'error');
-            return;
-          }
-        } catch (updateError) {
-          logger.error('Error updating disposal details:', updateError);
-          showToast('Failed to update disposal details. Please try again.', 'error');
+        showToast('Processing disposal and calculating earnings...', 'info');
+        
+        const result = await disposePickupRequest(requestId, user?.id, {
+          id: targetSite?.id,
+          name: targetSite?.name,
+          address: targetSite?.address
+        });
+        
+        if (!result.success) {
+          showToast(result.error || 'Failed to dispose request', 'error', 5000);
           return;
         }
+        
+        logger.info('Pickup request disposed successfully:', result);
+        
+        const earnings = result.payoutBreakdown?.collector_total_payout || 0;
+        showToast(
+          `Disposed! Your earnings: GHS ${earnings.toFixed(2)}`,
+          'success',
+          5000
+        );
+        
+        await fetchRequests();
+        return;
       } else {
-        // For non-UUID IDs (like A-42861), we'll only update the local state
-        // This is for demo/test data that doesn't exist in the database
-        logger.debug(`Skipping database update for non-UUID request ID: ${requestId} (using local state only for disposal)`); 
+        logger.debug(`Skipping database update for non-UUID request ID: ${requestId} (using local state only for disposal)`);
       }
       
-      // REMOVE disposed item from picked_up list to save memory and avoid clutter
+      // Fallback for non-UUID (demo/test) data — local state only
       const newPickedUp = requests.picked_up.filter((_, idx) => idx !== requestIndex);
-      
-      const updatedRequests = {
-        ...requests,
-        picked_up: newPickedUp
-      };
-      
-      setRequests(updatedRequests);
-      
-      // Show success toast
+      setRequests({ ...requests, picked_up: newPickedUp });
       showToast('Successfully disposed bags!', 'success');
     } catch (err) {
       logger.error('Error disposing bags:', err);
@@ -2303,7 +2290,22 @@ const GeofenceErrorModal = ({
       return;
     }
     
-    const isWithinRange = checkWithinDisposalRange(userLocation, selectedDisposalCenter);
+    // Get fresh GPS before range check (stale userLocation causes false positives)
+    let freshLocation = userLocation;
+    try {
+      const location = await getLocationWithRetry(2, 1000);
+      freshLocation = {
+        latitude: location.lat,
+        longitude: location.lng,
+        accuracy: location.accuracy,
+        isFallback: location.isFallback
+      };
+      setUserLocation(freshLocation);
+    } catch (locErr) {
+      logger.warn('Could not get fresh location for dispose all, using cached:', locErr.message);
+    }
+    
+    const isWithinRange = checkWithinDisposalRange(freshLocation, selectedDisposalCenter);
     if (!isWithinRange) {
       showToast(`You must be within ${GEOFENCE_DESCRIPTIONS.disposalSite} of the disposal site`, 'warning');
       return;
@@ -2333,27 +2335,26 @@ const GeofenceErrorModal = ({
             if (result.success) {
               successCount++;
               totalEarnings += result.payoutBreakdown?.collector_total_payout || 0;
+            } else if (result.error) {
+              logger.warn(`Skipped digital bin ${request.id}: ${result.error}`);
             }
           } else {
-            // Dispose regular pickup request
+            // Dispose regular pickup request with v4.5.6 sharing model
             const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(request.id);
             
             if (isValidUuid) {
-              const { error } = await supabase
-                .from('pickup_requests')
-                .update({
-                  status: 'disposed',
-                  disposal_site: disposalSite,
-                  disposal_timestamp: disposalTimestamp,
-                  disposed_at: disposalTimestamp
-                })
-                .eq('id', request.id);
-              
-              if (!error) {
+              const result = await disposePickupRequest(request.id, user?.id, {
+                id: selectedDisposalCenter?.id,
+                name: selectedDisposalCenter?.name,
+                address: selectedDisposalCenter?.address
+              });
+              if (result.success) {
                 successCount++;
+                totalEarnings += result.payoutBreakdown?.collector_total_payout || 0;
+              } else if (result.error) {
+                logger.warn(`Skipped pickup request ${request.id}: ${result.error}`);
               }
             } else {
-              // Demo/local data - count as success
               successCount++;
             }
           }
