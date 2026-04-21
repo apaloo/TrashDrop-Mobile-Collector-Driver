@@ -359,16 +359,19 @@ function calculateCollectorEarnings(pickup) {
  * Calculate collector's earnings from a digital bin applying SOP v4.5.6 percentage shares
  * CRITICAL: Platform fee (GHC 1.00) is EXCLUDED from sharing - must match disposalService.js
  * @param {Object} bin - Digital bin object
+ * @param {number} actualCollectedAmount - Actual amount collected from client (from bin_payments.total_bill)
  * @returns {number} Collector's total earnings
  */
-function calculateBinCollectorEarnings(bin) {
+function calculateBinCollectorEarnings(bin, actualCollectedAmount = null) {
   // If new payment model fields exist, use them directly
   if (bin.collector_total_payout !== null && bin.collector_total_payout !== undefined) {
     return bin.collector_total_payout;
   }
   
-  // Legacy data: Apply percentage sharing algorithm matching disposalService.js
-  const totalBill = parseFloat(bin.fee) || parseFloat(bin.payout) || 0;
+  // Use actual collected amount if provided, otherwise fall back to estimated fee
+  const totalBill = actualCollectedAmount !== null 
+    ? actualCollectedAmount 
+    : parseFloat(bin.fee) || parseFloat(bin.payout) || 0;
   
   // CRITICAL: Exclude platform request fee from sharing - it goes directly to platform
   const platformRequestFee = PAYMENT_SPLITS.PLATFORM_REQUEST_FEE;
@@ -870,14 +873,15 @@ class EarningsService {
       const pickedUpBins = digitalBins?.filter(b => b.status === 'collecting') || [];
       const disposedBins = digitalBins?.filter(b => b.status === 'disposed') || [];
 
-      // === BIN PAYMENTS (for payment mode tracking) ===
-      // Get payment records to determine payment mode (cash vs digital)
+      // === BIN PAYMENTS (for payment mode tracking, actual amounts, and pre-computed shares) ===
+      // Get payment records to determine payment mode (cash vs digital), actual collected amounts,
+      // and pre-computed collector/platform shares (authoritative source when present).
       const binIds = (digitalBins || []).map(b => b.id);
       let binPayments = [];
       if (binIds.length > 0) {
         const { data: payments, error: paymentsError } = await supabase
           .from('bin_payments')
-          .select('digital_bin_id, payment_mode, total_bill, type, status')
+          .select('digital_bin_id, payment_mode, total_bill, collector_share, platform_share, type, status')
           .in('digital_bin_id', binIds)
           .eq('type', 'collection')
           .eq('status', 'success');
@@ -887,10 +891,20 @@ class EarningsService {
         }
       }
       
-      // Create a map of bin_id -> payment_mode
+      // Create maps for payment data
       const binPaymentModeMap = {};
+      const binPaymentAmountMap = {};         // actual collected amount (total_bill)
+      const binPaymentCollectorShareMap = {}; // pre-computed collector share (authoritative)
+      const binPaymentPlatformShareMap = {};  // pre-computed platform share (authoritative)
       binPayments.forEach(p => {
         binPaymentModeMap[p.digital_bin_id] = p.payment_mode;
+        binPaymentAmountMap[p.digital_bin_id] = parseFloat(p.total_bill) || 0;
+        if (p.collector_share !== null && p.collector_share !== undefined) {
+          binPaymentCollectorShareMap[p.digital_bin_id] = parseFloat(p.collector_share);
+        }
+        if (p.platform_share !== null && p.platform_share !== undefined) {
+          binPaymentPlatformShareMap[p.digital_bin_id] = parseFloat(p.platform_share);
+        }
       });
 
       // === AUTHORITY ASSIGNMENTS ===
@@ -911,9 +925,21 @@ class EarningsService {
       const pickupDisposedEarnings = disposedRequests.reduce((sum, p) => sum + calculateCollectorEarnings(p), 0);
       const totalPickupEarnings = pickupPendingDisposal + pickupDisposedEarnings;
 
-      // Digital bin earnings - apply percentage sharing algorithm
-      const binsPendingDisposal = pickedUpBins.reduce((sum, b) => sum + calculateBinCollectorEarnings(b), 0);
-      const binsDisposedEarnings = disposedBins.reduce((sum, b) => sum + calculateBinCollectorEarnings(b), 0);
+      // Helper: resolve collector earnings for a digital bin with priority:
+      //   1. bin_payments.collector_share (pre-computed at collection time — authoritative)
+      //   2. digital_bins.collector_total_payout (legacy pre-computed)
+      //   3. Runtime calculation from actual total_bill
+      //   4. Runtime calculation from estimated fee (legacy)
+      const resolveBinCollectorEarnings = (b) => {
+        const storedShare = binPaymentCollectorShareMap[b.id];
+        if (storedShare !== undefined) return storedShare;
+        const actualAmount = binPaymentAmountMap[b.id] ?? null;
+        return calculateBinCollectorEarnings(b, actualAmount);
+      };
+
+      // Digital bin earnings - use stored shares when available, else calculate
+      const binsPendingDisposal = pickedUpBins.reduce((sum, b) => sum + resolveBinCollectorEarnings(b), 0);
+      const binsDisposedEarnings = disposedBins.reduce((sum, b) => sum + resolveBinCollectorEarnings(b), 0);
       const totalBinEarnings = binsPendingDisposal + binsDisposedEarnings;
 
       // Authority assignment earnings
@@ -928,8 +954,23 @@ class EarningsService {
       // Pickup requests platform earnings
       const pickupPlatformEarnings = allPickups?.reduce((sum, p) => sum + calculatePlatformEarnings(p).total, 0) || 0;
       
-      // Digital bin platform earnings
-      const binPlatformEarnings = (digitalBins || []).reduce((sum, b) => sum + calculateBinPlatformEarnings(b).total, 0);
+      // Helper: resolve platform earnings for a digital bin with priority:
+      //   1. bin_payments.platform_share (pre-computed at collection time — authoritative)
+      //   2. Runtime calculation from actual total_bill
+      //   3. Runtime calculation from estimated fee (legacy)
+      const resolveBinPlatformEarnings = (b) => {
+        const storedShare = binPaymentPlatformShareMap[b.id];
+        if (storedShare !== undefined) return storedShare;
+        const actualAmount = binPaymentAmountMap[b.id];
+        if (actualAmount !== undefined) {
+          const binWithActualAmount = { ...b, fee: actualAmount };
+          return calculateBinPlatformEarnings(binWithActualAmount).total;
+        }
+        return calculateBinPlatformEarnings(b).total;
+      };
+
+      // Digital bin platform earnings - use stored shares when available, else calculate
+      const binPlatformEarnings = (digitalBins || []).reduce((sum, b) => sum + resolveBinPlatformEarnings(b), 0);
       
       // Total platform earnings (authority assignments are 100% to collector, no platform share)
       const totalPlatformEarnings = pickupPlatformEarnings + binPlatformEarnings;
@@ -943,7 +984,9 @@ class EarningsService {
       }, 0) || 0;
       
       const binGrossRevenue = (digitalBins || []).reduce((sum, b) => {
-        const fee = parseFloat(b.fee) || parseFloat(b.payout) || 0;
+        // Use actual collected amount if available, otherwise fall back to estimated fee
+        const actualAmount = binPaymentAmountMap[b.id];
+        const fee = actualAmount !== undefined ? actualAmount : (parseFloat(b.fee) || parseFloat(b.payout) || 0);
         return sum + fee;
       }, 0);
       
@@ -981,8 +1024,8 @@ class EarningsService {
       // Track digital bins by payment mode (from bin_payments)
       (digitalBins || []).forEach(b => {
         const paymentMode = binPaymentModeMap[b.id] || 'digital'; // Default to digital
-        const collectorEarnings = calculateBinCollectorEarnings(b);
-        const platformEarnings = calculateBinPlatformEarnings(b).total;
+        const collectorEarnings = resolveBinCollectorEarnings(b);
+        const platformEarnings = resolveBinPlatformEarnings(b);
         const grossAmount = collectorEarnings + platformEarnings;
         
         if (paymentMode === 'cash') {
@@ -1048,7 +1091,7 @@ class EarningsService {
           timestamp: p.picked_up_at || p.disposed_at || p.updated_at 
         })),
         ...(digitalBins || []).map(b => ({ 
-          amount: calculateBinCollectorEarnings(b), 
+          amount: resolveBinCollectorEarnings(b), 
           timestamp: b.picked_up_at || b.disposed_at || b.updated_at 
         })),
         ...(authorityAssignments || []).map(a => ({ 
@@ -1081,7 +1124,7 @@ class EarningsService {
         ...(digitalBins || []).map(bin => ({
           id: bin.id,
           type: 'digital_bin',
-          amount: calculateBinCollectorEarnings(bin),
+          amount: resolveBinCollectorEarnings(bin),
           status: bin.status,
           date: bin.picked_up_at || bin.disposed_at || bin.updated_at,
           location: bin.location_id,

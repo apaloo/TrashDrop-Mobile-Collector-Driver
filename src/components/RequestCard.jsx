@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import QRCodeScanner from './QRCodeScanner';
 import { PickupRequestStatus, WasteType } from '../utils/types';
 import { isWithinRadius } from '../utils/locationUtils';
@@ -38,8 +38,17 @@ const RequestCard = ({
   const [isWithinRange, setIsWithinRange] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [formattedLocation, setFormattedLocation] = useState('Loading location...');
+  const [scanFeedback, setScanFeedback] = useState(null); // { type: 'success'|'error', message, subMessage }
+  const scanFeedbackTimer = useRef(null);
   const RADIUS_METERS = kmToMeters(PICKUP_ARRIVAL_RADIUS_KM); // Use centralized geofence config (25m)
   
+  // Clean up scan feedback timer on unmount
+  useEffect(() => {
+    return () => {
+      if (scanFeedbackTimer.current) clearTimeout(scanFeedbackTimer.current);
+    };
+  }, []);
+
   // Format location with reverse geocoding
   useEffect(() => {
     const loadLocation = async () => {
@@ -144,8 +153,52 @@ const RequestCard = ({
     }
   };
   
+  // Show prominent scan feedback overlay with haptic (mirrors NavigationQRModal)
+  const showScanFeedback = useCallback((type, message, subMessage) => {
+    if (scanFeedbackTimer.current) clearTimeout(scanFeedbackTimer.current);
+    setScanFeedback({ type, message, subMessage });
+    if (navigator.vibrate) {
+      if (type === 'success') navigator.vibrate([100, 50, 100]);
+      else navigator.vibrate([300, 100, 300]);
+    }
+  }, []);
+
   // Process QR code scanning
   const handleScanQR = (qrData) => {
+    // For digital bins, validate QR match then show flash
+    if (request.source_type === 'digital_bin') {
+      const bagId = qrData?.bagId;
+      const code = qrData?.code || (bagId ? `https://trashdrop.app/bin/${bagId}` : null);
+      logger.debug('📦 Digital bin QR scanned via RequestCard:', bagId);
+
+      // Validate: scanned QR must match this request's expected QR value
+      // QR URLs contain the location_id (e.g. /bin/<location_id>), not the digital bin id
+      const expectedId = request.location_id || request.id;
+      if (!bagId || bagId !== expectedId) {
+        logger.error('❌ QR code mismatch! Expected:', expectedId, 'Got:', bagId);
+        showScanFeedback('error', 'Wrong bin! Try again.', 'This is not the right QR code. Point your camera at the correct bin.');
+        // Auto-dismiss red flash after 3s, scanner stays open for retry
+        scanFeedbackTimer.current = setTimeout(() => {
+          setScanFeedback(null);
+        }, 3000);
+        return;
+      }
+
+      // Match! Show green flash success overlay (same as "Scan Now" flow)
+      logger.debug('📦 QR match confirmed, delegating to parent:', bagId);
+      showScanFeedback('success', 'Bin scanned!', 'QR code matched. Processing...');
+
+      // After flash delay, close scanner and delegate to parent
+      scanFeedbackTimer.current = setTimeout(() => {
+        setScanFeedback(null);
+        setShowQRScanner(false);
+        if (onScanQR) {
+          onScanQR(request.id, [{ id: bagId, code, timestamp: Date.now() }]);
+        }
+      }, 1500);
+      return;
+    }
+
     // Process the QR code data from a valid TrashDrop QR code
     // In a real app, this would extract data from the QR code
     // For this simulation, we'll use the QR data or generate values if not provided
@@ -724,21 +777,85 @@ const RequestCard = ({
                 </svg>
               </button>
             </div>
-            <div className="p-4 max-h-[70vh] overflow-y-auto">
+            <div className="p-4 max-h-[70vh] overflow-y-auto relative">
+              {/* Scan Feedback Overlay — green flash success (same as Scan Now flow) */}
+              {scanFeedback && (
+                <div className={`absolute inset-0 flex flex-col items-center justify-center z-30 rounded-lg transition-opacity duration-300 ${
+                  scanFeedback.type === 'success'
+                    ? 'bg-green-600/95'
+                    : scanFeedback.type === 'error'
+                    ? 'bg-red-600/95'
+                    : 'bg-yellow-500/95'
+                }`}>
+                  {scanFeedback.type === 'success' ? (
+                    <svg className="w-24 h-24 text-white mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <svg className="w-24 h-24 text-white mb-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  )}
+                  <p className="text-white text-2xl font-bold text-center px-6 mb-2">
+                    {scanFeedback.message}
+                  </p>
+                  {scanFeedback.subMessage && (
+                    <p className="text-white/90 text-base text-center px-8">
+                      {scanFeedback.subMessage}
+                    </p>
+                  )}
+                  {/* Auto-restart indicator for errors */}
+                  {scanFeedback.type === 'error' && (
+                    <div className="mt-6 flex items-center text-white/80 text-sm">
+                      <svg className="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Scanner will restart automatically...
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* QR Code Scanner */}
               <QRCodeScanner
                 isWithinRange={isWithinRange}
                 onScanSuccess={(decodedText) => {
                   logger.debug('QR Code scanned:', decodedText);
+                  const isDigitalBin = request.source_type === 'digital_bin';
                   try {
-                    // Parse the QR code data
+                    // Try JSON first (legacy QR codes)
                     const qrData = JSON.parse(decodedText);
                     if (qrData && qrData.source === 'trashdrop' && qrData.bagId) {
-                      // Process the QR code data from TrashDrop
                       handleScanQR(qrData);
+                    } else if (isDigitalBin) {
+                      showScanFeedback('error', 'Invalid QR code', 'Not a TrashDrop bin code. Try again.');
+                      scanFeedbackTimer.current = setTimeout(() => setScanFeedback(null), 3000);
                     }
-                  } catch (e) {
-                    logger.error('Error processing QR data:', e);
+                  } catch (_jsonErr) {
+                    // Not JSON — check if it's a TrashDrop URL (e.g. https://trashdrop.app/bin/<id>)
+                    try {
+                      const url = new URL(decodedText);
+                      const pathParts = url.pathname.split('/').filter(Boolean);
+                      // Expected path: /bin/<uuid>
+                      if (pathParts.length >= 2 && pathParts[0] === 'bin' && pathParts[1]) {
+                        const bagId = pathParts[1];
+                        logger.debug('QR URL parsed, bagId:', bagId);
+                        handleScanQR({ source: 'trashdrop', bagId });
+                      } else {
+                        logger.warn('QR code URL does not match expected /bin/<id> pattern:', decodedText);
+                        if (isDigitalBin) {
+                          showScanFeedback('error', 'Invalid QR code', 'Not a TrashDrop bin code. Try again.');
+                          scanFeedbackTimer.current = setTimeout(() => setScanFeedback(null), 3000);
+                        }
+                      }
+                    } catch (_urlErr) {
+                      logger.error('QR code is neither valid JSON nor a valid URL:', decodedText);
+                      if (isDigitalBin) {
+                        showScanFeedback('error', 'Invalid QR code', 'Not a TrashDrop bin code. Try again.');
+                        scanFeedbackTimer.current = setTimeout(() => setScanFeedback(null), 3000);
+                      }
+                    }
                   }
                 }}
                 onScanError={(error) => {

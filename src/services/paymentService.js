@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
 import * as TrendiPayService from './trendiPayService';
+import { computeBinPaymentShares } from '../utils/paymentCalculations';
 
 /**
  * Payment Service
@@ -57,6 +58,37 @@ export async function initiateCollection(paymentData) {
       throw new Error('Client MoMo number required');
     }
 
+    // Fetch digital bin metadata to compute authoritative shares at collection time.
+    // Storing the shares locks in the payout the collector was promised at this moment,
+    // so future formula changes won't retroactively alter past payouts.
+    let binMetadata = { is_urgent: false, deadhead_km: 0 };
+    const { data: binData, error: binFetchError } = await supabase
+      .from('digital_bins')
+      .select('is_urgent, deadhead_km')
+      .eq('id', paymentData.digitalBinId)
+      .maybeSingle();
+
+    if (binFetchError) {
+      logger.warn('[PaymentService] Could not fetch bin metadata, using defaults:', binFetchError.message);
+    } else if (binData) {
+      binMetadata = binData;
+    }
+
+    const { collectorShare, platformShare } = computeBinPaymentShares({
+      totalBill: paymentData.totalBill,
+      isUrgent: binMetadata.is_urgent || false,
+      deadheadKm: parseFloat(binMetadata.deadhead_km) || 0,
+      requestFee: 1.0
+    });
+
+    console.log('💰 [PaymentService] Computed shares:', {
+      totalBill: paymentData.totalBill,
+      collectorShare,
+      platformShare,
+      isUrgent: binMetadata.is_urgent,
+      deadheadKm: binMetadata.deadhead_km
+    });
+
     // Create bin_payments record
     const paymentRecord = {
       digital_bin_id: paymentData.digitalBinId,
@@ -64,6 +96,8 @@ export async function initiateCollection(paymentData) {
       bags_collected: paymentData.binsCollected || paymentData.bagsCollected || 1,
       scanned_bag_ids: paymentData.scannedBinIds || paymentData.scannedBagIds || [],
       total_bill: paymentData.totalBill,
+      collector_share: collectorShare,
+      platform_share: platformShare,
       payment_mode: paymentData.paymentMode,
       client_momo: paymentData.clientMomo || null,
       client_rswitch: paymentData.clientRSwitch || null,

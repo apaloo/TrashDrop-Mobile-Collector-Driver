@@ -1468,6 +1468,98 @@ const RequestPage = () => {
       
       // Get the current request reference
       const currentRequest = requests.accepted[requestIndex];
+
+      // ── Digital bin: full payment flow (same as NavigationQRModal) ──
+      if (currentRequest.source_type === 'digital_bin') {
+        const scannedBinId = scannedBags[0]?.id;
+        const scannedCode = scannedBags[0]?.code;
+
+        // Validate scanned QR matches the accepted request
+        // QR URLs contain location_id (e.g. /bin/<location_id>), not the digital bin id
+        const expectedId = currentRequest.location_id || requestId;
+        if (scannedBinId !== expectedId) {
+          logger.error('❌ QR code mismatch! Expected:', expectedId, 'Got:', scannedBinId);
+          showToast(`Wrong bin! Scanned bin does not match this request.`, 'error');
+          return;
+        }
+
+        // DUPLICATE CHECK: Verify bin is not already picked up
+        const { data: existingBin, error: checkError } = await supabase
+          .from('digital_bins')
+          .select('id, status, collector_id')
+          .eq('id', requestId)
+          .single();
+
+        if (checkError) {
+          logger.error('Error checking bin status before pickup:', checkError);
+          showToast('Error verifying bin status. Please try again.', 'error');
+          return;
+        }
+
+        if (existingBin.status === 'collecting') {
+          logger.warn('⚠️ Bin already picked up:', requestId);
+          showToast('This bin has already been picked up.', 'warning');
+          localStorage.setItem('force_cache_reset', 'true');
+          await fetchRequests();
+          return;
+        }
+
+        if (existingBin.collector_id && existingBin.collector_id !== user?.id) {
+          logger.error('❌ Collector mismatch:', { binCollector: existingBin.collector_id, currentUser: user?.id });
+          showToast('This bin was accepted by a different collector.', 'error');
+          return;
+        }
+
+        // Walk through DB status transition chain (accepted → en_route → arrived → collecting)
+        const transitionChain = {
+          'accepted': ['en_route', 'arrived', 'collecting'],
+          'en_route': ['arrived', 'collecting'],
+          'arrived': ['collecting'],
+        };
+        const steps = transitionChain[existingBin.status] || ['collecting'];
+        let transitionError = null;
+
+        for (const step of steps) {
+          const { error: stepError } = await supabase
+            .from('digital_bins')
+            .update({ status: step })
+            .eq('id', requestId)
+            .eq('collector_id', user?.id);
+
+          if (stepError) {
+            logger.warn(`Status transition to '${step}' failed:`, stepError.message);
+            transitionError = stepError;
+            break;
+          }
+          logger.info(`✅ Status transitioned to '${step}'`);
+        }
+
+        if (transitionError) {
+          logger.error('Error updating digital bin status:', transitionError);
+          showToast('Error updating bin status. Please try again.', 'error');
+          return;
+        }
+
+        logger.info(`✅ Digital bin ${requestId} marked as picked up via Scan QR button`);
+
+        // Open payment modal FIRST (same as NavigationQRModal onQRScanned)
+        logger.info('💰 Opening payment modal for digital bin:', requestId);
+        setCurrentPaymentBinId(requestId);
+        setInitialScannedBags(scannedBags.map(b => ({ code: b.code || `https://trashdrop.app/bin/${b.id}`, timestamp: b.timestamp || Date.now() })));
+        setShowPaymentModal(true);
+        logger.info('✅ Payment modal state set to open');
+
+        const processingTime = performance.now() - startTime;
+        logger.debug(`⚡ QR scan processed in ${processingTime.toFixed(2)}ms`);
+
+        // Refresh data in the background (non-blocking)
+        localStorage.setItem('force_cache_reset', 'true');
+        showToast('QR code scanned! Bin marked as picked up.', 'success');
+        fetchRequests().catch(err => logger.warn('Background fetch after QR scan failed:', err));
+        return;
+      }
+
+      // ── Pickup requests: existing bag-scanning flow ──
       
       // Fast calculation using reduce with optimized access
       const { totalPoints, totalFee } = scannedBags.reduce(

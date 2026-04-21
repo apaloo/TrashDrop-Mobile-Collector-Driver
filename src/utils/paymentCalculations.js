@@ -193,6 +193,97 @@ export function calculatePaymentBreakdown({
 }
 
 /**
+ * Compute collector_share and platform_share for a digital bin collection payment.
+ *
+ * This is the canonical formula used BOTH when recording a payment
+ * (paymentService.js) and when reading earnings (earningsService.js fallback).
+ * Keeping it in one place guarantees both services stay in sync.
+ *
+ * Formula (SOP v4.5.6):
+ *  - Platform request fee (GHC 1.00) is excluded from sharing (100% platform)
+ *  - Remaining shareable = totalBill - requestFee
+ *  - If urgent: shareable = base * 1.30; split urgent portion 75/25
+ *  - Collector core = base * deadheadShare (85-92%)
+ *  - Platform core  = base * (1 - deadheadShare)
+ *
+ * @param {Object} params
+ * @param {number} params.totalBill - Amount actually collected from client (GHS)
+ * @param {boolean} [params.isUrgent=false] - Urgent flag from digital_bins
+ * @param {number} [params.deadheadKm=0] - Deadhead km from digital_bins
+ * @param {number} [params.requestFee=1.0] - Platform request fee
+ * @returns {{ collectorShare: number, platformShare: number, breakdown: Object }}
+ */
+export function computeBinPaymentShares({
+  totalBill,
+  isUrgent = false,
+  deadheadKm = 0,
+  requestFee = 1.0
+}) {
+  const bill = parseFloat(totalBill) || 0;
+  const fee = parseFloat(requestFee) || 0;
+
+  // Request fee goes 100% to platform
+  const shareableAmount = Math.max(0, bill - fee);
+
+  if (shareableAmount === 0) {
+    return {
+      collectorShare: 0,
+      platformShare: Math.min(bill, fee),
+      breakdown: {
+        shareableAmount: 0,
+        basePortion: 0,
+        urgentPortion: 0,
+        collectorCore: 0,
+        collectorUrgent: 0,
+        platformCore: 0,
+        platformUrgent: 0,
+        requestFee: Math.min(bill, fee),
+        deadheadShare: 0
+      }
+    };
+  }
+
+  const km = parseFloat(deadheadKm) || 0;
+  const deadheadShare = km > 0 ? getDeadheadShare(km) : 0.87; // Default average
+
+  // Split shareable into base and urgent portions (fee already includes 30% urgent surcharge)
+  let basePortion, urgentPortion;
+  if (isUrgent) {
+    basePortion = shareableAmount / 1.30;
+    urgentPortion = shareableAmount - basePortion;
+  } else {
+    basePortion = shareableAmount;
+    urgentPortion = 0;
+  }
+
+  // Collector portions
+  const collectorCore = basePortion * deadheadShare;
+  const collectorUrgent = urgentPortion * 0.75; // 75% of urgent to collector
+  const collectorShare = collectorCore + collectorUrgent;
+
+  // Platform portions
+  const platformCore = basePortion * (1 - deadheadShare);
+  const platformUrgent = urgentPortion * 0.25; // 25% of urgent to platform
+  const platformShare = platformCore + platformUrgent + fee;
+
+  return {
+    collectorShare: Number(collectorShare.toFixed(2)),
+    platformShare: Number(platformShare.toFixed(2)),
+    breakdown: {
+      shareableAmount,
+      basePortion,
+      urgentPortion,
+      collectorCore,
+      collectorUrgent,
+      platformCore,
+      platformUrgent,
+      requestFee: fee,
+      deadheadShare
+    }
+  };
+}
+
+/**
  * Get loyalty tier name from cashback rate
  * 
  * @param {number} cashbackRate - Cashback rate (0.01, 0.02, 0.03)
