@@ -651,16 +651,14 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
             <span className="ml-2 text-gray-600">Calculating optimal route...</span>
           </div>
         ) : optimizedRoute.length === 0 ? (
-          <div className="py-6 text-center">
-            <div className="flex justify-center mb-3">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-              </svg>
-            </div>
-            <p className="text-gray-700 font-medium mb-1">No Route to Optimize</p>
-            <p className="text-sm text-gray-500 mb-3">Accept pickup requests or assignments to plan an optimized route</p>
-            <div className="text-xs text-gray-400 bg-gray-50 px-4 py-2 rounded-md inline-block">
-              💡 Tip: Go to <span className="font-semibold text-green-600">Request</span> or <span className="font-semibold text-blue-600">Assign</span> tab to accept items
+          <div className="py-6 text-center px-4">
+            <div className="text-5xl mb-3">🗺️</div>
+            <p className="text-lg font-bold text-gray-700 mb-2">No jobs on your route</p>
+            <p className="text-sm text-gray-500 mb-4">Accept jobs first, then your route will show here.</p>
+            <div className="bg-green-50 rounded-xl px-5 py-3 inline-block">
+              <p className="text-sm text-green-800">
+                👇 Tap <span className="font-bold">Request</span> or <span className="font-bold">Assign</span> below to get jobs
+              </p>
             </div>
           </div>
         ) : (
