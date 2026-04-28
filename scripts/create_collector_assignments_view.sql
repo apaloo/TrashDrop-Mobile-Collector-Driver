@@ -88,21 +88,23 @@ SELECT
   -- Default authority label for community reports
   'Community Report' AS authority,
   
-  -- Calculate payment based on size and severity
-  -- Base: small=5, medium=10, large=20
-  -- Multiplier: high severity = 1.5x
-  ROUND(
-    CASE idm.size
-      WHEN 'small' THEN 5.00
-      WHEN 'medium' THEN 10.00
-      WHEN 'large' THEN 20.00
-      ELSE 10.00
-    END * 
-    CASE idm.severity 
-      WHEN 'high' THEN 1.5 
-      ELSE 1.0 
-    END,
-    2
+  -- Use actual cleanup_fee from the report when available,
+  -- otherwise fall back to size/severity calculation
+  COALESCE(
+    idm.cleanup_fee,
+    ROUND(
+      CASE idm.size
+        WHEN 'small' THEN 5.00
+        WHEN 'medium' THEN 10.00
+        WHEN 'large' THEN 20.00
+        ELSE 10.00
+      END * 
+      CASE idm.severity 
+        WHEN 'high' THEN 1.5 
+        ELSE 1.0 
+      END,
+      2
+    )
   ) AS payment,
   
   -- Estimate time based on size
