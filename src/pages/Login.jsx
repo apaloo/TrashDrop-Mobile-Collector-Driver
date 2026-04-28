@@ -1,259 +1,276 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatPhoneNumber } from '../services/supabase';
 import { logger } from '../utils/logger';
 import logo from '../assets/logo.svg';
-// Background image import removed
+
+// ─── Plain-language error messages ───────────────────────────────────────────
+const friendlyError = (raw = '') => {
+  const msg = raw.toLowerCase();
+  if (msg.includes('otp') || msg.includes('token') || msg.includes('invalid') || msg.includes('expired'))
+    return 'Wrong code. Check your messages and try again.';
+  if (msg.includes('phone') || msg.includes('number'))
+    return 'Please check your phone number and try again.';
+  if (msg.includes('network') || msg.includes('fetch') || msg.includes('failed to fetch'))
+    return 'No internet connection. Please check your network and try again.';
+  if (msg.includes('not found') || msg.includes('no account'))
+    return 'No account found for this number. Please sign up first.';
+  return raw || 'Something went wrong. Please try again.';
+};
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { sendOtp, login, loading: authLoading, error: authError, user } = useAuth();
-  
+  const { sendOtp, login, loading: authLoading } = useAuth();
+
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otpSent, setOtpSent] = useState(false);
-  const [otp, setOtp] = useState('');
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  
+  const [phoneError, setPhoneError] = useState(null);
+  const [otpError, setOtpError] = useState(null);
+
+  const otpRefs = [useRef(), useRef(), useRef(), useRef(), useRef(), useRef()];
+
   // NOTE: Redirect is handled by PublicRoute wrapper in App.jsx
-  // Removing duplicate redirect logic to prevent infinite loops
-  
-  // Send OTP to phone number
+
+  const hapticError = () => { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); };
+
+  const otp = otpDigits.join('');
+
+  // ─── OTP digit box handlers ───────────────────────────────────────────────
+  const handleOtpDigit = (index, value) => {
+    if (!/^\d*$/.test(value)) return;
+    const digits = [...otpDigits];
+    digits[index] = value.slice(-1);
+    setOtpDigits(digits);
+    setOtpError(null);
+    if (value && index < 5) otpRefs[index + 1].current?.focus();
+  };
+
+  const handleOtpKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      otpRefs[index - 1].current?.focus();
+    }
+  };
+
+  // ─── Send OTP ─────────────────────────────────────────────────────────────
   const handleSendOtp = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setLoading(true);
-    setError(null);
-    
+    setPhoneError(null);
+
     try {
-      // Format phone number using our helper
+      if (!phoneNumber || phoneNumber.replace(/\D/g, '').length < 9) {
+        throw new Error('Please check your phone number and try again.');
+      }
+
       const formattedPhone = formatPhoneNumber(phoneNumber);
       logger.info(`Sending OTP to ${formattedPhone}...`);
-      
-      // Use our AuthContext sendOtp method that calls Supabase
+
       const { success, error } = await sendOtp(formattedPhone);
-      
+
       if (!success) {
         throw new Error(error || 'Failed to send OTP');
       }
-      
-      // OTP sent successfully, move to verification step
+
+      setOtpDigits(['', '', '', '', '', '']);
       setOtpSent(true);
       logger.info('OTP sent successfully');
+      setTimeout(() => otpRefs[0].current?.focus(), 300);
     } catch (err) {
       logger.error('OTP send error:', err);
-      setError(err.message || 'Failed to send OTP. Please try again.');
+      hapticError();
+      setPhoneError(friendlyError(err.message));
     } finally {
       setLoading(false);
     }
   };
 
-  // Verify OTP
-  const handleVerifyOtp = async (e) => {
-    e.preventDefault();
+  // ─── Verify OTP ───────────────────────────────────────────────────────────
+  const handleVerifyOtp = async () => {
     setLoading(true);
-    setError(null);
-    
+    setOtpError(null);
+
     try {
-      // Validate OTP format
       if (otp.length !== 6 || !/^\d+$/.test(otp)) {
-        throw new Error('Invalid OTP. Please enter a valid 6-digit code.');
+        throw new Error('Wrong code. Please enter all 6 numbers.');
       }
-      
-      // Format phone number consistently
+
       const formattedPhone = formatPhoneNumber(phoneNumber);
-      
-      // Use our AuthContext login method which uses real Supabase verification
       const { success, user, error } = await login(formattedPhone, otp);
-      
+
       if (success) {
         logger.info('OTP verification successful:', user);
-        // Navigate to map page after successful login
         navigate('/map');
       } else if (error) {
         throw new Error(error);
       }
     } catch (err) {
       logger.error('OTP verification error:', err);
-      setError(err.message || 'Failed to verify OTP. Please try again.');
+      hapticError();
+      setOtpError(friendlyError(err.message));
+      setOtpDigits(['', '', '', '', '', '']);
+      setTimeout(() => otpRefs[0].current?.focus(), 100);
     } finally {
       setLoading(false);
     }
   };
 
+  const Spinner = () => (
+    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+    </svg>
+  );
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-900">
-      <div className="w-full max-w-md animate-slideUp">
-        {/* Logo and App Name */}
-        <div className="flex flex-col items-center mb-8 animate-fadeIn">
-          <img 
-            src={logo} 
-            alt="TrashDrop Logo" 
-            className="w-24 h-24 rounded-xl shadow-lg mb-3 transform hover:scale-105 transition-transform"
+      <div className="w-full max-w-md">
+
+        {/* Logo */}
+        <div className="flex flex-col items-center mb-8">
+          <img
+            src={logo}
+            alt="TrashDrop Logo"
+            className="w-20 h-20 rounded-2xl shadow-lg mb-3 transform hover:scale-105 transition-transform"
           />
-          <h1 className="text-3xl font-bold text-gray-800 dark:text-white">TrashDrop</h1>
-          <p className="text-gray-600 dark:text-gray-300">TrashDrop Collector</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">TrashDrop</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Collector App</p>
         </div>
-        
-        {/* Error Message */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-md shadow-sm dark:bg-red-900/20 dark:border-red-600 dark:text-red-400 flex items-start">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            <span>{error}</span>
-          </div>
-        )}
-        
+
         {!otpSent ? (
-          /* Phone Number Form */
-          <div className="card shadow-lg border border-gray-100 dark:border-gray-700">
-            <h2 className="text-xl font-bold mb-6 text-center text-gray-800 dark:text-white">Login with Phone</h2>
-            <form onSubmit={handleSendOtp}>
-              <div className="mb-6">
-                <label htmlFor="phoneNumber" className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  Phone Number
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-                    </svg>
-                  </div>
-                  <input
-                    id="phoneNumber"
-                    type="tel"
-                    placeholder="e.g., +233501234567"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary dark:bg-gray-700 dark:text-white transition-colors"
-                    required
-                  />
+          /* ── Step 1: Phone number ── */
+          <>
+            <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white text-center">Welcome back</h2>
+            <p className="text-gray-600 dark:text-gray-300 mb-6 text-base text-center">Enter your phone number to sign in</p>
+
+            <div className="mb-5">
+              <label className="block text-base font-bold mb-2 text-gray-800 dark:text-gray-100">📱 Your Phone Number</label>
+              <div className={`flex rounded-xl overflow-hidden border-2 transition-colors ${phoneError ? 'border-red-500' : 'border-gray-400 dark:border-gray-600 focus-within:border-primary'}`}>
+                <div className="flex items-center px-3 bg-gray-200 dark:bg-gray-700 border-r-2 border-gray-400 dark:border-gray-600 shrink-0">
+                  <span className="text-lg mr-1">🇬🇭</span>
+                  <span className="font-bold text-gray-800 dark:text-white text-base">+233</span>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 pl-2">
-                  Enter your phone number with country code
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  placeholder="0501234567"
+                  value={phoneNumber}
+                  onChange={(e) => { setPhoneNumber(e.target.value); setPhoneError(null); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSendOtp(e); }}
+                  className="flex-1 px-4 py-4 text-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none"
+                />
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">We will send a code to this number</p>
+              {phoneError && (
+                <p className="mt-2 text-sm font-semibold text-red-500 flex items-center gap-1">
+                  <span>⚠️</span> {phoneError}
                 </p>
-              </div>
-              
-              <button
-                type="submit"
-                className="w-full btn btn-primary py-3 text-base font-medium rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-150"
-                disabled={loading || !phoneNumber}
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Sending...
-                  </span>
-                ) : 'Send OTP'}
-              </button>
-            </form>
-          </div>
-        ) : (
-          /* OTP Verification Form */
-          <div className="card shadow-lg border border-gray-100 dark:border-gray-700">
-            <h2 className="text-xl font-bold mb-6 text-center text-gray-800 dark:text-white">Enter OTP</h2>
-            <div className="flex items-center justify-center mb-6">
-              <div className="bg-blue-50 dark:bg-blue-900/30 rounded-full p-3">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-500 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-              </div>
+              )}
             </div>
-            <p className="mb-6 text-sm text-gray-600 dark:text-gray-300 text-center">
-              We've sent a one-time password to <span className="font-medium text-gray-800 dark:text-gray-200">{phoneNumber}</span>
+
+            <button
+              type="button"
+              className="w-full py-4 bg-primary text-white text-lg font-bold rounded-xl shadow-md hover:shadow-lg active:scale-95 transition-all disabled:opacity-50"
+              onClick={handleSendOtp}
+              disabled={loading || !phoneNumber}
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2"><Spinner /> Sending code...</span>
+              ) : '📨 Send Code'}
+            </button>
+
+            <p className="mt-6 text-center text-gray-600 dark:text-gray-300 text-sm">
+              Don't have an account?{' '}
+              <a href="/signup" className="text-primary font-bold underline">Sign up</a>
             </p>
-            
-            <form onSubmit={handleVerifyOtp}>
-              <div className="mb-6">
-                <label htmlFor="otp" className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                  One-Time Password
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                    </svg>
-                  </div>
+          </>
+        ) : (
+          /* ── Step 2: OTP verification ── */
+          <>
+            <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Enter your code</h2>
+
+            {/* SMS guidance banner */}
+            <div className="flex items-center gap-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-xl p-3 mb-5">
+              <div className="text-3xl shrink-0">💬</div>
+              <p className="text-sm text-blue-800 dark:text-blue-200 leading-snug">
+                Open your <strong>Messages app</strong>. Find the 6-number code from <strong>TrashDrop</strong> and enter it below.
+              </p>
+            </div>
+
+            <p className="mb-4 text-sm text-gray-600 dark:text-gray-300">
+              Code sent to <span className="font-bold text-gray-900 dark:text-white">{formatPhoneNumber(phoneNumber)}</span>
+            </p>
+
+            {/* 6 digit boxes */}
+            <div className="mb-2">
+              <label className="block text-base font-bold mb-3 text-gray-800 dark:text-gray-100">🔑 Code from your messages</label>
+              <div className="flex gap-2 justify-center">
+                {otpDigits.map((digit, i) => (
                   <input
-                    id="otp"
+                    key={i}
+                    ref={otpRefs[i]}
                     type="text"
-                    placeholder="6-digit code"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-center tracking-widest focus:ring-2 focus:ring-primary focus:border-primary dark:bg-gray-700 dark:text-white transition-colors"
-                    maxLength={6}
-                    required
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handleOtpDigit(i, e.target.value)}
+                    onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                    className={`w-12 h-14 text-center text-2xl font-bold rounded-xl border-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none transition-colors ${
+                      otpError ? 'border-red-500 bg-red-50 dark:bg-red-900/20' :
+                      digit ? 'border-primary bg-green-50 dark:bg-green-900/20' :
+                      'border-gray-400 dark:border-gray-600 focus:border-primary'
+                    }`}
                   />
-                </div>
+                ))}
               </div>
-              
+              {otpError && (
+                <p className="mt-3 text-sm font-semibold text-red-500 text-center flex items-center justify-center gap-1">
+                  <span>⚠️</span> {otpError}
+                </p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="w-full py-4 bg-primary text-white text-lg font-bold rounded-xl mt-4 shadow-md active:scale-95 transition-all disabled:opacity-50"
+              onClick={handleVerifyOtp}
+              disabled={loading || otp.length !== 6}
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2"><Spinner /> Checking...</span>
+              ) : '✅ Sign In'}
+            </button>
+
+            <div className="mt-5 flex flex-col items-center gap-3">
               <button
-                type="submit"
-                className="w-full btn btn-primary py-3 text-base font-medium rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-150"
+                type="button"
+                className="text-primary font-medium text-sm underline"
+                onClick={() => { setOtpSent(false); setOtpError(null); }}
                 disabled={loading}
               >
-                {loading ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Verifying...
-                  </span>
-                ) : 'Verify & Login'}
+                ← Use a different number
               </button>
-              
-              <div className="mt-6 flex flex-col items-center space-y-3">
-                <button 
-                  type="button" 
-                  className="text-primary text-sm hover:text-primary-dark transition-colors flex items-center"
-                  onClick={() => setOtpSent(false)}
-                  disabled={loading}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                  Change phone number
-                </button>
-                <button 
-                  type="button" 
-                  className="text-primary text-sm hover:text-primary-dark transition-colors flex items-center"
-                  onClick={handleSendOtp}
-                  disabled={loading}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Resend OTP
-                </button>
-              </div>
-            </form>
-          </div>
+              <button
+                type="button"
+                className="text-gray-500 dark:text-gray-400 text-sm"
+                onClick={handleSendOtp}
+                disabled={loading}
+              >
+                🔄 Send the code again
+              </button>
+            </div>
+          </>
         )}
-        
-        {/* Other Options */}
-        <div className="mt-6 text-center">
-          <p className="text-gray-600 dark:text-gray-300">
-            Don't have an account?{' '}
-            <a href="/signup" className="text-primary font-medium">
-              Sign up
-            </a>
-          </p>
-          <p className="mt-2 text-xs text-gray-500">
-            By continuing, you agree to our{' '}
-            <a href="/terms" className="text-primary">
-              Terms of Service
-            </a>{' '}
-            and{' '}
-            <a href="/privacy" className="text-primary">
-              Privacy Policy
-            </a>
-          </p>
-        </div>
+
+        {/* Footer */}
+        <p className="mt-8 text-center text-xs text-gray-400 dark:text-gray-500">
+          By continuing, you agree to our{' '}
+          <a href="/terms" className="text-primary underline">Terms of Service</a>
+          {' '}and{' '}
+          <a href="/privacy" className="text-primary underline">Privacy Policy</a>
+        </p>
       </div>
     </div>
   );

@@ -289,18 +289,6 @@ const DefaultRedirect = () => {
   // Log state for debugging
   logger.debug('DefaultRedirect:', { isAuthenticated, hasLoggedOut, hasUser: !!user, isCompletingSignup, isRestoring });
   
-  // ENHANCED: Show loading state during restoration to prevent flash
-  if (isRestoring) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-          <p className="mt-4 text-gray-700 font-medium">🔄 Restoring session...</p>
-        </div>
-      </div>
-    );
-  }
-  
   // If user is completing signup, redirect to signup page
   if (isCompletingSignup) {
     logger.debug('DefaultRedirect: User completing signup, redirecting to signup');

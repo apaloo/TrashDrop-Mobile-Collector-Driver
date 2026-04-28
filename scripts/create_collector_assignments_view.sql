@@ -13,6 +13,7 @@
 --      → Fetches from this view where collector_id=user.id AND status='available'
 --   4. Collector accepts → UPDATE illegal_dumping_mobile SET status='in_progress'
 --   5. Collector completes → UPDATE illegal_dumping_mobile SET status='completed'
+--   6. Collector disposes   → UPDATE illegal_dumping_mobile SET status='disposed'
 --
 -- Status Mapping:
 --   illegal_dumping_mobile.status  →  View status (for UI)
@@ -20,6 +21,7 @@
 --   'verified'                     →  'available' (ready for collector to accept)
 --   'in_progress'                  →  'accepted' (collector is working on it)
 --   'completed'                    →  'completed' (collector finished)
+--   'disposed'                     →  'disposed' (waste disposed at disposal site)
 --
 -- Usage:
 --   - READ operations: SELECT FROM collector_assignments_view
@@ -62,11 +64,12 @@ SELECT
   idm.photos,
   idm.reported_by,
   
-  -- Status mapping for UI tabs
+  -- Status mapping for UI tabs (includes disposed)
   CASE idm.status
     WHEN 'verified' THEN 'available'
     WHEN 'in_progress' THEN 'accepted'
     WHEN 'completed' THEN 'completed'
+    WHEN 'disposed' THEN 'disposed'
     ELSE idm.status
   END AS status,
   
@@ -76,6 +79,11 @@ SELECT
   -- Timestamps
   idm.created_at,
   idm.updated_at,
+  
+  -- Disposal tracking columns
+  idm.disposed_at,
+  idm.disposal_site_id,
+  idm.disposal_site_name,
   
   -- Default authority label for community reports
   'Community Report' AS authority,
@@ -115,7 +123,7 @@ INNER JOIN collector_profiles cp ON idm.assigned_to = cp.id
 -- Only show reports that have been assigned by admin
 -- and are in actionable states (not pending verification)
 WHERE idm.assigned_to IS NOT NULL
-  AND idm.status IN ('verified', 'in_progress', 'completed');
+  AND idm.status IN ('verified', 'in_progress', 'completed', 'disposed');
 
 -- ============================================================================
 -- GRANT PERMISSIONS (adjust role names as needed for your Supabase setup)

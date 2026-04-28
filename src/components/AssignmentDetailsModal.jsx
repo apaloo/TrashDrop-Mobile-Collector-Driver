@@ -254,7 +254,7 @@ const AssignmentDetailsModal = ({
             </div>
           )}
           
-          {assignment.status === AssignmentStatus.COMPLETED && (
+          {(assignment.status === AssignmentStatus.COMPLETED || assignment.status === AssignmentStatus.DISPOSED) && (
             <div className="flex flex-col gap-3">
               {assignment.hasDisposed ? (
                 <button 

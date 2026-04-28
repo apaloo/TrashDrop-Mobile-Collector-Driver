@@ -25,6 +25,8 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
         return 'bg-amber-500';
       case AssignmentStatus.COMPLETED:
         return 'bg-green-500';
+      case AssignmentStatus.DISPOSED:
+        return 'bg-purple-500';
       default:
         return 'bg-gray-500';
     }
@@ -38,6 +40,8 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
         return 'Accepted';
       case AssignmentStatus.COMPLETED:
         return 'Completed';
+      case AssignmentStatus.DISPOSED:
+        return 'Disposed';
       default:
         return status;
     }
@@ -217,7 +221,7 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
               </div>
             )}
             
-            {assignment.status === AssignmentStatus.COMPLETED && (
+            {(assignment.status === AssignmentStatus.COMPLETED || assignment.status === AssignmentStatus.DISPOSED) && (
               assignment.hasDisposed ? (
                 <button 
                   onClick={() => onViewReport(assignment.id)}
@@ -439,6 +443,7 @@ const AssignPage = () => {
         status: assignment.status === 'available' ? AssignmentStatus.AVAILABLE :
                 assignment.status === 'accepted' ? AssignmentStatus.ACCEPTED :
                 assignment.status === 'completed' ? AssignmentStatus.COMPLETED :
+                assignment.status === 'disposed' ? AssignmentStatus.DISPOSED :
                 AssignmentStatus.AVAILABLE,
         created_at: assignment.created_at,
         // Build coordinates from latitude/longitude
@@ -446,7 +451,7 @@ const AssignPage = () => {
           ? [parseFloat(assignment.latitude), parseFloat(assignment.longitude)]
           : null,
         accepted_at: assignment.status === 'accepted' ? assignment.updated_at : null,
-        completed_at: assignment.status === 'completed' ? assignment.updated_at : null,
+        completed_at: (assignment.status === 'completed' || assignment.status === 'disposed') ? assignment.updated_at : null,
         collector_id: assignment.collector_id,
         // Profile ID for database updates (assigned_to stores profile id, not user id)
         collector_profile_id: assignment.collector_profile_id,
@@ -454,7 +459,12 @@ const AssignPage = () => {
         size: assignment.size,
         photos: assignment.photos,
         reported_by: assignment.reported_by,
-        original_status: assignment.original_status
+        original_status: assignment.original_status,
+        // Disposal tracking from DB
+        hasDisposed: assignment.status === 'disposed',
+        disposedAt: assignment.disposed_at || null,
+        disposalSite: assignment.disposal_site_name || null,
+        disposal_site_id: assignment.disposal_site_id || null
       }));
 
       // Deduplicate assignments by ID (keep most recent based on updated_at or created_at)
@@ -480,11 +490,13 @@ const AssignPage = () => {
       // ALL assignments here are already filtered to THIS collector (collector_id = user.id)
       // - Available: Assignments assigned to me by admin but not yet accepted by me
       // - Accepted: Assignments I have accepted to work on
-      // - Completed: Assignments I have completed
+      // - Completed: Assignments I have completed (including disposed - shown in completed tab)
       const groupedAssignments = {
         available: uniqueAssignments.filter(a => a.status === AssignmentStatus.AVAILABLE),
         accepted: uniqueAssignments.filter(a => a.status === AssignmentStatus.ACCEPTED),
-        completed: uniqueAssignments.filter(a => a.status === AssignmentStatus.COMPLETED)
+        completed: uniqueAssignments.filter(a => 
+          a.status === AssignmentStatus.COMPLETED || a.status === AssignmentStatus.DISPOSED
+        )
       };
 
       setAssignments(groupedAssignments);
@@ -1050,7 +1062,7 @@ const AssignPage = () => {
   };
   
   // Handle dispose
-  const handleDispose = (assignmentId, site) => {
+  const handleDispose = async (assignmentId, site) => {
     // If site is not provided, we need to open the disposal modal instead
     if (!site) {
       handleDumpingSite(assignmentId);
@@ -1058,12 +1070,35 @@ const AssignPage = () => {
     }
     
     const assignmentToDispose = assignments.completed.find(assign => assign.id === assignmentId);
-    if (assignmentToDispose) {
+    if (!assignmentToDispose) return;
+
+    try {
+      // Persist disposal to database
+      const { error } = await supabase
+        .from('illegal_dumping_mobile')
+        .update({
+          status: 'disposed',
+          disposed_at: new Date().toISOString(),
+          disposal_site_id: site.id || null,
+          disposal_site_name: site.name || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', assignmentId);
+
+      if (error) {
+        logger.error('Error saving disposal:', error);
+        showToast('Failed to record disposal. Please try again.', 'error');
+        return;
+      }
+
+      // Update local state after successful DB write
       const updatedAssignment = {
         ...assignmentToDispose,
+        status: AssignmentStatus.DISPOSED,
         hasDisposed: true,
         disposedAt: new Date().toISOString(),
-        disposalSite: site.name
+        disposalSite: site.name,
+        disposal_site_id: site.id || null
       };
       
       setAssignments(prev => ({
@@ -1074,8 +1109,10 @@ const AssignPage = () => {
         )
       }));
       
-      // Show success toast
       showToast('Waste disposed successfully!');
+    } catch (error) {
+      logger.error('Unexpected error saving disposal:', error);
+      showToast('An unexpected error occurred. Please try again.', 'error');
     }
   };
   

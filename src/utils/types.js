@@ -45,7 +45,8 @@ export const PriorityLevel = {
 export const AssignmentStatus = {
   AVAILABLE: 'available',
   ACCEPTED: 'accepted',
-  COMPLETED: 'completed'
+  COMPLETED: 'completed',
+  DISPOSED: 'disposed'
 };
 
 /**

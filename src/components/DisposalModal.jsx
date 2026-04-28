@@ -257,7 +257,7 @@ const DisposalModal = ({
   if (!isOpen || !assignment) return null;
   
   // Handle disposal confirmation
-  const handleDispose = () => {
+  const handleDispose = async () => {
     if (!selectedSite) {
       alert('Please select a dumping site');
       return;
@@ -271,12 +271,14 @@ const DisposalModal = ({
     
     setIsDisposing(true);
     
-    // Simulate API call with timeout
-    setTimeout(() => {
-      onDispose(assignment.id, selectedSite);
-      setIsDisposing(false);
+    try {
+      await onDispose(assignment.id, selectedSite);
       onClose();
-    }, 1500);
+    } catch (error) {
+      logger.error('Disposal failed:', error);
+    } finally {
+      setIsDisposing(false);
+    }
   };
   
   // Close location restriction modal
