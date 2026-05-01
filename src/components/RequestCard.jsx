@@ -39,6 +39,7 @@ const RequestCard = ({
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [formattedLocation, setFormattedLocation] = useState('Loading location...');
   const [scanFeedback, setScanFeedback] = useState(null); // { type: 'success'|'error', message, subMessage }
+  const [enlargedPhoto, setEnlargedPhoto] = useState(null); // URL of photo to show in lightbox
   const scanFeedbackTimer = useRef(null);
   const RADIUS_METERS = kmToMeters(PICKUP_ARRIVAL_RADIUS_KM); // Use centralized geofence config (25m)
   
@@ -544,6 +545,30 @@ const RequestCard = ({
         
         <p className="text-sm text-gray-600 mb-3">{formattedLocation}</p>
         
+        {/* Bin photos - only for digital bins */}
+        {(() => {
+          if (request.source_type !== 'digital_bin') return null;
+          let photos = request.photo_urls;
+          if (typeof photos === 'string') {
+            try { photos = JSON.parse(photos); } catch { photos = null; }
+          }
+          if (!Array.isArray(photos) || photos.length === 0) return null;
+          return (
+            <div className="flex justify-center gap-2 mb-3 overflow-x-auto pb-1">
+              {photos.map((url, idx) => (
+                <img
+                  key={idx}
+                  src={url}
+                  alt={`Bin photo ${idx + 1}`}
+                  className="h-20 w-20 object-cover rounded-lg flex-shrink-0 border border-gray-200 cursor-pointer active:scale-95 transition-transform"
+                  onClick={() => setEnlargedPhoto(url)}
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+              ))}
+            </div>
+          );
+        })()}
+        
         <div className="flex flex-wrap items-center justify-center gap-2 mb-3">
           <span className={`px-3 py-1 rounded-full text-sm whitespace-nowrap ${
             request.source_type === 'digital_bin' 
@@ -739,6 +764,36 @@ const RequestCard = ({
         </div>
       </div>
       
+      {/* Photo Lightbox Modal - fullscreen with large close button for low-literacy users */}
+      {enlargedPhoto && (
+        <div className="fixed inset-0 bg-black z-[70] flex flex-col">
+          {/* Photo area - tap to close */}
+          <div
+            className="flex-1 flex items-center justify-center p-4 overflow-hidden"
+            onClick={() => setEnlargedPhoto(null)}
+          >
+            <img
+              src={enlargedPhoto}
+              alt="Enlarged bin photo"
+              className="max-w-full max-h-full rounded-lg object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+          {/* Large close button pinned above bottom navbar */}
+          <div className="p-4 pb-24">
+            <button
+              onClick={() => setEnlargedPhoto(null)}
+              className="w-full py-4 bg-red-500 active:bg-red-600 text-white text-lg font-bold rounded-xl flex items-center justify-center gap-2"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              CLOSE
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Location Restriction Modal */}
       {showLocationModal && (
         <div className="fixed inset-0 bg-black bg-opacity-75 z-[60] flex items-center justify-center p-4">

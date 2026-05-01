@@ -84,7 +84,8 @@ export const transformRequestsData = (
         source_type: item.source_type || 'pickup_request',
         bin_locations: item.bin_locations || null, // Keep joined bin_locations data
         waste_type: item.waste_type || null, // For digital bins
-        bag_count: item.bag_count || null // For digital bins
+        bag_count: item.bag_count || null, // For digital bins
+        photo_urls: item.photo_urls || null // For digital bin images
       };
     })
     .filter(item => {
