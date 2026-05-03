@@ -775,7 +775,8 @@ const RequestCard = ({
             <img
               src={enlargedPhoto}
               alt="Enlarged bin photo"
-              className="max-w-full max-h-full rounded-lg object-contain"
+              style={{ width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '100%' }}
+              className="rounded-lg"
               onClick={(e) => e.stopPropagation()}
             />
           </div>
