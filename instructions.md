@@ -1,249 +1,208 @@
-Below are the detailed instructions for developing the TrashDrop Progressive Web App (PWA) using React, Supabase (with an existing schema), Leaflet for mapping, and deployment on Netlify. These instructions cover the setup, authentication, UI, trash collection workflow, supporting features, account management, onboarding, and deployment.
+# TrashDrop Mobile Collector Driver — Current App State
+
+This document describes the **live, production-ready state** of the TrashDrop Collector PWA as of May 2026. Use it as the single source of truth for all future development.
 
 ---
 
-### 1. Project Setup and Configuration
+## Tech Stack
 
-- **Initialize React Project**:
-  - Use `npx create-react-app trashdrop --template cra-template-pwa` to create a React app with built-in PWA support (service worker included).
-  - Install dependencies: `npm install react-router-dom @supabase/supabase-js leaflet react-leaflet tailwindcss`.
-  - Set up Tailwind CSS by running `npx tailwindcss init` and configuring it for mobile-first design.
-
-- **Project Structure**:
-  - `src/components/`: Reusable components (e.g., `NavBar.js`, `Modal.js`).
-  - `src/pages/`: Page components (e.g., `Login.js`, `Map.js`, `Request.js`).
-  - `src/services/`: Supabase integration (e.g., `supabase.js`).
-  - `src/context/`: State management (e.g., `AuthContext.js`, `ThemeContext.js`).
-  - `src/utils/`: Helper functions (e.g., `app-config.js`).
-
-- **Supabase Integration**:
-  - In `src/services/supabase.js`, initialize Supabase with your project URL and API key from the existing schema.
-  - Use `.env` files to store keys (e.g., `REACT_APP_SUPABASE_URL`, `REACT_APP_SUPABASE_KEY`).
-
-- **PWA Configuration**:
-  - Update `public/manifest.json` with app metadata (name: "TrashDrop", icons, theme colors).
-  - Modify `src/serviceWorker.js` to cache assets (HTML, CSS, JS) for offline functionality.
+| Layer | Technology |
+|---|---|
+| Framework | React 18 + Vite |
+| Styling | Tailwind CSS (mobile-first) |
+| Routing | React Router v6 |
+| Backend/DB | Supabase (PostgreSQL + Auth + Realtime + Edge Functions) |
+| Maps | Google Maps JavaScript API |
+| Payment | TrendiPay via BSL API (`https://prod-api.bsl.com.gh`) proxied through Supabase Edge Function `trendipay-proxy` |
+| PWA | Vite PWA plugin + service worker |
+| Dev server | `npm run dev` → `http://localhost:5173` |
 
 ---
 
-### 2. Authentication System
+## 1. Project Structure
 
-- **Components and Routes**:
-  - Create `Login.js`, `Signup.js`, and `OTPVerification.js` in `src/pages/`.
-  - Use React Router in `src/App.js` to define routes: `/login`, `/signup`, `/`.
-
-- **Supabase Authentication**:
-  - Implement phone number-based OTP authentication using Supabase’s auth API.
-  - Store the JWT token in local storage and refresh it silently with a `useEffect` hook.
-
-- **Auth State Management**:
-  - Create `src/context/AuthContext.js` to manage `isAuthenticated` and `user` state.
-  - Use a `PrivateRoute.js` component to protect authenticated routes.
-
----
-
-### 3. UI Framework and Navigation
-
-- **Responsive Design**:
-  - Use Tailwind CSS for styling, ensuring a mobile-first approach.
-  - Build reusable components like `Card.js` for request cards and `Grid.js` for layouts.
-
-- **Navigation**:
-  - In `src/components/NavBar.js`, create a top navbar with the "TrashDrop" logo on the left and a user profile dropdown on the right.
-  - Implement a bottom navigation bar with tabs: Map, Request, Assign, Earnings (Map as default).
-
-- **Dark Mode**:
-  - Define CSS variables in `src/index.css` and toggle themes via `src/context/ThemeContext.js`, persisting the choice in local storage.
-
-- **Modal Component**:
-  - Create `Modal.js` using React portals for accessible popups.
-
----
-
-### 4. Main Application Interface
-
-- **Home Dashboard (Map View)**:
-  - Create `Map.js` in `src/pages/` using `react-leaflet`.
-  - Display the user’s location (📍), nearby trash requests as markers (color-coded by type), and a collection radius circle.
-  - Default to Accra, Ghana if location access is denied.
-
-- **Navigation Menu**:
-  - Top navbar: Logo and profile dropdown (profile, settings, logout).
-  - Bottom navbar: Map, Request, Assign, Earnings tabs with React Router navigation.
-
----
-
-### 5. Trash Collection Workflow
-
-- **Request Management**:
-  - Create `Request.js` with tabs: "Available," "Accepted," "Picked Up."
-  - Each request card shows distance, earnings, type, address, timestamp, and actions (Accept, View Details).
-
-- **Workflow**:
-  - **Acceptance**: Move requests from "Available" to "Accepted" upon clicking "Accept."
-  - **Pickup**: Provide directions and QR scanning (via a modal) to move requests to "Picked Up."
-  - **Disposal**: Show disposal sites and confirm disposal, updating the request status.
-
-- **Assignment Management**:
-  - Create `Assign.js` with tabs: "Available," "Accepted," "Completed."
-  - Include actions: Accept, Navigate, Complete (with photo capture and QR scanning).
-
----
-
-### 6. Supporting Features
-
-- **Location Services**:
-  - Request browser location access with a fallback to Accra, Ghana.
-  
-- **Offline Capabilities**:
-  - Cache assets in the service worker and store pending actions in local storage for syncing when online.
-
-- **Real-time Updates**:
-  - Use WebSockets (via Supabase real-time) for live request/assignment updates and push notifications.
-
----
-
-### 7. Account Management
-
-- **User Profile**:
-  - Create `Profile.js` to display and edit personal info, earnings history, and collection stats.
-
-- **Session Management**:
-  - Persist login state with token refresh and add a logout option in the profile dropdown.
-
----
-
-### 8. Onboarding Flow
-
-- **Onboarding Process**:
-  - Create `Onboarding.js` with a multi-step form for personal, company, and vehicle details.
-  - Store data in Supabase and restrict request/assignment acceptance until account confirmation.
-
----
-
-### 9. Deployment on Netlify
-
-- **Build and Deploy**:
-  - Run `npm run build` and connect your GitHub repo to Netlify.
-  - Set environment variables in Netlify for Supabase keys.
-
----
-
-### Example Code: Main App File
-
-Below is an example `index.html` file with React, Supabase, Leaflet, and Tailwind CSS integrated.
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TrashDrop</title>
-  <link rel="manifest" href="/manifest.json">
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com leaflet@1.9.4/dist/leaflet.css" />
-</head>
-<body>
-  <div id="root"></div>
-
-  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.22.9/babel.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="https://unpkg.com/react-leaflet@4.0.0/dist/react-leaflet.umd.js"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/react-router-dom@6.16.0/dist/umd/react-router-dom.min.js"></script>
-
-  <script type="text/babel">
-    const { createClient } = Supabase;
-    const { BrowserRouter, Routes, Route, NavLink } = ReactRouterDOM;
-    const { MapContainer, TileLayer, Marker, Circle } = ReactLeaflet;
-
-    const supabase = createClient('YOUR_SUPABASE_URL', 'YOUR_SUPABASE_KEY');
-
-    const AuthContext = React.createContext();
-
-    const NavBar = () => (
-      <nav className="fixed bottom-0 w-full bg-gray-800 text-white flex justify-around py-2">
-        <NavLink to="/" className="p-2">Map</NavLink>
-        <NavLink to="/request" className="p-2">Request</NavLink>
-        <NavLink to="/assign" className="p-2">Assign</NavLink>
-        <NavLink to="/earnings" className="p-2">Earnings</NavLink>
-      </nav>
-    );
-
-    const MapPage = () => {
-      const [position, setPosition] = React.useState([5.6037, -0.1870]); // Accra, Ghana
-      React.useEffect(() => {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => setPosition([pos.coords.latitude, pos.coords.longitude]),
-          () => console.log('Location denied')
-        );
-      }, []);
-      return (
-        <MapContainer center={position} zoom={13} style={{ height: '80vh' }}>
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-          <Marker position={position} />
-          <Circle center={position} radius={1000} />
-        </MapContainer>
-      );
-    };
-
-    const LoginPage = () => {
-      const [phone, setPhone] = React.useState('');
-      const handleLogin = async () => {
-        const { error } = await supabase.auth.signInWithOtp({ phone });
-        if (error) console.error(error);
-      };
-      return (
-        <div className="p-4">
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            className="border p-2 w-full"
-            placeholder="Phone Number"
-          />
-          <button onClick={handleLogin} className="bg-blue-500 text-white p-2 mt-2">Send Code</button>
-        </div>
-      );
-    };
-
-    const App = () => {
-      const [user, setUser] = React.useState(null);
-      return (
-        <AuthContext.Provider value={{ user, setUser }}>
-          <BrowserRouter>
-            <div className="min-h-screen">
-              <Routes>
-                <Route path="/" element={<MapPage />} />
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/request" element={<div>Request Page</div>} />
-                <Route path="/assign" element={<div>Assign Page</div>} />
-                <Route path="/earnings" element={<div>Earnings Page</div>} />
-              </Routes>
-              <NavBar />
-            </div>
-          </BrowserRouter>
-        </AuthContext.Provider>
-      );
-    };
-
-    ReactDOM.render(<App />, document.getElementById('root'));
-  </script>
-</body>
-</html>
+```
+src/
+  pages/         # Route-level components
+  components/    # Reusable UI components
+  services/      # supabase.js, earningsService.js, etc.
+  context/       # AuthContext, CurrencyContext, FilterContext, OfflineContext, LanguageContext
+  hooks/         # usePhotoCapture, useRequestSession, useWakeLock, etc.
+  utils/         # requestUtils.js, geoUtils.js, logger.js, types.js, app-config.js
+  scripts/       # SQL migration scripts
 ```
 
+Key files:
+- `src/pages/Request.jsx` — Request page (Available / Accepted / Picked Up tabs)
+- `src/components/RequestCard.jsx` — Individual request card UI
+- `src/utils/requestUtils.js` — `transformRequestsData()` pipeline
+- `src/pages/Map.jsx` — Google Maps page with radius filtering
+- `src/components/NavigationQRModal.jsx` — Navigation + QR scanning modal
+- `src/components/GoogleMapsNavigation.jsx` — Turn-by-turn Google Maps navigation
+- `src/components/DigitalBinPaymentModal.jsx` — Payment collection for digital bins
+
 ---
 
-### 10. Additional Notes
+## 2. Authentication
 
-- **QR Code Security**: Use Supabase to generate encrypted, single-use, time-based QR codes with location verification.
-- **Testing**: Test offline capabilities, real-time updates, and all workflows thoroughly before deployment.
+- Phone number OTP via Supabase Auth
+- JWT stored and auto-refreshed via Supabase session
+- Protected routes via `ProtectedRoute` component in `App.jsx`
+- Auth state managed in `src/context/AuthContext.jsx`
+- Env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 
-Follow these instructions to build and deploy the TrashDrop PWA efficiently!
+---
+
+## 3. Navigation & Layout
+
+- **Top navbar**: "TrashDrop Carter" logo + user avatar/dropdown
+- **Bottom navbar tabs**: Map · Request · Assign · Routes
+- Default landing route restores last visited route from `localStorage`
+
+---
+
+## 4. Map Page (`/map`)
+
+- Google Maps JavaScript API with `geometry`, `routes`, `directions` libraries
+- Displays user location (tricycle icon) and nearby waste request markers
+- Markers colour-coded by waste type; digital bins use distinct icon
+- Adjustable search radius filter (km); results shared with Request page via `FilterContext`
+- Default fallback location: Accra, Ghana (5.6037, -0.1870)
+
+---
+
+## 5. Request Page (`/request`)
+
+### Data Sources
+- `pickup_requests` table — "digital bag" requests
+- `digital_bins` table — "digital bin" requests (joined with `bin_locations`)
+- Both merged into a unified list, distinguished by `source_type: 'pickup_request' | 'digital_bin'`
+
+### Tabs
+| Tab | Status filter | DB tables |
+|---|---|---|
+| Available | `pending` / `available` | pickup_requests + digital_bins |
+| Accepted | `accepted`, `en_route`, `arrived` | pickup_requests + digital_bins |
+| Picked Up | `collecting` | pickup_requests + digital_bins |
+
+### Data Pipeline
+Raw Supabase data → `Request.jsx` mapping (adds `source_type`, normalizes coords) → `transformRequestsData()` in `requestUtils.js` → `RequestCard` props.
+
+**Critical**: `transformRequestsData()` explicitly picks fields. Any new DB column used in the UI **must** be added to the return object in `src/utils/requestUtils.js`.
+
+### Request Card (`RequestCard.jsx`)
+Displays per request:
+- Title: "Digital Bin" or "Digital Bag"
+- Date, location, waste type badge, fee badge
+- **Digital bin photo strip**: renders thumbnails from `photo_urls` (text[] array) when present; tap to enlarge in fullscreen lightbox with large red CLOSE button
+- Expandable "View More": payout breakdown (detailed or estimated)
+- Action buttons based on status: Accept → Directions / On My Way → Scan QR → Dispose
+
+---
+
+## 6. Workflow State Machine
+
+```
+pending/available → accepted → en_route → arrived → collecting → completed → disposed
+```
+
+- **Accept**: updates DB status to `accepted`, moves card to Accepted tab
+- **Directions**: opens `NavigationQRModal` with Google Maps turn-by-turn navigation
+- **Geofence arrival**: auto-detected at 25m radius (centralized in `app-config.js` as `PICKUP_ARRIVAL_RADIUS_KM`)
+- **QR Scan**: validates scanned QR against `request.location_id` (digital bins) or `request.id` (pickup bags)
+- **Payment**: `DigitalBinPaymentModal` handles MoMo/cash collection via TrendiPay proxy
+- **Disposal**: updates status to `disposed`, records `disposal_site_id`
+
+---
+
+## 7. Navigation System (`NavigationQRModal` + `GoogleMapsNavigation`)
+
+- Full-screen navigation overlay with Google Maps
+- Turn-by-turn voice instructions (Web Speech API)
+- Real-time GPS tracking (10-second intervals)
+- Screen wake lock to keep display on
+- Haptic feedback on arrival
+- Offline route caching (IndexedDB)
+- Manual "I'm Here" button when within 40m
+- Collector arrival notification sent to client
+- Status updated to `en_route` on open, `arrived` on confirmation
+
+---
+
+## 8. Assignment Page (`/assign`)
+
+- Displays illegal dumping site assignments from `illegal_dumping_mobile` table via `collector_assignments_view`
+- Tabs: Available · Accepted · Completed
+- Workflow: Accept → Navigate → Arrive → Clean → Dispose → Report
+- No client payment flow (cleanup fee from `illegal_dumping_mobile.cleanup_fee`)
+
+---
+
+## 9. Payment Integration (TrendiPay / BSL)
+
+- **Proxy**: Browser → `makeProxyRequest()` → Supabase Edge Function `trendipay-proxy` → BSL API
+- **Production URL**: `https://prod-api.bsl.com.gh`
+- **rSwitch values** (lowercase): `mtn`, `vodafone`, `airteltigo`
+- **Amount unit**: pesewas (100 = GHS 1.00)
+- Edge function secrets: `TRENDIPAY_API_URL`, `TRENDIPAY_API_KEY`, `TRENDIPAY_MERCHANT_ID`
+- Collection reference stored in `bin_payments` table
+
+---
+
+## 10. Key Configuration Constants (`src/utils/app-config.js`)
+
+- `PICKUP_ARRIVAL_RADIUS_KM` — geofence radius for arrival (0.025 km = 25m)
+- `NAV_MODAL_STATE_KEY` / `NAV_MODAL_TIME_KEY` — localStorage keys for nav state persistence
+- `NAV_MODAL_EXPIRY_MS` — 2 hours
+
+---
+
+## 11. Coordinate Formats
+
+The app handles all of these via `normalizeCoords()` in `Request.jsx`:
+- GeoJSON `{ type: 'Point', coordinates: [lng, lat] }`
+- PostGIS POINT string `POINT(lng lat)`
+- Array `[lat, lng]`
+- Object `{ lat, lng }` or `{ latitude, longitude }`
+
+---
+
+## 12. Currency & Localisation
+
+- Currency auto-detected by GPS location (default: GHS)
+- `CurrencyContext` provides `currency` and `formatCurrency()` app-wide
+- Language context supports multiple languages; audio alerts use Web Speech API
+- Collector UI designed for low-literacy users: large buttons, icon labels, minimal text
+
+---
+
+## 13. Offline Support
+
+- Service worker caches static assets
+- Navigation routes cached in IndexedDB for offline use
+- Pending actions queued in `localStorage` and synced on reconnect
+- `OfflineContext` tracks connectivity state
+
+---
+
+## 14. Deployment
+
+- Host: Netlify
+- Build command: `npm run build`
+- Publish dir: `dist`
+- Environment variables set in Netlify dashboard: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_GOOGLE_MAPS_API_KEY`, `VITE_ENABLE_TRENDIPAY`
+
+---
+
+## 15. Development Notes
+
+- Run dev server: `npm run dev` (port 5173)
+- Logger levels: `logger.debug` (dev only), `logger.info`, `logger.warn`, `logger.error`
+- All DB queries go through `src/services/supabase.js`
+- Request data transformation: always add new fields to the return object in `src/utils/requestUtils.js`
+- Digital bin photos are stored in `digital_bins.photo_urls` (text[] array); displayed as thumbnails on `RequestCard` with tap-to-enlarge lightbox
+
+---
 
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
@@ -569,6 +528,7 @@ CREATE TABLE public.digital_bins (
   disposed_at timestamp with time zone,
   disposal_site_id text,
   accepted_at timestamp with time zone,
+  photo_urls ARRAY,
   CONSTRAINT digital_bins_pkey PRIMARY KEY (id),
   CONSTRAINT digital_bins_disposal_site_id_fkey FOREIGN KEY (disposal_site_id) REFERENCES public.disposal_centers(id),
   CONSTRAINT digital_bins_collector_id_fkey FOREIGN KEY (collector_id) REFERENCES auth.users(id),
