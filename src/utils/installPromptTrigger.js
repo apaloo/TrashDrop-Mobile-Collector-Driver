@@ -7,6 +7,7 @@
 const INSTALL_PROMPT_KEY = 'trashdrop_install_prompt_shown';
 const INSTALL_PROMPT_DISMISSED_KEY = 'trashdrop_install_prompt_dismissed';
 const INSTALL_PROMPT_DISMISSED_TIMESTAMP = 'trashdrop_install_prompt_dismissed_at';
+const INSTALL_PROMPT_VERSION_KEY = 'trashdrop_install_prompt_version';
 
 /**
  * Reset install prompt state to force it to show again
@@ -16,6 +17,7 @@ export const resetInstallPrompt = () => {
   localStorage.removeItem(INSTALL_PROMPT_KEY);
   localStorage.removeItem(INSTALL_PROMPT_DISMISSED_KEY);
   localStorage.removeItem(INSTALL_PROMPT_DISMISSED_TIMESTAMP);
+  localStorage.removeItem(INSTALL_PROMPT_VERSION_KEY);
   console.log('🔄 Install prompt state reset - will show on next page load');
 };
 

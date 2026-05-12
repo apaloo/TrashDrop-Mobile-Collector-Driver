@@ -4,12 +4,27 @@ import { logger } from '../utils/logger';
 const INSTALL_PROMPT_KEY = 'trashdrop_install_prompt_shown';
 const INSTALL_PROMPT_DISMISSED_KEY = 'trashdrop_install_prompt_dismissed';
 const INSTALL_PROMPT_DISMISSED_TIMESTAMP = 'trashdrop_install_prompt_dismissed_at';
+const INSTALL_PROMPT_VERSION_KEY = 'trashdrop_install_prompt_version';
 const REPROMPT_DELAY_DAYS = 7; // Re-show prompt after 7 days
+
+// Bump this on every deploy where you want the prompt to re-appear
+const APP_VERSION = '3.1.0';
+
+/**
+ * Reset all install-prompt localStorage so the prompt shows fresh.
+ */
+const resetPromptState = () => {
+  localStorage.removeItem(INSTALL_PROMPT_KEY);
+  localStorage.removeItem(INSTALL_PROMPT_DISMISSED_KEY);
+  localStorage.removeItem(INSTALL_PROMPT_DISMISSED_TIMESTAMP);
+  localStorage.setItem(INSTALL_PROMPT_VERSION_KEY, APP_VERSION);
+};
 
 /**
  * InstallPrompt Component
  * ALWAYS shows on first visit (not gated on beforeinstallprompt).
  * Uses native install if available, manual instructions otherwise.
+ * Re-shows after every new APP_VERSION deploy.
  */
 const InstallPrompt = () => {
   const [showPrompt, setShowPrompt] = useState(false);
@@ -25,6 +40,15 @@ const InstallPrompt = () => {
     window.navigator.standalone === true ||
     document.referrer.includes('android-app://')
   );
+
+  // Version-based reset: clear stale state when a new version deploys
+  useEffect(() => {
+    const savedVersion = localStorage.getItem(INSTALL_PROMPT_VERSION_KEY);
+    if (savedVersion !== APP_VERSION) {
+      logger.info(`📱 New app version ${APP_VERSION} (was ${savedVersion}) – resetting install prompt`);
+      resetPromptState();
+    }
+  }, []);
 
   // Capture beforeinstallprompt if browser fires it
   useEffect(() => {
