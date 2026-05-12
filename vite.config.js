@@ -88,19 +88,63 @@ export default defineConfig({
       
       // CRITICAL: PWA settings for instant mobile loading
       manifest: {
+        id: '/',
         name: 'TrashDrop Carter',
         short_name: 'TrashDrop Carter',
         description: 'Mobile app for TrashDrop collectors and drivers',
         theme_color: '#9AE65C',
         background_color: '#f8f9fa',
         display: 'standalone',
+        display_override: ['standalone', 'minimal-ui'],
         orientation: 'portrait',
         start_url: '/',
         scope: '/',
+        prefer_related_applications: false,
+        launch_handler: {
+          client_mode: 'navigate-existing'
+        },
+        handle_links: 'preferred',
+        categories: ['utilities', 'productivity', 'business'],
         icons: [
+          {
+            src: 'icons/icon-72x72.png',
+            sizes: '72x72',
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: 'icons/icon-96x96.png',
+            sizes: '96x96',
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: 'icons/icon-128x128.png',
+            sizes: '128x128',
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: 'icons/icon-144x144.png',
+            sizes: '144x144',
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: 'icons/icon-152x152.png',
+            sizes: '152x152',
+            type: 'image/png',
+            purpose: 'any'
+          },
           {
             src: 'icons/icon-192x192.png',
             sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: 'icons/icon-384x384.png',
+            sizes: '384x384',
             type: 'image/png',
             purpose: 'any'
           },
