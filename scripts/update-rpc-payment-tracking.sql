@@ -86,19 +86,22 @@ BEGIN
     -- Pending earnings (picked_up but not disposed)
     'pending_earnings', (
       SELECT json_build_object(
-        'total', COALESCE(SUM(GREATEST(fee - 1.00, 0) * 0.87), 0),
-        'bins', COALESCE(SUM(CASE WHEN source_type = 'digital_bin' OR source_type = 'bin' THEN 1 ELSE 0 END), 0),
-        'pickups', COALESCE(SUM(CASE WHEN source_type IS NULL OR source_type = 'pickup' THEN 1 ELSE 0 END), 0)
+        'total', COALESCE(
+          (SELECT SUM(GREATEST(fee - 1.00, 0) * 0.87) FROM pickup_requests 
+           WHERE collector_id = p_collector_id AND status = 'picked_up'), 0
+        ) + COALESCE(
+          (SELECT SUM(GREATEST(fee - 1.00, 0) * 0.87) FROM digital_bins 
+           WHERE collector_id = (
+             SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1
+           ) AND status = 'picked_up'), 0
+        ),
+        'pickups', (SELECT COUNT(*) FROM pickup_requests 
+                    WHERE collector_id = p_collector_id AND status = 'picked_up'),
+        'bins', (SELECT COUNT(*) FROM digital_bins 
+                 WHERE collector_id = (
+                   SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1
+                 ) AND status = 'picked_up')
       )
-      FROM (
-        SELECT fee, source_type FROM pickup_requests 
-        WHERE collector_id = p_collector_id AND status = 'picked_up'
-        UNION ALL
-        SELECT fee, 'digital_bin' as source_type FROM digital_bins 
-        WHERE collector_id = (
-          SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1
-        ) AND status = 'picked_up'
-      ) pending
     ),
     
     -- Platform share calculation
