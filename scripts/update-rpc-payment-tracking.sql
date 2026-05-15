@@ -53,14 +53,14 @@ BEGIN
     -- Digital bin earnings (disposed)
     'digital_bin_earnings', (
       SELECT json_build_object(
-        'total', COALESCE(SUM(GREATEST(fee - 1.00, 0) * 0.87), 0),
-        'core', COALESCE(SUM(GREATEST(fee - 1.00, 0) * 0.70), 0),
-        'urgent', COALESCE(SUM(CASE WHEN is_urgent THEN GREATEST(fee - 1.00, 0) * 0.17 ELSE 0 END), 0),
+        'total', COALESCE(SUM(COALESCE(collector_total_payout, 0)), 0),
+        'core', COALESCE(SUM(CASE WHEN NOT is_urgent THEN COALESCE(collector_total_payout, 0) ELSE 0 END), 0),
+        'urgent', COALESCE(SUM(CASE WHEN is_urgent THEN COALESCE(collector_total_payout, 0) ELSE 0 END), 0),
         'distance', 0,
         'surge', 0,
-        'tips', 0,
-        'recyclables', 0,
-        'loyalty', 0,
+        'tips', COALESCE(SUM(collector_tips), 0),
+        'recyclables', COALESCE(SUM(collector_recyclables_payout), 0),
+        'loyalty', COALESCE(SUM(collector_loyalty_cashback), 0),
         'items', COALESCE(json_agg(
           json_build_object(
             'id', id,
@@ -88,7 +88,7 @@ BEGIN
           (SELECT SUM(GREATEST(fee - 1.00, 0) * 0.87) FROM pickup_requests 
            WHERE collector_id = p_collector_id AND status = 'picked_up'), 0
         ) + COALESCE(
-          (SELECT SUM(GREATEST(fee - 1.00, 0) * 0.87) FROM digital_bins 
+          (SELECT SUM(COALESCE(collector_total_payout, 0)) FROM digital_bins 
            WHERE collector_id = p_collector_id AND status = 'picked_up'), 0
         ),
         'pickups', (SELECT COUNT(*) FROM pickup_requests 
@@ -142,8 +142,8 @@ BEGIN
              AND status IN ('collecting', 'disposed')
              AND created_at BETWEEN v_start_date AND v_end_date), 0
         ) + COALESCE(
-          -- From digital_bins (all treated as digital payments)
-          (SELECT SUM(fee) FROM digital_bins
+          -- From digital_bins (use actual collector_total_payout, not estimated fee)
+          (SELECT SUM(COALESCE(collector_total_payout, fee, 0)) FROM digital_bins
            WHERE collector_id = p_collector_id
              AND status IN ('collecting', 'disposed')
              AND created_at BETWEEN v_start_date AND v_end_date), 0
@@ -160,7 +160,8 @@ BEGIN
              AND status IN ('collecting', 'disposed')
              AND created_at BETWEEN v_start_date AND v_end_date), 0
         ) + COALESCE(
-          (SELECT SUM(fee) FROM digital_bins
+          -- From digital_bins (use actual collector_total_payout, not estimated fee)
+          (SELECT SUM(COALESCE(collector_total_payout, fee, 0)) FROM digital_bins
            WHERE collector_id = p_collector_id
              AND status IN ('collecting', 'disposed')
              AND created_at BETWEEN v_start_date AND v_end_date), 0
