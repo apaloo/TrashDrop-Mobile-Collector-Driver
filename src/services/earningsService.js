@@ -1492,9 +1492,18 @@ class EarningsService {
         }
       });
 
-      // Process digital bins with SOP v4.5.6 percentage sharing
+      // Process digital bins - ONLY use actual bin_payments data
+      // No payment processed through TrendiPay = no earnings
       digitalBins?.forEach(bin => {
-        if (bin.collector_core_payout !== null && bin.collector_core_payout !== undefined) {
+        // Only count earnings if there's an actual bin_payments record
+        const actualBill = breakdownBinPaymentMap[bin.id];
+        if (actualBill === undefined || actualBill === null) {
+          return; // Skip - no actual payment processed
+        }
+        
+        // Use stored payout fields if available and valid
+        if (bin.collector_core_payout !== null && bin.collector_core_payout !== undefined && 
+            bin.collector_core_payout < actualBill) {
           buckets.core += bin.collector_core_payout || 0;
           buckets.urgent += bin.collector_urgent_payout || 0;
           buckets.distance += bin.collector_distance_payout || 0;
@@ -1503,10 +1512,8 @@ class EarningsService {
           buckets.recyclables += bin.collector_recyclables_payout || 0;
           buckets.loyalty += bin.collector_loyalty_cashback || 0;
         } else {
-          // Legacy: Use actual collected amount (total_bill) from bin_payments, fall back to fee
-          const actualBill = breakdownBinPaymentMap[bin.id];
-          const basePayout = actualBill !== undefined ? actualBill : (parseFloat(bin.payout) || parseFloat(bin.fee) || 0);
-          const shareableAmount = Math.max(0, basePayout - (PAYMENT_SPLITS.PLATFORM_REQUEST_FEE || 1.0));
+          // Calculate from actual bill using SOP v4.5.6
+          const shareableAmount = Math.max(0, actualBill - (PAYMENT_SPLITS.PLATFORM_REQUEST_FEE || 1.0));
           buckets.core += shareableAmount * PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
         }
       });
