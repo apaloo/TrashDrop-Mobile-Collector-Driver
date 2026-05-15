@@ -368,23 +368,13 @@ function calculateCollectorEarnings(pickup) {
  * @returns {number} Collector's total earnings
  */
 function calculateBinCollectorEarnings(bin, actualCollectedAmount = null) {
-  // If new payment model fields exist, use them directly
-  // VALIDATION: payout must be LESS than the bill (SOP always deducts platform cut)
-  // If payout >= bill, it was stored as the raw fee (legacy bug) — recalculate below
-  if (bin.collector_total_payout !== null && bin.collector_total_payout !== undefined) {
-    const bill = actualCollectedAmount !== null
-      ? actualCollectedAmount
-      : parseFloat(bin.fee) || parseFloat(bin.payout) || 0;
-    if (bill <= 0 || bin.collector_total_payout < bill) {
-      return bin.collector_total_payout;
-    }
-    // payout >= bill → legacy bug, fall through to recalculate
+  // Only use actual collected amount from bin_payments
+  // No actual payment processed = no earnings
+  if (actualCollectedAmount === null || actualCollectedAmount === undefined) {
+    return 0; // No payment processed through TrendiPay
   }
   
-  // Use actual collected amount if provided, otherwise fall back to estimated fee
-  const totalBill = actualCollectedAmount !== null 
-    ? actualCollectedAmount 
-    : parseFloat(bin.fee) || parseFloat(bin.payout) || 0;
+  const totalBill = actualCollectedAmount;
   
   // CRITICAL: Exclude platform request fee from sharing - it goes directly to platform
   const platformRequestFee = PAYMENT_SPLITS.PLATFORM_REQUEST_FEE;
@@ -974,23 +964,22 @@ class EarningsService {
       // Helper: resolve collector earnings for a digital bin with priority:
       //   1. bin_payments.collector_share (pre-computed at collection time — authoritative)
       //      VALIDATION: collector_share must be LESS than total_bill (SOP always deducts platform cut)
-      //      If collector_share >= total_bill, it was stored incorrectly (legacy bug) — recalculate
-      //   2. digital_bins.collector_total_payout (legacy pre-computed)
-      //   3. Runtime calculation from actual total_bill
-      //   4. Runtime calculation from estimated fee (legacy)
+      //      If collector_share >= total_bill, SOP was never applied (legacy bug) — return 0
+      //   2. No bin_payments record = no actual payment processed = 0 earnings
       const resolveBinCollectorEarnings = (b) => {
         const storedShare = binPaymentCollectorShareMap[b.id];
         const actualAmount = binPaymentAmountMap[b.id] ?? null;
         if (storedShare !== undefined) {
           // If we have total_bill to validate against: collector_share must be < total_bill
-          // If collector_share >= total_bill, SOP was never applied (legacy bug) — recalculate
+          // If collector_share >= total_bill, SOP was never applied (legacy bug) — return 0
           if (actualAmount !== null && actualAmount > 0 && storedShare >= actualAmount) {
-            return calculateBinCollectorEarnings(b, actualAmount);
+            return 0; // Invalid data, no actual earnings
           }
-          // Trust stored share (either validated OK or no total_bill to validate against)
+          // Trust stored share (actual processed payment)
           return storedShare;
         }
-        return calculateBinCollectorEarnings(b, actualAmount);
+        // No bin_payments record = no actual payment processed through TrendiPay
+        return 0;
       };
 
       // Digital bin earnings - use stored shares when available, else calculate
