@@ -46,7 +46,7 @@ BEGIN
       )
       FROM pickup_requests
       WHERE collector_id = p_collector_id
-        AND status = 'disposed'
+        AND status IN ('collecting', 'disposed')
         AND created_at BETWEEN v_start_date AND v_end_date
     ),
     
@@ -76,10 +76,8 @@ BEGIN
         ) FILTER (WHERE id IS NOT NULL), '[]'::json)
       )
       FROM digital_bins
-      WHERE collector_id = (
-        SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1
-      )
-        AND status = 'disposed'
+      WHERE collector_id = p_collector_id
+        AND status IN ('collecting', 'disposed')
         AND created_at BETWEEN v_start_date AND v_end_date
     ),
     
@@ -109,7 +107,7 @@ BEGIN
       SELECT COALESCE(SUM(1.00 + GREATEST(fee - 1.00, 0) * 0.13), 0)
       FROM pickup_requests
       WHERE collector_id = p_collector_id
-        AND status = 'disposed'
+        AND status IN ('collecting', 'disposed')
         AND created_at BETWEEN v_start_date AND v_end_date
     ),
     
@@ -129,7 +127,7 @@ BEGIN
           (SELECT SUM(CASE WHEN payment_type = 'cash' THEN fee ELSE 0 END)
            FROM pickup_requests
            WHERE collector_id = p_collector_id
-             AND status = 'disposed'
+             AND status IN ('collecting', 'disposed')
              AND created_at BETWEEN v_start_date AND v_end_date), 0
         ),
         'digital_collected', COALESCE(
@@ -145,7 +143,7 @@ BEGIN
           (SELECT SUM(CASE WHEN COALESCE(payment_type, 'digital') != 'cash' THEN fee ELSE 0 END)
            FROM pickup_requests
            WHERE collector_id = p_collector_id
-             AND status = 'disposed'
+             AND status IN ('collecting', 'disposed')
              AND created_at BETWEEN v_start_date AND v_end_date), 0
         ),
         'total_collected', COALESCE(
@@ -157,7 +155,7 @@ BEGIN
         ) + COALESCE(
           (SELECT SUM(fee) FROM pickup_requests
            WHERE collector_id = p_collector_id
-             AND status = 'disposed'
+             AND status IN ('collecting', 'disposed')
              AND created_at BETWEEN v_start_date AND v_end_date), 0
         )
       )
