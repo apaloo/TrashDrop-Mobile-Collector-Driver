@@ -131,11 +131,18 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
                   />
                 </div>
                 {withdrawableAmount > 0 ? (
-                  <p className="text-sm text-green-600 font-semibold mt-1">Available for withdrawal: ₵{withdrawableAmount.toFixed(2)}</p>
+                  <div className="mt-1">
+                    <p className="text-sm text-green-600 font-semibold">Available for withdrawal: ₵{withdrawableAmount.toFixed(2)}</p>
+                    {hasPendingEarnings && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        + ₵{pendingDisposalAmount.toFixed(2)} pending — dispose to unlock
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
                     <p className="text-sm text-amber-700 font-medium">
-                      ⚠️ No funds available for withdrawal
+                      No funds available for withdrawal
                     </p>
                     {hasPendingEarnings && (
                       <p className="text-xs text-amber-600 mt-1">
@@ -416,9 +423,9 @@ const EarningsPage = () => {
     ...stats 
   } = earningsState;
   
-  // Calculate actual withdrawable amount after commission reconciliation
-  // This is the NET amount platform will pay to collector via MoMo
-  const actualWithdrawableAmount = paymentModeBreakdown?.reconciliation?.netPayoutToCollector ?? disposedEarnings;
+  // Withdrawable amount = only disposed earnings (pending disposal is NOT withdrawable)
+  // disposedEarnings already excludes pendingDisposalEarnings in both RPC and legacy paths
+  const actualWithdrawableAmount = disposedEarnings;
   
   // Fix: Filter transactions by period
   const filteredTransactions = transactions.filter(transaction => {

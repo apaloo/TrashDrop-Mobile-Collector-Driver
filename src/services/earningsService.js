@@ -764,7 +764,7 @@ class EarningsService {
       const totalBinEarnings = parseFloat(digitalBinEarnings.total) || 0;
       const totalEarnings = totalPickupEarnings + totalBinEarnings;
       const pendingDisposalEarnings = parseFloat(pendingEarnings.total) || 0;
-      const disposedEarnings = totalEarnings;
+      const disposedEarnings = totalEarnings - pendingDisposalEarnings;
       
       // Platform share
       const platformShare = parseFloat(data.platform_share) || 0;
@@ -1749,17 +1749,31 @@ class EarningsService {
       logger.info('Cashout validation passed:', validation);
 
       // Step 4: Get all undisbursed bins for this collector
-      const { data: undisbursedBins, error: binsError } = await supabase
+      // First, fetch IDs of bins that already have a successful disbursement
+      const { data: disbursedRows, error: disbursedError } = await supabase
+        .from('bin_payments')
+        .select('digital_bin_id')
+        .eq('type', 'disbursement')
+        .eq('status', 'success');
+
+      if (disbursedError) {
+        throw new Error(`Error fetching disbursed bins: ${disbursedError.message}`);
+      }
+
+      const disbursedBinIds = (disbursedRows || []).map(r => r.digital_bin_id).filter(Boolean);
+
+      // Now fetch disposed bins for this collector, excluding already-disbursed ones
+      let binsQuery = supabase
         .from('digital_bins')
         .select('id, collector_total_payout')
         .eq('collector_id', this.collectorId)
-        .eq('status', 'disposed')
-        .not('id', 'in', `(
-          SELECT digital_bin_id 
-          FROM bin_payments 
-          WHERE type='disbursement' 
-            AND status='success'
-        )`);
+        .eq('status', 'disposed');
+
+      if (disbursedBinIds.length > 0) {
+        binsQuery = binsQuery.not('id', 'in', `(${disbursedBinIds.join(',')})`);
+      }
+
+      const { data: undisbursedBins, error: binsError } = await binsQuery;
 
       if (binsError) {
         throw new Error(`Error fetching bins: ${binsError.message}`);
@@ -1775,6 +1789,8 @@ class EarningsService {
         digital_bin_id: undisbursedBins?.[0]?.id || null, // Representative bin
         collector_id: collectorProfile.id,
         type: 'disbursement',
+        bags_collected: 0, // Not applicable for disbursements
+        total_bill: amount, // Disbursement amount
         collector_share: amount,
         platform_share: 0, // Platform already took their share during disposal
         payment_mode: 'momo',
