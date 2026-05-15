@@ -302,8 +302,13 @@ const PAYMENT_SPLITS = {
  */
 function calculateCollectorEarnings(pickup) {
   // If new payment model fields exist, use them directly (already calculated)
+  // VALIDATION: payout must be LESS than the fee (SOP always deducts platform cut)
   if (pickup.collector_total_payout !== null && pickup.collector_total_payout !== undefined) {
-    return pickup.collector_total_payout;
+    const rawFee = pickup.fee || pickup.base_amount || 0;
+    if (rawFee <= 0 || pickup.collector_total_payout < rawFee) {
+      return pickup.collector_total_payout;
+    }
+    // payout >= fee → legacy bug, fall through to recalculate
   }
   
   // Legacy data: Apply percentage sharing algorithm
@@ -364,8 +369,16 @@ function calculateCollectorEarnings(pickup) {
  */
 function calculateBinCollectorEarnings(bin, actualCollectedAmount = null) {
   // If new payment model fields exist, use them directly
+  // VALIDATION: payout must be LESS than the bill (SOP always deducts platform cut)
+  // If payout >= bill, it was stored as the raw fee (legacy bug) — recalculate below
   if (bin.collector_total_payout !== null && bin.collector_total_payout !== undefined) {
-    return bin.collector_total_payout;
+    const bill = actualCollectedAmount !== null
+      ? actualCollectedAmount
+      : parseFloat(bin.fee) || parseFloat(bin.payout) || 0;
+    if (bill <= 0 || bin.collector_total_payout < bill) {
+      return bin.collector_total_payout;
+    }
+    // payout >= bill → legacy bug, fall through to recalculate
   }
   
   // Use actual collected amount if provided, otherwise fall back to estimated fee
@@ -762,13 +775,24 @@ class EarningsService {
       const digitalCollected = parseFloat(settlements.digital_collected) || 0;
       const netSettlement = cashCollected - platformShare;
       
+      // Helper: validate collector_total_payout — if it equals or exceeds the bill,
+      // SOP was never applied (legacy bug). Recalculate from total_bill/fee.
+      const resolveRpcItemAmount = (item) => {
+        const payout = parseFloat(item.collector_total_payout);
+        const bill = parseFloat(item.total_bill) || parseFloat(item.fee) || 0;
+        // Trust payout only if it's less than the bill (SOP deducted platform cut)
+        if (payout && bill > 0 && payout < bill) return payout;
+        // Recalculate: (bill - platform fee) × deadhead share
+        return Math.max(0, bill - 1.0) * 0.87;
+      };
+
       // Build transactions from items
       const transactions = [
         ...(pickupEarnings.items || []).map(item => ({
           id: item.id,
           type: 'pickup',
           description: `${item.waste_type || 'Waste'} pickup`,
-          amount: parseFloat(item.collector_total_payout) || parseFloat(item.fee) * 0.87,
+          amount: resolveRpcItemAmount(item),
           date: item.disposed_at || item.created_at,
           status: item.status
         })),
@@ -776,7 +800,7 @@ class EarningsService {
           id: item.id,
           type: 'digital_bin',
           description: `Digital bin - ${item.waste_type || 'Waste'}`,
-          amount: parseFloat(item.collector_total_payout) || 0,
+          amount: resolveRpcItemAmount(item),
           date: item.disposed_at || item.created_at,
           status: item.status
         }))
@@ -876,6 +900,7 @@ class EarningsService {
       // === BIN PAYMENTS (for payment mode tracking, actual amounts, and pre-computed shares) ===
       // Get payment records to determine payment mode (cash vs digital), actual collected amounts,
       // and pre-computed collector/platform shares (authoritative source when present).
+      // Include pending/processing payments — collector already collected the amount; only exclude failed.
       const binIds = (digitalBins || []).map(b => b.id);
       let binPayments = [];
       if (binIds.length > 0) {
@@ -884,7 +909,7 @@ class EarningsService {
           .select('digital_bin_id, payment_mode, total_bill, collector_share, platform_share, type, status')
           .in('digital_bin_id', binIds)
           .eq('type', 'collection')
-          .eq('status', 'success');
+          .not('status', 'eq', 'failed');
         
         if (!paymentsError) {
           binPayments = payments || [];
@@ -907,6 +932,27 @@ class EarningsService {
         }
       });
 
+      // DEBUG: Log bin_payments data to verify total_bill vs fee
+      if (binPayments.length > 0) {
+        logger.info('💰 bin_payments data:', binPayments.map(p => ({
+          bin: p.digital_bin_id?.slice(0,8),
+          total_bill: p.total_bill,
+          collector_share: p.collector_share,
+          mode: p.payment_mode,
+          status: p.status
+        })));
+      }
+      if (digitalBins?.length > 0) {
+        logger.info('💰 digital_bins fee vs total_bill:', digitalBins.map(b => ({
+          bin: b.id?.slice(0,8),
+          fee: b.fee,
+          payout: b.payout,
+          collector_total_payout: b.collector_total_payout,
+          actual_total_bill: binPaymentAmountMap[b.id],
+          status: b.status
+        })));
+      }
+
       // === AUTHORITY ASSIGNMENTS ===
       // Get completed authority assignments
       const { data: authorityAssignments, error: assignmentsError } = await supabase
@@ -927,13 +973,23 @@ class EarningsService {
 
       // Helper: resolve collector earnings for a digital bin with priority:
       //   1. bin_payments.collector_share (pre-computed at collection time — authoritative)
+      //      VALIDATION: collector_share must be LESS than total_bill (SOP always deducts platform cut)
+      //      If collector_share >= total_bill, it was stored incorrectly (legacy bug) — recalculate
       //   2. digital_bins.collector_total_payout (legacy pre-computed)
       //   3. Runtime calculation from actual total_bill
       //   4. Runtime calculation from estimated fee (legacy)
       const resolveBinCollectorEarnings = (b) => {
         const storedShare = binPaymentCollectorShareMap[b.id];
-        if (storedShare !== undefined) return storedShare;
         const actualAmount = binPaymentAmountMap[b.id] ?? null;
+        if (storedShare !== undefined) {
+          // If we have total_bill to validate against: collector_share must be < total_bill
+          // If collector_share >= total_bill, SOP was never applied (legacy bug) — recalculate
+          if (actualAmount !== null && actualAmount > 0 && storedShare >= actualAmount) {
+            return calculateBinCollectorEarnings(b, actualAmount);
+          }
+          // Trust stored share (either validated OK or no total_bill to validate against)
+          return storedShare;
+        }
         return calculateBinCollectorEarnings(b, actualAmount);
       };
 
@@ -956,13 +1012,19 @@ class EarningsService {
       
       // Helper: resolve platform earnings for a digital bin with priority:
       //   1. bin_payments.platform_share (pre-computed at collection time — authoritative)
+      //      VALIDATION: Skip if collector_share was invalid (legacy bug) — recalculate both
       //   2. Runtime calculation from actual total_bill
       //   3. Runtime calculation from estimated fee (legacy)
       const resolveBinPlatformEarnings = (b) => {
-        const storedShare = binPaymentPlatformShareMap[b.id];
-        if (storedShare !== undefined) return storedShare;
+        const storedPlatformShare = binPaymentPlatformShareMap[b.id];
+        const storedCollectorShare = binPaymentCollectorShareMap[b.id];
         const actualAmount = binPaymentAmountMap[b.id];
-        if (actualAmount !== undefined) {
+        if (storedPlatformShare !== undefined) {
+          // If collector_share was invalid (>= total_bill), platform_share is also suspect
+          const collectorShareInvalid = storedCollectorShare !== undefined && actualAmount !== undefined && actualAmount > 0 && storedCollectorShare >= actualAmount;
+          if (!collectorShareInvalid) return storedPlatformShare;
+        }
+        if (actualAmount !== undefined && actualAmount > 0) {
           const binWithActualAmount = { ...b, fee: actualAmount };
           return calculateBinPlatformEarnings(binWithActualAmount).total;
         }
@@ -1343,6 +1405,24 @@ class EarningsService {
         logger.warn('Error fetching digital bins for breakdown:', binsError);
       }
 
+      // Fetch bin_payments to get actual collected amounts (total_bill) for digital bins
+      const breakdownBinIds = (digitalBins || []).map(b => b.id);
+      const breakdownBinPaymentMap = {};
+      if (breakdownBinIds.length > 0) {
+        const { data: bPayments } = await supabase
+          .from('bin_payments')
+          .select('digital_bin_id, total_bill')
+          .in('digital_bin_id', breakdownBinIds)
+          .eq('type', 'collection')
+          .not('status', 'eq', 'failed');
+        
+        if (bPayments) {
+          bPayments.forEach(p => {
+            breakdownBinPaymentMap[p.digital_bin_id] = parseFloat(p.total_bill) || 0;
+          });
+        }
+      }
+
       // Aggregate by bucket type
       const buckets = {
         core: 0,
@@ -1404,9 +1484,11 @@ class EarningsService {
           buckets.recyclables += bin.collector_recyclables_payout || 0;
           buckets.loyalty += bin.collector_loyalty_cashback || 0;
         } else {
-          // Legacy: Apply default deadhead share (87%)
-          const basePayout = bin.payout || bin.fee || 0;
-          buckets.core += basePayout * PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
+          // Legacy: Use actual collected amount (total_bill) from bin_payments, fall back to fee
+          const actualBill = breakdownBinPaymentMap[bin.id];
+          const basePayout = actualBill !== undefined ? actualBill : (parseFloat(bin.payout) || parseFloat(bin.fee) || 0);
+          const shareableAmount = Math.max(0, basePayout - (PAYMENT_SPLITS.PLATFORM_REQUEST_FEE || 1.0));
+          buckets.core += shareableAmount * PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
         }
       });
 

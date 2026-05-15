@@ -3,7 +3,7 @@
  * trendipay-proxy – Supabase Edge Function
  *
  * Proxies outbound TrendiPay API calls so the browser never talks to
- * test-api.trendipay.com directly (which would be blocked by CORS).
+ * api.trendipay.com directly (which would be blocked by CORS).
  *
  * Routes:
  *   POST /  { action: "initiate-collection", payload: {...} }
@@ -12,7 +12,7 @@
  *   POST /  { action: "check-disbursement-status", transactionId, terminalId }
  *
  * Required Deno env secrets (set via `supabase secrets set`):
- *   TRENDIPAY_API_URL        – e.g. https://test-api.trendipay.com
+ *   TRENDIPAY_API_URL        – e.g. https://api.trendipay.com
  *   TRENDIPAY_API_KEY        – Bearer token
  *   TRENDIPAY_MERCHANT_ID    – X-Merchant-ID header value
  */

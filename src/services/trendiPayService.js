@@ -14,12 +14,17 @@ import { logger } from '../utils/logger';
 const TRENDIPAY_CONFIG = {
   // These should be environment variables in production
   // Vite uses import.meta.env, not process.env
-  apiUrl: import.meta.env.VITE_TRENDIPAY_API_URL || 'https://api.trendipay.com',
+  apiUrl: import.meta.env.VITE_TRENDIPAY_API_URL || 'https://merchant-api.trendipay.com',
   apiKey: import.meta.env.VITE_TRENDIPAY_API_KEY || '',
   terminalId: import.meta.env.VITE_TRENDIPAY_TERMINAL_ID || '',
   merchantId: import.meta.env.VITE_TRENDIPAY_MERCHANT_ID || '',
   webhookSecret: import.meta.env.VITE_TRENDIPAY_WEBHOOK_SECRET || '', // Fix #4: Required for signature verification
-  callbackBaseUrl: import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  callbackBaseUrl: import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || (() => {
+    // Derive functions URL from Supabase project URL
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+    if (supabaseUrl) return `${supabaseUrl.replace(/\/$/, '')}/functions/v1`;
+    return import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  })(),
   
   // Proxy URL: route TrendiPay API calls through Supabase Edge Function to avoid CORS
   // Falls back to the Supabase project's functions URL
@@ -263,7 +268,7 @@ export async function initiateCollection({
     
     // Validate callback URL is properly configured
     console.log('💳 [TrendiPay] Building callback URL from base:', TRENDIPAY_CONFIG.callbackBaseUrl);
-    const callbackUrl = buildCallbackUrl('trendipay-collection');
+    const callbackUrl = buildCallbackUrl('trendipay-webhook');
     console.log('💳 [TrendiPay] Callback URL:', callbackUrl);
     
     // Convert amount from GHS to pesewas (TrendiPay requires amount in pesewas, minimum 100)
@@ -286,7 +291,9 @@ export async function initiateCollection({
       rSwitch: networkCode,
       amount: amountInPesewas, // Amount in pesewas (integer, no decimals)
       description: description || `Digital bin payment ${reference}`,
-      callbackUrl
+      callbackUrl,
+      type: 'purchase',
+      currency: currency || 'GHS'
     };
     
     console.log('💳 [TrendiPay] Full payload:', JSON.stringify(payload, null, 2));
@@ -453,7 +460,7 @@ export async function initiateDisbursement({
     
     // Prepare request payload (matches official TrendiPay API spec)
     console.log('💸 [TrendiPay] Building callback URL from base:', TRENDIPAY_CONFIG.callbackBaseUrl);
-    const callbackUrl = buildCallbackUrl('trendipay-disbursement');
+    const callbackUrl = buildCallbackUrl('trendipay-webhook');
     console.log('💸 [TrendiPay] Callback URL:', callbackUrl);
 
     const payload = {
@@ -464,7 +471,9 @@ export async function initiateDisbursement({
       description: description || `TrashDrop collector payout ${reference}`,
       accountName: accountName || accountNumber, // required by TrendiPay API
       senderName: senderName || 'TrashDrop',     // required by TrendiPay API
-      callbackUrl
+      callbackUrl,
+      type: 'deposit',
+      currency: currency || 'GHS'
     };
     
     console.log('💸 [TrendiPay] Full payload:', JSON.stringify(payload, null, 2));

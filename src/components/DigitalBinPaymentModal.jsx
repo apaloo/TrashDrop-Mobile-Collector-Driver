@@ -56,7 +56,10 @@ const DigitalBinPaymentModal = ({
   const [paymentStatus, setPaymentStatus] = useState(null); // 'pending', 'processing', 'success', 'failed'
   const [processingMessage, setProcessingMessage] = useState('');
   const [authorizationSteps, setAuthorizationSteps] = useState([]);
+  const [pollTimedOut, setPollTimedOut] = useState(false);
   const pollingIntervalRef = useRef(null);
+  const pollingStartRef = useRef(null);
+  const POLL_TIMEOUT_MS = 90000; // 90 seconds before showing manual confirm option
 
   // Extract bin ID from QR text (handles URLs and plain IDs)
   const extractBagId = useCallback((text) => {
@@ -125,6 +128,7 @@ const DigitalBinPaymentModal = ({
       setPaymentStatus(null);
       setProcessingMessage('');
       setAuthorizationSteps([]);
+      setPollTimedOut(false);
 
       // Fetch fee for the bin
       if (uniqueBags.length > 0) {
@@ -203,9 +207,23 @@ const DigitalBinPaymentModal = ({
       }
     };
 
-    // Poll immediately, then every 3 seconds
+    // Poll immediately, then every 5 seconds
+    pollingStartRef.current = Date.now();
+    setPollTimedOut(false);
     pollStatus();
-    pollingIntervalRef.current = setInterval(pollStatus, 3000);
+    pollingIntervalRef.current = setInterval(() => {
+      // Check timeout
+      if (pollingStartRef.current && (Date.now() - pollingStartRef.current) > POLL_TIMEOUT_MS) {
+        console.log('⏰ [PaymentModal] Polling timed out after 90s — showing manual confirm option');
+        setPollTimedOut(true);
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        return;
+      }
+      pollStatus();
+    }, 5000);
 
     // Cleanup on unmount
     return () => {
@@ -472,6 +490,7 @@ const DigitalBinPaymentModal = ({
     setPaymentStatus(null);
     setProcessingMessage('');
     setAuthorizationSteps([]);
+    setPollTimedOut(false);
     setErrors({});
   };
 
@@ -486,9 +505,9 @@ const DigitalBinPaymentModal = ({
           <h2 className="text-lg font-bold text-white">Collect Payment</h2>
           <button
             onClick={onClose}
-            disabled={isSubmitting || paymentStatus === 'pending' || paymentStatus === 'processing'}
+            disabled={isSubmitting}
             className="text-white/70 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed p-1"
-            title={paymentStatus === 'pending' || paymentStatus === 'processing' ? 'Please wait for payment to complete' : 'Close'}
+            title="Close"
           >
             <X size={26} />
           </button>
@@ -506,21 +525,97 @@ const DigitalBinPaymentModal = ({
               )}
               {(paymentStatus === 'pending' || paymentStatus === 'processing') && (
                 <div className="text-center">
-                  <div className="flex items-center justify-center space-x-3 mb-3">
-                    <Loader2 className="text-blue-600 animate-spin" size={32} />
-                    <span className="text-blue-700 font-bold text-base">{processingMessage}</span>
-                  </div>
-                  {authorizationSteps.length > 0 && (
-                    <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-left">
-                      <p className="text-sm font-bold text-yellow-800 mb-2">📱 Tell client to approve on their phone:</p>
-                      <ol className="space-y-1">
-                        {authorizationSteps.map((step, i) => (
-                          <li key={i} className="text-sm text-yellow-900 flex items-start gap-2">
-                            <span className="font-bold text-yellow-700 flex-shrink-0">{i + 1}.</span>
-                            <span>{step}</span>
-                          </li>
-                        ))}
-                      </ol>
+                  {!pollTimedOut ? (
+                    <>
+                      <div className="flex items-center justify-center space-x-3 mb-3">
+                        <Loader2 className="text-blue-600 animate-spin" size={32} />
+                        <span className="text-blue-700 font-bold text-base">{processingMessage}</span>
+                      </div>
+                      {authorizationSteps.length > 0 && (
+                        <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-left">
+                          <p className="text-sm font-bold text-yellow-800 mb-2">📱 Tell client to approve on their phone:</p>
+                          <ol className="space-y-1">
+                            {authorizationSteps.map((step, i) => (
+                              <li key={i} className="text-sm text-yellow-900 flex items-start gap-2">
+                                <span className="font-bold text-yellow-700 flex-shrink-0">{i + 1}.</span>
+                                <span>{step}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-center space-x-2 text-orange-600">
+                        <span className="text-2xl">⏰</span>
+                        <span className="font-bold text-base">Payment confirmation timed out</span>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        The client may have approved but confirmation hasn't been received yet.
+                      </p>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            // Mark payment as success in DB
+                            try {
+                              await supabase
+                                .from('bin_payments')
+                                .update({ status: 'success' })
+                                .eq('id', paymentId);
+                              setPaymentStatus('success');
+                              setProcessingMessage('Payment confirmed! 🎉');
+                              setTimeout(() => onClose(), 1500);
+                            } catch (err) {
+                              console.error('Failed to confirm payment:', err);
+                            }
+                          }}
+                          className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors"
+                        >
+                          ✅ Client Has Paid — Confirm
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Resume polling for another 90s
+                            setPollTimedOut(false);
+                            pollingStartRef.current = Date.now();
+                            const poll = async () => {
+                              const result = await checkPaymentStatus(paymentId);
+                              if (result.success && result.status === 'success') {
+                                setPaymentStatus('success');
+                                setProcessingMessage('Payment successful! 🎉');
+                                if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+                                setTimeout(() => onClose(), 2000);
+                              } else if (result.success && result.status === 'failed') {
+                                setPaymentStatus('failed');
+                                setProcessingMessage('Payment failed.');
+                                if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+                              }
+                            };
+                            poll();
+                            pollingIntervalRef.current = setInterval(() => {
+                              if (Date.now() - pollingStartRef.current > POLL_TIMEOUT_MS) {
+                                setPollTimedOut(true);
+                                clearInterval(pollingIntervalRef.current);
+                                return;
+                              }
+                              poll();
+                            }, 5000);
+                          }}
+                          className="w-full py-2.5 bg-blue-100 text-blue-700 font-bold rounded-xl hover:bg-blue-200 transition-colors"
+                        >
+                          🔄 Keep Waiting
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onClose}
+                          className="w-full py-2.5 bg-gray-100 text-gray-600 font-semibold rounded-xl hover:bg-gray-200 transition-colors"
+                        >
+                          Close
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

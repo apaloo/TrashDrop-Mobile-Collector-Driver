@@ -134,7 +134,7 @@ These were already properly gitignored:
 - `VITE_SUPABASE_ANON_KEY`
 
 **TrendiPay:**
-- `VITE_TRENDIPAY_API_URL` = `https://test-api.trendipay.com`
+- `VITE_TRENDIPAY_API_URL` = `https://merchant-api.trendipay.com`
 - `VITE_TRENDIPAY_API_KEY`
 - `VITE_TRENDIPAY_TERMINAL_ID`
 - `VITE_TRENDIPAY_MERCHANT_ID`

@@ -254,6 +254,32 @@ export async function checkPaymentStatus(paymentId) {
 
     console.log('🔍 [PaymentService] Payment status:', { id: data.id, status: data.status, gateway_error: data.gateway_error, gateway_transaction_id: data.gateway_transaction_id });
 
+    // If DB still says pending but we have a gateway transaction ID,
+    // check TrendiPay API directly as fallback (webhook may have failed)
+    if (data.status === 'pending' && data.gateway_transaction_id && ENABLE_TRENDIPAY) {
+      try {
+        console.log('🔍 [PaymentService] DB still pending — checking TrendiPay API directly...');
+        const gatewayResult = await TrendiPayService.checkCollectionStatus(
+          data.gateway_transaction_id,
+          data.id
+        );
+        if (gatewayResult.success && gatewayResult.status && gatewayResult.status !== 'pending') {
+          const newStatus = gatewayResult.status === 'successful' || gatewayResult.status === 'success' ? 'success' : 
+                           gatewayResult.status === 'failed' ? 'failed' : data.status;
+          if (newStatus !== data.status) {
+            console.log(`✅ [PaymentService] TrendiPay says ${newStatus} — updating DB`);
+            await supabase
+              .from('bin_payments')
+              .update({ status: newStatus, updated_at: new Date().toISOString() })
+              .eq('id', paymentId);
+            return { success: true, status: newStatus, payment: { ...data, status: newStatus } };
+          }
+        }
+      } catch (gwErr) {
+        console.warn('⚠️ [PaymentService] Gateway status check failed (non-fatal):', gwErr.message);
+      }
+    }
+
     return {
       success: true,
       status: data.status,

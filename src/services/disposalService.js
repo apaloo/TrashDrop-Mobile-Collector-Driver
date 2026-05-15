@@ -61,9 +61,9 @@ const PAYMENT_SPLITS = {
 function calculatePaymentSharing(digitalBin, payment, actualTips = 0) {
   logger.info('Calculating payment sharing for bin:', digitalBin.id);
   
-  // IMPORTANT: Use digitalBin.fee as PRIMARY source (the actual amount user paid)
-  // This is the TOTAL amount paid, including any urgent surcharge AND platform fee
-  const totalBill = parseFloat(digitalBin.fee) || parseFloat(digitalBin.payout) || parseFloat(payment.total_bill) || 0;
+  // IMPORTANT: Use payment.total_bill as PRIMARY source (the actual amount collected from client)
+  // Fall back to digitalBin.fee only when no payment record exists
+  const totalBill = parseFloat(payment.total_bill) || parseFloat(digitalBin.fee) || parseFloat(digitalBin.payout) || 0;
   
   // CRITICAL: Exclude platform request fee from sharing - it goes directly to platform
   const platformRequestFee = PAYMENT_SPLITS.PLATFORM_REQUEST_FEE;

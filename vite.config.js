@@ -6,6 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   // Add cache busting for development
   server: {
+    allowedHosts: true,
     fs: {
       // Allow serving files from one level up
       allow: ['..']
@@ -14,7 +15,15 @@ export default defineConfig({
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache',
       'Expires': '0'
-    }
+    },
+    proxy: {
+      // Proxy API requests to avoid CORS issues
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      }
+    },
   },
   build: {
     // CRITICAL: Aggressive mobile optimization for instant startup
@@ -68,16 +77,6 @@ export default defineConfig({
     // CRITICAL: Target modern browsers for smaller bundles
     target: ['es2020', 'chrome80', 'safari13'],
     chunkSizeWarningLimit: 500 // Smaller chunks for mobile
-  },
-  server: {
-    proxy: {
-      // Proxy API requests to avoid CORS issues
-      '/api': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
-      }
-    },
   },
   plugins: [
     react(),

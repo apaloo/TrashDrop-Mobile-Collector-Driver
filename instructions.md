@@ -13,7 +13,7 @@ This document describes the **live, production-ready state** of the TrashDrop Co
 | Routing | React Router v6 |
 | Backend/DB | Supabase (PostgreSQL + Auth + Realtime + Edge Functions) |
 | Maps | Google Maps JavaScript API |
-| Payment | TrendiPay via BSL API (`https://prod-api.bsl.com.gh`) proxied through Supabase Edge Function `trendipay-proxy` |
+| Payment | TrendiPay via BSL API (`https://merchant-api.trendipay.com`) proxied through Supabase Edge Function `trendipay-proxy` |
 | PWA | Vite PWA plugin + service worker |
 | Dev server | `npm run dev` → `http://localhost:5173` |
 
@@ -141,7 +141,7 @@ pending/available → accepted → en_route → arrived → collecting → compl
 ## 9. Payment Integration (TrendiPay / BSL)
 
 - **Proxy**: Browser → `makeProxyRequest()` → Supabase Edge Function `trendipay-proxy` → BSL API
-- **Production URL**: `https://prod-api.bsl.com.gh`
+- **Production URL**: `https://merchant-api.trendipay.com`
 - **rSwitch values** (lowercase): `mtn`, `vodafone`, `airteltigo`
 - **Amount unit**: pesewas (100 = GHS 1.00)
 - Edge function secrets: `TRENDIPAY_API_URL`, `TRENDIPAY_API_KEY`, `TRENDIPAY_MERCHANT_ID`
@@ -1020,5 +1020,5 @@ CREATE TABLE public.withdrawals (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT withdrawals_pkey PRIMARY KEY (id),
-  CONSTRAINT withdrawals_collector_id_fkey FOREIGN KEY (collector_id) REFERENCES auth.users(id)
+  CONSTRAINT withdrawals_collector_id_fkey FOREIGN KEY (collector_id) REFERENCES auth.users(id)//?
 );
