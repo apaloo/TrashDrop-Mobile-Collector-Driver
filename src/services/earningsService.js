@@ -1063,6 +1063,10 @@ class EarningsService {
       
       let cashGrossRevenue = 0;        // Raw fees from cash payments (what user actually paid)
       let digitalGrossRevenue = 0;     // Raw fees from digital payments (what user actually paid)
+      let disposedCashGrossRevenue = 0;    // Raw fees from DISPOSED cash payments only
+      let disposedDigitalGrossRevenue = 0; // Raw fees from DISPOSED digital payments only
+      let disposedCashEarnings = 0;        // Collector earnings from DISPOSED cash payments
+      let disposedDigitalEarnings = 0;     // Collector earnings from DISPOSED digital payments
       let cashCollected = 0;           // Total cash collected by collector
       let cashPlatformDue = 0;         // Platform's share from cash payments (collector owes this)
       let digitalCollected = 0;        // Total digital payments received by platform
@@ -1075,16 +1079,25 @@ class EarningsService {
         const platformEarnings = calculatePlatformEarnings(p).total;
         const grossAmount = collectorEarnings + platformEarnings;
         const rawFee = parseFloat(p.fee) || parseFloat(p.base_amount) || 0;
+        const isDisposed = p.status === 'disposed';
         
         if (paymentMode === 'cash') {
           cashGrossRevenue += rawFee;
           cashCollected += grossAmount;
           cashPlatformDue += platformEarnings; // Collector owes platform this amount
+          if (isDisposed) {
+            disposedCashGrossRevenue += rawFee;
+            disposedCashEarnings += collectorEarnings;
+          }
         } else {
           // momo, e_cash, or other digital payments
           digitalGrossRevenue += rawFee;
           digitalCollected += grossAmount;
           digitalCollectorDue += collectorEarnings; // Platform owes collector this amount
+          if (isDisposed) {
+            disposedDigitalGrossRevenue += rawFee;
+            disposedDigitalEarnings += collectorEarnings;
+          }
         }
       });
       
@@ -1096,16 +1109,25 @@ class EarningsService {
         const grossAmount = collectorEarnings + platformEarnings;
         const actualAmount = binPaymentAmountMap[b.id];
         const rawFee = actualAmount !== undefined ? actualAmount : (parseFloat(b.fee) || parseFloat(b.payout) || 0);
+        const isDisposed = b.status === 'disposed';
         
         if (paymentMode === 'cash') {
           cashGrossRevenue += rawFee;
           cashCollected += grossAmount;
           cashPlatformDue += platformEarnings; // Collector owes platform this amount
+          if (isDisposed) {
+            disposedCashGrossRevenue += rawFee;
+            disposedCashEarnings += collectorEarnings;
+          }
         } else {
           // momo, e_cash, or other digital payments
           digitalGrossRevenue += rawFee;
           digitalCollected += grossAmount;
           digitalCollectorDue += collectorEarnings; // Platform owes collector this amount
+          if (isDisposed) {
+            disposedDigitalGrossRevenue += rawFee;
+            disposedDigitalEarnings += collectorEarnings;
+          }
         }
       });
       
@@ -1318,12 +1340,16 @@ class EarningsService {
               cash: {
                 grossRevenue: cashGrossRevenue,     // Raw fees from cash payments (what user paid)
                 collected: cashCollected,           // Total cash collector received from users
-                platformDue: cashPlatformDue        // Platform's share collector owes
+                platformDue: cashPlatformDue,       // Platform's share collector owes
+                disposedEarnings: disposedCashEarnings,      // Collector earnings from DISPOSED cash only
+                disposedGrossRevenue: disposedCashGrossRevenue // Raw fees from DISPOSED cash only
               },
               digital: {
                 grossRevenue: digitalGrossRevenue,  // Raw fees from digital payments (what user paid)
                 collected: digitalCollected,        // Total digital payments platform received
-                collectorDue: digitalCollectorDue   // Collector's share platform owes
+                collectorDue: digitalCollectorDue,  // Collector's share platform owes
+                disposedEarnings: disposedDigitalEarnings,      // Collector earnings from DISPOSED digital only
+                disposedGrossRevenue: disposedDigitalGrossRevenue // Raw fees from DISPOSED digital only
               },
               // Reconciliation: Platform deducts commission from what it owes collector
               // Only if platform owes less than commission due, collector must pay back difference

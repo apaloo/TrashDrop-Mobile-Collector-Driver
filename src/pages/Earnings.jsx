@@ -805,7 +805,7 @@ const EarningsPage = () => {
                 <span className="text-3xl mr-3">�</span>
                 <span className="text-lg font-bold text-yellow-800">Cash</span>
               </div>
-              <span className="text-2xl font-bold text-yellow-700">₵{(paymentModeBreakdown?.cash?.collected || 0).toFixed(2)}</span>
+              <span className="text-2xl font-bold text-yellow-700">₵{(paymentModeBreakdown?.cash?.disposedEarnings || 0).toFixed(2)}</span>
             </div>
             
             {/* MoMo - Ready to withdraw */}
@@ -814,7 +814,7 @@ const EarningsPage = () => {
                 <span className="text-3xl mr-3">�</span>
                 <span className="text-lg font-bold text-purple-800">MoMo</span>
               </div>
-              <span className="text-2xl font-bold text-purple-700">₵{actualWithdrawableAmount.toFixed(2)}</span>
+              <span className="text-2xl font-bold text-purple-700">₵{(paymentModeBreakdown?.digital?.disposedEarnings || 0).toFixed(2)}</span>
             </div>
             
             {/* Pending - If any */}
