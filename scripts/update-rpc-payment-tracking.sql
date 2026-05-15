@@ -40,7 +40,7 @@ BEGIN
             'status', status,
             'created_at', created_at,
             'disposed_at', updated_at,
-            'payment_type', COALESCE(payment_type, payment_mode, 'digital')
+            'payment_type', COALESCE(payment_type, 'digital')
           ) ORDER BY created_at DESC
         ) FILTER (WHERE id IS NOT NULL), '[]'::json)
       )
@@ -122,8 +122,8 @@ BEGIN
              AND status = 'success'
              AND created_at BETWEEN v_start_date AND v_end_date), 0
         ) + COALESCE(
-          -- From pickup_requests (legacy data, using payment_type or payment_mode)
-          (SELECT SUM(CASE WHEN COALESCE(payment_type, payment_mode) = 'cash' THEN fee ELSE 0 END)
+          -- From pickup_requests (legacy data, using payment_type)
+          (SELECT SUM(CASE WHEN payment_type = 'cash' THEN fee ELSE 0 END)
            FROM pickup_requests
            WHERE collector_id = p_collector_id
              AND status = 'disposed'
@@ -139,7 +139,7 @@ BEGIN
              AND created_at BETWEEN v_start_date AND v_end_date), 0
         ) + COALESCE(
           -- From pickup_requests (legacy data - all non-cash treated as digital)
-          (SELECT SUM(CASE WHEN COALESCE(payment_type, payment_mode, 'digital') != 'cash' THEN fee ELSE 0 END)
+          (SELECT SUM(CASE WHEN COALESCE(payment_type, 'digital') != 'cash' THEN fee ELSE 0 END)
            FROM pickup_requests
            WHERE collector_id = p_collector_id
              AND status = 'disposed'
