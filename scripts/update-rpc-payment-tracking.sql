@@ -89,16 +89,12 @@ BEGIN
            WHERE collector_id = p_collector_id AND status = 'picked_up'), 0
         ) + COALESCE(
           (SELECT SUM(GREATEST(fee - 1.00, 0) * 0.87) FROM digital_bins 
-           WHERE collector_id = (
-             SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1
-           ) AND status = 'picked_up'), 0
+           WHERE collector_id = p_collector_id AND status = 'picked_up'), 0
         ),
         'pickups', (SELECT COUNT(*) FROM pickup_requests 
                     WHERE collector_id = p_collector_id AND status = 'picked_up'),
         'bins', (SELECT COUNT(*) FROM digital_bins 
-                 WHERE collector_id = (
-                   SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1
-                 ) AND status = 'picked_up')
+                 WHERE collector_id = p_collector_id AND status = 'picked_up')
       )
     ),
     
@@ -174,15 +170,11 @@ BEGIN
         ),
         'bins_picked_up', (
           SELECT COUNT(*) FROM digital_bins 
-          WHERE collector_id = (
-            SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1
-          ) AND status IN ('picked_up', 'disposed')
+          WHERE collector_id = p_collector_id AND status IN ('picked_up', 'disposed')
         ),
         'bins_disposed', (
           SELECT COUNT(*) FROM digital_bins 
-          WHERE collector_id = (
-            SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1
-          ) AND status = 'disposed'
+          WHERE collector_id = p_collector_id AND status = 'disposed'
         )
       )
     ),
