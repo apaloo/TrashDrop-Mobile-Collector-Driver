@@ -141,6 +141,12 @@ BEGIN
            WHERE collector_id = p_collector_id
              AND status IN ('collecting', 'disposed')
              AND created_at BETWEEN v_start_date AND v_end_date), 0
+        ) + COALESCE(
+          -- From digital_bins (all treated as digital payments)
+          (SELECT SUM(fee) FROM digital_bins
+           WHERE collector_id = p_collector_id
+             AND status IN ('collecting', 'disposed')
+             AND created_at BETWEEN v_start_date AND v_end_date), 0
         ),
         'total_collected', COALESCE(
           (SELECT SUM(total_bill) FROM bin_payments
@@ -150,6 +156,11 @@ BEGIN
              AND created_at BETWEEN v_start_date AND v_end_date), 0
         ) + COALESCE(
           (SELECT SUM(fee) FROM pickup_requests
+           WHERE collector_id = p_collector_id
+             AND status IN ('collecting', 'disposed')
+             AND created_at BETWEEN v_start_date AND v_end_date), 0
+        ) + COALESCE(
+          (SELECT SUM(fee) FROM digital_bins
            WHERE collector_id = p_collector_id
              AND status IN ('collecting', 'disposed')
              AND created_at BETWEEN v_start_date AND v_end_date), 0
