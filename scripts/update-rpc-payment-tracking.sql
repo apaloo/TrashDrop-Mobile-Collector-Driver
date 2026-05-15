@@ -50,45 +50,44 @@ BEGIN
         AND created_at BETWEEN v_start_date AND v_end_date
     ),
     
-    -- Digital bin earnings (disposed)
+    -- Digital bin earnings (from actual bin_payments - TrendiPay processed)
     'digital_bin_earnings', (
       SELECT json_build_object(
-        'total', COALESCE(SUM(COALESCE(collector_total_payout, 0)), 0),
-        'core', COALESCE(SUM(CASE WHEN NOT is_urgent THEN COALESCE(collector_total_payout, 0) ELSE 0 END), 0),
-        'urgent', COALESCE(SUM(CASE WHEN is_urgent THEN COALESCE(collector_total_payout, 0) ELSE 0 END), 0),
+        'total', COALESCE(SUM(bp.collector_share), 0),
+        'core', COALESCE(SUM(CASE WHEN bp.payment_mode = 'cash' THEN bp.collector_share ELSE 0 END), 0),
+        'urgent', COALESCE(SUM(CASE WHEN bp.payment_mode != 'cash' THEN bp.collector_share ELSE 0 END), 0),
         'distance', 0,
         'surge', 0,
-        'tips', COALESCE(SUM(collector_tips), 0),
-        'recyclables', COALESCE(SUM(collector_recyclables_payout), 0),
-        'loyalty', COALESCE(SUM(collector_loyalty_cashback), 0),
+        'tips', 0,
+        'recyclables', 0,
+        'loyalty', 0,
         'items', COALESCE(json_agg(
           json_build_object(
-            'id', id,
-            'waste_type', waste_type,
-            'fee', fee,
-            'collector_total_payout', collector_total_payout,
-            'total_bill', fee,
-            'is_urgent', is_urgent,
-            'status', status,
-            'created_at', created_at,
-            'disposed_at', updated_at
-          ) ORDER BY created_at DESC
-        ) FILTER (WHERE id IS NOT NULL), '[]'::json)
+            'id', db.id,
+            'waste_type', db.waste_type,
+            'fee', db.fee,
+            'collector_total_payout', bp.collector_share,
+            'total_bill', bp.total_bill,
+            'payment_mode', bp.payment_mode,
+            'status', db.status,
+            'created_at', bp.created_at,
+            'disposed_at', bp.updated_at
+          ) ORDER BY bp.created_at DESC
+        ) FILTER (WHERE db.id IS NOT NULL), '[]'::json)
       )
-      FROM digital_bins
-      WHERE collector_id = p_collector_id
-        AND status IN ('collecting', 'disposed')
-        AND created_at BETWEEN v_start_date AND v_end_date
+      FROM bin_payments bp
+      LEFT JOIN digital_bins db ON bp.digital_bin_id = db.id
+      WHERE bp.collector_id = (SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1)
+        AND bp.type = 'collection'
+        AND bp.status = 'success'
+        AND bp.created_at BETWEEN v_start_date AND v_end_date
     ),
     
-    -- Pending earnings (picked_up but not disposed)
+    -- Pending earnings (picked_up but not yet paid)
     'pending_earnings', (
       SELECT json_build_object(
         'total', COALESCE(
           (SELECT SUM(GREATEST(fee - 1.00, 0) * 0.87) FROM pickup_requests 
-           WHERE collector_id = p_collector_id AND status = 'picked_up'), 0
-        ) + COALESCE(
-          (SELECT SUM(COALESCE(collector_total_payout, 0)) FROM digital_bins 
            WHERE collector_id = p_collector_id AND status = 'picked_up'), 0
         ),
         'pickups', (SELECT COUNT(*) FROM pickup_requests 
@@ -141,12 +140,6 @@ BEGIN
            WHERE collector_id = p_collector_id
              AND status IN ('collecting', 'disposed')
              AND created_at BETWEEN v_start_date AND v_end_date), 0
-        ) + COALESCE(
-          -- From digital_bins (use actual collector_total_payout, not estimated fee)
-          (SELECT SUM(COALESCE(collector_total_payout, fee, 0)) FROM digital_bins
-           WHERE collector_id = p_collector_id
-             AND status IN ('collecting', 'disposed')
-             AND created_at BETWEEN v_start_date AND v_end_date), 0
         ),
         'total_collected', COALESCE(
           (SELECT SUM(total_bill) FROM bin_payments
@@ -156,12 +149,6 @@ BEGIN
              AND created_at BETWEEN v_start_date AND v_end_date), 0
         ) + COALESCE(
           (SELECT SUM(fee) FROM pickup_requests
-           WHERE collector_id = p_collector_id
-             AND status IN ('collecting', 'disposed')
-             AND created_at BETWEEN v_start_date AND v_end_date), 0
-        ) + COALESCE(
-          -- From digital_bins (use actual collector_total_payout, not estimated fee)
-          (SELECT SUM(COALESCE(collector_total_payout, fee, 0)) FROM digital_bins
            WHERE collector_id = p_collector_id
              AND status IN ('collecting', 'disposed')
              AND created_at BETWEEN v_start_date AND v_end_date), 0
