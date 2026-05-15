@@ -1061,6 +1061,8 @@ class EarningsService {
       // Cash: Collector received full amount, owes platform its commission
       // Digital (momo/e_cash): Platform received full amount, owes collector their share
       
+      let cashGrossRevenue = 0;        // Raw fees from cash payments (what user actually paid)
+      let digitalGrossRevenue = 0;     // Raw fees from digital payments (what user actually paid)
       let cashCollected = 0;           // Total cash collected by collector
       let cashPlatformDue = 0;         // Platform's share from cash payments (collector owes this)
       let digitalCollected = 0;        // Total digital payments received by platform
@@ -1072,12 +1074,15 @@ class EarningsService {
         const collectorEarnings = calculateCollectorEarnings(p);
         const platformEarnings = calculatePlatformEarnings(p).total;
         const grossAmount = collectorEarnings + platformEarnings;
+        const rawFee = parseFloat(p.fee) || parseFloat(p.base_amount) || 0;
         
         if (paymentMode === 'cash') {
+          cashGrossRevenue += rawFee;
           cashCollected += grossAmount;
           cashPlatformDue += platformEarnings; // Collector owes platform this amount
         } else {
           // momo, e_cash, or other digital payments
+          digitalGrossRevenue += rawFee;
           digitalCollected += grossAmount;
           digitalCollectorDue += collectorEarnings; // Platform owes collector this amount
         }
@@ -1089,12 +1094,16 @@ class EarningsService {
         const collectorEarnings = resolveBinCollectorEarnings(b);
         const platformEarnings = resolveBinPlatformEarnings(b);
         const grossAmount = collectorEarnings + platformEarnings;
+        const actualAmount = binPaymentAmountMap[b.id];
+        const rawFee = actualAmount !== undefined ? actualAmount : (parseFloat(b.fee) || parseFloat(b.payout) || 0);
         
         if (paymentMode === 'cash') {
+          cashGrossRevenue += rawFee;
           cashCollected += grossAmount;
           cashPlatformDue += platformEarnings; // Collector owes platform this amount
         } else {
           // momo, e_cash, or other digital payments
+          digitalGrossRevenue += rawFee;
           digitalCollected += grossAmount;
           digitalCollectorDue += collectorEarnings; // Platform owes collector this amount
         }
@@ -1307,10 +1316,12 @@ class EarningsService {
             // Payment mode tracking (cash vs digital settlement)
             paymentModeBreakdown: {
               cash: {
+                grossRevenue: cashGrossRevenue,     // Raw fees from cash payments (what user paid)
                 collected: cashCollected,           // Total cash collector received from users
                 platformDue: cashPlatformDue        // Platform's share collector owes
               },
               digital: {
+                grossRevenue: digitalGrossRevenue,  // Raw fees from digital payments (what user paid)
                 collected: digitalCollected,        // Total digital payments platform received
                 collectorDue: digitalCollectorDue   // Collector's share platform owes
               },

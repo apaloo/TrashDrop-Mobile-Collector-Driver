@@ -507,7 +507,10 @@ const EarningsPage = () => {
         completionRate: statsData.completionRate || data.completionRate || 0,
         collectorSharePercent: statsData.collectorSharePercent || 0,
         platformSharePercent: statsData.platformSharePercent || 0,
-        paymentModeBreakdown: statsData.paymentModeBreakdown || null,
+        paymentModeBreakdown: statsData.paymentModeBreakdown || (data.paymentSettlement ? {
+          cash: { grossRevenue: data.paymentSettlement.cashCollected || 0, collected: data.paymentSettlement.cashCollected || 0, platformDue: data.paymentSettlement.platformShare || 0 },
+          digital: { grossRevenue: data.paymentSettlement.digitalCollected || 0, collected: data.paymentSettlement.digitalCollected || 0, collectorDue: 0 }
+        } : null),
         loyaltyTier: data.loyaltyTier || null
       }));
       
@@ -839,6 +842,20 @@ const EarningsPage = () => {
                 <span>Gross Revenue (User Paid)</span>
                 <span className="font-semibold">₵{grossRevenue.toFixed(2)}</span>
               </div>
+              {paymentModeBreakdown && ((paymentModeBreakdown.cash?.grossRevenue || paymentModeBreakdown.cash?.collected) > 0 || (paymentModeBreakdown.digital?.grossRevenue || paymentModeBreakdown.digital?.collected) > 0) && (
+                <div className="flex gap-3 text-xs text-gray-500 mb-2">
+                  {(paymentModeBreakdown.cash?.grossRevenue || paymentModeBreakdown.cash?.collected || 0) > 0 && (
+                    <span className="bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded">
+                      💵 Cash: ₵{(paymentModeBreakdown.cash.grossRevenue ?? paymentModeBreakdown.cash.collected).toFixed(2)}
+                    </span>
+                  )}
+                  {(paymentModeBreakdown.digital?.grossRevenue || paymentModeBreakdown.digital?.collected || 0) > 0 && (
+                    <span className="bg-purple-50 border border-purple-200 px-2 py-0.5 rounded">
+                      📱 MoMo: ₵{(paymentModeBreakdown.digital.grossRevenue ?? paymentModeBreakdown.digital.collected).toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
                 <div className="flex h-full">
                   <div 
