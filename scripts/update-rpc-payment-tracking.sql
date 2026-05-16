@@ -76,10 +76,11 @@ BEGIN
         ) FILTER (WHERE db.id IS NOT NULL), '[]'::json)
       )
       FROM bin_payments bp
-      LEFT JOIN digital_bins db ON bp.digital_bin_id = db.id
+      JOIN digital_bins db ON bp.digital_bin_id = db.id
       WHERE bp.collector_id = (SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1)
         AND bp.type = 'collection'
         AND bp.status = 'success'
+        AND db.status = 'disposed'
         AND bp.created_at BETWEEN v_start_date AND v_end_date
     ),
     
@@ -110,13 +111,15 @@ BEGIN
     'settlements', (
       SELECT json_build_object(
         'cash_collected', COALESCE(
-          -- From bin_payments
-          (SELECT SUM(CASE WHEN payment_mode = 'cash' THEN total_bill ELSE 0 END)
-           FROM bin_payments
-           WHERE collector_id = (SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1)
-             AND type = 'collection'
-             AND status = 'success'
-             AND created_at BETWEEN v_start_date AND v_end_date), 0
+          -- From bin_payments (only disposed bins)
+          (SELECT SUM(CASE WHEN bp.payment_mode = 'cash' THEN bp.total_bill ELSE 0 END)
+           FROM bin_payments bp
+           JOIN digital_bins db ON bp.digital_bin_id = db.id
+           WHERE bp.collector_id = (SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1)
+             AND bp.type = 'collection'
+             AND bp.status = 'success'
+             AND db.status = 'disposed'
+             AND bp.created_at BETWEEN v_start_date AND v_end_date), 0
         ) + COALESCE(
           -- From pickup_requests (legacy data, using payment_type)
           (SELECT SUM(CASE WHEN payment_type = 'cash' THEN fee ELSE 0 END)
@@ -126,13 +129,15 @@ BEGIN
              AND created_at BETWEEN v_start_date AND v_end_date), 0
         ),
         'digital_collected', COALESCE(
-          -- From bin_payments
-          (SELECT SUM(CASE WHEN payment_mode != 'cash' THEN total_bill ELSE 0 END)
-           FROM bin_payments
-           WHERE collector_id = (SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1)
-             AND type = 'collection'
-             AND status = 'success'
-             AND created_at BETWEEN v_start_date AND v_end_date), 0
+          -- From bin_payments (only disposed bins)
+          (SELECT SUM(CASE WHEN bp.payment_mode != 'cash' THEN bp.total_bill ELSE 0 END)
+           FROM bin_payments bp
+           JOIN digital_bins db ON bp.digital_bin_id = db.id
+           WHERE bp.collector_id = (SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1)
+             AND bp.type = 'collection'
+             AND bp.status = 'success'
+             AND db.status = 'disposed'
+             AND bp.created_at BETWEEN v_start_date AND v_end_date), 0
         ) + COALESCE(
           -- From pickup_requests (legacy data - all non-cash treated as digital)
           (SELECT SUM(CASE WHEN COALESCE(payment_type, 'digital') != 'cash' THEN fee ELSE 0 END)
@@ -142,11 +147,13 @@ BEGIN
              AND created_at BETWEEN v_start_date AND v_end_date), 0
         ),
         'total_collected', COALESCE(
-          (SELECT SUM(total_bill) FROM bin_payments
-           WHERE collector_id = (SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1)
-             AND type = 'collection'
-             AND status = 'success'
-             AND created_at BETWEEN v_start_date AND v_end_date), 0
+          (SELECT SUM(bp.total_bill) FROM bin_payments bp
+           JOIN digital_bins db ON bp.digital_bin_id = db.id
+           WHERE bp.collector_id = (SELECT id FROM collector_profiles WHERE user_id = p_collector_id LIMIT 1)
+             AND bp.type = 'collection'
+             AND bp.status = 'success'
+             AND db.status = 'disposed'
+             AND bp.created_at BETWEEN v_start_date AND v_end_date), 0
         ) + COALESCE(
           (SELECT SUM(fee) FROM pickup_requests
            WHERE collector_id = p_collector_id
