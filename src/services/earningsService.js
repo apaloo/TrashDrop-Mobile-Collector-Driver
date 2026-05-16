@@ -966,7 +966,13 @@ class EarningsService {
       //      VALIDATION: collector_share must be LESS than total_bill (SOP always deducts platform cut)
       //      If collector_share >= total_bill, SOP was never applied (legacy bug) — return 0
       //   2. No bin_payments record = no actual payment processed = 0 earnings
+      //   3. Bin must be 'disposed' to be withdrawable
       const resolveBinCollectorEarnings = (b) => {
+        // Only disposed bins are withdrawable
+        if (b.status !== 'disposed') {
+          return 0; // Not yet disposed - not withdrawable
+        }
+        
         const storedShare = binPaymentCollectorShareMap[b.id];
         const actualAmount = binPaymentAmountMap[b.id] ?? null;
         if (storedShare !== undefined) {
@@ -982,8 +988,8 @@ class EarningsService {
         return 0;
       };
 
-      // Digital bin earnings - use stored shares when available, else calculate
-      const binsPendingDisposal = pickedUpBins.reduce((sum, b) => sum + resolveBinCollectorEarnings(b), 0);
+      // Digital bin earnings - ONLY disposed bins with successful payments count
+      const binsPendingDisposal = pickedUpBins.reduce((sum, b) => sum + resolveBinCollectorEarnings(b), 0); // Will be 0 (not disposed)
       const binsDisposedEarnings = disposedBins.reduce((sum, b) => sum + resolveBinCollectorEarnings(b), 0);
       const totalBinEarnings = binsPendingDisposal + binsDisposedEarnings;
 
@@ -1494,7 +1500,13 @@ class EarningsService {
 
       // Process digital bins - ONLY use actual bin_payments data
       // No payment processed through TrendiPay = no earnings
+      // Bin must be 'disposed' to be withdrawable
       digitalBins?.forEach(bin => {
+        // Only disposed bins are withdrawable
+        if (bin.status !== 'disposed') {
+          return; // Skip - not yet disposed
+        }
+        
         // Only count earnings if there's an actual bin_payments record
         const actualBill = breakdownBinPaymentMap[bin.id];
         if (actualBill === undefined || actualBill === null) {
