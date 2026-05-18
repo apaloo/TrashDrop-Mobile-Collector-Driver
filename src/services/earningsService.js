@@ -723,6 +723,15 @@ class EarningsService {
    */
   async getEarningsDataOptimized(options = {}) {
     try {
+      // NOTE: get_collector_earnings_aggregate RPC is currently unreliable:
+      //   - Does not return withdrawableEarnings, estimatedPendingEarnings, cashCollectedEarnings
+      //   - Returns platform_share=0 incorrectly
+      //   - Calculates grossRevenue as totalEarnings + 0 instead of actual total_bills
+      // Always use the full method which has all the correct logic.
+      // TODO: Rebuild the RPC to match the full method output, then re-enable.
+      logger.info('✅ Using full earnings calculation (RPC bypassed)');
+      return this.getEarningsData();
+
       const { startDate, endDate } = options;
       
       // Try the optimized RPC function first
@@ -887,50 +896,66 @@ class EarningsService {
       const pickedUpBins = digitalBins?.filter(b => b.status === 'collecting') || [];
       const disposedBins = digitalBins?.filter(b => b.status === 'disposed') || [];
 
-      // === BIN PAYMENTS (for payment mode tracking, actual amounts, and pre-computed shares) ===
-      // Get payment records to determine payment mode (cash vs digital), actual collected amounts,
-      // and pre-computed collector/platform shares (authoritative source when present).
-      // Include pending/processing payments — collector already collected the amount; only exclude failed.
+      // === BIN PAYMENTS ===
+      // Fetch ALL bin_payments ordered by created_at DESC.
+      //
+      // Status semantics:
+      //   success → TrendiPay confirmed receipt → app bucket HAS the funds → can disburse to collector
+      //   pending → TrendiPay initiated but NOT confirmed → app bucket has NO funds yet
+      //   failed  → never received → cannot disburse
+      //
+      // Map rules:
+      //   binPaymentAmountMap       — total_bill from LATEST record (any status): bill is set at collection
+      //   binPaymentCollectorShareMap — collector_share from SUCCESS only: app bucket must hold the funds
+      //   binPaymentPlatformShareMap  — platform_share from SUCCESS only: same reason
+      //   binPaymentModeMap           — payment_mode from SUCCESS only: mode confirmed on successful charge
       const binIds = (digitalBins || []).map(b => b.id);
-      let binPayments = [];
+      const binPaymentModeMap = {};
+      const binPaymentAmountMap = {};         // total_bill — latest record, any status
+      const binPaymentCollectorShareMap = {}; // collector_share — SUCCESS records only
+      const binPaymentPlatformShareMap = {};  // platform_share — SUCCESS records only
+      
       if (binIds.length > 0) {
         const { data: payments, error: paymentsError } = await supabase
           .from('bin_payments')
-          .select('digital_bin_id, payment_mode, total_bill, collector_share, platform_share, type, status')
+          .select('digital_bin_id, payment_mode, total_bill, collector_share, platform_share, type, status, created_at')
           .in('digital_bin_id', binIds)
           .eq('type', 'collection')
-          .not('status', 'eq', 'failed');
+          .order('created_at', { ascending: false });
         
-        if (!paymentsError) {
-          binPayments = payments || [];
+        if (!paymentsError && payments) {
+          // Single pass: latest record per bin wins (already sorted DESC)
+          payments.forEach(p => {
+            const binId = p.digital_bin_id;
+            const bill = parseFloat(p.total_bill) || 0;
+            
+            // total_bill: latest record regardless of status (bill is valid at collection time)
+            if (binPaymentAmountMap[binId] === undefined && bill > 0) {
+              binPaymentAmountMap[binId] = bill;
+            }
+            
+            // shares + mode: SUCCESS only — app bucket must have confirmed receipt
+            if (p.status === 'success' && binPaymentModeMap[binId] === undefined) {
+              binPaymentModeMap[binId] = p.payment_mode;
+              if (p.collector_share !== null && p.collector_share !== undefined) {
+                binPaymentCollectorShareMap[binId] = parseFloat(p.collector_share);
+              }
+              if (p.platform_share !== null && p.platform_share !== undefined) {
+                binPaymentPlatformShareMap[binId] = parseFloat(p.platform_share);
+              }
+            }
+          });
         }
       }
       
-      // Create maps for payment data
-      const binPaymentModeMap = {};
-      const binPaymentAmountMap = {};         // actual collected amount (total_bill)
-      const binPaymentCollectorShareMap = {}; // pre-computed collector share (authoritative)
-      const binPaymentPlatformShareMap = {};  // pre-computed platform share (authoritative)
-      binPayments.forEach(p => {
-        binPaymentModeMap[p.digital_bin_id] = p.payment_mode;
-        binPaymentAmountMap[p.digital_bin_id] = parseFloat(p.total_bill) || 0;
-        if (p.collector_share !== null && p.collector_share !== undefined) {
-          binPaymentCollectorShareMap[p.digital_bin_id] = parseFloat(p.collector_share);
-        }
-        if (p.platform_share !== null && p.platform_share !== undefined) {
-          binPaymentPlatformShareMap[p.digital_bin_id] = parseFloat(p.platform_share);
-        }
-      });
+      // For downstream references
+      const binPayments = Object.keys(binPaymentModeMap).length;
 
-      // DEBUG: Log bin_payments data to verify total_bill vs fee
-      if (binPayments.length > 0) {
-        logger.info('💰 bin_payments data:', binPayments.map(p => ({
-          bin: p.digital_bin_id?.slice(0,8),
-          total_bill: p.total_bill,
-          collector_share: p.collector_share,
-          mode: p.payment_mode,
-          status: p.status
-        })));
+      // DEBUG: Log total_bill map for verification
+      if (Object.keys(binPaymentAmountMap).length > 0) {
+        logger.info('💰 bin_payments total_bill map:', 
+          Object.fromEntries(Object.entries(binPaymentAmountMap).map(([k, v]) => [k.slice(0, 8), v]))
+        );
       }
       if (digitalBins?.length > 0) {
         logger.info('💰 digital_bins fee vs total_bill:', digitalBins.map(b => ({
@@ -993,17 +1018,46 @@ class EarningsService {
       const binsDisposedEarnings = disposedBins.reduce((sum, b) => sum + resolveBinCollectorEarnings(b), 0);
       const totalBinEarnings = binsPendingDisposal + binsDisposedEarnings;
 
+      // Estimated pending earnings for collecting bins (not yet withdrawable, shows what's coming)
+      // Standard: use total_bill from bin_payments only. No estimates from digital_bins.fee.
+      const estimatedPendingBinEarnings = pickedUpBins.reduce((sum, b) => {
+        const totalBill = binPaymentAmountMap[b.id];
+        return sum + (totalBill || 0);
+      }, 0);
+      const estimatedPendingPickupEarnings = pickedUpRequests.reduce((sum, p) => {
+        return sum + calculateCollectorEarnings(p);
+      }, 0);
+
+      // Split disposed bin earnings by payment mode:
+      // - Digital (momo/e_cash): platform holds funds → collector can withdraw
+      // - Cash: collector already received from client → not withdrawable via platform
+      const binsDisposedDigitalEarnings = disposedBins.reduce((sum, b) => {
+        const mode = binPaymentModeMap[b.id];
+        if (mode === 'cash') return sum; // Already in collector's hands
+        return sum + resolveBinCollectorEarnings(b);
+      }, 0);
+      const binsDisposedCashEarnings = disposedBins.reduce((sum, b) => {
+        const mode = binPaymentModeMap[b.id];
+        if (mode !== 'cash') return sum;
+        return sum + resolveBinCollectorEarnings(b);
+      }, 0);
+
       // Authority assignment earnings
       const assignmentEarnings = authorityAssignments?.reduce((sum, a) => sum + (a.payment || 0), 0) || 0;
 
       // Total collector earnings from all sources
       const totalEarnings = totalPickupEarnings + totalBinEarnings + assignmentEarnings;
       const pendingDisposalEarnings = pickupPendingDisposal + binsPendingDisposal;
+      const estimatedPendingEarnings = estimatedPendingBinEarnings + estimatedPendingPickupEarnings;
       const disposedEarnings = pickupDisposedEarnings + binsDisposedEarnings + assignmentEarnings;
 
+      // Withdrawable earnings = disposed digital-payment bin earnings + disposed pickup request earnings.
+      // Cash bins are excluded: collector already has the cash from the client.
+      // Pickup requests are PREPAID (platform holds the funds), so disposed pickups are withdrawable.
+      const pickupDisposedWithdrawable = disposedRequests.reduce((sum, p) => sum + calculateCollectorEarnings(p), 0);
+      const withdrawableEarnings = binsDisposedDigitalEarnings + pickupDisposedWithdrawable;
+
       // === CALCULATE PLATFORM EARNINGS (App Bucket) ===
-      // Pickup requests platform earnings
-      const pickupPlatformEarnings = allPickups?.reduce((sum, p) => sum + calculatePlatformEarnings(p).total, 0) || 0;
       
       // Helper: resolve platform earnings for a digital bin with priority:
       //   1. bin_payments.platform_share (pre-computed at collection time — authoritative)
@@ -1026,22 +1080,20 @@ class EarningsService {
         return calculateBinPlatformEarnings(b).total;
       };
 
-      // Digital bin platform earnings - use stored shares when available, else calculate
-      const binPlatformEarnings = (digitalBins || []).reduce((sum, b) => sum + resolveBinPlatformEarnings(b), 0);
+      // Digital bin platform earnings — scope to DISPOSED bins only (matching collector earnings)
+      const binPlatformEarnings = disposedBins.reduce((sum, b) => sum + resolveBinPlatformEarnings(b), 0);
       
-      // Total platform earnings (authority assignments are 100% to collector, no platform share)
+      // Total platform earnings from DISPOSED work only (authority assignments are 100% to collector)
+      const pickupPlatformEarnings = disposedRequests.reduce((sum, p) => sum + calculatePlatformEarnings(p).total, 0);
       const totalPlatformEarnings = pickupPlatformEarnings + binPlatformEarnings;
       
-      // Calculate gross revenue (what user ACTUALLY paid) - use fee fields directly
-      // This is more accurate than summing earnings, especially for historical data
-      // that may have been calculated with different formulas
-      const pickupGrossRevenue = allPickups?.reduce((sum, p) => {
+      // Gross revenue = total user paid for DISPOSED work (consistent scope with earnings)
+      const pickupGrossRevenue = disposedRequests.reduce((sum, p) => {
         const fee = parseFloat(p.fee) || parseFloat(p.base_amount) || 0;
         return sum + fee;
-      }, 0) || 0;
+      }, 0);
       
-      const binGrossRevenue = (digitalBins || []).reduce((sum, b) => {
-        // Use actual collected amount if available, otherwise fall back to estimated fee
+      const binGrossRevenue = disposedBins.reduce((sum, b) => {
         const actualAmount = binPaymentAmountMap[b.id];
         const fee = actualAmount !== undefined ? actualAmount : (parseFloat(b.fee) || parseFloat(b.payout) || 0);
         return sum + fee;
@@ -1063,44 +1115,40 @@ class EarningsService {
       let digitalCollected = 0;        // Total digital payments received by platform
       let digitalCollectorDue = 0;     // Collector's share from digital payments (platform owes this)
       
-      // Track pickup requests by payment mode (using payment_type field if available)
-      allPickups?.forEach(p => {
+      // Track DISPOSED pickup requests by payment mode
+      disposedRequests.forEach(p => {
         const paymentMode = p.payment_mode || p.payment_type || 'digital'; // Default to digital
         const collectorEarnings = calculateCollectorEarnings(p);
         const platformEarnings = calculatePlatformEarnings(p).total;
-        const grossAmount = collectorEarnings + platformEarnings;
         const rawFee = parseFloat(p.fee) || parseFloat(p.base_amount) || 0;
         
         if (paymentMode === 'cash') {
           cashGrossRevenue += rawFee;
-          cashCollected += grossAmount;
-          cashPlatformDue += platformEarnings; // Collector owes platform this amount
+          cashCollected += collectorEarnings + platformEarnings;
+          cashPlatformDue += platformEarnings;
         } else {
-          // momo, e_cash, or other digital payments
           digitalGrossRevenue += rawFee;
-          digitalCollected += grossAmount;
-          digitalCollectorDue += collectorEarnings; // Platform owes collector this amount
+          digitalCollected += collectorEarnings + platformEarnings;
+          digitalCollectorDue += collectorEarnings;
         }
       });
       
-      // Track digital bins by payment mode (from bin_payments)
-      (digitalBins || []).forEach(b => {
+      // Track DISPOSED digital bins by payment mode (from bin_payments)
+      disposedBins.forEach(b => {
         const paymentMode = binPaymentModeMap[b.id] || 'digital'; // Default to digital
         const collectorEarnings = resolveBinCollectorEarnings(b);
         const platformEarnings = resolveBinPlatformEarnings(b);
-        const grossAmount = collectorEarnings + platformEarnings;
         const actualAmount = binPaymentAmountMap[b.id];
         const rawFee = actualAmount !== undefined ? actualAmount : (parseFloat(b.fee) || parseFloat(b.payout) || 0);
         
         if (paymentMode === 'cash') {
           cashGrossRevenue += rawFee;
-          cashCollected += grossAmount;
-          cashPlatformDue += platformEarnings; // Collector owes platform this amount
+          cashCollected += collectorEarnings + platformEarnings;
+          cashPlatformDue += platformEarnings;
         } else {
-          // momo, e_cash, or other digital payments
           digitalGrossRevenue += rawFee;
-          digitalCollected += grossAmount;
-          digitalCollectorDue += collectorEarnings; // Platform owes collector this amount
+          digitalCollected += collectorEarnings + platformEarnings;
+          digitalCollectorDue += collectorEarnings;
         }
       });
       
@@ -1327,6 +1375,12 @@ class EarningsService {
             // Time-based earnings
             weeklyEarnings,
             monthlyEarnings,
+            // Withdrawal-ready amount: disposed digital bins + disposed pickup requests
+            withdrawableEarnings,
+            // Estimated pending: what collector can expect after disposing current collecting bins/pickups
+            estimatedPendingEarnings,
+            // Cash already collected by collector (tracked but not platform-withdrawable)
+            cashCollectedEarnings: binsDisposedCashEarnings,
             // Payment mode tracking (cash vs digital settlement)
             paymentModeBreakdown: {
               cash: {
@@ -1734,35 +1788,24 @@ class EarningsService {
   }
 
   /**
-   * Process digital bin disbursement (cashout)
-   * Phase 3: Records disbursement, validates against available balance
-   * Phase 4: Will integrate TrendiPay API call
+   * Process withdrawal (cashout) using withdrawals + withdrawal_items tables.
+   * Creates a withdrawal record, links each eligible bin and pickup request,
+   * then calls TrendiPay to send funds to the collector's MoMo.
    * 
    * @param {number} amount - Amount to disburse in GHS
-   * @param {Object} paymentDetails - MoMo details {momoNumber, momoProvider}
+   * @param {Object} paymentDetails - MoMo details {momoNumber, momoProvider, accountName}
    * @returns {Promise<Object>} Result with success status
    */
   async processDigitalBinDisbursement(amount, paymentDetails) {
     try {
-      logger.info('Processing digital bin disbursement:', { collectorId: this.collectorId, amount });
+      logger.info('Processing withdrawal:', { collectorId: this.collectorId, amount });
 
       // Step 1: Validate amount
       if (!amount || amount <= 0) {
         throw new Error('Invalid withdrawal amount');
       }
 
-      // Step 2: Get collector profile ID
-      const { data: collectorProfile, error: profileError } = await supabase
-        .from('collector_profiles')
-        .select('id')
-        .eq('user_id', this.collectorId)
-        .single();
-
-      if (profileError || !collectorProfile) {
-        throw new Error('Collector profile not found');
-      }
-
-      // Step 3: Validate cashout amount using RPC function
+      // Step 2: Validate cashout amount using RPC (checks both bins + pickups)
       const { data: validation, error: validationError } = await supabase
         .rpc('validate_cashout', {
           p_collector_id: this.collectorId,
@@ -1774,167 +1817,213 @@ class EarningsService {
       }
 
       if (!validation.valid) {
-        // Provide clear feedback about why withdrawal failed
         const available = validation.available || 0;
         if (available === 0) {
           throw new Error('No funds available for withdrawal. You must dispose your collected waste at a facility before you can withdraw earnings.');
         } else if (amount > available) {
-          throw new Error(`Insufficient balance. Available: ₵${available.toFixed(2)}. Only disposed bins can be withdrawn - dispose your pending collections first.`);
+          throw new Error(`Insufficient balance. Available: ₵${available.toFixed(2)}. Dispose your pending collections first.`);
         }
         throw new Error(validation.error || 'Insufficient balance');
       }
 
       logger.info('Cashout validation passed:', validation);
 
-      // Step 4: Get all undisbursed bins for this collector
-      // First, fetch IDs of bins that already have a successful disbursement
-      const { data: disbursedRows, error: disbursedError } = await supabase
+      // Step 3: Collect eligible items (digital bins + pickup requests)
+      // --- 3a: Undisbursed digital bins (MoMo/e-Cash, disposed) ---
+      // Exclude bins already in a non-failed withdrawal
+      const { data: alreadyWithdrawnBinRows } = await supabase
+        .from('withdrawal_items')
+        .select('item_id, withdrawals!inner(status)')
+        .eq('item_type', 'digital_bin')
+        .not('withdrawals.status', 'in', '("failed","cancelled")');
+      const alreadyWithdrawnBinIds = new Set((alreadyWithdrawnBinRows || []).map(r => r.item_id));
+
+      // Also exclude legacy bin_payments disbursements
+      const { data: legacyDisbursedRows } = await supabase
         .from('bin_payments')
         .select('digital_bin_id')
         .eq('type', 'disbursement')
         .eq('status', 'success');
+      (legacyDisbursedRows || []).forEach(r => { if (r.digital_bin_id) alreadyWithdrawnBinIds.add(r.digital_bin_id); });
 
-      if (disbursedError) {
-        throw new Error(`Error fetching disbursed bins: ${disbursedError.message}`);
-      }
-
-      const disbursedBinIds = (disbursedRows || []).map(r => r.digital_bin_id).filter(Boolean);
-
-      // Now fetch disposed bins for this collector, excluding already-disbursed ones
-      let binsQuery = supabase
+      // Fetch eligible bins
+      const { data: allDisposedBins } = await supabase
         .from('digital_bins')
-        .select('id, collector_total_payout')
+        .select('id')
         .eq('collector_id', this.collectorId)
         .eq('status', 'disposed');
 
-      if (disbursedBinIds.length > 0) {
-        binsQuery = binsQuery.not('id', 'in', `(${disbursedBinIds.join(',')})`);
+      const eligibleBinIds = (allDisposedBins || []).map(b => b.id).filter(id => !alreadyWithdrawnBinIds.has(id) && !alreadyWithdrawnBinIds.has(String(id)));
+
+      // Get actual collector_share for each eligible bin from bin_payments
+      let binItems = [];
+      if (eligibleBinIds.length > 0) {
+        const { data: binPayments } = await supabase
+          .from('bin_payments')
+          .select('digital_bin_id, collector_share, payment_mode')
+          .in('digital_bin_id', eligibleBinIds)
+          .eq('type', 'collection')
+          .not('status', 'eq', 'failed')
+          .in('payment_mode', ['momo', 'e_cash']);
+
+        binItems = (binPayments || [])
+          .filter(bp => bp.collector_share > 0)
+          .map(bp => ({
+            item_type: 'digital_bin',
+            item_id: String(bp.digital_bin_id),
+            amount: parseFloat(bp.collector_share)
+          }));
       }
 
-      const { data: undisbursedBins, error: binsError } = await binsQuery;
+      // --- 3b: Undisbursed pickup requests (prepaid, disposed) ---
+      const { data: alreadyWithdrawnPickupRows } = await supabase
+        .from('withdrawal_items')
+        .select('item_id, withdrawals!inner(status)')
+        .eq('item_type', 'pickup_request')
+        .not('withdrawals.status', 'in', '("failed","cancelled")');
+      const alreadyWithdrawnPickupIds = new Set((alreadyWithdrawnPickupRows || []).map(r => r.item_id));
 
-      if (binsError) {
-        throw new Error(`Error fetching bins: ${binsError.message}`);
+      const { data: disposedPickups } = await supabase
+        .from('pickup_requests')
+        .select('id, collector_total_payout')
+        .eq('collector_id', this.collectorId)
+        .eq('status', 'disposed')
+        .gt('collector_total_payout', 0);
+
+      const pickupItems = (disposedPickups || [])
+        .filter(p => !alreadyWithdrawnPickupIds.has(p.id))
+        .map(p => ({
+          item_type: 'pickup_request',
+          item_id: String(p.id),
+          amount: parseFloat(p.collector_total_payout)
+        }));
+
+      const allItems = [...binItems, ...pickupItems];
+      const totalAvailable = allItems.reduce((s, i) => s + i.amount, 0);
+
+      logger.info(`Eligible items: ${binItems.length} bins, ${pickupItems.length} pickups, total ₵${totalAvailable.toFixed(2)}`);
+
+      if (allItems.length === 0 || totalAvailable <= 0) {
+        throw new Error('No eligible items for withdrawal.');
       }
 
-      logger.info(`Found ${undisbursedBins?.length || 0} undisbursed bins`);
+      // Step 4: Select items up to the requested amount
+      let remaining = amount;
+      const selectedItems = [];
+      for (const item of allItems) {
+        if (remaining <= 0) break;
+        const take = Math.min(item.amount, remaining);
+        selectedItems.push({ ...item, amount: take });
+        remaining -= take;
+      }
 
-      // Step 5: Create disbursement record(s)
-      // For simplicity, create one disbursement record representing the aggregated payout
-      // Link it to the first bin (or create a separate tracking mechanism)
-      
-      const disbursementRecord = {
-        digital_bin_id: undisbursedBins?.[0]?.id || null, // Representative bin
-        collector_id: collectorProfile.id,
-        type: 'disbursement',
-        bags_collected: 0, // Not applicable for disbursements
-        total_bill: amount, // Disbursement amount
-        collector_share: amount,
-        platform_share: 0, // Platform already took their share during disposal
-        payment_mode: 'momo',
-        collector_account_number: paymentDetails.momoNumber,
-        collector_account_name: paymentDetails.accountName || 'Collector',
-        client_rswitch: paymentDetails.momoProvider || 'mtn',
-        currency: 'GHS',
-        status: 'pending', // Phase 4: will become 'success' after TrendiPay confirms
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      const { data: disbursement, error: disbursementError } = await supabase
-        .from('bin_payments')
-        .insert([disbursementRecord])
+      // Step 5: Create withdrawal record
+      const { data: withdrawal, error: withdrawalError } = await supabase
+        .from('withdrawals')
+        .insert({
+          collector_id: this.collectorId,
+          amount,
+          status: 'pending',
+          payment_method: 'mobile_money',
+          phone_number: paymentDetails.momoNumber,
+          network: (paymentDetails.momoProvider || 'mtn').toUpperCase(),
+          payment_details: {
+            accountName: paymentDetails.accountName || 'Collector',
+            itemCount: selectedItems.length
+          }
+        })
         .select()
         .single();
 
-      if (disbursementError) {
-        throw new Error(`Failed to create disbursement: ${disbursementError.message}`);
+      if (withdrawalError) {
+        throw new Error(`Failed to create withdrawal: ${withdrawalError.message}`);
       }
 
-      logger.info('Disbursement record created:', disbursement.id);
+      logger.info('Withdrawal record created:', withdrawal.id);
 
-      // Phase 4: Call TrendiPay disbursement API
+      // Step 6: Insert withdrawal_items (one per bin/pickup)
+      const itemRecords = selectedItems.map(item => ({
+        withdrawal_id: withdrawal.id,
+        item_type: item.item_type,
+        item_id: item.item_id,
+        amount: item.amount
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('withdrawal_items')
+        .insert(itemRecords);
+
+      if (itemsError) {
+        logger.error('Failed to insert withdrawal_items:', itemsError);
+        // Rollback: mark withdrawal as failed
+        await supabase.from('withdrawals').update({ status: 'failed', gateway_error: 'Failed to link items' }).eq('id', withdrawal.id);
+        throw new Error('Failed to link withdrawal items');
+      }
+
+      logger.info(`Linked ${itemRecords.length} items to withdrawal ${withdrawal.id}`);
+
+      // Step 7: Call TrendiPay disbursement API
       if (ENABLE_TRENDIPAY) {
         logger.info('Calling TrendiPay disbursement API...');
-        
+
         const gatewayResult = await TrendiPayService.initiateDisbursement({
-          reference: disbursement.id,
+          reference: withdrawal.id,
           accountNumber: paymentDetails.momoNumber,
           rSwitch: paymentDetails.momoProvider,
-          amount: amount,
-          description: `TrashDrop collector payout (${undisbursedBins?.length || 0} bins)`,
+          amount,
+          description: `TrashDrop payout (${selectedItems.length} items)`,
           currency: 'GHS'
         });
 
         if (!gatewayResult.success) {
-          // Update disbursement record with error
           await supabase
-            .from('bin_payments')
-            .update({ 
-              status: 'failed',
-              gateway_error: gatewayResult.error
-            })
-            .eq('id', disbursement.id);
-
+            .from('withdrawals')
+            .update({ status: 'failed', gateway_error: gatewayResult.error })
+            .eq('id', withdrawal.id);
           throw new Error(gatewayResult.error || 'Disbursement gateway error');
         }
 
-        // Update disbursement record with gateway details
-        const { error: updateError } = await supabase
-          .from('bin_payments')
-          .update({ 
-            status: gatewayResult.status, // Will be 'pending' initially
-            gateway_reference: gatewayResult.gatewayReference,
-            gateway_transaction_id: gatewayResult.transactionId
+        await supabase
+          .from('withdrawals')
+          .update({
+            status: 'processing',
+            gateway_transaction_id: gatewayResult.transactionId,
+            gateway_response: gatewayResult
           })
-          .eq('id', disbursement.id);
+          .eq('id', withdrawal.id);
 
-        if (updateError) {
-          logger.warn('Failed to update gateway reference:', updateError);
-        }
-
-        logger.info('TrendiPay disbursement initiated:', {
-          disbursementId: disbursement.id,
-          transactionId: gatewayResult.transactionId,
-          status: gatewayResult.status
-        });
+        logger.info('TrendiPay disbursement initiated:', { withdrawalId: withdrawal.id, transactionId: gatewayResult.transactionId });
 
         return {
           success: true,
-          disbursementId: disbursement.id,
+          withdrawalId: withdrawal.id,
           transactionId: gatewayResult.transactionId,
-          amount: amount,
-          message: gatewayResult.message || 'Withdrawal initiated successfully',
-          status: gatewayResult.status,
-          binsIncluded: undisbursedBins?.length || 0
+          amount,
+          message: 'Withdrawal request submitted. You will receive your funds shortly.',
+          status: 'processing',
+          itemsIncluded: selectedItems.length
         };
       } else {
-        // Stub mode: Mark as success immediately for testing
+        // Stub mode: Mark as completed immediately for testing
         logger.warn('TrendiPay disabled - using stub mode');
-        
-        const { error: updateError } = await supabase
-          .from('bin_payments')
-          .update({ 
-            status: 'success',
-            gateway_reference: `stub_${Date.now()}`
-          })
-          .eq('id', disbursement.id);
 
-        if (updateError) {
-          logger.warn('Failed to update disbursement status:', updateError);
-        }
+        await supabase
+          .from('withdrawals')
+          .update({ status: 'completed', completed_at: new Date().toISOString(), gateway_transaction_id: `stub_${Date.now()}` })
+          .eq('id', withdrawal.id);
 
         return {
           success: true,
-          disbursementId: disbursement.id,
-          amount: amount,
+          withdrawalId: withdrawal.id,
+          amount,
           message: 'Withdrawal processed successfully (stub mode)',
-          binsIncluded: undisbursedBins?.length || 0
+          status: 'completed',
+          itemsIncluded: selectedItems.length
         };
       }
 
     } catch (error) {
-      logger.error('Error processing digital bin disbursement:', error);
+      logger.error('Error processing withdrawal:', error);
       return {
         success: false,
         error: error.message || 'Failed to process withdrawal'

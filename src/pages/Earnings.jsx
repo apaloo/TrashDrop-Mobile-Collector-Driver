@@ -107,9 +107,9 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Withdrawal Successful!</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Withdrawal Submitted!</h3>
               <p className="text-gray-500 mb-6">
-                ₵{parseFloat(amount).toFixed(2)} has been sent to your {momoProvider.toUpperCase()} account.
+                ₵{parseFloat(amount).toFixed(2)} is being sent to your {momoProvider.toUpperCase()} account. You'll receive it shortly.
               </p>
             </div>
           ) : (
@@ -388,6 +388,9 @@ const EarningsPage = () => {
     monthlyEarnings: 0,
     pendingDisposalEarnings: 0,
     disposedEarnings: 0,
+    withdrawableEarnings: 0,     // Disposed digital bins + disposed prepaid pickups — can be withdrawn
+    estimatedPendingEarnings: 0, // Estimated value of collecting bins/pickups — dispose to unlock
+    cashCollectedEarnings: 0,    // Cash already received by collector — not platform-withdrawable
     platformEarnings: 0,
     grossRevenue: 0,
     // Stats
@@ -415,7 +418,8 @@ const EarningsPage = () => {
   // Computed values from consolidated state
   const { 
     totalEarnings, weeklyEarnings, monthlyEarnings, 
-    pendingDisposalEarnings, disposedEarnings, 
+    pendingDisposalEarnings, disposedEarnings,
+    withdrawableEarnings, estimatedPendingEarnings, cashCollectedEarnings,
     platformEarnings, grossRevenue, 
     chartData: earningsData, transactions,
     detailedEarnings, loyaltyTier,
@@ -423,9 +427,9 @@ const EarningsPage = () => {
     ...stats 
   } = earningsState;
   
-  // Withdrawable amount = only disposed earnings (pending disposal is NOT withdrawable)
-  // disposedEarnings already excludes pendingDisposalEarnings in both RPC and legacy paths
-  const actualWithdrawableAmount = disposedEarnings;
+  // Withdrawable = disposed digital bins (actual gateway receipt) + disposed prepaid pickups.
+  // Cash earnings excluded — collector already has those.
+  const actualWithdrawableAmount = withdrawableEarnings;
   
   // Fix: Filter transactions by period
   const filteredTransactions = transactions.filter(transaction => {
@@ -497,6 +501,9 @@ const EarningsPage = () => {
         monthlyEarnings: statsData.monthlyEarnings || data.monthlyEarnings || 0,
         pendingDisposalEarnings: statsData.pendingDisposalEarnings || data.pendingDisposalEarnings || 0,
         disposedEarnings: statsData.disposedEarnings || data.disposedEarnings || 0,
+        withdrawableEarnings: statsData.withdrawableEarnings ?? data.withdrawableEarnings ?? 0,
+        estimatedPendingEarnings: statsData.estimatedPendingEarnings ?? data.estimatedPendingEarnings ?? 0,
+        cashCollectedEarnings: statsData.cashCollectedEarnings ?? data.cashCollectedEarnings ?? 0,
         platformEarnings: statsData.platformEarnings || data.platformEarnings || 0,
         grossRevenue: statsData.grossRevenue || data.grossRevenue || 0,
         completedJobs: statsData.completedJobs || data.jobCounts?.disposed || 0,
@@ -737,7 +744,7 @@ const EarningsPage = () => {
           onClose={() => setShowCashOutModal(false)} 
           totalEarnings={totalEarnings}
           availableForWithdrawal={actualWithdrawableAmount}
-          pendingDisposalAmount={pendingDisposalEarnings}
+          pendingDisposalAmount={estimatedPendingEarnings}
           onWithdrawalSuccess={handleWithdrawalSuccess}
         />
         
@@ -793,41 +800,48 @@ const EarningsPage = () => {
         <div className="bg-white rounded-xl shadow-lg mb-6 overflow-hidden">
           {/* Total Earnings - Hero Section */}
           <div className="bg-gradient-to-r from-green-500 to-green-600 p-5 text-center">
-            <p className="text-green-100 text-sm mb-1">Your Money</p>
-            <p className="text-4xl font-bold text-white">₵{disposedEarnings.toFixed(2)}</p>
+            <p className="text-green-100 text-sm mb-1">Ready to Withdraw</p>
+            <p className="text-4xl font-bold text-white">₵{withdrawableEarnings.toFixed(2)}</p>
+            <p className="text-green-200 text-xs mt-1">Disposed earnings (MoMo/e-Cash bins + prepaid pickups)</p>
           </div>
           
           {/* Simple Breakdown */}
           <div className="p-4 space-y-3">
-            {/* Cash - Already yours */}
+            {/* Cash - Already in collector's hands */}
             <div className="flex items-center justify-between bg-yellow-50 rounded-xl p-4 border-2 border-yellow-200">
               <div className="flex items-center">
-                <span className="text-3xl mr-3">�</span>
-                <span className="text-lg font-bold text-yellow-800">Cash</span>
+                <span className="text-3xl mr-3">💵</span>
+                <div>
+                  <span className="text-lg font-bold text-yellow-800">Cash</span>
+                  <p className="text-xs text-yellow-600">Already received from client</p>
+                </div>
               </div>
-              <span className="text-2xl font-bold text-yellow-700">₵{((paymentModeBreakdown?.cash?.grossRevenue || paymentModeBreakdown?.cash?.collected) || 0).toFixed(2)}</span>
+              <span className="text-2xl font-bold text-yellow-700">₵{(cashCollectedEarnings || (paymentModeBreakdown?.cash?.collected) || 0).toFixed(2)}</span>
             </div>
             
-            {/* MoMo - Ready to withdraw */}
+            {/* MoMo/e-Cash - Withdrawable via platform */}
             <div className="flex items-center justify-between bg-purple-50 rounded-xl p-4 border-2 border-purple-200">
               <div className="flex items-center">
-                <span className="text-3xl mr-3">�</span>
-                <span className="text-lg font-bold text-purple-800">MoMo</span>
+                <span className="text-3xl mr-3">📱</span>
+                <div>
+                  <span className="text-lg font-bold text-purple-800">MoMo / e-Cash</span>
+                  <p className="text-xs text-purple-600">Ready to withdraw</p>
+                </div>
               </div>
-              <span className="text-2xl font-bold text-purple-700">₵{((paymentModeBreakdown?.digital?.grossRevenue || paymentModeBreakdown?.digital?.collected) || 0).toFixed(2)}</span>
+              <span className="text-2xl font-bold text-purple-700">₵{withdrawableEarnings.toFixed(2)}</span>
             </div>
             
-            {/* Pending - If any */}
-            {pendingDisposalEarnings > 0 && (
+            {/* Pending - Estimated value of collecting bins/pickups */}
+            {estimatedPendingEarnings > 0 && (
               <div className="flex items-center justify-between bg-amber-50 rounded-xl p-4 border-2 border-amber-200">
                 <div className="flex items-center">
                   <span className="text-3xl mr-3">🚚</span>
                   <div>
                     <span className="text-lg font-bold text-amber-800">Pending</span>
-                    <p className="text-xs text-amber-600">Dispose to get</p>
+                    <p className="text-xs text-amber-600">Estimated — dispose to unlock</p>
                   </div>
                 </div>
-                <span className="text-2xl font-bold text-amber-700">₵{pendingDisposalEarnings.toFixed(2)}</span>
+                <span className="text-2xl font-bold text-amber-700">∼₵{estimatedPendingEarnings.toFixed(2)}</span>
               </div>
             )}
           </div>
@@ -860,15 +874,15 @@ const EarningsPage = () => {
                 <div className="flex h-full">
                   <div 
                     className="bg-green-500 h-full flex items-center justify-center text-xs text-white font-medium"
-                    style={{ width: `${stats.collectorSharePercent || 87}%` }}
+                    style={{ width: `${stats.collectorSharePercent > 0 ? stats.collectorSharePercent : 87}%` }}
                   >
-                    {stats.collectorSharePercent || 87}%
+                    {stats.collectorSharePercent > 0 ? stats.collectorSharePercent : '--'}%
                   </div>
                   <div 
                     className="bg-blue-500 h-full flex items-center justify-center text-xs text-white font-medium"
-                    style={{ width: `${stats.platformSharePercent || 13}%` }}
+                    style={{ width: `${stats.platformSharePercent > 0 ? stats.platformSharePercent : 13}%` }}
                   >
-                    {stats.platformSharePercent || 13}%
+                    {stats.platformSharePercent > 0 ? stats.platformSharePercent : '--'}%
                   </div>
                 </div>
               </div>
@@ -880,7 +894,7 @@ const EarningsPage = () => {
                   <p className="text-green-700 text-sm font-medium">Your Earnings</p>
                 </div>
                 <p className="text-xl font-bold text-green-600">₵{totalEarnings.toFixed(2)}</p>
-                <p className="text-xs text-green-600">{stats.collectorSharePercent || 87}% of revenue</p>
+                <p className="text-xs text-green-600">{stats.collectorSharePercent > 0 ? `${stats.collectorSharePercent}% of revenue` : ''}</p>
               </div>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <div className="flex items-center mb-1">
@@ -888,7 +902,7 @@ const EarningsPage = () => {
                   <p className="text-blue-700 text-sm font-medium">Platform Fee</p>
                 </div>
                 <p className="text-xl font-bold text-blue-600">₵{platformEarnings.toFixed(2)}</p>
-                <p className="text-xs text-blue-600">{stats.platformSharePercent || 13}% of revenue</p>
+                <p className="text-xs text-blue-600">{stats.platformSharePercent > 0 ? `${stats.platformSharePercent}% of revenue` : ''}</p>
               </div>
             </div>
           </div>

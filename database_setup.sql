@@ -4,24 +4,68 @@
 -- Run this SQL in your Supabase SQL Editor
 -- ========================================
 
+-- Drop existing functions first to allow return-type changes
+DROP FUNCTION IF EXISTS get_collector_available_earnings(uuid);
+DROP FUNCTION IF EXISTS validate_cashout(uuid, numeric);
+DROP FUNCTION IF EXISTS get_collector_earnings_breakdown(uuid);
+DROP FUNCTION IF EXISTS get_collector_total_disbursed(uuid);
+
 -- 1. RPC Function: Get Collector Available Earnings
--- Returns the sum of undisbursed earnings for a collector
+-- Returns the sum of undisbursed earnings for a collector.
+-- Digital bins: uses bin_payments.collector_share (actual gateway receipt, not estimate).
+-- Pickup requests: uses collector_total_payout (prepaid, fixed fee).
+-- Cash-payment bins are excluded: collector already received that cash.
 CREATE OR REPLACE FUNCTION get_collector_available_earnings(p_collector_id uuid)
 RETURNS numeric
 LANGUAGE sql
 SECURITY DEFINER
 AS $$
-  SELECT COALESCE(SUM(collector_total_payout), 0)
-  FROM digital_bins
-  WHERE collector_id = p_collector_id
-    AND status = 'disposed'
-    AND id NOT IN (
-      SELECT digital_bin_id 
-      FROM bin_payments 
-      WHERE type = 'disbursement' 
-        AND status = 'success'
-        AND digital_bin_id IS NOT NULL
-    );
+  SELECT
+    -- Part A: Digital bin earnings (actual gateway receipts)
+    COALESCE((
+      SELECT SUM(bp.collector_share)
+      FROM bin_payments bp
+      INNER JOIN digital_bins db ON db.id = bp.digital_bin_id
+      WHERE db.collector_id = p_collector_id
+        AND db.status = 'disposed'
+        AND bp.type = 'collection'
+        AND bp.status != 'failed'
+        AND bp.payment_mode IN ('momo', 'e_cash')
+        -- Exclude bins already in a non-failed withdrawal (new system)
+        AND db.id::text NOT IN (
+          SELECT wi.item_id
+          FROM withdrawal_items wi
+          INNER JOIN withdrawals w ON w.id = wi.withdrawal_id
+          WHERE wi.item_type = 'digital_bin'
+            AND w.status NOT IN ('failed', 'cancelled')
+        )
+        -- Exclude bins already disbursed via legacy bin_payments system
+        AND db.id NOT IN (
+          SELECT bp2.digital_bin_id
+          FROM bin_payments bp2
+          WHERE bp2.type = 'disbursement'
+            AND bp2.status = 'success'
+            AND bp2.digital_bin_id IS NOT NULL
+        )
+    ), 0)
+    +
+    -- Part B: Pickup request earnings (prepaid, fixed fee)
+    COALESCE((
+      SELECT SUM(pr.collector_total_payout)
+      FROM pickup_requests pr
+      WHERE pr.collector_id = p_collector_id
+        AND pr.status = 'disposed'
+        AND pr.collector_total_payout IS NOT NULL
+        AND pr.collector_total_payout > 0
+        -- Exclude requests already in a non-failed withdrawal
+        AND pr.id NOT IN (
+          SELECT wi.item_id
+          FROM withdrawal_items wi
+          INNER JOIN withdrawals w ON w.id = wi.withdrawal_id
+          WHERE wi.item_type = 'pickup_request'
+            AND w.status NOT IN ('failed', 'cancelled')
+        )
+    ), 0);
 $$;
 
 -- Grant execute permission to authenticated users
@@ -75,44 +119,74 @@ $$;
 GRANT EXECUTE ON FUNCTION validate_cashout(uuid, numeric) TO authenticated;
 
 -- 3. RPC Function: Get Earnings Breakdown
--- Returns detailed breakdown of collector earnings by component
+-- Returns detailed breakdown of collector earnings by component (bins + pickups)
 CREATE OR REPLACE FUNCTION get_collector_earnings_breakdown(p_collector_id uuid)
 RETURNS json
 LANGUAGE sql
 SECURITY DEFINER
 AS $$
   SELECT json_build_object(
-    'total_earnings', COALESCE(SUM(collector_total_payout), 0),
-    'core_payout', COALESCE(SUM(collector_core_payout), 0),
-    'urgent_payout', COALESCE(SUM(collector_urgent_payout), 0),
-    'distance_payout', COALESCE(SUM(collector_distance_payout), 0),
-    'surge_payout', COALESCE(SUM(collector_surge_payout), 0),
-    'tips', COALESCE(SUM(collector_tips), 0),
-    'recyclables_payout', COALESCE(SUM(collector_recyclables_payout), 0),
-    'loyalty_cashback', COALESCE(SUM(collector_loyalty_cashback), 0),
-    'bins_disposed', COUNT(*)
-  )
-  FROM digital_bins
-  WHERE collector_id = p_collector_id
-    AND status = 'disposed';
+    'digital_bins', (
+      SELECT json_build_object(
+        'total_earnings', COALESCE(SUM(collector_total_payout), 0),
+        'core_payout',    COALESCE(SUM(collector_core_payout), 0),
+        'urgent_payout',  COALESCE(SUM(collector_urgent_payout), 0),
+        'distance_payout',COALESCE(SUM(collector_distance_payout), 0),
+        'surge_payout',   COALESCE(SUM(collector_surge_payout), 0),
+        'tips',           COALESCE(SUM(collector_tips), 0),
+        'recyclables_payout', COALESCE(SUM(collector_recyclables_payout), 0),
+        'loyalty_cashback',   COALESCE(SUM(collector_loyalty_cashback), 0),
+        'count',          COUNT(*)
+      )
+      FROM digital_bins
+      WHERE collector_id = p_collector_id AND status = 'disposed'
+    ),
+    'pickup_requests', (
+      SELECT json_build_object(
+        'total_earnings', COALESCE(SUM(collector_total_payout), 0),
+        'core_payout',    COALESCE(SUM(collector_core_payout), 0),
+        'urgent_payout',  COALESCE(SUM(collector_urgent_payout), 0),
+        'distance_payout',COALESCE(SUM(collector_distance_payout), 0),
+        'surge_payout',   COALESCE(SUM(collector_surge_payout), 0),
+        'tips',           COALESCE(SUM(collector_tips), 0),
+        'recyclables_payout', COALESCE(SUM(collector_recyclables_payout), 0),
+        'loyalty_cashback',   COALESCE(SUM(collector_loyalty_cashback), 0),
+        'count',          COUNT(*)
+      )
+      FROM pickup_requests
+      WHERE collector_id = p_collector_id AND status = 'disposed'
+    )
+  );
 $$;
 
 GRANT EXECUTE ON FUNCTION get_collector_earnings_breakdown(uuid) TO authenticated;
 
 -- 4. RPC Function: Get Total Disbursed Amount
--- Returns how much has already been paid out to collector
+-- Returns how much has already been paid out to collector (new + legacy systems)
 CREATE OR REPLACE FUNCTION get_collector_total_disbursed(p_collector_id uuid)
 RETURNS numeric
 LANGUAGE sql
 SECURITY DEFINER
 AS $$
-  SELECT COALESCE(SUM(collector_share), 0)
-  FROM bin_payments
-  WHERE collector_id IN (
-      SELECT id FROM collector_profiles WHERE user_id = p_collector_id
-    )
-    AND type = 'disbursement'
-    AND status = 'success';
+  SELECT
+    -- New system: withdrawals table
+    COALESCE((
+      SELECT SUM(w.amount)
+      FROM withdrawals w
+      WHERE w.collector_id = p_collector_id
+        AND w.status = 'completed'
+    ), 0)
+    +
+    -- Legacy: bin_payments disbursement records
+    COALESCE((
+      SELECT SUM(bp.collector_share)
+      FROM bin_payments bp
+      WHERE bp.collector_id IN (
+        SELECT id FROM collector_profiles WHERE user_id = p_collector_id
+      )
+        AND bp.type = 'disbursement'
+        AND bp.status = 'success'
+    ), 0);
 $$;
 
 GRANT EXECUTE ON FUNCTION get_collector_total_disbursed(uuid) TO authenticated;
@@ -143,6 +217,12 @@ WHERE type = 'disbursement';
 -- Index on bin_payments for digital bin lookups
 CREATE INDEX IF NOT EXISTS idx_bin_payments_digital_bin 
 ON bin_payments(digital_bin_id, type);
+
+-- Covering index for get_collector_available_earnings JOIN:
+-- filters on (digital_bin_id, type, status, payment_mode) for collection rows
+CREATE INDEX IF NOT EXISTS idx_bin_payments_collection_mode
+ON bin_payments(digital_bin_id, payment_mode, status)
+WHERE type = 'collection' AND status != 'failed';
 
 -- Index on bin_payments for gateway references (webhook lookups)
 CREATE INDEX IF NOT EXISTS idx_bin_payments_gateway_transaction 

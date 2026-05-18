@@ -1020,5 +1020,5 @@ CREATE TABLE public.withdrawals (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT withdrawals_pkey PRIMARY KEY (id),
-  CONSTRAINT withdrawals_collector_id_fkey FOREIGN KEY (collector_id) REFERENCES auth.users(id)//?
+  CONSTRAINT withdrawals_collector_id_fkey FOREIGN KEY (collector_id) REFERENCES auth.users(id)
 );
