@@ -819,16 +819,16 @@ const EarningsPage = () => {
               <span className="text-2xl font-bold text-yellow-700">₵{(cashCollectedEarnings || (paymentModeBreakdown?.cash?.collected) || 0).toFixed(2)}</span>
             </div>
             
-            {/* MoMo/e-Cash - Withdrawable via platform */}
+            {/* MoMo/e-Cash - Total received via platform (like Cash: shows gross, not just withdrawable) */}
             <div className="flex items-center justify-between bg-purple-50 rounded-xl p-4 border-2 border-purple-200">
               <div className="flex items-center">
                 <span className="text-3xl mr-3">📱</span>
                 <div>
                   <span className="text-lg font-bold text-purple-800">MoMo / e-Cash</span>
-                  <p className="text-xs text-purple-600">Ready to withdraw</p>
+                  <p className="text-xs text-purple-600">Paid by clients via MoMo</p>
                 </div>
               </div>
-              <span className="text-2xl font-bold text-purple-700">₵{withdrawableEarnings.toFixed(2)}</span>
+              <span className="text-2xl font-bold text-purple-700">₵{(paymentModeBreakdown?.digital?.collected || paymentModeBreakdown?.digital?.grossRevenue || 0).toFixed(2)}</span>
             </div>
             
             {/* Pending - Estimated value of collecting bins/pickups */}
