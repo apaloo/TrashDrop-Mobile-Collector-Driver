@@ -909,9 +909,11 @@ class EarningsService {
       //   binPaymentCollectorShareMap — collector_share from SUCCESS only: app bucket must hold the funds
       //   binPaymentPlatformShareMap  — platform_share from SUCCESS only: same reason
       //   binPaymentModeMap           — payment_mode from SUCCESS only: mode confirmed on successful charge
+      //   binPaymentSuccessAmountMap  — total_bill from SUCCESS only (for pending: confirmed receipts only)
       const binIds = (digitalBins || []).map(b => b.id);
       const binPaymentModeMap = {};
-      const binPaymentAmountMap = {};         // total_bill — latest record, any status
+      const binPaymentAmountMap = {};         // total_bill — latest record, any status (for tracking all bills)
+      const binPaymentSuccessAmountMap = {}; // total_bill — SUCCESS only (for pending: only confirmed MoMo/e-Cash)
       const binPaymentCollectorShareMap = {}; // collector_share — SUCCESS records only
       const binPaymentPlatformShareMap = {};  // platform_share — SUCCESS records only
       
@@ -932,6 +934,11 @@ class EarningsService {
             // total_bill: latest record regardless of status (bill is valid at collection time)
             if (binPaymentAmountMap[binId] === undefined && bill > 0) {
               binPaymentAmountMap[binId] = bill;
+            }
+            
+            // total_bill from SUCCESS only — for pending (only confirmed receipts count)
+            if (p.status === 'success' && binPaymentSuccessAmountMap[binId] === undefined && bill > 0) {
+              binPaymentSuccessAmountMap[binId] = bill;
             }
             
             // shares + mode: SUCCESS only — app bucket must have confirmed receipt
@@ -1019,14 +1026,15 @@ class EarningsService {
       const totalBinEarnings = binsPendingDisposal + binsDisposedEarnings;
 
       // Estimated pending earnings for collecting bins (not yet withdrawable, shows what's coming)
-      // Standard: use total_bill from bin_payments only. No estimates from digital_bins.fee.
+      // Standard: only SUCCESS payments count as "pending" — confirmed MoMo/e-Cash receipts
       const estimatedPendingBinEarnings = pickedUpBins.reduce((sum, b) => {
-        const totalBill = binPaymentAmountMap[b.id];
+        const totalBill = binPaymentSuccessAmountMap[b.id]; // SUCCESS only
         return sum + (totalBill || 0);
       }, 0);
-      const estimatedPendingPickupEarnings = pickedUpRequests.reduce((sum, p) => {
-        return sum + calculateCollectorEarnings(p);
-      }, 0);
+      // Prepaid pickup requests only (platform already holds the funds)
+      const estimatedPendingPickupEarnings = pickedUpRequests
+        .filter(p => p.payment_mode !== 'cash' && p.payment_type !== 'cash')
+        .reduce((sum, p) => sum + calculateCollectorEarnings(p), 0);
 
       // Split disposed bin earnings by payment mode:
       // - Digital (momo/e_cash): platform holds funds → collector can withdraw
