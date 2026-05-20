@@ -293,18 +293,16 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
     }
     
     // 5. Verify payment was successful (for MoMo/e-cash)
+    // Allow disposal to proceed even for unconfirmed/failed payments so physical disposal
+    // is never blocked at the site. Collector earns $0 for unconfirmed payments (reconciliation).
     if (paymentData.payment_mode !== 'cash' && paymentData.status !== 'success') {
-      logger.warn('Payment not yet confirmed — blocking disposal:', {
+      logger.warn('⚠️ Payment not confirmed — proceeding with $0 payout for reconciliation:', {
         binId,
         paymentId: paymentData.id,
         status: paymentData.status,
         mode: paymentData.payment_mode
       });
-      return {
-        success: false,
-        error: `Payment not yet confirmed (status: ${paymentData.status}). Please wait for payment confirmation before disposing.`,
-        binId
-      };
+      paymentData = { ...paymentData, total_bill: 0 };
     }
     
     // 6. Fetch actual tips from collector_tips table (Fix #3: no more hardcoded tips)

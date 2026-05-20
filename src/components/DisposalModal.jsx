@@ -31,7 +31,8 @@ const DisposalModal = ({
   isOpen, 
   onClose, 
   onDispose,
-  onGetDirections
+  onGetDirections,
+  onArrivalAtDisposalSite
 }) => {
   const [selectedSite, setSelectedSite] = useState(null);
   const [isDisposing, setIsDisposing] = useState(false);
@@ -44,6 +45,7 @@ const DisposalModal = ({
   const [isNavigationOpen, setIsNavigationOpen] = useState(false);
   const [navigationDestination, setNavigationDestination] = useState(null);
   const [navigationTitle, setNavigationTitle] = useState('');
+  const [currentNavigationSite, setCurrentNavigationSite] = useState(null);
   const RADIUS_METERS = 50; // 50 meter radius requirement
   
   // Fix Leaflet icon issues with Webpack/Vite
@@ -315,6 +317,7 @@ const DisposalModal = ({
       // Set navigation state and open the navigation modal
       setNavigationDestination(siteCoordinates);
       setNavigationTitle(siteName);
+      setCurrentNavigationSite(site);
       setIsNavigationOpen(true);
       
       logger.info('🔹 Navigation modal state set to open, disposal modal will hide');
@@ -736,6 +739,11 @@ const DisposalModal = ({
           destination={navigationDestination}
           assignmentId={assignment?.id}
           assignmentTitle={navigationTitle}
+          onArrival={() => {
+            if (onArrivalAtDisposalSite && currentNavigationSite) {
+              onArrivalAtDisposalSite(currentNavigationSite);
+            }
+          }}
         />
       )}
     </>

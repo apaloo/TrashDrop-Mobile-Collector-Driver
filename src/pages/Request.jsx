@@ -154,6 +154,9 @@ const RequestPage = () => {
   // Track requests where user has arrived at destination (for external QR scan button)
   const [arrivedRequests, setArrivedRequests] = useState(new Set());
   
+  // Track confirmed arrival at disposal site (bypasses live GPS re-check for 2 hours)
+  const [disposalSiteArrived, setDisposalSiteArrived] = useState(null);
+  
   // Payment modal state (for digital bin client collection)
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [currentPaymentBinId, setCurrentPaymentBinId] = useState(null);
@@ -2241,8 +2244,12 @@ const GeofenceErrorModal = ({
       }
     }
     
-    // ALWAYS enforce 50m geofence check - user must be physically at the disposal site
-    const isWithinRange = checkWithinDisposalRange(freshLocation, targetSite);
+    // Bypass live GPS check if user confirmed arrival via navigation modal (within 2 hours)
+    const ARRIVAL_GRACE_MS = 2 * 60 * 60 * 1000;
+    const hasRecentArrival = disposalSiteArrived &&
+      (Date.now() - disposalSiteArrived.timestamp) < ARRIVAL_GRACE_MS;
+
+    const isWithinRange = hasRecentArrival || checkWithinDisposalRange(freshLocation, targetSite);
     
     if (!isWithinRange) {
       setTargetDisposalSite(targetSite);
@@ -2397,7 +2404,11 @@ const GeofenceErrorModal = ({
       logger.warn('Could not get fresh location for dispose all, using cached:', locErr.message);
     }
     
-    const isWithinRange = checkWithinDisposalRange(freshLocation, selectedDisposalCenter);
+    const ARRIVAL_GRACE_MS = 2 * 60 * 60 * 1000;
+    const hasRecentArrival = disposalSiteArrived &&
+      (Date.now() - disposalSiteArrived.timestamp) < ARRIVAL_GRACE_MS;
+
+    const isWithinRange = hasRecentArrival || checkWithinDisposalRange(freshLocation, selectedDisposalCenter);
     if (!isWithinRange) {
       showToast(`You must be within ${GEOFENCE_DESCRIPTIONS.disposalSite} of the disposal site`, 'warning');
       return;
@@ -2465,7 +2476,9 @@ const GeofenceErrorModal = ({
       await fetchRequests();
       
       // Show success message with earnings if applicable
-      if (totalEarnings > 0) {
+      if (successCount === 0) {
+        showToast(`Failed to dispose items at ${disposalSite}. Check individual items for errors.`, 'error', 5000);
+      } else if (totalEarnings > 0) {
         showToast(
           `✅ Disposed ${successCount}/${totalItems} items! Earnings: GHS ${totalEarnings.toFixed(2)}`,
           'success',
@@ -2482,8 +2495,12 @@ const GeofenceErrorModal = ({
   };
 
   // Check if user is within disposal site radius (for FAB visibility)
-  const isAtDisposalSite = selectedDisposalCenter?.lat && selectedDisposalCenter?.lng && 
-    checkWithinDisposalRange(userLocation, selectedDisposalCenter);
+  // Also respect confirmed arrival from navigation modal (valid for 2 hours)
+  const hasRecentDisposalArrival = disposalSiteArrived &&
+    (Date.now() - disposalSiteArrived.timestamp) < 2 * 60 * 60 * 1000;
+  const isAtDisposalSite = hasRecentDisposalArrival ||
+    (selectedDisposalCenter?.lat && selectedDisposalCenter?.lng &&
+    checkWithinDisposalRange(userLocation, selectedDisposalCenter));
   
   // Count items available to dispose
   const itemsToDisposeCount = requests.picked_up?.filter(req => req.status !== 'disposed')?.length || 0;
@@ -3114,6 +3131,12 @@ const GeofenceErrorModal = ({
             setShowDisposalModal(false);
             // Don't clear selectedDisposalCenter - keep it for FAB and subsequent disposals
             setCurrentDisposalRequestId(null);
+          }}
+          onArrivalAtDisposalSite={(site) => {
+            const arrivedData = { ...site, timestamp: Date.now() };
+            setDisposalSiteArrived(arrivedData);
+            setSelectedDisposalCenter(arrivedData);
+            logger.info('✅ Disposal site arrival confirmed via navigation:', site.name);
           }}
           onDispose={async (assignmentId, site) => {
             logger.info('Disposal confirmed:', { assignmentId, site });
