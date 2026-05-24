@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
-import { getDeadheadShare } from '../utils/paymentCalculations';
+import { getDeadheadShare, PROMOTIONAL_FEE_SCHEDULE } from '../utils/paymentCalculations';
 
 // SOP v4.5.6 Payment Model Constants (aligned with earningsService.js)
 const PAYMENT_SPLITS = {
@@ -60,6 +60,54 @@ const PAYMENT_SPLITS = {
  */
 function calculatePaymentSharing(digitalBin, payment, actualTips = 0) {
   logger.info('Calculating payment sharing for bin:', digitalBin.id);
+
+  // ════════════════════════════════════════════════════════════════════
+  // PROMOTIONAL BIN — fixed payout, bypass SOP v4.5.6 entirely
+  // ════════════════════════════════════════════════════════════════════
+  if (digitalBin.is_promotional) {
+    const binSize = parseInt(digitalBin.bin_size_liters) || 120;
+    const schedule = PROMOTIONAL_FEE_SCHEDULE[binSize] || PROMOTIONAL_FEE_SCHEDULE[120];
+    const clientFee = parseFloat(payment.total_bill) || parseFloat(digitalBin.fee) || schedule.clientFee;
+
+    logger.info('🎁 Promotional payout for bin:', {
+      binId: digitalBin.id,
+      binSize,
+      clientFee,
+      collectorPayout: schedule.collectorPayout,
+      platformSubsidy: schedule.platformSubsidy
+    });
+
+    return {
+      collector_core_payout: schedule.collectorPayout,
+      collector_urgent_payout: 0,
+      collector_distance_payout: 0,
+      collector_surge_payout: 0,
+      collector_tips: actualTips,
+      collector_recyclables_payout: 0,
+      collector_loyalty_cashback: 0,
+      collector_total_payout: schedule.collectorPayout + actualTips,
+      platform_share: Math.max(0, clientFee - schedule.collectorPayout),
+      platform_subsidy: schedule.platformSubsidy,
+      platform_core_margin: 0,
+      platform_urgent_share: 0,
+      platform_surge_share: 0,
+      platform_recyclables_share: 0,
+      user_recyclables_credit: 0,
+      surge_multiplier: 1.0,
+      deadhead_km: parseFloat(digitalBin.deadhead_km) || 0,
+      deadhead_share: 1.0,
+      loyalty_rate: 0,
+      payout_from_fee: schedule.collectorPayout,
+      platform_request_fee: 0,
+      total_bill: clientFee,
+      shareable_amount: clientFee,
+      bags_collected: parseInt(digitalBin.bags_collected) || parseInt(payment.bags_collected) || 1,
+      is_urgent: false,
+      is_promotional: true,
+      base_portion: clientFee,
+      urgent_portion: 0
+    };
+  }
   
   // IMPORTANT: Use payment.total_bill as PRIMARY source (the actual amount collected from client)
   // Fall back to digitalBin.fee only when no payment record exists

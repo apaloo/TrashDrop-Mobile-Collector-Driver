@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
 import * as TrendiPayService from './trendiPayService';
-import { computeBinPaymentShares } from '../utils/paymentCalculations';
+import { computeBinPaymentShares, computePromotionalShares } from '../utils/paymentCalculations';
 
 /**
  * Payment Service
@@ -61,10 +61,10 @@ export async function initiateCollection(paymentData) {
     // Fetch digital bin metadata to compute authoritative shares at collection time.
     // Storing the shares locks in the payout the collector was promised at this moment,
     // so future formula changes won't retroactively alter past payouts.
-    let binMetadata = { is_urgent: false, deadhead_km: 0 };
+    let binMetadata = { is_urgent: false, deadhead_km: 0, is_promotional: false, bin_size_liters: 120 };
     const { data: binData, error: binFetchError } = await supabase
       .from('digital_bins')
-      .select('is_urgent, deadhead_km')
+      .select('is_urgent, deadhead_km, is_promotional, bin_size_liters')
       .eq('id', paymentData.digitalBinId)
       .maybeSingle();
 
@@ -74,20 +74,44 @@ export async function initiateCollection(paymentData) {
       binMetadata = binData;
     }
 
-    const { collectorShare, platformShare } = computeBinPaymentShares({
-      totalBill: paymentData.totalBill,
-      isUrgent: binMetadata.is_urgent || false,
-      deadheadKm: parseFloat(binMetadata.deadhead_km) || 0,
-      requestFee: 1.0
-    });
+    // Branch: promotional fixed-fee vs SOP v4.5.6
+    let collectorShare, platformShare, platformSubsidy = 0, isPromotional = false;
 
-    console.log('💰 [PaymentService] Computed shares:', {
-      totalBill: paymentData.totalBill,
-      collectorShare,
-      platformShare,
-      isUrgent: binMetadata.is_urgent,
-      deadheadKm: binMetadata.deadhead_km
-    });
+    if (binMetadata.is_promotional) {
+      const promoResult = computePromotionalShares({
+        totalBill: paymentData.totalBill,
+        binSizeLiters: binMetadata.bin_size_liters || 120
+      });
+      collectorShare = promoResult.collectorShare;
+      platformShare = promoResult.platformShare;
+      platformSubsidy = promoResult.platformSubsidy;
+      isPromotional = true;
+
+      console.log('🎁 [PaymentService] PROMOTIONAL shares:', {
+        totalBill: paymentData.totalBill,
+        binSizeLiters: binMetadata.bin_size_liters,
+        collectorShare,
+        platformShare,
+        platformSubsidy
+      });
+    } else {
+      const sopResult = computeBinPaymentShares({
+        totalBill: paymentData.totalBill,
+        isUrgent: binMetadata.is_urgent || false,
+        deadheadKm: parseFloat(binMetadata.deadhead_km) || 0,
+        requestFee: 1.0
+      });
+      collectorShare = sopResult.collectorShare;
+      platformShare = sopResult.platformShare;
+
+      console.log('💰 [PaymentService] SOP v4.5.6 shares:', {
+        totalBill: paymentData.totalBill,
+        collectorShare,
+        platformShare,
+        isUrgent: binMetadata.is_urgent,
+        deadheadKm: binMetadata.deadhead_km
+      });
+    }
 
     // Create bin_payments record
     const paymentRecord = {
@@ -98,6 +122,8 @@ export async function initiateCollection(paymentData) {
       total_bill: paymentData.totalBill,
       collector_share: collectorShare,
       platform_share: platformShare,
+      platform_subsidy: isPromotional ? platformSubsidy : 0,
+      is_promotional: isPromotional,
       payment_mode: paymentData.paymentMode,
       client_momo: paymentData.clientMomo || null,
       client_rswitch: paymentData.clientRSwitch || null,

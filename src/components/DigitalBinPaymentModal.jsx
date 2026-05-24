@@ -4,6 +4,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { logger } from '../utils/logger';
 import { checkPaymentStatus } from '../services/paymentService';
 import { supabase } from '../services/supabase';
+import { PROMOTIONAL_FEE_SCHEDULE } from '../utils/paymentCalculations';
 
 /**
  * Digital Bin Payment Modal
@@ -45,6 +46,7 @@ const DigitalBinPaymentModal = ({
   const [billManuallyEdited, setBillManuallyEdited] = useState(false);
   const [autoCalculatedBill, setAutoCalculatedBill] = useState(0);
   const [isFetchingFees, setIsFetchingFees] = useState(false);
+  const [promoInfo, setPromoInfo] = useState(null); // { is_promotional, bin_size_liters, collectorPayout }
   const [paymentMode, setPaymentMode] = useState('momo');
   const [clientMomo, setClientMomo] = useState('');
   const [clientRSwitch, setClientRSwitch] = useState('mtn');
@@ -76,23 +78,23 @@ const DigitalBinPaymentModal = ({
     try {
       const { data, error } = await supabase
         .from('digital_bins')
-        .select('id, fee, collector_total_payout')
+        .select('id, fee, collector_total_payout, is_promotional, bin_size_liters')
         .eq('id', bagId)
         .maybeSingle();
 
       if (error) {
         logger.warn('Could not fetch fee for bin:', bagId, error.message);
-        return 0;
+        return { fee: 0 };
       }
       if (data) {
         const fee = parseFloat(data.fee) || parseFloat(data.collector_total_payout) || 0;
-        logger.info('💰 Bin fee fetched:', bagId, '→', fee);
-        return fee;
+        logger.info('💰 Bin fee fetched:', bagId, '→', fee, data.is_promotional ? '(PROMO)' : '');
+        return { fee, is_promotional: data.is_promotional || false, bin_size_liters: data.bin_size_liters };
       }
-      return 0;
+      return { fee: 0 };
     } catch (err) {
       logger.warn('Error fetching bin fee:', err);
-      return 0;
+      return { fee: 0 };
     }
   }, []);
 
@@ -131,12 +133,19 @@ const DigitalBinPaymentModal = ({
       setPollTimedOut(false);
 
       // Fetch fee for the bin
+      setPromoInfo(null);
       if (uniqueBags.length > 0) {
         setIsFetchingFees(true);
         Promise.all(
           uniqueBags.map(async (bag) => {
-            const fee = await fetchBagFee(bag.id);
-            return { ...bag, fee };
+            const result = await fetchBagFee(bag.id);
+            // Capture promotional info from the first (primary) bin
+            if (result.is_promotional) {
+              const size = parseInt(result.bin_size_liters) || 120;
+              const schedule = PROMOTIONAL_FEE_SCHEDULE[size] || PROMOTIONAL_FEE_SCHEDULE[120];
+              setPromoInfo({ is_promotional: true, bin_size_liters: size, collectorPayout: schedule.collectorPayout });
+            }
+            return { ...bag, fee: result.fee };
           })
         ).then((bagsWithFees) => {
           setScannedBags(bagsWithFees);
@@ -314,7 +323,13 @@ const DigitalBinPaymentModal = ({
 
           // Fetch fee for the newly scanned bin (async, updates after)
           if (!isDuplicate) {
-            fetchBagFee(bagId).then(fee => {
+            fetchBagFee(bagId).then(result => {
+              const fee = result.fee || 0;
+              if (result.is_promotional) {
+                const size = parseInt(result.bin_size_liters) || 120;
+                const schedule = PROMOTIONAL_FEE_SCHEDULE[size] || PROMOTIONAL_FEE_SCHEDULE[120];
+                setPromoInfo({ is_promotional: true, bin_size_liters: size, collectorPayout: schedule.collectorPayout });
+              }
               setScannedBags(prev =>
                 prev.map(b => b.id === bagId ? { ...b, fee } : b)
               );
@@ -717,6 +732,20 @@ const DigitalBinPaymentModal = ({
               <p className="mt-1 text-base font-semibold text-red-600">{errors.bags}</p>
             )}
           </div>
+
+          {/* ─── Promotional Payout Banner ─── */}
+          {promoInfo && promoInfo.is_promotional && (
+            <div className="p-3 bg-purple-50 border-2 border-purple-300 rounded-xl">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xl">🎁</span>
+                <span className="text-base font-bold text-purple-800">Promotional Pickup</span>
+              </div>
+              <p className="text-sm text-purple-700">
+                You earn a guaranteed <span className="font-bold text-lg text-purple-900">GHS {promoInfo.collectorPayout.toFixed(2)}</span> for
+                this {promoInfo.bin_size_liters}L bin — platform covers the difference.
+              </p>
+            </div>
+          )}
 
           {/* ─── Total Bill ─── */}
           <div>

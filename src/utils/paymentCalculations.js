@@ -284,6 +284,77 @@ export function computeBinPaymentShares({
 }
 
 /**
+ * Promotional Pricing — New User Fixed Fee Schedule
+ * 
+ * For market penetration, new users pay a reduced fixed fee for their first
+ * 5 digital bin requests. The collector receives a guaranteed higher payout,
+ * with the platform subsidising the difference from a dedicated marketing fund.
+ *
+ * The `is_promotional` flag on the digital_bins record signals whether
+ * promotional pricing should override the SOP v4.5.6 formula.
+ *
+ * NOTE: If fee schedule changes, update the `promotional_fee_schedule` DB
+ * table too — this constant is the collector-app fallback only.
+ */
+export const PROMOTIONAL_FEE_SCHEDULE = {
+  120: { clientFee: 18.00, collectorPayout: 30.00, platformSubsidy: 12.00 },
+  240: { clientFee: 22.00, collectorPayout: 40.00, platformSubsidy: 18.00 },
+  360: { clientFee: 48.00, collectorPayout: 95.00, platformSubsidy: 47.00 },
+};
+
+export const PROMOTIONAL_MAX_REQUESTS = 5;
+
+/**
+ * Compute collector_share and platform_share for a promotional digital bin.
+ *
+ * Promotional bins bypass the SOP v4.5.6 deadhead/urgent formula entirely.
+ * The collector receives a fixed payout determined by bin size. The platform
+ * covers the subsidy (collector payout − client fee) from the marketing fund.
+ *
+ * @param {Object} params
+ * @param {number} params.totalBill - Amount actually collected from the client (GHS)
+ * @param {number} params.binSizeLiters - Bin size (120, 240, or 360)
+ * @returns {{ collectorShare: number, platformShare: number, platformSubsidy: number, isPromotional: true, breakdown: Object }}
+ */
+export function computePromotionalShares({ totalBill, binSizeLiters }) {
+  const bill = parseFloat(totalBill) || 0;
+  const size = parseInt(binSizeLiters) || 120;
+
+  const schedule = PROMOTIONAL_FEE_SCHEDULE[size] || PROMOTIONAL_FEE_SCHEDULE[120];
+
+  // Collector gets the guaranteed fixed payout regardless of what the client paid
+  const collectorShare = schedule.collectorPayout;
+
+  // Platform subsidy = collector payout − client fee (funded from marketing bucket)
+  const platformSubsidy = schedule.platformSubsidy;
+
+  // Platform net share from the client fee (may be 0 or slightly negative after subsidy)
+  // The client's full payment goes toward the collector payout; subsidy covers the gap.
+  const platformShareFromBill = Math.max(0, bill - collectorShare);
+
+  return {
+    collectorShare: Number(collectorShare.toFixed(2)),
+    platformShare: Number(platformShareFromBill.toFixed(2)),
+    platformSubsidy: Number(platformSubsidy.toFixed(2)),
+    isPromotional: true,
+    breakdown: {
+      binSizeLiters: size,
+      clientFee: schedule.clientFee,
+      collectorPayout: schedule.collectorPayout,
+      platformSubsidy: schedule.platformSubsidy,
+      totalBillCollected: bill,
+      shareableAmount: bill,
+      collectorCore: collectorShare,
+      collectorUrgent: 0,
+      platformCore: platformShareFromBill,
+      platformUrgent: 0,
+      requestFee: 0,
+      deadheadShare: 1.0
+    }
+  };
+}
+
+/**
  * Get loyalty tier name from cashback rate
  * 
  * @param {number} cashbackRate - Cashback rate (0.01, 0.02, 0.03)
