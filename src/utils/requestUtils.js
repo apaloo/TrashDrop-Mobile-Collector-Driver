@@ -85,7 +85,10 @@ export const transformRequestsData = (
         bin_locations: item.bin_locations || null, // Keep joined bin_locations data
         waste_type: item.waste_type || null, // For digital bins
         bag_count: item.bag_count || null, // For digital bins
-        photo_urls: item.photo_urls || null // For digital bin images
+        photo_urls: item.photo_urls || null, // For digital bin images
+        is_promotional: item.is_promotional || false, // Promotional pricing flag
+        collector_total_payout: item.collector_total_payout || null, // Pre-computed collector payout
+        bin_size_liters: item.bin_size_liters || null // Bin size for promotional schedule lookup
       };
     })
     .filter(item => {

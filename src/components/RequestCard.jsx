@@ -7,6 +7,7 @@ import { formatCurrency } from '../utils/currencyUtils';
 import { formatLocationAsync } from '../utils/geoUtils';
 import { logger } from '../utils/logger';
 import { PICKUP_ARRIVAL_RADIUS_KM, kmToMeters } from '../config/geofenceConfig';
+import { PROMOTIONAL_FEE_SCHEDULE } from '../utils/paymentCalculations';
 
 const RequestCard = ({ 
   request, 
@@ -590,9 +591,24 @@ const RequestCard = ({
               Digital Collection
             </span>
           )}
-          <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm whitespace-nowrap">
-            {formatCurrency(request.fee || 0, currency)}
-          </span>
+          {request.is_promotional && request.source_type === 'digital_bin' ? (
+            <>
+              <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm whitespace-nowrap font-semibold">
+                {formatCurrency(
+                  request.collector_total_payout
+                    || (PROMOTIONAL_FEE_SCHEDULE[request.bin_size_liters] || PROMOTIONAL_FEE_SCHEDULE[120]).collectorPayout,
+                  currency
+                )}
+              </span>
+              <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full text-xs whitespace-nowrap">
+                🎁 Promo
+              </span>
+            </>
+          ) : (
+            <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm whitespace-nowrap">
+              {formatCurrency(request.fee || 0, currency)}
+            </span>
+          )}
         </div>
         
         {/* View More Button */}
@@ -675,6 +691,37 @@ const RequestCard = ({
                 );
               }
               
+              // Promotional digital bin — fixed guaranteed payout, no estimate needed
+              if (request.is_promotional && request.source_type === 'digital_bin') {
+                const schedule = PROMOTIONAL_FEE_SCHEDULE[request.bin_size_liters] || PROMOTIONAL_FEE_SCHEDULE[120];
+                const payout = request.collector_total_payout || schedule.collectorPayout;
+                return (
+                  <div className="bg-white p-3 rounded border border-purple-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-sm font-semibold text-purple-800">🎁 Promotional Payout</h4>
+                      <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">Guaranteed</span>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Client pays</span>
+                        <span className="font-medium">{formatCurrency(request.fee || schedule.clientFee, currency)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Platform subsidy</span>
+                        <span className="font-medium text-purple-600">+{formatCurrency(schedule.platformSubsidy, currency)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-green-600 border-t pt-1 mt-1">
+                        <span>Your Guaranteed Payout</span>
+                        <span>{formatCurrency(payout, currency)}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      🎁 New-user promotional pricing — platform covers the difference.
+                    </p>
+                  </div>
+                );
+              }
+
               // Legacy request - show estimated breakdown
               // Check for fee existence (including 0 for digital bins)
               if (request.fee !== undefined && request.fee !== null) {
