@@ -1,24 +1,6 @@
 /// <reference types="cypress" />
 
 describe('Development Server Check', () => {
-  it('should serve the test page', () => {
-    // Try to access the test page directly
-    cy.visit('/test.html', {
-      baseUrl: 'http://localhost:5173', // Default Vite dev server port
-      failOnStatusCode: false
-    });
-    
-    // Check if the test page loaded
-    cy.get('h1').should('contain', 'TrashDrop Test Page');
-    
-    // Test the button functionality
-    cy.get('.button').click();
-    cy.get('body').should('have.css', 'background-color', 'rgb(224, 247, 250)');
-    
-    // Take a screenshot for visual verification
-    cy.screenshot('test-page');
-  });
-  
   it('should check the main application entry point', () => {
     // Try to access the main application
     cy.request({

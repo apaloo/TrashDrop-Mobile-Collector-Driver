@@ -38,8 +38,6 @@ const TermsPage = lazyWithRetry(() => import('./pages/Terms'));
 const PrivacyPage = lazyWithRetry(() => import('./pages/Privacy'));
 const LoginPage = lazyWithRetry(() => import('./pages/Login'));
 const SignupPage = lazyWithRetry(() => import('./pages/Signup'));
-const DiagnosticPage = lazyWithRetry(() => import('./pages/DiagnosticPage'));
-const PaymentTest = lazyWithRetry(() => import('./pages/PaymentTest'));
 
 const MapPage = lazyWithRetry(() => import('./pages/Map'));
 const RequestPage = lazyWithRetry(() => import('./pages/Request'));
@@ -209,8 +207,6 @@ function App() {
                         </Suspense>
                       </ProtectedRoute>
                     } />
-                    <Route path="/diagnostic" element={<Suspense fallback={<PageLoader />}><DiagnosticPage /></Suspense>} />
-                    <Route path="/payment-test" element={<Suspense fallback={<PageLoader />}><PaymentTest /></Suspense>} />
                     <Route path="/route-optimization" element={
                       <ProtectedRoute>
                         <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">
