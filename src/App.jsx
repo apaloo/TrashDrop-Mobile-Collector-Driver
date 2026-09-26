@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { saveLastPage, getLastPage } from './utils/pagePersistence';
@@ -77,6 +77,23 @@ const PagePersistence = () => {
   
   return null;
 };
+
+// Shown for unknown addresses. Icon-first with one large button so it works
+// without reading. Links straight to /map: "/" restores the last saved page,
+// which can be this same unknown address.
+const NotFound = () => (
+  <div className="flex h-screen flex-col items-center justify-center gap-8 bg-gray-50 p-4 text-center">
+    <div className="text-8xl" aria-hidden="true">🤷🏾</div>
+    <h1 className="text-2xl font-bold text-gray-900">Page not found</h1>
+    <Link
+      to="/map"
+      replace
+      className="flex w-full max-w-xs items-center justify-center gap-3 rounded-2xl bg-primary px-6 py-5 text-2xl font-bold text-white shadow-lg active:bg-primary-dark"
+    >
+      <span aria-hidden="true">🏠</span> Home
+    </Link>
+  </div>
+);
 
 // RouteGuard components to protect routes
 const ProtectedRoute = ({ children }) => {
@@ -219,18 +236,7 @@ function App() {
                         </Suspense>
                       </ProtectedRoute>
                     } />
-                    <Route path="*" element={
-                      <div className="flex flex-col h-screen items-center justify-center p-4">
-                        <h1 className="text-2xl font-bold mb-4">Page Not Found</h1>
-                        <p className="mb-6">The page you are looking for doesn't exist or has been moved.</p>
-                        <button 
-                          onClick={() => window.location.href = '/'}
-                          className="btn btn-primary"
-                        >
-                          Go Home
-                        </button>
-                      </div>
-                    } />
+                    <Route path="*" element={<NotFound />} />
                   </Routes>
                   <ToastContainer position="top-center" autoClose={3000} hideProgressBar={false} newestOnTop closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
                 </AppLayout>
