@@ -5,6 +5,12 @@
  */
 
 /**
+ * Shown when an accept loses the race: another collector claimed the job
+ * between the list loading and this collector tapping Accept.
+ */
+export const JOB_TAKEN_MESSAGE = 'Someone else took this job.';
+
+/**
  * Pickup Request Model
  */
 export const PickupRequestStatus = {

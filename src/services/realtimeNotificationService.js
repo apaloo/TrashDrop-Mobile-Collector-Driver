@@ -7,7 +7,8 @@
 import { supabase } from './supabase.js';
 import { audioAlertService } from './audioAlertService.js';
 import { logger } from '../utils/logger.js';
-import { calculateDistance } from '../utils/geoUtils.js';
+import { calculateDistance, parseStoredCoordinates } from '../utils/geoUtils.js';
+import { getPhrase } from '../locales/navigationPhrases.js';
 
 class RealtimeNotificationService {
   constructor() {
@@ -160,13 +161,18 @@ class RealtimeNotificationService {
   async handleNewDigitalBin(payload) {
     const newBin = payload.new;
     
-    if (!newBin || newBin.collector_id) {
+    if (!newBin || newBin.collector_id || newBin.is_active === false) {
       return;
     }
 
     logger.debug('📥 New digital bin available:', newBin.id);
 
-    const distance = this.calculateDistanceToRequest(newBin);
+    // A bin row has no coordinates of its own; they live on its address
+    // (bin_locations). Without them every bin in the city would alert.
+    const binCoords = await this.getBinCoordinates(newBin.location_id);
+    const distance = this.collectorLocation && binCoords
+      ? calculateDistance(this.collectorLocation, binCoords)
+      : null;
     
     if (distance !== null && distance > this.searchRadius) {
       logger.debug(`Digital bin ${newBin.id} is ${distance.toFixed(1)}km away, outside radius`);
@@ -177,6 +183,26 @@ class RealtimeNotificationService {
   }
 
   /**
+   * Look up a digital bin's coordinates from its address row
+   * @returns {Promise<{lat:number,lng:number}|null>}
+   */
+  async getBinCoordinates(locationId) {
+    if (!locationId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('bin_locations')
+        .select('coordinates')
+        .eq('id', locationId)
+        .maybeSingle();
+      if (error || !data) return null;
+      return parseStoredCoordinates(data.coordinates);
+    } catch (error) {
+      logger.warn('Could not look up bin location for alert:', error);
+      return null;
+    }
+  }
+
+  /**
    * Calculate distance from collector to request
    * @returns {number|null} Distance in km, or null if location unknown
    */
@@ -184,28 +210,10 @@ class RealtimeNotificationService {
     if (!this.collectorLocation) {
       return null; // Can't filter by distance without location
     }
-
-    let requestCoords = request.coordinates;
-    
-    // Parse coordinates if needed
-    if (typeof requestCoords === 'string') {
-      try {
-        requestCoords = JSON.parse(requestCoords);
-      } catch (e) {
-        return null;
-      }
-    }
-    
-    if (Array.isArray(requestCoords)) {
-      requestCoords = { lat: requestCoords[0], lng: requestCoords[1] };
-    }
-
-    if (!requestCoords || !requestCoords.lat || !requestCoords.lng) {
-      return null;
-    }
-
-    return calculateDistance(this.collectorLocation, requestCoords);
+    const requestCoords = parseStoredCoordinates(request.coordinates);
+    return requestCoords ? calculateDistance(this.collectorLocation, requestCoords) : null;
   }
+
 
   /**
    * Trigger audio/vibration alert for new request
@@ -229,16 +237,12 @@ class RealtimeNotificationService {
       }
     }
 
-    // Determine alert message
-    const wasteType = request.waste_type || 'general';
-    const location = request.location || 'nearby';
-    const fee = request.fee ? `₵${request.fee}` : '';
-    const distanceText = distance !== null ? `${distance.toFixed(1)} kilometers away` : 'nearby';
-    const typeLabel = sourceType === 'digital_bin' ? 'digital bin' : 'pickup request';
+    // Spoken and shown in the collector's chosen language. No fee, distance
+    // or place name: collectors may not read or follow English numbers, and
+    // the job card shows the details.
+    const message = getPhrase('new_request_nearby', audioAlertService.currentLanguage || 'en');
 
-    const message = `New ${wasteType} ${typeLabel} ${distanceText}. ${fee ? `Fee: ${fee}.` : ''} ${location}.`;
-
-    logger.info('🔔 Triggering new request alert:', message);
+    logger.info('🔔 Triggering new request alert:', { id: request.id, sourceType, distance });
 
     // Play alert sound + vibration + TTS
     try {

@@ -806,6 +806,7 @@ const MapPage = () => {
               )
             `, { count: 'exact' })
             .in('status', ['pending'])
+            .eq('is_active', true) // households used to cancel by clearing is_active only
             .order('created_at', { ascending: false })
         ]);
         
@@ -1208,12 +1209,9 @@ const MapPage = () => {
     
     const setupRealtimeSubscription = async () => {
       try {
-        // Initialize notification service for audio alerts
+        // The new-job alert itself runs app-wide (components/NewJobAlerts);
+        // hand it the Map's more precise position while this page is open.
         if (user?.id) {
-          await realtimeNotificationService.initialize(user.id, {
-            searchRadius: filters?.searchRadius || 5
-          });
-          // Update location for proximity filtering
           if (position) {
             realtimeNotificationService.updateLocation({
               lat: position[0],
@@ -1458,8 +1456,6 @@ const MapPage = () => {
       if (subscription) {
         supabase.removeChannel(subscription);
       }
-      // Cleanup notification service
-      realtimeNotificationService.destroy();
     };
   }, [isOnlineStatus, user?.id]);
 

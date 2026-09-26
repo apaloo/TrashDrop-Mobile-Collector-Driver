@@ -15,8 +15,10 @@ import NavigationQRModal from '../components/NavigationQRModal';
 import DisposalModal from '../components/DisposalModal';
 import DigitalBinPaymentModal from '../components/DigitalBinPaymentModal';
 import Toast from '../components/Toast';
+import JobCancelledAlert from '../components/JobCancelledAlert';
+import { audioAlertService } from '../services/audioAlertService';
 
-import { PickupRequestStatus, WasteType, AssignmentStatus } from '../utils/types';
+import { PickupRequestStatus, WasteType, AssignmentStatus, JOB_TAKEN_MESSAGE } from '../utils/types';
 import { transformRequestsData } from '../utils/requestUtils';
 import { getCurrentLocation, getLocationWithRetry, isWithinRadius } from '../utils/geoUtils';
 import { registerConnectivityListeners } from '../utils/offlineUtils';
@@ -47,6 +49,9 @@ const NAV_MODAL_TIME_KEY = 'trashdrop_nav_modal_time';
 const NAV_MODAL_EXPIRY_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 // Helper: Save navigation modal state synchronously
+// Statuses meaning the household (or expiry) took the job away.
+const CANCELLED_JOB_STATUSES = ['cancelled', 'canceled', 'expired'];
+
 const saveNavModalState = (state) => {
   try {
     if (state && state.isOpen) {
@@ -358,6 +363,7 @@ const RequestPage = () => {
                         )
                       `)
                       .eq('status', 'pending')
+                      .eq('is_active', true) // households used to cancel by clearing is_active only
                       .order('created_at', { ascending: false })
                   ]).then(([pickupResult, binsResult]) => {
                     if (pickupResult.error) {
@@ -788,6 +794,11 @@ const RequestPage = () => {
           .from('digital_bins')
           .update(updateData)
           .eq('id', requestId)
+          // Only claim a bin nobody holds yet; two collectors racing on the
+          // same bin would otherwise both "succeed" and the last write wins.
+          .in('status', ['pending', 'available'])
+          .is('collector_id', null)
+          .eq('is_active', true)
           .select(); // CRITICAL: Must add .select() to get updated data back
           
         logger.info('📊 Digital bin update response:', { data, error, hasData: !!data, dataLength: data?.length });
@@ -808,7 +819,7 @@ const RequestPage = () => {
         if (!data || data.length === 0) {
           logger.error('❌ Digital bin not found or already accepted:', requestId);
           logger.error('❌ Possible causes: RLS policy blocking update, bin already accepted, or bin does not exist');
-          throw new Error('Digital bin not found or already accepted by another collector');
+          throw new Error(JOB_TAKEN_MESSAGE);
         }
         
         logger.info('✅ Digital bin accepted in database:', data[0]);
@@ -863,6 +874,9 @@ const RequestPage = () => {
         // Show the specific error message
         const errorMessage = result?.error || result?.message || 'Failed to accept request. Please try again.';
         showToast(errorMessage, 'error');
+        if (errorMessage === JOB_TAKEN_MESSAGE) {
+          fetchRequests();
+        }
         return;
       }
       
@@ -915,7 +929,7 @@ const RequestPage = () => {
       }
     } catch (err) {
       logger.error('Error accepting request:', err);
-      if (err?.message?.includes('already accepted') || err?.message?.includes('reservation expired')) {
+      if (err?.message === JOB_TAKEN_MESSAGE || err?.message?.includes('already accepted') || err?.message?.includes('reservation expired')) {
         showToast(err.message, 'error');
         // Refresh the list to show current state
         fetchRequests();
@@ -924,6 +938,62 @@ const RequestPage = () => {
       }
     }
   }, [requests, user?.id, showToast, setActiveTab, fetchRequests]);
+
+  // Tell the collector straight away when a household cancels a job they
+  // accepted, instead of letting them ride to it. Refs keep the channel from
+  // being torn down and rebuilt on every list refresh.
+  const [cancelledJobId, setCancelledJobId] = useState(null);
+  const fetchRequestsRef = useRef(fetchRequests);
+  const requestsRef = useRef(requests);
+  const navigationRequestIdRef = useRef(navigationRequestId);
+  const alertedCancellationsRef = useRef(new Set());
+  useEffect(() => { fetchRequestsRef.current = fetchRequests; }, [fetchRequests]);
+  useEffect(() => { requestsRef.current = requests; }, [requests]);
+  useEffect(() => { navigationRequestIdRef.current = navigationRequestId; }, [navigationRequestId]);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    const handleMyJobUpdate = (payload) => {
+      const row = payload?.new;
+      if (!row?.id || !CANCELLED_JOB_STATUSES.includes(row.status)) return;
+
+      const current = requestsRef.current;
+      const wasMine = [...(current.accepted || []), ...(current.picked_up || [])]
+        .some(req => req?.id === row.id);
+      if (!wasMine || alertedCancellationsRef.current.has(row.id)) return;
+      alertedCancellationsRef.current.add(row.id);
+
+      if (navigationRequestIdRef.current === row.id) {
+        saveNavModalState(null);
+        setShowNavigationModal(false);
+      }
+      setCancelledJobId(row.id);
+      audioAlertService.vibrate('alert');
+      audioAlertService.playAlertSound();
+      fetchRequestsRef.current?.();
+    };
+
+    const channel = supabase
+      .channel(`my_jobs_${user.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'pickup_requests',
+        filter: `collector_id=eq.${user.id}`
+      }, handleMyJobUpdate)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'digital_bins',
+        filter: `collector_id=eq.${user.id}`
+      }, handleMyJobUpdate)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
   
   // Filters and filtered requests are now declared at the top of the component
 
@@ -1161,28 +1231,35 @@ const RequestPage = () => {
         unregister = connectivityListeners?.unregister || null;
 
 
-        // Set up real-time subscription
+        const handleJobChange = async (payload) => {
+          if (!payload) {
+            logger.error('Received empty payload in real-time subscription');
+            return;
+          }
+
+          const { eventType, new: newRecord } = payload;
+          if (!eventType || !newRecord) {
+            logger.error('Invalid payload structure in real-time subscription', { eventType, newRecord });
+            return;
+          }
+
+          // Refresh requests when changes occur
+          await fetchRequests();
+        };
+
+        // Set up real-time subscription for both job types
         subscription = supabase
           .channel('pickup_requests_changes')
           .on('postgres_changes', {
             event: '*',
             schema: 'public',
             table: 'pickup_requests'
-          }, async (payload) => {
-            if (!payload) {
-              logger.error('Received empty payload in real-time subscription');
-              return;
-            }
-
-            const { eventType, new: newRecord } = payload;
-            if (!eventType || !newRecord) {
-              logger.error('Invalid payload structure in real-time subscription', { eventType, newRecord });
-              return;
-            }
-
-            // Refresh requests when changes occur
-            await fetchRequests();
-          })
+          }, handleJobChange)
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'digital_bins'
+          }, handleJobChange)
           .subscribe();
       } catch (error) {
         logger.error('Error setting up subscription:', error);
@@ -2964,6 +3041,11 @@ const GeofenceErrorModal = ({
       {/* Toast Notification */}
       {toast.show && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast({ ...toast, show: false })} />
+      )}
+      
+      {/* Household cancelled an accepted job */}
+      {cancelledJobId && (
+        <JobCancelledAlert onClose={() => setCancelledJobId(null)} />
       )}
       
       {/* Navigation Modal */}

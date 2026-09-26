@@ -19,6 +19,7 @@ import { lazyWithRetry, prefetchLazyRoutes } from './utils/lazyWithRetry';
 // Components
 import AppLayout from './components/AppLayout';
 import InstallPrompt from './components/InstallPrompt';
+import NewJobAlerts from './components/NewJobAlerts';
 import ImageManager from './utils/imageManager';
 import { logger } from './utils/logger';
 
@@ -141,6 +142,7 @@ function App() {
             <Router>
               <AppStateProvider>
                 <AudioInteractionHandler />
+                <NewJobAlerts />
                 <InstallPrompt />
                 <AppLayout>
                   <RouteCleanup />

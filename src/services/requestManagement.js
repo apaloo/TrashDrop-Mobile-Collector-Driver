@@ -2,6 +2,7 @@ import { supabase } from './supabase.js';
 import { calculatePaymentBreakdown, calculateBilledDistance, applyOnlyDownRule } from '../utils/paymentCalculations.js';
 import { calculateDistance, getCurrentLocation } from '../utils/geoUtils.js';
 import { logger } from '../utils/logger.js';
+import { JOB_TAKEN_MESSAGE } from '../utils/types.js';
 
 // Mock data for development mode - initialized with real data from Supabase
 let mockPickupRequests = [
@@ -436,6 +437,9 @@ export class RequestManagementService {
           assignment_expires_at: assignmentExpiry
         })
         .eq('id', requestId)
+        // Only claim a request nobody holds yet (see JOB_TAKEN_MESSAGE).
+        .in('status', ['pending', 'available'])
+        .is('collector_id', null)
         .select();
 
       logger.debug('📊 Update query result:', { data, error, requestId });
@@ -451,7 +455,7 @@ export class RequestManagementService {
           .single();
         
         logger.warn('🔍 Request status after failed update:', currentData);
-        throw new Error(`Request could not be accepted - current status: ${currentData?.status || 'not found'}, collector: ${currentData?.collector_id || 'none'}`);
+        throw new Error(JOB_TAKEN_MESSAGE);
       }
 
       // Update session's reserved requests (optional - may not exist)

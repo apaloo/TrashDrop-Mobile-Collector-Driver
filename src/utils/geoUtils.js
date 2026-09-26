@@ -351,6 +351,49 @@ export const parsePointString = (pointString) => {
 };
 
 /**
+ * Parses coordinates as Supabase returns them from a PostGIS column: EWKB hex
+ * (the default for geography/geometry), "POINT(lng lat)" text, GeoJSON, a JSON
+ * string, {lat,lng} / {latitude,longitude}, or [lat, lng].
+ * @param {*} raw - Stored coordinate value
+ * @returns {{lat:number,lng:number}|null}
+ */
+export const parseStoredCoordinates = (raw) => {
+  if (!raw) return null;
+  const valid = (lat, lng) =>
+    Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+
+  if (typeof raw === 'string') {
+    // Little-endian EWKB point: 01 01000000 [flags] [SRID] X Y
+    if (/^0101000020[0-9a-f]{8}[0-9a-f]{32}$/i.test(raw) || /^0101000000[0-9a-f]{32}$/i.test(raw)) {
+      const coordStart = raw.length - 32;
+      const readDouble = (hex) => {
+        const bytes = new Uint8Array(8);
+        for (let i = 0; i < 8; i++) bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+        return new DataView(bytes.buffer).getFloat64(0, true);
+      };
+      const lng = readDouble(raw.substr(coordStart, 16));
+      const lat = readDouble(raw.substr(coordStart + 16, 16));
+      return valid(lat, lng);
+    }
+    if (/^\s*(SRID=\d+;)?POINT/i.test(raw)) return parsePointString(raw.replace(/^SRID=\d+;/i, ''));
+    try {
+      return parseStoredCoordinates(JSON.parse(raw));
+    } catch {
+      return null;
+    }
+  }
+  if (Array.isArray(raw)) return valid(Number(raw[0]), Number(raw[1]));
+  if (raw.type === 'Point' && Array.isArray(raw.coordinates)) {
+    return valid(Number(raw.coordinates[1]), Number(raw.coordinates[0]));
+  }
+  if (raw.lat !== undefined && raw.lng !== undefined) return valid(Number(raw.lat), Number(raw.lng));
+  if (raw.latitude !== undefined && raw.longitude !== undefined) {
+    return valid(Number(raw.latitude), Number(raw.longitude));
+  }
+  return null;
+};
+
+/**
  * Formats coordinates into a readable location string
  * @param {number} lat - Latitude
  * @param {number} lng - Longitude

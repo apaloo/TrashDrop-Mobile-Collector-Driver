@@ -1188,15 +1188,17 @@ class EarningsService {
       const completedJobs = totalPickedUpJobs + totalDisposedJobs;
       const avgPerJob = completedJobs > 0 ? totalEarnings / completedJobs : 0;
 
-      // === CALCULATE REAL RATING ===
-      // Get ratings from completed requests that have ratings
-      const ratingsData = [...(allPickups || []), ...(authorityAssignments || [])]
-        .filter(item => item.rating !== null && item.rating !== undefined)
-        .map(item => item.rating);
-      
-      const rating = ratingsData.length > 0 
-        ? ratingsData.reduce((sum, r) => sum + r, 0) / ratingsData.length 
-        : 0;
+      // === RATING ===
+      // Households rate each finished job; a database trigger keeps the
+      // average and count on the collector's profile. select('*') so this still
+      // works before the rating_count column has been added.
+      const { data: ratingProfile } = await supabase
+        .from('collector_profiles')
+        .select('*')
+        .eq('user_id', this.collectorId)
+        .maybeSingle();
+      const ratingCount = Number(ratingProfile?.rating_count) || 0;
+      const rating = ratingCount > 0 ? Number(ratingProfile?.rating) || 0 : 0;
 
       // === CALCULATE REAL COMPLETION RATE ===
       // Include both pickup_requests AND digital_bins in completion rate
@@ -1339,6 +1341,7 @@ class EarningsService {
         disposedEarnings,
         completedJobs,
         rating,
+        ratingCount,
         completionRate,
         paymentMode: {
           cashCollected,
@@ -1379,6 +1382,7 @@ class EarningsService {
             avgPerJob,
             // Performance metrics (real data)
             rating,
+            ratingCount,
             completionRate,
             // Time-based earnings
             weeklyEarnings,

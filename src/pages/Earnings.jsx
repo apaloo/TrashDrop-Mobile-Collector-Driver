@@ -399,6 +399,7 @@ const EarningsPage = () => {
     disposedJobs: 0,
     avgPerJob: 0,
     rating: 0,
+    ratingCount: 0,
     completionRate: 0,
     collectorSharePercent: 0,
     platformSharePercent: 0,
@@ -511,6 +512,7 @@ const EarningsPage = () => {
         disposedJobs: statsData.disposedJobs || data.jobCounts?.disposed || 0,
         avgPerJob: statsData.avgPerJob || 0,
         rating: statsData.rating || 0,
+        ratingCount: statsData.ratingCount || 0,
         completionRate: statsData.completionRate || data.completionRate || 0,
         collectorSharePercent: statsData.collectorSharePercent || 0,
         platformSharePercent: statsData.platformSharePercent || 0,
@@ -1153,7 +1155,9 @@ const EarningsPage = () => {
               <h3 className="font-bold text-lg mb-2">Performance</h3>
               <div className="flex justify-between mb-2">
                 <span className="text-sm">Rating</span>
-                <span className="font-bold">{(stats.rating || 0).toFixed(1)}/5.0</span>
+                <span className="font-bold">
+                  ⭐ {stats.ratingCount > 0 ? (stats.rating || 0).toFixed(1) : '—'}
+                </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
                 <div className="bg-primary h-2.5 rounded-full" style={{ width: `${((stats.rating || 0) / 5) * 100}%` }}></div>
