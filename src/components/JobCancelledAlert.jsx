@@ -8,7 +8,8 @@ const JobCancelledAlert = ({ onClose }) => (
     role="alertdialog"
     aria-labelledby="job-cancelled-title"
   >
-    <div className="text-8xl" aria-hidden="true">❌</div>
+    {/* White disc so the red cross stands out on the red screen */}
+    <div className="flex h-40 w-40 items-center justify-center rounded-full bg-white text-8xl shadow-lg" aria-hidden="true">❌</div>
     <h1 id="job-cancelled-title" className="text-3xl font-bold">Job cancelled</h1>
     <button
       type="button"

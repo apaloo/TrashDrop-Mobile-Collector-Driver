@@ -48,10 +48,10 @@ const NAV_MODAL_STATE_KEY = 'trashdrop_nav_modal_state';
 const NAV_MODAL_TIME_KEY = 'trashdrop_nav_modal_time';
 const NAV_MODAL_EXPIRY_MS = 2 * 60 * 60 * 1000; // 2 hours
 
-// Helper: Save navigation modal state synchronously
 // Statuses meaning the household (or expiry) took the job away.
 const CANCELLED_JOB_STATUSES = ['cancelled', 'canceled', 'expired'];
 
+// Helper: Save navigation modal state synchronously
 const saveNavModalState = (state) => {
   try {
     if (state && state.isOpen) {
@@ -363,7 +363,7 @@ const RequestPage = () => {
                         )
                       `)
                       .eq('status', 'pending')
-                      .eq('is_active', true) // households used to cancel by clearing is_active only
+                      .not('is_active', 'is', false) // households used to cancel by clearing is_active only
                       .order('created_at', { ascending: false })
                   ]).then(([pickupResult, binsResult]) => {
                     if (pickupResult.error) {
@@ -798,7 +798,7 @@ const RequestPage = () => {
           // same bin would otherwise both "succeed" and the last write wins.
           .in('status', ['pending', 'available'])
           .is('collector_id', null)
-          .eq('is_active', true)
+          .not('is_active', 'is', false)
           .select(); // CRITICAL: Must add .select() to get updated data back
           
         logger.info('📊 Digital bin update response:', { data, error, hasData: !!data, dataLength: data?.length });
@@ -1247,9 +1247,11 @@ const RequestPage = () => {
           await fetchRequests();
         };
 
-        // Set up real-time subscription for both job types
+        // Set up real-time subscription for both job types. The name must be
+        // unique: supabase.channel() hands back an existing channel of the same
+        // name, and bindings added after it has joined never fire.
         subscription = supabase
-          .channel('pickup_requests_changes')
+          .channel('request_page_jobs')
           .on('postgres_changes', {
             event: '*',
             schema: 'public',

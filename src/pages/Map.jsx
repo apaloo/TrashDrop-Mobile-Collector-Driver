@@ -806,7 +806,7 @@ const MapPage = () => {
               )
             `, { count: 'exact' })
             .in('status', ['pending'])
-            .eq('is_active', true) // households used to cancel by clearing is_active only
+            .not('is_active', 'is', false) // households used to cancel by clearing is_active only
             .order('created_at', { ascending: false })
         ]);
         
