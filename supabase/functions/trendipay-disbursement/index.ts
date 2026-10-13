@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSecretKey } from '../_shared/supabaseKeys.ts';
 
 function jsonResponse(body: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -68,10 +69,10 @@ Deno.serve(async (req) => {
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
+  const serviceRoleKey = getSecretKey();
 
   if (!supabaseUrl || !serviceRoleKey) {
-    return jsonResponse({ success: false, error: 'Server not configured (missing SUPABASE_URL or SERVICE_ROLE_KEY)' }, 500);
+    return jsonResponse({ success: false, error: 'Server not configured (missing SUPABASE_URL or Supabase secret key)' }, 500);
   }
 
   const signatureHeader = req.headers.get('x-trendipay-signature') ?? '';

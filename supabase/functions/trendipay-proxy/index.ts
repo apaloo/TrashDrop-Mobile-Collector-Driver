@@ -22,6 +22,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getPublishableKey } from '../_shared/supabaseKeys.ts';
 
 const CORS_HEADERS: Record<string, string> = {
   'access-control-allow-origin': '*',
@@ -33,11 +34,11 @@ const CORS_HEADERS: Record<string, string> = {
 // Returns null when allowed, or an error response.
 async function requireActiveCollector(req: Request): Promise<Response | null> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const anonKey = getPublishableKey();
   const authHeader = req.headers.get('authorization') ?? '';
 
   if (!supabaseUrl || !anonKey) {
-    return json({ success: false, error: 'Server not configured (missing SUPABASE_URL or SUPABASE_ANON_KEY)' }, 500);
+    return json({ success: false, error: 'Server not configured (missing SUPABASE_URL or Supabase publishable key)' }, 500);
   }
   if (!/^Bearer\s+\S+/i.test(authHeader)) {
     return json({ success: false, error: 'Sign in to cash out' }, 401);

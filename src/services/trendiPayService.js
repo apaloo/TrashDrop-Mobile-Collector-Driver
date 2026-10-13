@@ -139,16 +139,19 @@ async function makeProxyRequest(action, payload = null, extra = {}, retryCount =
         ...extra,
       };
       // Send the signed-in user's token: the proxy only lets active
-      // collectors start disbursements.
+      // collectors start disbursements. The project key goes in apikey only.
       const { data: { session } } = await supabase.auth.getSession();
+      const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'apikey': TRENDIPAY_CONFIG.supabaseAnonKey,
+      };
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`;
+      }
       options = {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'apikey': TRENDIPAY_CONFIG.supabaseAnonKey,
-          'Authorization': `Bearer ${session?.access_token || TRENDIPAY_CONFIG.supabaseAnonKey}`,
-        },
+        headers,
         body: JSON.stringify(proxyBody),
       };
       console.log(`📡 [TrendiPay] Proxy URL: ${url}`);

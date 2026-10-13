@@ -17,6 +17,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSecretKey } from '../_shared/supabaseKeys.ts';
 
 const CORS_HEADERS: Record<string, string> = {
   'access-control-allow-origin': '*',
@@ -33,8 +34,8 @@ function json(body: unknown, status = 200) {
 
 function getSupabaseAdmin() {
   const url = Deno.env.get('SUPABASE_URL') ?? '';
-  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  if (!url || !key) throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  const key = getSecretKey();
+  if (!url || !key) throw new Error('Missing SUPABASE_URL or Supabase secret key');
   return createClient(url, key);
 }
 
