@@ -3,7 +3,7 @@
  * Proxies requests to OpenStreetMap Nominatim API to avoid CORS issues
  */
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   // Only allow GET requests
   if (event.httpMethod !== 'GET') {
     return {
