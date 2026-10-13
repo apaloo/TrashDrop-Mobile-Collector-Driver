@@ -11,17 +11,58 @@
  *   POST /  { action: "check-collection-status", transactionId, terminalId }
  *   POST /  { action: "check-disbursement-status", transactionId, terminalId }
  *
+ * initiate-disbursement sends money out, so it requires the caller's Supabase
+ * JWT (Authorization: Bearer <access_token>) and an active collector profile
+ * (public.is_active_collector). Other actions are unchanged.
+ *
  * Required Deno env secrets (set via `supabase secrets set`):
  *   TRENDIPAY_API_URL        – e.g. https://api.trendipay.com
  *   TRENDIPAY_API_KEY        – Bearer token
  *   TRENDIPAY_MERCHANT_ID    – X-Merchant-ID header value
  */
 
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
 const CORS_HEADERS: Record<string, string> = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'POST, OPTIONS',
   'access-control-allow-headers': 'content-type, authorization, apikey',
 };
+
+// Resolve the caller from their JWT and check they are an active collector.
+// Returns null when allowed, or an error response.
+async function requireActiveCollector(req: Request): Promise<Response | null> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const authHeader = req.headers.get('authorization') ?? '';
+
+  if (!supabaseUrl || !anonKey) {
+    return json({ success: false, error: 'Server not configured (missing SUPABASE_URL or SUPABASE_ANON_KEY)' }, 500);
+  }
+  if (!/^Bearer\s+\S+/i.test(authHeader)) {
+    return json({ success: false, error: 'Sign in to cash out' }, 401);
+  }
+
+  const supabase = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false },
+  });
+
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    return json({ success: false, error: 'Sign in to cash out' }, 401);
+  }
+
+  const { data: isActive, error: rpcError } = await supabase.rpc('is_active_collector', { p_user_id: user.id });
+  if (rpcError) {
+    console.error('[trendipay-proxy] is_active_collector failed:', rpcError.message);
+    return json({ success: false, error: 'Could not verify collector account' }, 500);
+  }
+  if (isActive !== true) {
+    return json({ success: false, error: 'Only registered, active collectors can cash out' }, 403);
+  }
+  return null;
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -76,11 +117,14 @@ Deno.serve(async (req) => {
       requestBody = payload;
       break;
 
-    case 'initiate-disbursement':
+    case 'initiate-disbursement': {
+      const denied = await requireActiveCollector(req);
+      if (denied) return denied;
       if (!tid) return json({ success: false, error: 'Missing terminalId' }, 400);
       endpoint = `/v1/terminals/${tid}/disbursements`;
       requestBody = payload;
       break;
+    }
 
     case 'check-transaction-status':
     case 'check-collection-status':

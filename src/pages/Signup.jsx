@@ -1,9 +1,10 @@
-import { useState, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatPhoneNumber, authService } from '../services/supabase';
 import { logger } from '../utils/logger';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '../config/languageConfig';
+import { PROFILE_STATE, toLocalPhone } from '../utils/collectorProfile';
 
 // ─── Plain-language error messages ───────────────────────────────────────────
 const friendlyError = (raw = '') => {
@@ -110,7 +111,8 @@ const VEHICLE_TYPES = [
 
 const SignupPage = () => {
   const navigate = useNavigate();
-  const { sendOtp, signup, loading: authLoading, error: authError, setIsCompletingSignup } = useAuth();
+  const { sendOtp, signup, setIsCompletingSignup, user, profile, profileState } = useAuth();
+  const [searchParams] = useSearchParams();
   
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -146,7 +148,8 @@ const SignupPage = () => {
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
-    phone: '',
+    // Pre-filled from the login page's "Sign up" button
+    phone: searchParams.get('phone') || '',
     region: '',
     preferred_language: DEFAULT_LANGUAGE,
     otp: '',
@@ -162,6 +165,28 @@ const SignupPage = () => {
     role: 'driver'
   });
   
+  // Signed in already (phone verified) but sign-up never finished: skip the
+  // phone and code steps and continue from the details, keeping what we have.
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (resumedRef.current || !user?.phone) return;
+    if (profileState !== PROFILE_STATE.MISSING && profileState !== PROFILE_STATE.INCOMPLETE) return;
+    resumedRef.current = true;
+    setIsCompletingSignup(true);
+    setFormData(prev => ({
+      ...prev,
+      phone: formatPhoneNumber(toLocalPhone(user.phone)),
+      first_name: profile?.first_name || prev.first_name,
+      last_name: profile?.last_name || prev.last_name,
+      region: profile?.region || prev.region,
+      license_plate: profile?.license_plate || profile?.vehicle_plate || prev.license_plate,
+      vehicle_color: profile?.vehicle_color || prev.vehicle_color,
+      company_id: profile?.company_id || prev.company_id,
+      company_name: profile?.company_name || prev.company_name
+    }));
+    setStep(3);
+  }, [user?.phone, profile, profileState, setIsCompletingSignup]);
+
   // File preview URLs
   const [previewUrls, setPreviewUrls] = useState({
     id_front: null,
@@ -237,7 +262,8 @@ const SignupPage = () => {
       const formattedPhone = formatPhoneNumber(formData.phone);
       logger.debug(`Sending OTP to ${formattedPhone}...`);
       
-      const { success, error } = await sendOtp(formattedPhone);
+      // Sign-up is the only flow allowed to create a new account
+      const { success, error } = await sendOtp(formattedPhone, { allowCreate: true });
       logger.debug('OTP send response:', { success, error });
       
       if (!success) {

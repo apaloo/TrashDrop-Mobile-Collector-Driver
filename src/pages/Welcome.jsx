@@ -1,14 +1,17 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const WelcomePage = () => {
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
 
   const handleNext = () => {
     if (step < 3) {
       setStep(step + 1);
     } else {
-      // Navigate to the map page when onboarding is complete
-      window.location.href = '/map';
+      // Navigate to the map page when onboarding is complete. Client-side
+      // navigation (not a full reload) lets sign-up finish saving the profile.
+      navigate('/map');
     }
   };
 
@@ -81,7 +84,7 @@ const WelcomePage = () => {
       {step < 3 && (
         <div className="my-4">
           <button 
-            onClick={() => window.location.href = '/map'} 
+            onClick={() => navigate('/map')} 
             className="text-primary text-sm"
           >
             Skip Introduction

@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger';
+import { supabase } from './supabase';
 
 /**
  * TrendiPay Gateway Service
@@ -137,13 +138,16 @@ async function makeProxyRequest(action, payload = null, extra = {}, retryCount =
         terminalId: TRENDIPAY_CONFIG.terminalId,
         ...extra,
       };
+      // Send the signed-in user's token: the proxy only lets active
+      // collectors start disbursements.
+      const { data: { session } } = await supabase.auth.getSession();
       options = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'apikey': TRENDIPAY_CONFIG.supabaseAnonKey,
-          'Authorization': `Bearer ${TRENDIPAY_CONFIG.supabaseAnonKey}`,
+          'Authorization': `Bearer ${session?.access_token || TRENDIPAY_CONFIG.supabaseAnonKey}`,
         },
         body: JSON.stringify(proxyBody),
       };

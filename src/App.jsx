@@ -18,9 +18,11 @@ import { lazyWithRetry, prefetchLazyRoutes } from './utils/lazyWithRetry';
 
 // Components
 import AppLayout from './components/AppLayout';
+import RequireCollectorProfile from './components/RequireCollectorProfile';
 import InstallPrompt from './components/InstallPrompt';
 import ImageManager from './utils/imageManager';
 import { logger } from './utils/logger';
+import { PROFILE_STATE } from './utils/collectorProfile';
 
 // Reusable loading fallback for Suspense boundaries
 const PageLoader = ({ message = 'Loading...' }) => (
@@ -80,25 +82,22 @@ const PagePersistence = () => {
   return null;
 };
 
-// RouteGuard components to protect routes
-const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, hasLoggedOut } = useAuth();
-  
-  // IMMEDIATE: No loading check - redirect immediately if not authenticated
-  if (!isAuthenticated || hasLoggedOut) {
-    return <Navigate to="/login" replace />;
-  }
-  
-  return children;
-};
+// Every collector route needs a session AND a complete collector profile
+const ProtectedRoute = RequireCollectorProfile;
 
 const PublicRoute = ({ children }) => {
-  const { isAuthenticated, hasLoggedOut, isCompletingSignup } = useAuth();
+  const { isAuthenticated, hasLoggedOut, isCompletingSignup, profileState } = useAuth();
   
-  // IMMEDIATE: No loading check - redirect immediately if authenticated
-  // BUT don't redirect if user is in the middle of completing signup
+  // Send signed-in collectors to the map, but only once their profile is
+  // known to be ready. Users with a session and no (or an unfinished) profile
+  // stay here so they can finish sign-up instead of looping back to /map.
   if (isAuthenticated && !hasLoggedOut && !isCompletingSignup) {
-    return <Navigate to="/map" replace />;
+    if (profileState === PROFILE_STATE.READY) {
+      return <Navigate to="/map" replace />;
+    }
+    if (profileState === PROFILE_STATE.LOADING) {
+      return <PageLoader message="Checking your account..." />;
+    }
   }
   
   return children;
