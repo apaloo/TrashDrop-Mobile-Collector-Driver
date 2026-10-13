@@ -1,6 +1,12 @@
-import { createContext, useState, useEffect, useContext } from 'react';
+import { createContext, useState, useEffect, useContext, useRef, useCallback } from 'react';
 import { supabase, authService } from '../services/supabase';
+import { statusService } from '../services/statusService';
 import { logger } from '../utils/logger';
+import { PROFILE_STATE, getProfileState, NO_ACCOUNT_MESSAGE } from '../utils/collectorProfile';
+
+// Supabase's error when shouldCreateUser is false and the number is unknown
+const isSignupDisallowedError = (message = '') =>
+  /signups? not allowed|user not found/i.test(message);
 
 // Create the context
 export const AuthContext = createContext();
@@ -33,6 +39,18 @@ export const AuthProvider = ({ children }) => {
   // IMMEDIATE: Start with true to allow immediate rendering
   // Auth check happens in background without blocking UI
   const [hasInitiallyChecked, setHasInitiallyChecked] = useState(true);
+
+  // Collector profile, loaded once per signed-in user and shared by every page.
+  // profileUserId records which user the profile belongs to, so a new user is
+  // never shown the previous user's state while their profile loads.
+  const [profile, setProfile] = useState(null);
+  const [profileLoadState, setProfileLoadState] = useState(PROFILE_STATE.IDLE);
+  const [profileUserId, setProfileUserId] = useState(null);
+  const profileRequestRef = useRef(0);
+
+  // While login() is checking for a collector profile, ignore the SIGNED_IN
+  // event so an unregistered user never appears signed in, even briefly.
+  const verifyingLoginRef = useRef(false);
 
   useEffect(() => {
     // Helper function to check if 1-month session has expired
@@ -166,6 +184,11 @@ export const AuthProvider = ({ children }) => {
             return; // Don't update state, keep user logged out
           }
           
+          if (verifyingLoginRef.current && session?.user) {
+            logger.debug('⏳ Ignoring auth state change - login is checking the collector profile');
+            return;
+          }
+
           const user = session?.user || null;
           
           if (user) {
@@ -205,13 +228,67 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
   
-  // Send OTP code
-  const sendOtp = async (phoneNumber) => {
+  // Load the collector profile for a user. Returns the fetch result so callers
+  // (login) can act on it; also updates the shared context state.
+  const loadProfile = useCallback(async (userId) => {
+    const requestId = ++profileRequestRef.current;
+    setProfileLoadState(PROFILE_STATE.LOADING);
+    const result = await authService.getUserProfile(userId);
+    if (requestId !== profileRequestRef.current) return result; // superseded
+
+    if (result.success) {
+      setProfile(result.profile);
+      setProfileLoadState(getProfileState(result.profile));
+    } else if (result.notFound) {
+      setProfile(null);
+      setProfileLoadState(PROFILE_STATE.MISSING);
+    } else {
+      setProfile(null);
+      setProfileLoadState(PROFILE_STATE.ERROR);
+    }
+    setProfileUserId(userId);
+    return result;
+  }, []);
+
+  const refreshProfile = useCallback(
+    () => (user?.id ? loadProfile(user.id) : Promise.resolve(null)),
+    [user?.id, loadProfile]
+  );
+
+  // Load the profile whenever the signed-in user changes
+  useEffect(() => {
+    if (!user?.id) {
+      profileRequestRef.current++;
+      setProfile(null);
+      setProfileUserId(null);
+      setProfileLoadState(PROFILE_STATE.IDLE);
+      return;
+    }
+    if (profileUserId !== user.id) {
+      loadProfile(user.id);
+    }
+  }, [user?.id, profileUserId, loadProfile]);
+
+  // Until the current user's profile has loaded, report LOADING
+  const profileState = user?.id && profileUserId !== user.id
+    ? PROFILE_STATE.LOADING
+    : profileLoadState;
+
+  // Only a complete, active collector may go On-Duty
+  useEffect(() => {
+    statusService.setOnlineEligibility(profileState === PROFILE_STATE.READY);
+  }, [profileState]);
+
+  // Send OTP code. Accounts are only created when allowCreate is true (sign-up).
+  const sendOtp = async (phoneNumber, { allowCreate = false } = {}) => {
     try {
       setLoading(true);
-      const result = await authService.sendOtp(phoneNumber);
+      const result = await authService.sendOtp(phoneNumber, { allowCreate });
       
       if (!result.success) {
+        if (!allowCreate && isSignupDisallowedError(result.error)) {
+          return { success: false, noAccount: true, error: NO_ACCOUNT_MESSAGE };
+        }
         throw new Error(result.error || 'Failed to send OTP');
       }
       
@@ -223,16 +300,39 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     }
   };
+
+  // Login step 1: only text a code to numbers that belong to a collector
+  const sendLoginOtp = async (phoneNumber) => {
+    const check = await authService.isRegisteredCollectorPhone(phoneNumber);
+    if (check.success && !check.registered) {
+      return { success: false, noAccount: true, error: NO_ACCOUNT_MESSAGE };
+    }
+    // If the check itself failed (e.g. offline), fall through: sendOtp still
+    // refuses to create an account, and login() checks the profile afterwards.
+    return sendOtp(phoneNumber, { allowCreate: false });
+  };
   
   // Verify OTP and sign in
   const login = async (phoneNumber, otp) => {
     try {
       setLoading(true);
-      const { success, session, user, error } = await authService.verifyOtp(phoneNumber, otp);
+      verifyingLoginRef.current = true;
+      const { success, user, error } = await authService.verifyOtp(phoneNumber, otp);
       
       if (!success) {
         throw new Error(error || 'Failed to verify OTP');
       }
+
+      // A code alone is not enough: the number must belong to a collector
+      const profileResult = await loadProfile(user.id);
+      if (profileResult.notFound) {
+        logger.warn('🚫 Signed-in user has no collector profile - signing out');
+        await authService.signOut();
+        return { success: false, noAccount: true, error: NO_ACCOUNT_MESSAGE };
+      }
+
+      // New sessions always start Off-Duty
+      statusService.forceOffline();
       
       // Store login time for 24-hour session tracking
       const loginTime = Date.now();
@@ -254,6 +354,7 @@ export const AuthProvider = ({ children }) => {
       setError(err.message);
       return { success: false, error: err.message };
     } finally {
+      verifyingLoginRef.current = false;
       setLoading(false);
     }
   };
@@ -273,6 +374,11 @@ export const AuthProvider = ({ children }) => {
       }
       
       const user = session.user;
+
+      // Route guard shows "Checking your account..." until the profile is saved
+      profileRequestRef.current++;
+      setProfileUserId(user.id);
+      setProfileLoadState(PROFILE_STATE.LOADING);
       
       // Create user profile with additional data
       // EMAIL STRATEGY: Auto-generate from phone number (no email collection in signup form)
@@ -298,20 +404,26 @@ export const AuthProvider = ({ children }) => {
         role: userData.role?.toLowerCase() || 'driver' // Normalize to lowercase
       };
       
-      let { success: profileSuccess, error: profileError } = 
+      let { success: profileSuccess, profile: createdProfile, error: profileError } = 
         await authService.createUserProfile(user.id, profileData);
       
       // If preferred_language column doesn't exist yet, retry without it
       if (!profileSuccess && profileError?.includes('preferred_language')) {
         logger.warn('⚠️ preferred_language column not found, creating profile without it');
         const { preferred_language, ...dataWithoutLang } = profileData;
-        ({ success: profileSuccess, error: profileError } = 
+        ({ success: profileSuccess, profile: createdProfile, error: profileError } = 
           await authService.createUserProfile(user.id, dataWithoutLang));
       }
       
       if (!profileSuccess) {
         throw new Error(profileError || 'Failed to create user profile');
       }
+
+      // Share the new profile so the route guard lets the collector in
+      profileRequestRef.current++;
+      setProfile(createdProfile);
+      setProfileLoadState(getProfileState(createdProfile));
+      setProfileUserId(user.id);
       
       // Store login time for 24-hour session tracking
       const loginTime = Date.now();
@@ -332,6 +444,9 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       logger.error('❌ Signup error:', err.message);
       setError(err.message);
+      // Re-check what the database actually holds for this user
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) loadProfile(session.user.id);
       return { success: false, error: err.message };
     } finally {
       setLoading(false);
@@ -351,6 +466,9 @@ export const AuthProvider = ({ children }) => {
       
       // Clear login time
       localStorage.removeItem('last_login_time');
+
+      // Never carry On-Duty over to whoever signs in next
+      statusService.forceOffline();
       
       // Clear signup flag if user was in the middle of signup
       localStorage.removeItem('is_completing_signup');
@@ -386,12 +504,16 @@ export const AuthProvider = ({ children }) => {
     loading,
     error,
     sendOtp,
+    sendLoginOtp,
     login,
     signup,
     logout,
     hasLoggedOut,
     isAuthenticated: !!user,
     hasInitiallyChecked, // Expose initial check status
+    profile,
+    profileState,
+    refreshProfile,
     isCompletingSignup,
     setIsCompletingSignup: (value) => {
       setIsCompletingSignup(value);

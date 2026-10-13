@@ -53,6 +53,9 @@ class CollectorStatusService {
       requestsCompleted: 0
     };
     this.profileErrorLogged = false; // Prevent console spam for missing profile
+    // Only collectors with a complete, active profile may go On-Duty.
+    // AuthContext sets this once the profile has loaded.
+    this.onlineEligible = false;
     
     // Initialize from localStorage
     this.initializeStatus();
@@ -67,7 +70,7 @@ class CollectorStatusService {
       const savedStatus = localStorage.getItem('collector_status');
       const savedSessionStart = localStorage.getItem('collector_session_start');
       
-      if (savedStatus && Object.values(COLLECTOR_STATUS).includes(savedStatus)) {
+      if (savedStatus && Object.values(COLLECTOR_STATUS).includes(savedStatus) && this.onlineEligible) {
         this.currentStatus = savedStatus;
       }
       
@@ -93,6 +96,10 @@ class CollectorStatusService {
     
     if (!Object.values(COLLECTOR_STATUS).includes(newStatus)) {
       throw new Error(`Invalid status: ${newStatus}`);
+    }
+
+    if (newStatus !== COLLECTOR_STATUS.OFFLINE && !this.onlineEligible) {
+      throw new Error('Finish your sign-up before going On-Duty.');
     }
 
     const previousStatus = this.currentStatus;
@@ -147,6 +154,32 @@ class CollectorStatusService {
       sessionStart: this.sessionStart,
       sessionStats: this.sessionStats
     };
+  }
+
+  /**
+   * Allow or forbid going On-Duty. Forbidding also drops a collector who is
+   * currently On-Duty back to Off-Duty.
+   */
+  setOnlineEligibility(eligible) {
+    this.onlineEligible = !!eligible;
+    if (!this.onlineEligible && this.currentStatus !== COLLECTOR_STATUS.OFFLINE) {
+      this.forceOffline();
+    }
+  }
+
+  /**
+   * Reset to Off-Duty without touching the backend. Used on login and logout so
+   * one collector's On-Duty state never carries over to the next session.
+   */
+  forceOffline() {
+    const previousStatus = this.currentStatus;
+    this.currentStatus = COLLECTOR_STATUS.OFFLINE;
+    this.sessionStart = null;
+    localStorage.removeItem('collector_status');
+    localStorage.removeItem('collector_session_start');
+    if (previousStatus !== COLLECTOR_STATUS.OFFLINE) {
+      this.notifyStatusListeners(COLLECTOR_STATUS.OFFLINE, previousStatus);
+    }
   }
 
   /**
@@ -253,7 +286,7 @@ class CollectorStatusService {
         return;
       }
 
-      if (data && data.status) {
+      if (data && data.status && (this.onlineEligible || data.status === COLLECTOR_STATUS.OFFLINE)) {
         this.currentStatus = data.status;
         localStorage.setItem('collector_status', data.status);
       }

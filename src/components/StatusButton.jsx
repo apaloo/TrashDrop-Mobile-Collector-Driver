@@ -48,7 +48,7 @@ const StatusButton = ({ className = '', showSessionInfo = false }) => {
     } catch (error) {
       logger.error('❌ Error toggling status:', error);
       setToast({
-        message: 'Failed to change status. Please try again.',
+        message: error.message || 'Failed to change status. Please try again.',
         type: 'error',
         show: true
       });
@@ -67,7 +67,7 @@ const StatusButton = ({ className = '', showSessionInfo = false }) => {
     } catch (error) {
       logger.error('❌ Error changing status:', error);
       setToast({
-        message: 'Failed to change status. Please try again.',
+        message: error.message || 'Failed to change status. Please try again.',
         type: 'error',
         show: true
       });

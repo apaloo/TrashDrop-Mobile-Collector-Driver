@@ -3,12 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 // Use public logo.png (preloaded in index.html) for instant rendering during navigation
 const logo = '/logo.png';
 import { useAuth } from '../context/AuthContext';
-import { authService } from '../services/supabase';
 import { logger } from '../utils/logger';
 import { LogoutConfirmationModal } from './LogoutConfirmationModal';
-
-// Cache key for user profile in localStorage
-const PROFILE_CACHE_KEY = 'trashdrop_user_profile';
 
 /**
  * Top navigation bar component with logo and profile dropdown
@@ -38,23 +34,8 @@ export const TopNavBar = memo(({ user }) => {
     };
   }, [isDropdownOpen]);
   
-  // Initialize from localStorage cache for instant display on refresh
-  const [userProfile, setUserProfile] = useState(() => {
-    try {
-      const cached = localStorage.getItem(PROFILE_CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        // Only use cache if it matches current user
-        if (parsed.user_id === user?.id) {
-          return { first_name: parsed.first_name, last_name: parsed.last_name };
-        }
-      }
-    } catch (e) {
-      // Ignore parse errors
-    }
-    return null;
-  });
-  const { logout } = useAuth();
+  // Collector profile is loaded once by AuthContext (the route guard waits for it)
+  const { logout, profile: userProfile } = useAuth();
   const navigate = useNavigate();
 
   // Handle logout confirmation
@@ -85,62 +66,6 @@ export const TopNavBar = memo(({ user }) => {
   const handleLogoutCancel = () => {
     setIsLogoutModalOpen(false);
   };
-
-  // Fetch user profile to get first_name and last_name
-  const hasAttemptedFetch = useRef(false);
-  
-  // Load from cache when user becomes available (handles timing issues on refresh)
-  useEffect(() => {
-    if (user?.id && !userProfile) {
-      try {
-        const cached = localStorage.getItem(PROFILE_CACHE_KEY);
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (parsed.user_id === user.id && parsed.first_name) {
-            setUserProfile({ first_name: parsed.first_name, last_name: parsed.last_name });
-          }
-        }
-      } catch (e) {
-        // Ignore parse errors
-      }
-    }
-  }, [user?.id, userProfile]);
-  
-  useEffect(() => {
-    const fetchProfile = async () => {
-      if (!user?.id || hasAttemptedFetch.current) return;
-      hasAttemptedFetch.current = true;
-      
-      try {
-        const { success, profile } = await authService.getUserProfile(user.id);
-        if (success && profile) {
-          const profileData = {
-            first_name: profile.first_name,
-            last_name: profile.last_name
-          };
-          setUserProfile(profileData);
-          // Cache in localStorage for next refresh
-          try {
-            localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({
-              user_id: user.id,
-              first_name: profile.first_name,
-              last_name: profile.last_name
-            }));
-          } catch (e) {
-            // Ignore storage errors
-          }
-        }
-        // If no profile found (success=false), silently use defaults - user may not have completed signup
-      } catch (err) {
-        // Only log unexpected errors, not missing profile (PGRST116)
-        if (!err?.code?.includes('PGRST116')) {
-          logger.warn('Failed to fetch user profile for NavBar:', err);
-        }
-      }
-    };
-    
-    fetchProfile();
-  }, [user?.id]);
 
   return (
     <>

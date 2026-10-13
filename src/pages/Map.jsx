@@ -403,6 +403,10 @@ const MapPage = () => {
   const [error, setError] = useState(null);
   const [showCachedFlash, setShowCachedFlash] = useState(false); // Brief flash for "Using Cached"
   const [hasGoodAccuracy, setHasGoodAccuracyState] = useState(false); // Track if we have <=50m accuracy
+  // Set when no accurate fix arrives in time (e.g. desktop Wi-Fi location that
+  // never gets under 50m). Replaces the endless "Getting GPS..." with a retry.
+  const [gpsUnavailable, setGpsUnavailable] = useState(false);
+  const retryLocationRef = useRef(null);
   // Synchronous refs mirror the state above so the watchPosition callback
   // always sees the latest value (state is stale between renders).
   const isUsingCachedLocationRef = useRef(false);
@@ -479,6 +483,19 @@ const MapPage = () => {
       maximumAge: 0
     };
 
+    // Give up waiting for an accurate fix after this long and offer a retry
+    const GPS_GIVE_UP_MS = 30000;
+    let giveUpTimer = null;
+    const startGiveUpTimer = () => {
+      clearTimeout(giveUpTimer);
+      giveUpTimer = setTimeout(() => {
+        if (!hasGoodAccuracyRef.current) {
+          logger.warn('📍 No accurate location after 30s - showing retry');
+          setGpsUnavailable(true);
+        }
+      }, GPS_GIVE_UP_MS);
+    };
+
     const onSuccess = (pos) => {
       const { latitude, longitude, accuracy } = pos.coords;
       const newPos = [latitude, longitude];
@@ -492,6 +509,11 @@ const MapPage = () => {
       const _waitingGPS = isWaitingForGPSRef.current;
       const _goodAccuracy = hasGoodAccuracyRef.current;
       
+      if (isAccurateEnough) {
+        clearTimeout(giveUpTimer);
+        setGpsUnavailable(false);
+      }
+
       // Track when we achieve good accuracy (≤50m) to hide "Getting GPS..." indicator
       if (isAccurateEnough && !_goodAccuracy) {
         setHasGoodAccuracy(true);
@@ -562,8 +584,11 @@ const MapPage = () => {
       logger.warn('❌ Location error:', err);
       setLocationAttempted(true);
       
-      // Flash "Using Cached" briefly, then return to "Getting GPS..." to show continuous effort
-      if (isUsingCachedLocation || isWaitingForGPS || isUsingFallbackLocation) {
+      // Flash "Using Cached" briefly, then return to "Getting GPS..." to show continuous effort.
+      // Read refs, not state: this callback is created once and state would be stale.
+      // A denied permission is final, so leave that error showing.
+      const stillSearching = isUsingCachedLocationRef.current || isWaitingForGPSRef.current || isUsingFallbackLocationRef.current;
+      if (stillSearching && err.code !== err.PERMISSION_DENIED) {
         setShowCachedFlash(true);
         logger.debug('⚠️ GPS acquisition failed, continuing to try...');
         
@@ -577,6 +602,7 @@ const MapPage = () => {
       switch (err.code) {
         case err.PERMISSION_DENIED:
           // For permission denied, show persistent error
+          clearTimeout(giveUpTimer);
           setError('Location access denied. Please enable location permissions.');
           showToast('Enable location access for accurate results', 'warning', 5000);
           break;
@@ -610,13 +636,23 @@ const MapPage = () => {
     };
 
     // Get initial position
+    startGiveUpTimer();
     navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
     
     // Watch for real-time updates
     const watchId = navigator.geolocation.watchPosition(onSuccess, onError, options);
     setWatchId(watchId);
 
+    retryLocationRef.current = () => {
+      setGpsUnavailable(false);
+      setError(null);
+      startGiveUpTimer();
+      navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
+    };
+
     return () => {
+      clearTimeout(giveUpTimer);
+      retryLocationRef.current = null;
       if (watchId) navigator.geolocation.clearWatch(watchId);
     };
   }, []);
@@ -1670,8 +1706,19 @@ const MapPage = () => {
               className="transition-all duration-300 hover:scale-105"
             />
             
+            {/* GPS gave up: offer a retry instead of spinning forever */}
+            {gpsUnavailable && !hasGoodAccuracy && !(error && error.includes('denied')) && (
+              <button
+                type="button"
+                onClick={() => retryLocationRef.current?.()}
+                className="text-white text-xs px-2 py-1 rounded-full bg-gray-600 hover:bg-gray-700"
+              >
+                Location unavailable — tap to retry
+              </button>
+            )}
+
             {/* GPS Status Indicator - Hide when accuracy ≤50m achieved */}
-            {(isUsingCachedLocation || isWaitingForGPS || error || showCachedFlash) && !hasGoodAccuracy && (
+            {(!gpsUnavailable || (error && error.includes('denied'))) && (isUsingCachedLocation || isWaitingForGPS || error || showCachedFlash) && !hasGoodAccuracy && (
               <div className={`text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 transition-all duration-300 ${
                 (showCachedFlash || (error && error.includes('denied'))) ? 'bg-red-500' : 'bg-orange-500 animate-pulse'
               }`}>

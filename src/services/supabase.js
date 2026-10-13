@@ -44,8 +44,26 @@ export const formatPhoneNumber = (phoneNumber) => {
 
 // Phone authentication helper methods
 export const authService = {
-  // Send OTP to phone number
-  sendOtp: async (phoneNumber) => {
+  // Is this phone number attached to a collector profile? Lets the login page
+  // say "No account found" without texting a code or creating an auth user.
+  isRegisteredCollectorPhone: async (phoneNumber) => {
+    try {
+      const formattedPhone = formatPhoneNumber(phoneNumber);
+      const { data, error } = await supabase.rpc('collector_phone_registered', {
+        p_phone: formattedPhone
+      });
+      if (error) throw error;
+      return { success: true, registered: data === true };
+    } catch (error) {
+      logger.error('❌ Error checking collector phone:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Send OTP to phone number.
+  // Only the sign-up flow may pass allowCreate: true; login must never create
+  // a new auth user for an unknown number.
+  sendOtp: async (phoneNumber, { allowCreate = false } = {}) => {
     try {
       const formattedPhone = formatPhoneNumber(phoneNumber);
       
@@ -54,6 +72,7 @@ export const authService = {
       const { data, error } = await supabase.auth.signInWithOtp({
         phone: formattedPhone,
         options: {
+          shouldCreateUser: allowCreate,
           // Channel can be 'sms' or 'whatsapp'
           channel: 'sms',
           // Data can include custom variables for SMS template
@@ -174,14 +193,12 @@ export const authService = {
         .from('collector_profiles')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
       
-      if (error) {
-        // PGRST116 = no rows returned - this is expected for users who haven't completed signup
-        if (error.code === 'PGRST116') {
-          return { success: false, profile: null, error: 'Profile not found' };
-        }
-        throw error;
+      if (error) throw error;
+      // No row is expected for users who haven't completed signup
+      if (!data) {
+        return { success: false, profile: null, notFound: true, error: 'Profile not found' };
       }
       return { success: true, profile: data };
     } catch (error) {

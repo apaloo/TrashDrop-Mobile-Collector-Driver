@@ -6,78 +6,59 @@ import { useLanguage } from '../context/LanguageContext';
 import { authService } from '../services/supabase';
 import { logger } from '../utils/logger';
 import { SUPPORTED_LANGUAGES } from '../config/languageConfig';
+import { PROFILE_STATE, signupPathFor } from '../utils/collectorProfile';
 
 const ProfilePage = () => {
-  const { user: authUser } = useAuth();
+  const { user: authUser, profile, profileState, refreshProfile } = useAuth();
   const { language, setLanguage } = useLanguage();
   const [activeTab, setActiveTab] = useState('personal');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   
-  // Real user profile data from Supabase
+  // Real user profile data, loaded once by AuthContext
   const [user, setUser] = useState(null);
   
-  // Fetch user profile from Supabase
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      if (!authUser?.id) {
-        logger.warn('⚠️ No authenticated user, cannot load profile');
-        setLoading(false);
-        return;
-      }
-      
-      try {
-        setLoading(true);
-        logger.debug('📥 Fetching profile for user:', authUser.id);
-        
-        const { success, profile, error: profileError } = await authService.getUserProfile(authUser.id);
-        
-        if (!success || !profile) {
-          throw new Error(profileError || 'Failed to load profile');
-        }
-        
-        // Transform profile data to match UI expectations
-        const userData = {
-          id: profile.user_id,
-          first_name: profile.first_name,
-          last_name: profile.last_name,
-          phone: profile.phone,
-          region: profile.region,
-          id_type: profile.id_type,
-          joined_date: profile.created_at || new Date().toISOString(),
-          last_active: new Date().toISOString(),
-          preferred_language: profile.preferred_language || language,
-          vehicle: {
-            type: profile.vehicle_type,
-            license_plate: profile.license_plate,
-            color: profile.vehicle_color,
-            photo_url: profile.vehicle_photo_url
-          },
-          company: {
-            name: profile.company_name,
-            id: profile.company_id,
-            role: profile.role
-          }
-        };
-        
-        setUser(userData);
-        
-        // Sync stored language preference into LanguageContext
-        if (profile.preferred_language && profile.preferred_language !== language) {
-          setLanguage(profile.preferred_language);
-        }
-        
-        logger.debug('✅ Profile loaded successfully:', userData);
-      } catch (err) {
-        logger.error('❌ Error loading profile:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
+    if (profileState === PROFILE_STATE.LOADING) {
+      setLoading(true);
+      return;
+    }
+    setLoading(false);
+    if (!profile) {
+      setUser(null);
+      return;
+    }
+    
+    // Transform profile data to match UI expectations
+    const userData = {
+      id: profile.user_id,
+      first_name: profile.first_name,
+      last_name: profile.last_name,
+      phone: profile.phone,
+      region: profile.region,
+      id_type: profile.id_type,
+      joined_date: profile.created_at || new Date().toISOString(),
+      last_active: new Date().toISOString(),
+      preferred_language: profile.preferred_language || language,
+      vehicle: {
+        type: profile.vehicle_type,
+        license_plate: profile.license_plate,
+        color: profile.vehicle_color,
+        photo_url: profile.vehicle_photo_url
+      },
+      company: {
+        name: profile.company_name,
+        id: profile.company_id,
+        role: profile.role
       }
     };
     
-    fetchUserProfile();
-  }, [authUser]);
+    setUser(userData);
+    
+    // Sync stored language preference into LanguageContext
+    if (profile.preferred_language && profile.preferred_language !== language) {
+      setLanguage(profile.preferred_language);
+    }
+  }, [profile, profileState]);
 
   // Form handling
   const [isEditing, setIsEditing] = useState(false);
@@ -141,6 +122,7 @@ const ProfilePage = () => {
         }
         
         logger.info('✅ Profile updated in Supabase');
+        refreshProfile();
       } catch (err) {
         logger.error('❌ Failed to update profile:', err);
       }
@@ -163,15 +145,18 @@ const ProfilePage = () => {
     );
   }
 
-  // Show error state
-  if (error || !user) {
+  // No profile. The route guard should already have sent the user to sign-up,
+  // so this is only a fallback.
+  if (!user) {
     return (
       <div className="flex flex-col min-h-screen bg-gray-50">
         <TopNavBar user={null} />
         <div className="flex-grow mt-14 mb-16 px-4 py-3 flex items-center justify-center">
           <div className="text-center">
-            <p className="text-red-500 mb-4">{error || 'Profile not found'}</p>
-            <p className="text-gray-600">Please try logging in again.</p>
+            <p className="text-lg font-bold text-gray-900 mb-4">Your sign-up isn't finished.</p>
+            <a href={signupPathFor(authUser?.phone)} className="inline-block px-6 py-3 bg-primary text-white font-bold rounded-xl">
+              Finish sign-up
+            </a>
           </div>
         </div>
         <BottomNavBar />

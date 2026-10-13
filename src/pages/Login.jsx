@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatPhoneNumber } from '../services/supabase';
 import { logger } from '../utils/logger';
+import { NO_ACCOUNT_MESSAGE, signupPathFor } from '../utils/collectorProfile';
 import logo from '../assets/logo.svg';
 
 // ─── Plain-language error messages ───────────────────────────────────────────
@@ -21,7 +22,7 @@ const friendlyError = (raw = '') => {
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { sendOtp, login, loading: authLoading } = useAuth();
+  const { sendLoginOtp, login } = useAuth();
 
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otpSent, setOtpSent] = useState(false);
@@ -29,6 +30,8 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [phoneError, setPhoneError] = useState(null);
   const [otpError, setOtpError] = useState(null);
+  // Set when the number has no collector account: shows a Sign up button
+  const [noAccount, setNoAccount] = useState(false);
 
   const otpRefs = [useRef(), useRef(), useRef(), useRef(), useRef(), useRef()];
 
@@ -59,6 +62,7 @@ const LoginPage = () => {
     if (e) e.preventDefault();
     setLoading(true);
     setPhoneError(null);
+    setNoAccount(false);
 
     try {
       if (!phoneNumber || phoneNumber.replace(/\D/g, '').length < 9) {
@@ -68,7 +72,13 @@ const LoginPage = () => {
       const formattedPhone = formatPhoneNumber(phoneNumber);
       logger.info(`Sending OTP to ${formattedPhone}...`);
 
-      const { success, error } = await sendOtp(formattedPhone);
+      const { success, noAccount: unregistered, error } = await sendLoginOtp(formattedPhone);
+
+      if (unregistered) {
+        logger.info('No collector account for this number; no code sent');
+        setNoAccount(true);
+        return;
+      }
 
       if (!success) {
         throw new Error(error || 'Failed to send OTP');
@@ -98,11 +108,15 @@ const LoginPage = () => {
       }
 
       const formattedPhone = formatPhoneNumber(phoneNumber);
-      const { success, user, error } = await login(formattedPhone, otp);
+      const { success, user, noAccount: unregistered, error } = await login(formattedPhone, otp);
 
       if (success) {
         logger.info('OTP verification successful:', user);
         navigate('/map');
+      } else if (unregistered) {
+        // Code was right, but there is no collector profile: back to step 1
+        setOtpSent(false);
+        setNoAccount(true);
       } else if (error) {
         throw new Error(error);
       }
@@ -157,7 +171,7 @@ const LoginPage = () => {
                   inputMode="numeric"
                   placeholder="0501234567"
                   value={phoneNumber}
-                  onChange={(e) => { setPhoneNumber(e.target.value); setPhoneError(null); }}
+                  onChange={(e) => { setPhoneNumber(e.target.value); setPhoneError(null); setNoAccount(false); }}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSendOtp(e); }}
                   className="flex-1 px-4 py-4 text-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none"
                 />
@@ -167,6 +181,19 @@ const LoginPage = () => {
                 <p className="mt-2 text-sm font-semibold text-red-500 flex items-center gap-1">
                   <span>⚠️</span> {phoneError}
                 </p>
+              )}
+              {noAccount && (
+                <div className="mt-3 rounded-xl border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/20 p-4" role="alert">
+                  <p className="font-bold text-gray-900 dark:text-white">{NO_ACCOUNT_MESSAGE}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Sign up to start collecting with TrashDrop.</p>
+                  <button
+                    type="button"
+                    className="mt-3 w-full py-3 bg-primary text-white font-bold rounded-xl"
+                    onClick={() => navigate(signupPathFor(formatPhoneNumber(phoneNumber)))}
+                  >
+                    Sign up
+                  </button>
+                </div>
               )}
             </div>
 
