@@ -13,8 +13,11 @@ import { useAppState } from '../context/AppStateContext';
 import { logger } from '../utils/logger';
 import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
 import { ASSIGNMENT_COMPLETION_RADIUS_KM, GEOFENCE_DESCRIPTIONS, kmToMeters } from '../config/geofenceConfig';
+import ClaimReports from '../components/ClaimReports';
+import { releaseClaim } from '../services/volunteerService';
+import { isVolunteerProfile, cleanupPhotoUrls, claimErrorMessage } from '../utils/volunteer';
 
-const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNavigate, onDumpingSite, onDispose, onViewReport }) => {
+const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNavigate, onDumpingSite, onDispose, onViewReport, hidePayment = false, onRelease = null }) => {
   const [expanded, setExpanded] = useState(false);
   
   const getStatusRibbonColor = (status) => {
@@ -106,12 +109,14 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
             {assignment.distance}
           </span>
           
+          {!hidePayment && (
           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             ₵{assignment.payment}
           </span>
+          )}
           
           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getPriorityBadgeColor(assignment.priority)} border`}>
             <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -256,6 +261,17 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
                 </div>
               )
             )}
+
+            {onRelease && (assignment.status === AssignmentStatus.AVAILABLE || assignment.status === AssignmentStatus.ACCEPTED) && (
+              <button
+                type="button"
+                onClick={() => onRelease(assignment.id)}
+                className="w-full mt-2 py-2 text-sm text-gray-600 underline"
+                data-testid="release-claim"
+              >
+                Give this clean-up back
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -310,15 +326,19 @@ const loadAssignNavModalState = () => {
 const saveAssignActiveTab = (tab) => {
   try { localStorage.setItem(ASSIGN_ACTIVE_TAB_KEY, tab); } catch (e) {}
 };
-const loadAssignActiveTab = () => {
-  try { return localStorage.getItem(ASSIGN_ACTIVE_TAB_KEY) || 'available'; } catch (e) { return 'available'; }
+const loadAssignActiveTab = (fallback = 'available') => {
+  try { return localStorage.getItem(ASSIGN_ACTIVE_TAB_KEY) || fallback; } catch (e) { return fallback; }
 };
 
 const AssignPage = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  // Volunteer clean-up groups also get a Claim tab, and see no pay
+  const volunteer = isVolunteerProfile(profile);
   const { setActiveModal, clearActiveModal } = useAppState();
   const [userProfile, setUserProfile] = useState(null);
-  const [activeTab, setActiveTabState] = useState(loadAssignActiveTab);
+  const [activeTabState, setActiveTabState] = useState(() => loadAssignActiveTab(volunteer ? 'claim' : 'available'));
+  // The Claim tab is for volunteer groups only
+  const activeTab = activeTabState === 'claim' && !volunteer ? 'available' : activeTabState;
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date().toISOString());
   
@@ -967,13 +987,18 @@ const AssignPage = () => {
 
       // Update in Supabase
       // Write directly to illegal_dumping_mobile table (not the view)
-      const { error } = await supabase
+      // with the links of the cleanup photos, so TrashDrop can check the work
+      const completion = { status: 'completed', updated_at: new Date().toISOString() };
+      const photoUrls = cleanupPhotoUrls(photos);
+      let { error } = await supabase
         .from('illegal_dumping_mobile')
-        .update({ 
-          status: 'completed',
-          updated_at: new Date().toISOString()
-        })
+        .update(photoUrls.length ? { ...completion, cleanup_photos: photoUrls } : completion)
         .eq('id', assignmentId);
+      // Database not updated yet for cleanup photos: complete without them
+      if (error && photoUrls.length && /cleanup_photos/.test(error.message || '')) {
+        logger.warn('cleanup_photos column missing; completing without photo links');
+        ({ error } = await supabase.from('illegal_dumping_mobile').update(completion).eq('id', assignmentId));
+      }
 
       if (error) {
         logger.error('Error completing assignment:', error);
@@ -1117,6 +1142,18 @@ const AssignPage = () => {
   };
   
   // Handle view report
+  // Volunteer group gives a claimed clean-up back to the pool
+  const handleRelease = async (assignmentId) => {
+    if (!window.confirm('Give this clean-up back? Other groups will be able to claim it.')) return;
+    try {
+      await releaseClaim(assignmentId);
+      showToast('Clean-up given back');
+      await fetchAssignments();
+    } catch (e) {
+      showToast(claimErrorMessage(e), 'error');
+    }
+  };
+
   const handleViewReport = (assignmentId) => {
     const assignment = assignments.completed.find(assign => assign.id === assignmentId && assign.hasDisposed);
     
@@ -1174,16 +1211,25 @@ const AssignPage = () => {
       <div className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md pt-16 pb-0">
         {/* Page Header */}
         <div className="px-4 pb-2">
-          <h1 className="text-3xl font-bold text-black">Assignments</h1>
+          <h1 className="text-3xl font-bold text-black">{volunteer ? 'Clean-ups' : 'Assignments'}</h1>
         </div>
         
         {/* Tab Navigation - Fixed */}
         <div className="flex border-b bg-white text-black">
+          {volunteer && (
+            <button
+              className={`flex-1 py-3 text-center font-medium ${activeTab === 'claim' ? 'text-green-600 border-b-2 border-green-500' : 'text-gray-600'}`}
+              onClick={() => setActiveTab('claim')}
+              data-testid="tab-claim"
+            >
+              Claim
+            </button>
+          )}
           <button
             className={`flex-1 py-3 text-center font-medium ${activeTab === 'available' ? 'text-green-600 border-b-2 border-green-500' : 'text-gray-600'}`}
             onClick={() => setActiveTab('available')}
           >
-            Available
+            {volunteer ? 'Claimed' : 'Available'}
           </button>
           <button
             className={`flex-1 py-3 text-center font-medium ${activeTab === 'accepted' ? 'text-green-600 border-b-2 border-green-500' : 'text-gray-600'}`}
@@ -1219,7 +1265,13 @@ const AssignPage = () => {
         
         {/* Assignment Cards */}
         <div className="assignments-container">
-          {loading ? (
+          {activeTab === 'claim' ? (
+            <ClaimReports
+              profile={profile}
+              showToast={showToast}
+              onClaimed={async () => { await fetchAssignments(); setActiveTab('available'); }}
+            />
+          ) : loading ? (
             <div className="flex justify-center items-center py-16">
               <div className="flex flex-col items-center">
                 <div className="relative">
@@ -1232,7 +1284,7 @@ const AssignPage = () => {
             </div>
           ) : activeTab === 'available' && assignments.available.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-gray-600">No available assignments at the moment.</p>
+              <p className="text-gray-600">{volunteer ? 'Nothing claimed yet. Open the Claim tab to pick a clean-up.' : 'No available assignments at the moment.'}</p>
             </div>
           ) : activeTab === 'accepted' && assignments.accepted.length === 0 ? (
             <div className="text-center py-8">
@@ -1257,6 +1309,8 @@ const AssignPage = () => {
                       onDumpingSite={handleDumpingSite}
                       onDispose={handleDispose}
                       onViewReport={handleViewReport}
+                      hidePayment={volunteer}
+                      onRelease={volunteer ? handleRelease : null}
                     />
                   ))}
                 </div>
@@ -1275,6 +1329,8 @@ const AssignPage = () => {
                       onDumpingSite={handleDumpingSite}
                       onDispose={handleDispose}
                       onViewReport={handleViewReport}
+                      hidePayment={volunteer}
+                      onRelease={volunteer ? handleRelease : null}
                     />
                   ))}
                 </div>
@@ -1293,6 +1349,8 @@ const AssignPage = () => {
                       onDumpingSite={handleDumpingSite}
                       onDispose={handleDispose}
                       onViewReport={handleViewReport}
+                      hidePayment={volunteer}
+                      onRelease={volunteer ? handleRelease : null}
                     />
                   ))}
                 </div>
@@ -1316,6 +1374,7 @@ const AssignPage = () => {
         onDispose={handleDispose}
         onViewReport={handleViewReport}
         tabContext={activeTab} // Pass the active tab context
+        hidePayment={volunteer}
       />
       
       <CompletionModal

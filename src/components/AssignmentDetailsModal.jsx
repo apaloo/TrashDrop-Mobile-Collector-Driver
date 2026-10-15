@@ -26,7 +26,8 @@ const AssignmentDetailsModal = ({
   onDumpingSite,
   onDispose,
   onViewReport,
-  tabContext = null // New prop to determine which tab opened the modal
+  tabContext = null, // New prop to determine which tab opened the modal
+  hidePayment = false // Volunteer clean-up groups aren't paid
 }) => {
   if (!isOpen || !assignment) return null;
   
@@ -155,10 +156,12 @@ const AssignmentDetailsModal = ({
               <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Authority</p>
               <p className="font-semibold text-gray-900">{assignment.authority}</p>
             </div>
+            {!hidePayment && (
             <div>
               <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Payment</p>
               <p className="font-semibold text-green-600 text-lg">₵{assignment.payment}</p>
             </div>
+            )}
             <div>
               <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Size of Dumping</p>
               <p className="font-semibold text-gray-900 capitalize">{assignment.size || 'N/A'}</p>

@@ -1,4 +1,7 @@
+import { useContext } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext';
+import { isVolunteerPath, isVolunteerProfile } from '../utils/volunteer';
 
 /**
  * Bottom navigation bar component with tabs for main app sections
@@ -6,6 +9,8 @@ import { Link, useLocation } from 'react-router-dom';
 const BottomNavBar = () => {
   const location = useLocation();
   const currentPath = location.pathname;
+  // Volunteer clean-up groups only use Assign (no paid pickups, routes or earnings)
+  const volunteer = isVolunteerProfile(useContext(AuthContext)?.profile);
 
   const navItems = [
     { label: 'Map', path: '/map', icon: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg> },
@@ -14,10 +19,12 @@ const BottomNavBar = () => {
     { label: 'Routes', path: '/route-optimization', icon: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg> },
   ];
 
+  const shownItems = volunteer ? navItems.filter(item => isVolunteerPath(item.path)) : navItems;
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white shadow-lg z-50 border-t border-gray-200 nav-bottom-bar">
       <div className="flex justify-around items-center py-2">
-        {navItems.map((item) => (
+        {shownItems.map((item) => (
           <Link
             key={item.path}
             to={item.path}

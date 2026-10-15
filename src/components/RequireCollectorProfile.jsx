@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { PROFILE_STATE, signupPathFor } from '../utils/collectorProfile';
+import { isVolunteerPath, isVolunteerProfile } from '../utils/volunteer';
 
 const FullScreen = ({ children }) => (
   <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
@@ -57,7 +58,9 @@ const RequireCollectorProfile = ({ children }) => {
         <p className="text-gray-600 mb-6">
           {blocked
             ? 'You can\'t take jobs or cash out right now. Please contact TrashDrop support.'
-            : 'Add your details and vehicle to start taking jobs.'}
+            : isVolunteerProfile(profile)
+              ? 'Add your group\'s details to start cleaning up.'
+              : 'Add your details and vehicle to start taking jobs.'}
         </p>
         {!blocked && (
           <a href={signupPathFor(profile?.phone || user?.phone)} className="block w-full py-3 mb-3 bg-primary text-white font-bold rounded-xl">
@@ -69,6 +72,11 @@ const RequireCollectorProfile = ({ children }) => {
         </button>
       </FullScreen>
     );
+  }
+
+  // Volunteer clean-up groups don't take paid pickups: send them to Assign
+  if (isVolunteerProfile(profile) && !isVolunteerPath(location.pathname)) {
+    return <Navigate to="/assign" replace />;
   }
 
   return children;

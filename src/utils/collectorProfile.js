@@ -23,11 +23,16 @@ export const PROFILE_STATE = {
 };
 
 const REQUIRED_FIELDS = ['first_name', 'last_name', 'phone', 'region', 'vehicle_type'];
+// Volunteer clean-up groups have no vehicle; first_name holds the group name
+const VOLUNTEER_REQUIRED_FIELDS = ['first_name', 'phone', 'region'];
 
 const isFilled = (value) => typeof value === 'string' ? value.trim() !== '' : value != null;
 
 export const isProfileComplete = (profile) => {
   if (!profile) return false;
+  if (profile.collector_type === 'volunteer') {
+    return VOLUNTEER_REQUIRED_FIELDS.every((field) => isFilled(profile[field]));
+  }
   const hasPlate = isFilled(profile.license_plate) || isFilled(profile.vehicle_plate);
   return hasPlate && REQUIRED_FIELDS.every((field) => isFilled(profile[field]));
 };
