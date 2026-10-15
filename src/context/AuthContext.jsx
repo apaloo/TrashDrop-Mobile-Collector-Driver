@@ -1,6 +1,8 @@
 import { createContext, useState, useEffect, useContext, useRef, useCallback } from 'react';
 import { supabase, authService } from '../services/supabase';
 import { statusService } from '../services/statusService';
+import { COLLECTOR_TYPE } from '../utils/volunteer';
+import { requestVolunteerAccess } from '../services/volunteerService';
 import { logger } from '../utils/logger';
 import { PROFILE_STATE, getProfileState, NO_ACCOUNT_MESSAGE } from '../utils/collectorProfile';
 
@@ -374,6 +376,7 @@ export const AuthProvider = ({ children }) => {
       }
       
       const user = session.user;
+      const isVolunteer = userData.collector_type === COLLECTOR_TYPE.VOLUNTEER;
 
       // Route guard shows "Checking your account..." until the profile is saved
       profileRequestRef.current++;
@@ -395,13 +398,15 @@ export const AuthProvider = ({ children }) => {
         id_type: userData.id_type,
         id_front_photo_url: userData.id_front_photo_url,
         id_back_photo_url: userData.id_back_photo_url,
-        vehicle_type: userData.vehicle_type?.toLowerCase() || 'motorcycle', // Normalize to lowercase for CHECK constraint
+        // Volunteer clean-up groups have no vehicle
+        vehicle_type: isVolunteer ? null : (userData.vehicle_type?.toLowerCase() || 'motorcycle'), // Normalize to lowercase for CHECK constraint
         license_plate: userData.license_plate,
         vehicle_color: userData.vehicle_color,
         vehicle_photo_url: userData.vehicle_photo_url,
         company_id: userData.company_id,
         company_name: userData.company_name,
-        role: userData.role?.toLowerCase() || 'driver' // Normalize to lowercase
+        role: userData.role?.toLowerCase() || 'driver', // Normalize to lowercase
+        ...(isVolunteer ? { collector_type: COLLECTOR_TYPE.VOLUNTEER } : {})
       };
       
       let { success: profileSuccess, profile: createdProfile, error: profileError } = 
@@ -417,6 +422,16 @@ export const AuthProvider = ({ children }) => {
       
       if (!profileSuccess) {
         throw new Error(profileError || 'Failed to create user profile');
+      }
+
+      // A volunteer group asks TrashDrop for Volunteer access; until an admin
+      // approves it the group can sign in but not claim reports
+      if (isVolunteer && userData.volunteer_request) {
+        try {
+          await requestVolunteerAccess(userData.volunteer_request);
+        } catch (requestError) {
+          logger.warn('⚠️ Volunteer access request failed; the group can send it again from the Claim tab:', requestError.message);
+        }
       }
 
       // Share the new profile so the route guard lets the collector in
