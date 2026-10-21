@@ -311,6 +311,8 @@ const TransactionItem = ({ transaction }) => {
         return 'Digital Bin';
       case 'authority_assignment':
         return 'Authority Assignment';
+      case 'dumping_cleanup':
+        return 'Dumping Cleanup';
       case 'bonus':
         return 'Bonus';
       case 'referral':

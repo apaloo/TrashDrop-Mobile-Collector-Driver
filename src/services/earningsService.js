@@ -987,6 +987,26 @@ class EarningsService {
         logger.warn('Error fetching authority assignments:', assignmentsError);
       }
 
+      // === ILLEGAL DUMPING CLEANUPS ===
+      // Paid by TrashDrop, 100% to the collector. `payment` comes from the
+      // database (td_cleanup_payment: the admin's fee, else size × severity;
+      // 0 for volunteer groups). Like pickups, withdrawable once disposed.
+      const { data: cleanupRows, error: cleanupsError } = await supabase
+        .from('collector_assignments_view')
+        .select('id, payment, original_status, location, disposed_at, updated_at')
+        .eq('collector_id', this.collectorId)
+        .in('original_status', ['completed', 'disposed']);
+
+      if (cleanupsError) {
+        logger.warn('Error fetching dumping cleanups:', cleanupsError);
+      }
+      const cleanupPay = (c) => parseFloat(c.payment) || 0;
+      const completedCleanups = (cleanupRows || []).filter(c => c.original_status === 'completed');
+      const disposedCleanups = (cleanupRows || []).filter(c => c.original_status === 'disposed');
+      const cleanupPendingDisposal = completedCleanups.reduce((sum, c) => sum + cleanupPay(c), 0);
+      const cleanupDisposedEarnings = disposedCleanups.reduce((sum, c) => sum + cleanupPay(c), 0);
+      const totalCleanupEarnings = cleanupPendingDisposal + cleanupDisposedEarnings;
+
       // === CALCULATE COLLECTOR EARNINGS (SOP v4.5.6 Percentage Sharing) ===
       // Pickup requests earnings - apply percentage sharing algorithm
       const pickupPendingDisposal = pickedUpRequests.reduce((sum, p) => sum + calculateCollectorEarnings(p), 0);
@@ -1054,16 +1074,17 @@ class EarningsService {
       const assignmentEarnings = authorityAssignments?.reduce((sum, a) => sum + (a.payment || 0), 0) || 0;
 
       // Total collector earnings from all sources
-      const totalEarnings = totalPickupEarnings + totalBinEarnings + assignmentEarnings;
-      const pendingDisposalEarnings = pickupPendingDisposal + binsPendingDisposal;
-      const estimatedPendingEarnings = estimatedPendingBinEarnings + estimatedPendingPickupEarnings;
-      const disposedEarnings = pickupDisposedEarnings + binsDisposedEarnings + assignmentEarnings;
+      const totalEarnings = totalPickupEarnings + totalBinEarnings + assignmentEarnings + totalCleanupEarnings;
+      const pendingDisposalEarnings = pickupPendingDisposal + binsPendingDisposal + cleanupPendingDisposal;
+      const estimatedPendingEarnings = estimatedPendingBinEarnings + estimatedPendingPickupEarnings + cleanupPendingDisposal;
+      const disposedEarnings = pickupDisposedEarnings + binsDisposedEarnings + assignmentEarnings + cleanupDisposedEarnings;
 
       // Withdrawable earnings = disposed digital-payment bin earnings + disposed pickup request earnings.
       // Cash bins are excluded: collector already has the cash from the client.
       // Pickup requests are PREPAID (platform holds the funds), so disposed pickups are withdrawable.
       const pickupDisposedWithdrawable = disposedRequests.reduce((sum, p) => sum + calculateCollectorEarnings(p), 0);
-      const withdrawableEarnings = binsDisposedDigitalEarnings + pickupDisposedWithdrawable;
+      // Disposed cleanups are paid by TrashDrop, so they are withdrawable too.
+      const withdrawableEarnings = binsDisposedDigitalEarnings + pickupDisposedWithdrawable + cleanupDisposedEarnings;
 
       // === CALCULATE PLATFORM EARNINGS (App Bucket) ===
       
@@ -1109,7 +1130,7 @@ class EarningsService {
       
       const assignmentGrossRevenue = authorityAssignments?.reduce((sum, a) => sum + (a.payment || 0), 0) || 0;
       
-      const grossRevenue = pickupGrossRevenue + binGrossRevenue + assignmentGrossRevenue;
+      const grossRevenue = pickupGrossRevenue + binGrossRevenue + assignmentGrossRevenue + cleanupDisposedEarnings;
 
       // === PAYMENT MODE TRACKING (Cash vs Digital) ===
       // Track what collector owes platform (cash payments) vs what platform owes collector (digital payments)
@@ -1183,8 +1204,8 @@ class EarningsService {
       });
 
       // Job counts
-      const totalPickedUpJobs = pickedUpRequests.length + pickedUpBins.length;
-      const totalDisposedJobs = disposedRequests.length + disposedBins.length + (authorityAssignments?.length || 0);
+      const totalPickedUpJobs = pickedUpRequests.length + pickedUpBins.length + completedCleanups.length;
+      const totalDisposedJobs = disposedRequests.length + disposedBins.length + (authorityAssignments?.length || 0) + disposedCleanups.length;
       const completedJobs = totalPickedUpJobs + totalDisposedJobs;
       const avgPerJob = completedJobs > 0 ? totalEarnings / completedJobs : 0;
 
@@ -1238,6 +1259,10 @@ class EarningsService {
         ...(authorityAssignments || []).map(a => ({ 
           amount: a.payment || 0, 
           timestamp: a.completed_at || a.updated_at 
+        })),
+        ...(cleanupRows || []).map(c => ({
+          amount: cleanupPay(c),
+          timestamp: c.disposed_at || c.updated_at
         }))
       ];
 
@@ -1280,6 +1305,16 @@ class EarningsService {
           date: assignment.completed_at || assignment.updated_at,
           location: assignment.location,
           note: assignment.title || 'Authority Assignment'
+        })),
+        // Illegal dumping cleanups
+        ...(cleanupRows || []).map(cleanup => ({
+          id: cleanup.id,
+          type: 'dumping_cleanup',
+          amount: cleanupPay(cleanup),
+          status: cleanup.original_status,
+          date: cleanup.disposed_at || cleanup.updated_at,
+          location: cleanup.location,
+          note: cleanup.original_status === 'completed' ? 'Pending disposal' : 'Disposed'
         }))
       ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -1363,6 +1398,7 @@ class EarningsService {
             pickupRequestEarnings: totalPickupEarnings,
             digitalBinEarnings: totalBinEarnings,
             authorityAssignmentEarnings: assignmentEarnings,
+            dumpingCleanupEarnings: totalCleanupEarnings,
             // Platform earnings (App Bucket)
             platformEarnings: totalPlatformEarnings,
             pickupPlatformEarnings,
@@ -1906,10 +1942,33 @@ class EarningsService {
           amount: parseFloat(p.collector_total_payout)
         }));
 
-      const allItems = [...binItems, ...pickupItems];
+      // --- 3c: Undisbursed illegal dumping cleanups (paid by TrashDrop, disposed) ---
+      const { data: alreadyWithdrawnCleanupRows } = await supabase
+        .from('withdrawal_items')
+        .select('item_id, withdrawals!inner(status)')
+        .eq('item_type', 'dumping_cleanup')
+        .not('withdrawals.status', 'in', '("failed","cancelled")');
+      const alreadyWithdrawnCleanupIds = new Set((alreadyWithdrawnCleanupRows || []).map(r => r.item_id));
+
+      const { data: disposedCleanups } = await supabase
+        .from('collector_assignments_view')
+        .select('id, payment')
+        .eq('collector_id', this.collectorId)
+        .eq('original_status', 'disposed')
+        .gt('payment', 0);
+
+      const cleanupItems = (disposedCleanups || [])
+        .filter(c => !alreadyWithdrawnCleanupIds.has(String(c.id)))
+        .map(c => ({
+          item_type: 'dumping_cleanup',
+          item_id: String(c.id),
+          amount: parseFloat(c.payment)
+        }));
+
+      const allItems = [...binItems, ...pickupItems, ...cleanupItems];
       const totalAvailable = allItems.reduce((s, i) => s + i.amount, 0);
 
-      logger.info(`Eligible items: ${binItems.length} bins, ${pickupItems.length} pickups, total ₵${totalAvailable.toFixed(2)}`);
+      logger.info(`Eligible items: ${binItems.length} bins, ${pickupItems.length} pickups, ${cleanupItems.length} cleanups, total ₵${totalAvailable.toFixed(2)}`);
 
       if (allItems.length === 0 || totalAvailable <= 0) {
         throw new Error('No eligible items for withdrawal.');
