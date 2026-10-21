@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { isActiveJob, formatDuration } from '../utils/routeJobs';
 import { 
   calculateNearestNeighborRoute, 
   calculateRouteDistance, 
@@ -48,10 +49,8 @@ const RouteStatistics = ({ assignments, userLocation, analyticsService }) => {
       return;
     }
     
-    // Filter only accepted assignments
-    const acceptedAssignments = assignments.filter(assignment => 
-      assignment.status === 'accepted'
-    );
+    // Every job underway counts (accepted, on the way, arrived), as on the route card
+    const acceptedAssignments = assignments.filter(isActiveJob);
     
     if (acceptedAssignments.length === 0) {
       setStats({
@@ -91,17 +90,7 @@ const RouteStatistics = ({ assignments, userLocation, analyticsService }) => {
     });
   }, [assignments, userLocation]);
   
-  // Format time to hours and minutes
-  const formatTime = (minutes) => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    
-    if (hours === 0) {
-      return `${mins} min`;
-    }
-    
-    return `${hours} hr ${mins} min`;
-  };
+  const formatTime = formatDuration;
   
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden">
@@ -166,7 +155,7 @@ const RouteStatistics = ({ assignments, userLocation, analyticsService }) => {
                   <svg className="h-4 w-4 text-green-500 mr-1 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                   </svg>
-                  <span>Estimated {(stats.estimatedTime / stats.assignmentCount).toFixed(0)} minutes per pickup on average</span>
+                  <span>Estimated {formatDuration(stats.estimatedTime / stats.assignmentCount)} per pickup on average</span>
                 </li>
                 
                 {/* Performance Analytics from last 7 days */}

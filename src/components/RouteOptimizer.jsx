@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { ACTIVE_JOB_STATUSES, FAR_STOP_KM, formatDuration } from '../utils/routeJobs';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { 
@@ -111,7 +112,8 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
   // Refs for map and tile layer
   const mapRef = useRef(null);
   const offlineTileLayerRef = useRef(null);
-  const hasShownTooFarWarning = useRef(false);
+  // Stops that are unrealistically far away (shown as a warning on the card)
+  const [farStopCount, setFarStopCount] = useState(0);
   
   // Using SVG-based marker icons imported from markerIcons.js
   // These replace the previous PNG-based icons that were missing
@@ -191,7 +193,7 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
 
     // Filter only accepted/in-progress assignments with valid coordinates
     const acceptedAssignments = assignments.filter(assignment => 
-      assignment && ['accepted', 'en_route', 'arrived'].includes(assignment.status) && hasValidCoords(assignment)
+      assignment && ACTIVE_JOB_STATUSES.includes(assignment.status) && hasValidCoords(assignment)
     );
     
     // Filter only pending requests with valid coordinates
@@ -247,45 +249,20 @@ const RouteOptimizer = ({ assignments, requests, userLocation }) => {
     const requestCount = route.filter(stop => stop.type === 'request').length;
     logger.debug(`Route contains ${assignmentCount} assignments and ${requestCount} requests`);
     
-    // Data validation: Detect unrealistic calculations
-    const maxReasonableDistance = 100; // 100 km max for daily collection routes
-    const maxReasonableTime = 600; // 600 minutes (10 hours) max for a workday
-    
-    if (distance > maxReasonableDistance || time > maxReasonableTime || isNaN(distance) || isNaN(time)) {
-      logger.error('⚠️ Unrealistic route detected:', { 
-        distance: `${distance.toFixed(1)} km`, 
-        time: `${time} min`,
-        routeLength: route.length,
-        isNaN: isNaN(distance) || isNaN(time)
-      });
-      
-      // Show warning only once (prevents duplicate toasts from StrictMode)
-      if (!hasShownTooFarWarning.current) {
-        hasShownTooFarWarning.current = true;
-        toast.warning(
-          <div className="text-center">
-            <div className="text-2xl mb-1">⚠️ Too Far!</div>
-            <div className="text-base font-bold">{distance.toFixed(0)} km • {Math.round(time/60)} hours</div>
-            <div className="text-sm mt-1">📍 Pick closer jobs</div>
-          </div>, 
-          {
-            position: "top-center",
-            autoClose: 10000,
-            style: { fontSize: '16px', padding: '16px' }
-          }
-        );
-      }
-      
-      // Still show the route but warn user
-      setOptimizedRoute(route);
-      setTotalDistance(distance);
-      setEstimatedTime(time);
-    } else {
-      setOptimizedRoute(route);
-      setTotalDistance(distance);
-      setEstimatedTime(time);
+    // Stops far beyond a day's collection area are almost always a wrong
+    // location; warn on the card instead of with pop-ups
+    const far = route.filter(stop =>
+      calculateDistance([startPosition.lat, startPosition.lng], [stop.latitude, stop.longitude]) / 1000 > FAR_STOP_KM
+    ).length;
+    setFarStopCount(far);
+    if (far > 0) {
+      logger.warn('⚠️ Route has stops over', FAR_STOP_KM, 'km away:', far);
     }
-    
+
+    setOptimizedRoute(route);
+    setTotalDistance(distance);
+    setEstimatedTime(time);
+
     // Set map center to user location
     setMapCenter([location.latitude, location.longitude]);
     
@@ -663,6 +640,12 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
           </div>
         ) : (
           <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+            {farStopCount > 0 && (
+              <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900" role="alert" data-testid="far-stops-warning">
+                <p className="font-bold">⚠️ {farStopCount === 1 ? '1 job is' : `${farStopCount} jobs are`} over {FAR_STOP_KM} km away</p>
+                <p className="text-sm mt-1">Check the job's location before you go. Tap Info on the job below.</p>
+              </div>
+            )}
             <div className="flex justify-between text-sm text-gray-700 font-medium mb-3">
               <div className="flex items-center">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -674,7 +657,7 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span>Estimated time: <span className="text-green-600">{estimatedTime} min</span></span>
+                <span>Estimated time: <span className="text-green-600">{formatDuration(estimatedTime)}</span></span>
               </div>
             </div>
             
