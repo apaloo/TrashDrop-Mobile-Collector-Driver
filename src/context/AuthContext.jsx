@@ -333,8 +333,9 @@ export const AuthProvider = ({ children }) => {
         return { success: false, noAccount: true, error: NO_ACCOUNT_MESSAGE };
       }
 
-      // New sessions always start Off-Duty
+      // New sessions always start Off-Duty, on this device and on the server
       statusService.forceOffline();
+      statusService.setServerDuty(false);
       
       // Store login time for 24-hour session tracking
       const loginTime = Date.now();
@@ -473,6 +474,8 @@ export const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
       logger.debug('Logging out user...');
+      // Go Off-Duty on the server while the session can still write
+      await statusService.setServerDuty(false);
       const { success, error } = await authService.signOut();
       
       if (!success) {
