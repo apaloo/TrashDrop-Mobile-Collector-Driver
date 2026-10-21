@@ -12,6 +12,20 @@ const useWakeLock = (autoEnable = false) => {
   const wakeLockRef = useRef(null);
   const videoRef = useRef(null);
   const hasLoggedRef = useRef(false);
+  // Whether the screen should stay on. The browser drops the native lock
+  // whenever the page is hidden (screen off, app switched); this stays true so
+  // the lock is taken again when the page is visible.
+  const wantedRef = useRef(false);
+
+  // Take the native lock; forget it when the browser releases it
+  const requestNativeLock = useCallback(async () => {
+    const lock = await navigator.wakeLock.request('screen');
+    lock.addEventListener('release', () => {
+      if (wakeLockRef.current === lock) wakeLockRef.current = null;
+      console.log('🔆 Wake Lock released by the browser');
+    });
+    wakeLockRef.current = lock;
+  }, []);
 
   // Check if Wake Lock API is supported
   useEffect(() => {
@@ -53,7 +67,8 @@ const useWakeLock = (autoEnable = false) => {
 
   // Enable wake lock
   const enable = useCallback(async () => {
-    if (isEnabled) return true;
+    wantedRef.current = true;
+    if (isEnabled && (wakeLockRef.current || videoRef.current)) return true;
 
     try {
       // Try native Wake Lock API first
@@ -61,17 +76,12 @@ const useWakeLock = (autoEnable = false) => {
         try {
           // Check if document is visible before requesting wake lock
           if (document.visibilityState === 'hidden') {
+            // Taken when the page becomes visible (see visibilitychange below)
             console.warn('🔆 Document not visible - deferring wake lock request');
             return false;
           }
           
-          wakeLockRef.current = await navigator.wakeLock.request('screen');
-          
-          wakeLockRef.current.addEventListener('release', () => {
-            console.log('🔆 Wake Lock released');
-            setIsEnabled(false);
-          });
-          
+          await requestNativeLock();
           setIsEnabled(true);
           console.log('🔆 Wake Lock enabled - screen will stay on');
           return true;
@@ -95,11 +105,12 @@ const useWakeLock = (autoEnable = false) => {
       console.error('🔆 Failed to enable wake lock:', err);
       return false;
     }
-  }, [isEnabled, createVideoFallback]);
+  }, [isEnabled, createVideoFallback, requestNativeLock]);
 
   // Disable wake lock
   const disable = useCallback(async () => {
-    if (!isEnabled) return;
+    wantedRef.current = false;
+    if (!isEnabled && !wakeLockRef.current && !videoRef.current) return;
 
     try {
       // Release native Wake Lock
@@ -134,11 +145,12 @@ const useWakeLock = (autoEnable = false) => {
   // Re-acquire wake lock when page becomes visible again
   useEffect(() => {
     const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible' && isEnabled && !wakeLockRef.current) {
+      if (document.visibilityState === 'visible' && wantedRef.current && !wakeLockRef.current) {
         // Re-acquire wake lock when tab becomes visible
         if ('wakeLock' in navigator) {
           try {
-            wakeLockRef.current = await navigator.wakeLock.request('screen');
+            await requestNativeLock();
+            setIsEnabled(true);
             console.log('🔆 Wake Lock re-acquired after visibility change');
           } catch (err) {
             console.warn('🔆 Failed to re-acquire wake lock:', err.message);
@@ -149,7 +161,7 @@ const useWakeLock = (autoEnable = false) => {
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isEnabled]);
+  }, [requestNativeLock]);
 
   // Auto-enable on mount if requested
   useEffect(() => {
@@ -161,6 +173,7 @@ const useWakeLock = (autoEnable = false) => {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      wantedRef.current = false;
       if (wakeLockRef.current) {
         wakeLockRef.current.release().catch(() => {});
         wakeLockRef.current = null;

@@ -16,6 +16,8 @@ import { AssignmentStatus, WasteType } from '../utils/types';
 import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, createTricycleIcon, calculateBearing, getStopIcon, digitalBinMarkerIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
 import { filterAvailableRequests } from '../utils/availableRequests';
+import useWakeLock from '../hooks/useWakeLock';
+import { audioAlertService } from '../services/audioAlertService';
 import { logger } from '../utils/logger';
 import { realtimeNotificationService } from '../services/realtimeNotificationService';
 
@@ -422,6 +424,7 @@ const MapPage = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [locationAttempted, setLocationAttempted] = useState(false);
   const [allRequests, setAllRequests] = useState([]); // All fetched requests
+  const requestsLoadedRef = useRef(false); // set once fetchRequests has loaded the list
   const [requests, setRequests] = useState([]); // Filtered requests for display
   const [isLoading, setIsLoading] = useState(true);
   const [shouldCenter, setShouldCenter] = useState(true);
@@ -1018,6 +1021,7 @@ const MapPage = () => {
           .filter(Boolean); // Remove any null entries
         
         // Update state and cache
+        requestsLoadedRef.current = true;
         setAllRequests(transformedData);
         // Don't set requests here - let applyFilters handle the filtered data
         setLastUpdated(new Date());
@@ -1078,6 +1082,40 @@ const MapPage = () => {
     setIsOnDuty(statusService.getStatus().isOnline);
     return statusService.addStatusListener(({ status }) => setIsOnDuty(status === COLLECTOR_STATUS.ONLINE));
   }, []);
+
+  // Keep the screen on while the Map is open, so new requests aren't missed
+  useWakeLock(true);
+
+  // Sound + vibrate when a NEW request appears inside the radius while On-Duty
+  // (same rule as the Available list). Requests already there when the page
+  // loaded, or ones that only come into range by changing the radius, don't ring.
+  const knownRequestIdsRef = useRef(null);
+  useEffect(() => {
+    if (!requestsLoadedRef.current) return;
+    const ids = new Set(allRequests.map(r => r?.id));
+    if (knownRequestIdsRef.current === null) {
+      knownRequestIdsRef.current = ids; // first load: nothing is "new"
+      return;
+    }
+    const added = allRequests.filter(r => r && !knownRequestIdsRef.current.has(r.id));
+    knownRequestIdsRef.current = ids;
+    if (added.length === 0) return;
+
+    const nearby = filterAvailableRequests(added, { isOnDuty, position, filters });
+    if (nearby.length === 0) return;
+
+    audioAlertService.playNewRequestAlert().catch(() => {});
+    audioAlertService.vibrate('alert');
+    const km = nearby[0].distanceKm;
+    showToast(
+      nearby.length === 1
+        ? `New request ${km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`} away!`
+        : `${nearby.length} new requests near you!`,
+      'success'
+    );
+  // Only react to the list changing; duty/position/filters are read as they are now
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRequests]);
 
   // Apply filters to requests (same rule as the Request page: utils/availableRequests)
   const applyFilters = useCallback(() => {
@@ -1253,8 +1291,8 @@ const MapPage = () => {
                     return updated;
                   });
                   
-                  // Show notification for new request
-                  showToast('New pickup request available!', 'success');
+                  // The new-request alert (sound, vibration, toast) comes from the
+                  // effect watching allRequests, and only inside the radius
                 }
                 break;
               }
@@ -1334,8 +1372,13 @@ const MapPage = () => {
             switch (eventType) {
               case 'INSERT': {
                 if (newRecord.status === 'pending') {
+                  // A bin's position usually comes from its bin location, which
+                  // isn't in this event: reload instead of guessing a position
+                  if (!newRecord.coordinates) {
+                    fetchRequests();
+                    break;
+                  }
                   const coords = parseCoordinates(newRecord.coordinates);
-                  // Transform the new digital bin record
                   const transformedBin = {
                     id: newRecord.id,
                     type: newRecord.waste_type || 'general',
@@ -1358,7 +1401,7 @@ const MapPage = () => {
                     return updated;
                   });
                   
-                  showToast('New digital bin available!', 'success');
+                  // Alert comes from the effect watching allRequests
                 }
                 break;
               }

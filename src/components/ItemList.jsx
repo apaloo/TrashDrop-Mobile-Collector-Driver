@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatDistanceKm } from '../utils/routeJobs';
 import { calculateDistance } from '../utils/locationUtils';
 import { slideIn } from '../utils/animationUtils';
 import { logger } from '../utils/logger';
@@ -45,10 +46,11 @@ const ItemList = ({ assignments, requests, userLocation }) => {
     // Calculate distance for each item if user location is available
     if (userLocation) {
       filtered = filtered.map(item => {
+        // calculateDistance returns metres; the list works in km
         const distance = calculateDistance(
           { latitude: userLocation.latitude, longitude: userLocation.longitude },
           { latitude: item.latitude, longitude: item.longitude }
-        );
+        ) / 1000;
         
         return {
           ...item,
@@ -219,9 +221,7 @@ const ItemList = ({ assignments, requests, userLocation }) => {
                       {item.distance !== undefined && (
                         <span className="text-base font-bold text-gray-800 flex items-center gap-1">
                           <span className="text-lg">📍</span>
-                          {item.distance < 1 
-                            ? `${(item.distance * 1000).toFixed(0)} m` 
-                            : `${item.distance.toFixed(1)} km`}
+                          {formatDistanceKm(item.distance)}
                         </span>
                       )}
                     </div>
