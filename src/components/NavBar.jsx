@@ -15,23 +15,17 @@ export const TopNavBar = memo(({ user }) => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const dropdownRef = useRef(null);
   
-  // Close dropdown when clicking outside
+  // Taps outside the open menu land on a full-screen backdrop (below) that only
+  // closes it. The menu used to close on touchstart instead, so on phones the
+  // click from that same tap arrived after the menu had gone and hit whatever
+  // was underneath, e.g. the Map's On-/Off-Duty button.
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsDropdownOpen(false);
-      }
+    if (!isDropdownOpen) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setIsDropdownOpen(false);
     };
-    
-    if (isDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('touchstart', handleClickOutside);
-    }
-    
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
   }, [isDropdownOpen]);
   
   // Collector profile is loaded once by AuthContext (the route guard waits for it)
@@ -69,7 +63,15 @@ export const TopNavBar = memo(({ user }) => {
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 bg-white shadow-md px-4 py-2 z-[2500] nav-top-bar">
+      <nav className={`fixed top-0 left-0 right-0 bg-white shadow-md px-4 py-2 z-[2500] nav-top-bar${isDropdownOpen ? ' nav-menu-open' : ''}`}>
+        {isDropdownOpen && (
+          <div
+            className="fixed inset-0 z-[2900]"
+            data-testid="nav-menu-backdrop"
+            aria-hidden="true"
+            onClick={() => setIsDropdownOpen(false)}
+          />
+        )}
         <div className="flex justify-between items-center">
           {/* Logo */}
           <Link to="/" className="flex items-center">
@@ -78,7 +80,7 @@ export const TopNavBar = memo(({ user }) => {
           </Link>
 
           {/* Profile Dropdown */}
-          <div className="relative" ref={dropdownRef}>
+          <div className="relative z-[3000]" ref={dropdownRef}>
             <button
               className="flex items-center focus:outline-none"
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
