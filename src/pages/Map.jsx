@@ -15,6 +15,7 @@ import { supabase, authService } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
 import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, createTricycleIcon, calculateBearing, getStopIcon, digitalBinMarkerIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
+import { filterAvailableRequests } from '../utils/availableRequests';
 import { logger } from '../utils/logger';
 import { realtimeNotificationService } from '../services/realtimeNotificationService';
 
@@ -1070,79 +1071,30 @@ const MapPage = () => {
     return match ? parseFloat(match[0]) : 0;
   };
 
-  // Apply filters to requests
-  const applyFilters = useCallback(async () => {
-    // Position should always be available now (fallback or real GPS)
-    if (!position || !position[0] || !position[1]) {
-      setRequests([]);
-      updateFilteredRequests([]);
-      return;
-    }
+  // On-Duty state, kept in sync with the status button so the list updates
+  // the moment the collector goes On- or Off-Duty
+  const [isOnDuty, setIsOnDuty] = useState(() => statusService.getStatus().isOnline);
+  useEffect(() => {
+    setIsOnDuty(statusService.getStatus().isOnline);
+    return statusService.addStatusListener(({ status }) => setIsOnDuty(status === COLLECTOR_STATUS.ONLINE));
+  }, []);
 
-    // Define filter variables
-    const safeFilters = filters || {};
-    const activeFilter = safeFilters.activeFilter || 'all';
-    const radiusKm = parseFloat(safeFilters.searchRadius) || 10;
-
-    // Check collector status - only show requests if online (Uber-like behavior)
-    const statusInfo = statusService.getStatus();
-    if (!statusInfo.isOnline) {
-      setRequests([]);
-      updateFilteredRequests([]);
-      return;
-    }
-    
-    const filteredRequests = allRequests.filter(req => {
-      // Skip if request is invalid  
-      if (!req || !req.coordinates) return false;
-      
-      // Digital bins skip status check; pickup requests must be pending
-      if (req.source_type !== 'digital_bin' && req.status !== 'pending') return false;
-      
-      // Filter by distance
-      try {
-        const distance = calculateDistance(
-          [position[0], position[1]],
-          req.coordinates
-        );
-        if (distance > radiusKm) return false;
-        req.distance = distance;
-      } catch (error) {
-        return false;
-      }
-      
-      // Filter by waste type using activeFilter
-      if (activeFilter && activeFilter !== 'all') {
-        const requestWasteType = req.waste_type || req.type;
-        if (requestWasteType !== activeFilter) return false;
-      }
-      
-      // Also filter by waste types array (if provided)
-      if (filters.wasteTypes?.length > 0 && !filters.wasteTypes.includes('All Types')) {
-        const requestWasteType = req.waste_type || req.type;
-        if (!filters.wasteTypes.includes(requestWasteType)) return false;
-      }
-      
-      // Filter by minimum payment
-      const minPayment = parseFloat(filters.minPayment) || 0;
-      if (minPayment > 0 && (parseFloat(req.fee) || 0) < minPayment) return false;
-      
-      // Filter by priority
-      if (filters.priority && filters.priority !== 'all' && req.priority !== filters.priority) return false;
-      
-      return true;
+  // Apply filters to requests (same rule as the Request page: utils/availableRequests)
+  const applyFilters = useCallback(() => {
+    const matches = filterAvailableRequests(allRequests, { isOnDuty, position, filters });
+    const filteredRequests = matches.map(({ request, distanceKm }) => {
+      request.distance = distanceKm;
+      return request;
     });
-    
-    // Sort by distance
-    filteredRequests.sort((a, b) => (a.distance || 0) - (b.distance || 0));
-    
-    // Single summary log instead of per-item logging
+
     logger.debug('🔍 Filtered requests:', filteredRequests.length, 'of', allRequests.length,
-      '| radius:', radiusKm + 'km | filter:', activeFilter);
-    
+      '| on duty:', isOnDuty, '| radius:', (filters?.searchRadius ?? '?') + 'km');
+
     setRequests(filteredRequests);
+    // Always publish the { available } shape, even when empty, so other pages
+    // never mistake an empty list for "not filtered yet"
     updateFilteredRequests({ available: filteredRequests });
-  }, [allRequests, filters, position, updateFilteredRequests]);
+  }, [allRequests, filters, position, isOnDuty, updateFilteredRequests]);
 
   // Debounced filter application — batches rapid GPS/state changes into one run
   const filterTimerRef = useRef(null);
@@ -1908,7 +1860,8 @@ const MapPage = () => {
                 lastUpdated={lastUpdated}
                 isRefreshing={isRefreshing}
                 refreshData={refreshData}
-                requestCount={allRequests?.length || 0}
+                requestCount={requests?.length || 0}
+                isOnDuty={isOnDuty}
               />
             </div>
             

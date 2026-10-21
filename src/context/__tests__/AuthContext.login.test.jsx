@@ -8,7 +8,7 @@ jest.mock('../../utils/logger', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
 }));
 jest.mock('../../services/statusService', () => ({
-  statusService: { setOnlineEligibility: jest.fn(), forceOffline: jest.fn() }
+  statusService: { setOnlineEligibility: jest.fn(), forceOffline: jest.fn(), setServerDuty: jest.fn(() => Promise.resolve({ ok: true })) }
 }));
 jest.mock('../../services/supabase', () => ({
   supabase: {
@@ -109,6 +109,7 @@ describe('login', () => {
     expect(auth.profile.first_name).toBe('Jack');
     expect(authService.signOut).not.toHaveBeenCalled();
     expect(statusService.forceOffline).toHaveBeenCalled();
+    expect(statusService.setServerDuty).toHaveBeenCalledWith(false);
     expect(statusService.setOnlineEligibility).toHaveBeenLastCalledWith(true);
     // Loaded once during login, not again by the effect
     expect(authService.getUserProfile).toHaveBeenCalledTimes(1);
