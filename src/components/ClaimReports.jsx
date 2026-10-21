@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchMyAccess, listClaimableReports, claimReport, requestVolunteerAccess } from '../services/volunteerService';
 import { ACCEPT_WITHIN_HOURS, FINISH_WITHIN_HOURS, MAX_OPEN_CLAIMS, claimErrorMessage } from '../utils/volunteer';
 import { logger } from '../utils/logger';
+import PhotoGallery from './PhotoGallery';
 
 const SEVERITY_CLASS = {
   high: 'bg-red-100 text-red-800 border-red-200',
@@ -146,10 +147,10 @@ const ClaimReports = ({ onClaimed, showToast, profile = null }) => {
       ) : (
         shown.map(r => (
           <div key={r.id} className="bg-white rounded-lg shadow mb-3 overflow-hidden" data-testid="claim-card">
-            {Array.isArray(r.photos) && r.photos[0] && (
-              <img src={r.photos[0]} alt="Reported dumping" className="w-full h-36 object-cover" loading="lazy" />
-            )}
             <div className="p-4">
+              <div className="mb-3 empty:hidden">
+                <PhotoGallery photos={r.photos} emptyText={null} />
+              </div>
               <h3 className="font-semibold text-base text-gray-800">{r.area_name || r.location || 'Reported dumping site'}</h3>
               <p className="text-sm text-gray-600">{[r.district, r.region].filter(Boolean).join(', ')}</p>
               <div className="flex flex-wrap gap-2 mt-2">

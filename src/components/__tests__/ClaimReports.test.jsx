@@ -55,6 +55,23 @@ describe('Claim tab', () => {
     expect(screen.getByText('Madina market')).toBeInTheDocument();
   });
 
+  it('shows report photos in the gallery and opens the full-screen viewer', async () => {
+    fetchMyAccess.mockResolvedValue(approved);
+    listClaimableReports.mockResolvedValue([
+      { ...reports[0], photos: ['p1.jpg', 'p2.jpg', 'p3.jpg', 'p4.jpg'] },
+      reports[1],
+    ]);
+    render(<ClaimReports showToast={jest.fn()} />);
+
+    const [withPhotos, withoutPhotos] = await screen.findAllByTestId('claim-card');
+    expect(withPhotos.querySelectorAll('button[aria-label^="Open photo"]')).toHaveLength(2);
+    expect(withPhotos).toHaveTextContent('+1');
+    expect(withoutPhotos.querySelector('img')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open photo 2 of 4' }));
+    expect(screen.getByRole('dialog', { name: 'Photo 2 of 4' })).toHaveTextContent('2 / 4');
+  });
+
   it('claims after a confirmation, then hands over to the Claimed list', async () => {
     fetchMyAccess.mockResolvedValue(approved);
     listClaimableReports.mockResolvedValue(reports);
