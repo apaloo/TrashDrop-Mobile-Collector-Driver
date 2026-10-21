@@ -60,4 +60,11 @@ describe('Header menu', () => {
     renderAt();
     expect(screen.queryByTestId('nav-menu-backdrop')).not.toBeInTheDocument();
   });
+
+  it('has no Logout item (sign out is on the Profile page)', () => {
+    renderAt();
+    openMenu();
+    expect(screen.getByText('Profile')).toBeInTheDocument();
+    expect(screen.queryByText(/log ?out|sign out/i)).not.toBeInTheDocument();
+  });
 });

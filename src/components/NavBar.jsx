@@ -1,18 +1,14 @@
 import { useState, useEffect, useRef, memo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 // Use public logo.png (preloaded in index.html) for instant rendering during navigation
 const logo = '/logo.png';
 import { useAuth } from '../context/AuthContext';
-import { logger } from '../utils/logger';
-import { LogoutConfirmationModal } from './LogoutConfirmationModal';
 
 /**
  * Top navigation bar component with logo and profile dropdown
  */
 export const TopNavBar = memo(({ user }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const dropdownRef = useRef(null);
   
   // Taps outside the open menu land on a full-screen backdrop (below) that only
@@ -29,38 +25,7 @@ export const TopNavBar = memo(({ user }) => {
   }, [isDropdownOpen]);
   
   // Collector profile is loaded once by AuthContext (the route guard waits for it)
-  const { logout, profile: userProfile } = useAuth();
-  const navigate = useNavigate();
-
-  // Handle logout confirmation
-  const handleLogoutClick = () => {
-    setIsDropdownOpen(false);
-    setIsLogoutModalOpen(true);
-  };
-
-  // Handle confirmed logout
-  const handleLogoutConfirm = async () => {
-    setIsLoggingOut(true);
-    try {
-      logger.info('Logging out user from NavBar...');
-      const { success } = await logout();
-      if (success) {
-        logger.info('Logout successful, navigating to login page...');
-        navigate('/login');
-      }
-    } catch (error) {
-      logger.error('Logout failed:', error);
-    } finally {
-      setIsLoggingOut(false);
-      setIsLogoutModalOpen(false);
-    }
-  };
-
-  // Handle logout cancellation
-  const handleLogoutCancel = () => {
-    setIsLogoutModalOpen(false);
-  };
-
+  const { profile: userProfile } = useAuth();
   return (
     <>
       <nav className={`fixed top-0 left-0 right-0 bg-white shadow-md px-4 py-2 z-[2500] nav-top-bar${isDropdownOpen ? ' nav-menu-open' : ''}`}>
@@ -114,25 +79,12 @@ export const TopNavBar = memo(({ user }) => {
                 >
                   Earnings
                 </Link>
-                <button
-                  className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100"
-                  onClick={handleLogoutClick}
-                >
-                  Logout
-                </button>
               </div>
             )}
           </div>
         </div>
       </nav>
       
-      {/* Logout Confirmation Modal */}
-      <LogoutConfirmationModal
-        isOpen={isLogoutModalOpen}
-        onClose={handleLogoutCancel}
-        onConfirm={handleLogoutConfirm}
-        isLoading={isLoggingOut}
-      />
     </>
   );
 }, (prevProps, nextProps) => {

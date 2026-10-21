@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { TopNavBar } from '../components/NavBar';
+import SignOutSection from '../components/SignOutSection';
 import BottomNavBar from '../components/BottomNavBar';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -378,6 +379,9 @@ const ProfilePage = () => {
             </button>
           </div>
         )}
+
+        {/* Sign out lives here, not in the header menu, so it can't be tapped by mistake */}
+        <SignOutSection />
       </div>
 
       {/* Developer Tools Section */}
