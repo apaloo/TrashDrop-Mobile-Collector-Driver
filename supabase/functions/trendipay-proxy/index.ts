@@ -172,7 +172,12 @@ Deno.serve(async (req) => {
       }
 
       endpoint = `/v1/terminals/${tid}/disbursements`;
-      requestBody = payload;
+      // TrendiPay reports the payout result to our webhook, which confirms it
+      // and completes (or fails) the withdrawal
+      requestBody = {
+        ...payload,
+        callbackUrl: `${(Deno.env.get('SUPABASE_URL') ?? '').replace(/\/$/, '')}/functions/v1/trendipay-webhook`,
+      };
       break;
     }
 
