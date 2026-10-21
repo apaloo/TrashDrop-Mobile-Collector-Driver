@@ -179,12 +179,11 @@ export default function PaymentTest() {
       
       // Check if credentials are configured
       const apiUrl = import.meta.env.VITE_TRENDIPAY_API_URL;
-      const apiKey = import.meta.env.VITE_TRENDIPAY_API_KEY;
       const terminalId = import.meta.env.VITE_TRENDIPAY_TERMINAL_ID;
       const merchantId = import.meta.env.VITE_TRENDIPAY_MERCHANT_ID;
       const enabled = import.meta.env.VITE_ENABLE_TRENDIPAY;
       
-      const hasCredentials = apiUrl && apiKey && terminalId && merchantId;
+      const hasCredentials = apiUrl && terminalId && merchantId;
       
       const configResult = {
         success: hasCredentials,
@@ -194,8 +193,6 @@ export default function PaymentTest() {
         data: {
           enabled: enabled === 'true',
           apiUrl,
-          hasApiKey: !!apiKey,
-          apiKeyLength: apiKey?.length || 0,
           hasTerminalId: !!terminalId,
           hasMerchantId: !!merchantId,
           note: 'API connection will be tested when initiating a payment'
