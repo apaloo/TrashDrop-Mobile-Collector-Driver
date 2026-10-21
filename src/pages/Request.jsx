@@ -147,8 +147,6 @@ const RequestPage = () => {
     return (requests.available || []).filter(r => r && ids.has(r.id));
   }, [requests.available, isOnDuty, filterPosition, filters]);
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [currentReport, setCurrentReport] = useState(null);
-  const [showReportModal, setShowReportModal] = useState(false);
   // CRITICAL: Initialize navigation modal state from localStorage (for app switch persistence)
   const savedNavState = useMemo(() => loadNavModalState(), []);
   const [showNavigationModal, setShowNavigationModal] = useState(savedNavState?.isOpen || false);
@@ -2370,28 +2368,6 @@ const GeofenceErrorModal = ({
     }
   };
 
-  // Handle view report
-  const handleViewReport = async (requestId) => {
-    try {
-      // Find the request
-      const requestIndex = requests.picked_up.findIndex(req => req.id === requestId);
-      
-      if (requestIndex === -1) {
-        showToast('Request not found', 'error');
-        return;
-      }
-      
-      // Show the request details modal with the report tab active
-      const request = requests.picked_up[requestIndex];
-      setDetailModalData(request);
-      
-      showToast('Viewing disposal report', 'success');
-    } catch (err) {
-      logger.error('Error viewing report:', err);
-      showToast('Failed to view report', 'error');
-    }
-  };
-
   // Handle dispose ALL picked up items at once
   const handleDisposeAll = async () => {
     // Verify user is at a disposal site
@@ -2887,7 +2863,6 @@ const GeofenceErrorModal = ({
                           onCompletePickup={handleCompletePickup}
                           onLocateSite={handleLocateSite}
                           onDisposeBag={handleDisposeBag}
-                          onViewReport={handleViewReport}
                           onScanQRBlocked={handleScanQRBlocked}
                           onDisposeBagBlocked={handleDisposeBagBlocked}
                           siteLocated={locatedSiteRequests.has(request.id)}
@@ -2945,7 +2920,6 @@ const GeofenceErrorModal = ({
                             onCompletePickup={handleCompletePickup}
                             onLocateSite={handleLocateSite}
                             onDisposeBag={handleDisposeBag}
-                            onViewReport={handleViewReport}
                             onScanQRBlocked={handleScanQRBlocked}
                             onDisposeBagBlocked={handleDisposeBagBlocked}
                             siteLocated={siteLocatedForRequest}

@@ -18,7 +18,6 @@ const RequestCard = ({
   onCompletePickup, 
   onLocateSite, 
   onDisposeBag, 
-  onViewReport,
   onViewDetails,
   onScanQRBlocked,
   onDisposeBagBlocked,
@@ -360,32 +359,20 @@ const RequestCard = ({
             {/* Complete Pickup button moved to inside the QR scan modal */}
           </div>
         );
-      case PickupRequestStatus.PICKED_UP:
-        // Check if this is a disposed digital bin
-        const isDisposed = isDigitalBin ? request.status === 'disposed' : request.disposal_complete;
+      case 'disposed': // Disposed bins and bags (shown until the list refreshes)
+      case PickupRequestStatus.PICKED_UP: {
+        const isDisposed = request.status === 'disposed';
         
         if (isDisposed) {
           return (
             <div className="flex flex-col gap-2 w-full">
-              {/* Digital bin disposed tag */}
-              {isDigitalBin && (
-                <div className="w-full bg-gray-100 border-2 border-gray-300 text-gray-700 py-3 px-4 rounded-md flex items-center justify-center font-medium">
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                  </svg>
-                  Bin Disposed
-                </div>
-              )}
-              
-              {/* View Report button for regular requests */}
-              {!isDigitalBin && (
-                <button 
-                  onClick={() => onViewReport && onViewReport(request.id)}
-                  className="w-full bg-amber-500 hover:bg-amber-600 text-white py-3 px-4 rounded-md flex items-center justify-center"
-                >
-                  View Report
-                </button>
-              )}
+              {/* Disposed tag (bins and bags) */}
+              <div className="w-full bg-gray-100 border-2 border-gray-300 text-gray-700 py-3 px-4 rounded-md flex items-center justify-center font-medium">
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                {isDigitalBin ? 'Bin Disposed' : 'Bags Disposed'}
+              </div>
             </div>
           );
         } else {
@@ -478,6 +465,7 @@ const RequestCard = ({
             </div>
           );
         }
+      }
       default:
         // Debug logging for unexpected status values
         logger.warn('⚠️ Unexpected request status in RequestCard:', {
