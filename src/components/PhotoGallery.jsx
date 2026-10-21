@@ -7,8 +7,15 @@ const COLLAPSED_COUNT = 3;
 // Minimum horizontal drag, in px, that counts as a swipe
 const SWIPE_THRESHOLD = 50;
 
-const normalizePhotos = (photos) =>
-  (Array.isArray(photos) ? photos : [photos]).filter((url) => typeof url === 'string' && url.trim() !== '');
+// Accepts an array of URLs, a single URL, or a JSON-encoded array (some
+// request rows store photo_urls as text)
+const normalizePhotos = (photos) => {
+  let list = photos;
+  if (typeof list === 'string' && list.trim().startsWith('[')) {
+    try { list = JSON.parse(list); } catch { list = []; }
+  }
+  return (Array.isArray(list) ? list : [list]).filter((url) => typeof url === 'string' && url.trim() !== '');
+};
 
 /**
  * Full-screen photo viewer: swipe, arrow buttons or keyboard arrows to move
@@ -99,19 +106,30 @@ const PhotoLightbox = ({ photos, index, onIndexChange, onClose }) => {
         )}
       </div>
 
-      {count > 1 && (
-        <div className="flex justify-center gap-1.5 pb-6" onClick={(e) => e.stopPropagation()}>
-          {photos.map((url, i) => (
-            <button
-              key={url + i}
-              type="button"
-              onClick={() => onIndexChange(i)}
-              className={`h-2 rounded-full transition-all ${i === index ? 'w-5 bg-white' : 'w-2 bg-white/40'}`}
-              aria-label={`Go to photo ${i + 1}`}
-            />
-          ))}
-        </div>
-      )}
+      <div className="px-4 pb-6" onClick={(e) => e.stopPropagation()}>
+        {count > 1 && (
+          <div className="flex justify-center gap-1.5 pb-4">
+            {photos.map((url, i) => (
+              <button
+                key={url + i}
+                type="button"
+                onClick={() => onIndexChange(i)}
+                className={`h-2 rounded-full transition-all ${i === index ? 'w-5 bg-white' : 'w-2 bg-white/40'}`}
+                aria-label={`Go to photo ${i + 1}`}
+              />
+            ))}
+          </div>
+        )}
+        {/* Large close button, easy to find for low-literacy users */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-500 py-4 text-lg font-bold text-white active:bg-red-600"
+        >
+          <X className="h-6 w-6" strokeWidth={2.5} />
+          CLOSE
+        </button>
+      </div>
     </div>,
     document.body
   );
@@ -119,15 +137,20 @@ const PhotoLightbox = ({ photos, index, onIndexChange, onClose }) => {
 
 /**
  * Thumbnail grid. Shows one row at first with a "Show all" button; tapping a
- * thumbnail opens the full-screen viewer at that photo.
+ * thumbnail opens the full-screen viewer at that photo. Photos that fail to
+ * load are dropped. Pass emptyText={null} to render nothing when there are no
+ * photos.
  */
-const PhotoGallery = ({ photos }) => {
-  const urls = normalizePhotos(photos);
+const PhotoGallery = ({ photos, emptyText = 'No photos attached.' }) => {
+  const [failed, setFailed] = useState(() => new Set());
+  const urls = normalizePhotos(photos).filter((url) => !failed.has(url));
   const [expanded, setExpanded] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(null);
 
+  const markFailed = (url) => setFailed((prev) => new Set(prev).add(url));
+
   if (urls.length === 0) {
-    return <p className="text-gray-500 text-sm">No photos attached.</p>;
+    return emptyText ? <p className="text-gray-500 text-sm">{emptyText}</p> : null;
   }
 
   const hiddenCount = urls.length - COLLAPSED_COUNT;
@@ -146,7 +169,7 @@ const PhotoGallery = ({ photos }) => {
               className="relative aspect-square overflow-hidden rounded-md bg-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500"
               aria-label={isLastCollapsed ? `Show ${hiddenCount} more photos` : `Open photo ${index + 1} of ${urls.length}`}
             >
-              <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" />
+              <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => markFailed(url)} />
               {isLastCollapsed && (
                 <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-lg font-semibold text-white">
                   +{hiddenCount}
@@ -180,7 +203,7 @@ const PhotoGallery = ({ photos }) => {
       {viewerIndex !== null && (
         <PhotoLightbox
           photos={urls}
-          index={viewerIndex}
+          index={Math.min(viewerIndex, urls.length - 1)}
           onIndexChange={setViewerIndex}
           onClose={() => setViewerIndex(null)}
         />

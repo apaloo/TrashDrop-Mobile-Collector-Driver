@@ -70,4 +70,28 @@ describe('PhotoGallery', () => {
     rerender(<PhotoGallery photos={[]} />);
     expect(screen.getByText('No photos attached.')).toBeInTheDocument();
   });
+
+  it('closes with the large CLOSE button', () => {
+    render(<PhotoGallery photos={photos} />);
+    fireEvent.click(screen.getByRole('button', { name: 'View full screen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'CLOSE' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('reads photo lists stored as JSON text', () => {
+    render(<PhotoGallery photos='["x.jpg","y.jpg"]' />);
+    expect(screen.getAllByRole('button', { name: /Open photo/ })).toHaveLength(2);
+  });
+
+  it('drops photos that fail to load', () => {
+    render(<PhotoGallery photos={['ok.jpg', 'broken.jpg']} />);
+    const broken = screen.getByRole('button', { name: 'Open photo 2 of 2' }).querySelector('img');
+    fireEvent.error(broken);
+    expect(screen.getAllByRole('button', { name: /Open photo/ })).toHaveLength(1);
+  });
+
+  it('renders nothing for no photos when emptyText is null', () => {
+    const { container } = render(<PhotoGallery photos={null} emptyText={null} />);
+    expect(container).toBeEmptyDOMElement();
+  });
 });
