@@ -12,6 +12,8 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
   const withdrawableAmount = availableForWithdrawal ?? 0;
   const hasPendingEarnings = pendingDisposalAmount > 0;
   const [amount, setAmount] = useState('');
+  // What was actually sent: earnings are paid out whole, so it can be less than typed
+  const [paidAmount, setPaidAmount] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('momo');
   const [momoNumber, setMomoNumber] = useState('');
   const [momoProvider, setMomoProvider] = useState('mtn');
@@ -69,6 +71,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
         throw new Error(result.error || 'Failed to process withdrawal');
       }
       
+      setPaidAmount(Number.isFinite(result?.paidAmount) ? result.paidAmount : withdrawnAmount);
       setSuccess(true);
       setTimeout(() => {
         onClose();
@@ -109,8 +112,13 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">Withdrawal Submitted!</h3>
               <p className="text-gray-500 mb-6">
-                ₵{parseFloat(amount).toFixed(2)} is being sent to your {momoProvider.toUpperCase()} account. You'll receive it shortly.
+                ₵{(paidAmount ?? parseFloat(amount)).toFixed(2)} is being sent to your {momoProvider.toUpperCase()} account. You'll receive it shortly.
               </p>
+              {paidAmount != null && paidAmount < parseFloat(amount) && (
+                <p className="text-sm text-gray-500 -mt-4 mb-6">
+                  Earnings are paid out whole, so this is the most that fits ₵{parseFloat(amount).toFixed(2)}. The rest stays in your balance.
+                </p>
+              )}
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
@@ -118,6 +126,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
                 <label className="block text-gray-900 text-base font-bold mb-2" htmlFor="amount">
                   Amount (₵)
                 </label>
+                <p className="text-xs text-gray-500 mb-2">Earnings are paid out whole, so you may receive a little less than you type.</p>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">₵</span>
                   <input
@@ -571,7 +580,7 @@ const EarningsPage = () => {
       const earningsService = createEarningsService(user.id);
       
       // **NEW: Process digital bin disbursement with validation**
-      const { success, error, message, binsIncluded } = await earningsService.processDigitalBinDisbursement(
+      const { success, error, message, binsIncluded, amount: paidAmount } = await earningsService.processDigitalBinDisbursement(
         amount,
         paymentDetails
       );
@@ -588,7 +597,7 @@ const EarningsPage = () => {
       // Refresh data to reflect the withdrawal
       await fetchEarningsData();
       
-      return { success: true, message, binsIncluded };
+      return { success: true, message, binsIncluded, paidAmount };
     } catch (error) {
       logger.error('Error processing withdrawal:', error);
       return {

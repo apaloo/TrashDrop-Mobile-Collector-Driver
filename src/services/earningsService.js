@@ -1832,263 +1832,69 @@ class EarningsService {
   }
 
   /**
-   * Process withdrawal (cashout) using withdrawals + withdrawal_items tables.
-   * Creates a withdrawal record, links each eligible bin and pickup request,
-   * then calls TrendiPay to send funds to the collector's MoMo.
-   * 
-   * @param {number} amount - Amount to disburse in GHS
+   * Cash out. The database decides what is paid: request_withdrawal picks the
+   * collector's unpaid earnings as WHOLE items up to the amount asked for and
+   * creates the withdrawal; the trendipay-proxy then pays exactly that
+   * withdrawal once and records the result.
+   *
+   * @param {number} amount - Amount asked for, in GHS (the amount paid may be lower)
    * @param {Object} paymentDetails - MoMo details {momoNumber, momoProvider, accountName}
-   * @returns {Promise<Object>} Result with success status
+   * @returns {Promise<Object>} { success, amount, requested, message, ... } or { success: false, error }
    */
   async processDigitalBinDisbursement(amount, paymentDetails) {
     try {
       logger.info('Processing withdrawal:', { collectorId: this.collectorId, amount });
 
-      // Step 1: Validate amount
       if (!amount || amount <= 0) {
-        throw new Error('Invalid withdrawal amount');
+        throw new Error('Enter an amount to cash out.');
+      }
+      if (!ENABLE_TRENDIPAY) {
+        throw new Error('Cash-out is switched off at the moment. Please try again later.');
       }
 
-      // Step 2: Validate cashout amount using RPC (checks both bins + pickups)
-      const { data: validation, error: validationError } = await supabase
-        .rpc('validate_cashout', {
-          p_collector_id: this.collectorId,
-          p_amount: amount
-        });
-
-      if (validationError) {
-        throw new Error(`Validation error: ${validationError.message}`);
+      // Step 1: the database picks whole earnings items and creates the withdrawal
+      const { data: withdrawal, error: requestError } = await supabase.rpc('request_withdrawal', {
+        p_amount: amount,
+        p_phone: paymentDetails.momoNumber,
+        p_network: paymentDetails.momoProvider,
+        p_account_name: paymentDetails.accountName || null
+      });
+      if (requestError) {
+        throw new Error(requestError.message || 'Could not start the cash-out');
       }
 
-      if (!validation.valid) {
-        const available = validation.available || 0;
-        if (available === 0) {
-          throw new Error('No funds available for withdrawal. You must dispose your collected waste at a facility before you can withdraw earnings.');
-        } else if (amount > available) {
-          throw new Error(`Insufficient balance. Available: ₵${available.toFixed(2)}. Dispose your pending collections first.`);
-        }
-        throw new Error(validation.error || 'Insufficient balance');
+      const paid = Number(withdrawal.amount);
+      logger.info('Withdrawal created:', withdrawal);
+
+      // Step 2: pay it. The proxy checks the amount against this withdrawal and
+      // records the gateway result itself.
+      const gatewayResult = await TrendiPayService.initiateDisbursement({
+        reference: withdrawal.withdrawal_id,
+        accountNumber: paymentDetails.momoNumber,
+        rSwitch: paymentDetails.momoProvider,
+        accountName: paymentDetails.accountName,
+        amount: paid,
+        description: `TrashDrop payout (${withdrawal.items} items)`,
+        currency: 'GHS'
+      });
+
+      if (!gatewayResult.success) {
+        throw new Error(gatewayResult.error || 'Disbursement gateway error');
       }
 
-      logger.info('Cashout validation passed:', validation);
-
-      // Step 3: Collect eligible items (digital bins + pickup requests)
-      // --- 3a: Undisbursed digital bins (MoMo/e-Cash, disposed) ---
-      // Exclude bins already in a non-failed withdrawal
-      const { data: alreadyWithdrawnBinRows } = await supabase
-        .from('withdrawal_items')
-        .select('item_id, withdrawals!inner(status)')
-        .eq('item_type', 'digital_bin')
-        .not('withdrawals.status', 'in', '("failed","cancelled")');
-      const alreadyWithdrawnBinIds = new Set((alreadyWithdrawnBinRows || []).map(r => r.item_id));
-
-      // Also exclude legacy bin_payments disbursements
-      const { data: legacyDisbursedRows } = await supabase
-        .from('bin_payments')
-        .select('digital_bin_id')
-        .eq('type', 'disbursement')
-        .eq('status', 'success');
-      (legacyDisbursedRows || []).forEach(r => { if (r.digital_bin_id) alreadyWithdrawnBinIds.add(r.digital_bin_id); });
-
-      // Fetch eligible bins
-      const { data: allDisposedBins } = await supabase
-        .from('digital_bins')
-        .select('id')
-        .eq('collector_id', this.collectorId)
-        .eq('status', 'disposed');
-
-      const eligibleBinIds = (allDisposedBins || []).map(b => b.id).filter(id => !alreadyWithdrawnBinIds.has(id) && !alreadyWithdrawnBinIds.has(String(id)));
-
-      // Get actual collector_share for each eligible bin from bin_payments
-      let binItems = [];
-      if (eligibleBinIds.length > 0) {
-        const { data: binPayments } = await supabase
-          .from('bin_payments')
-          .select('digital_bin_id, collector_share, payment_mode')
-          .in('digital_bin_id', eligibleBinIds)
-          .eq('type', 'collection')
-          .not('status', 'eq', 'failed')
-          .in('payment_mode', ['momo', 'e_cash']);
-
-        binItems = (binPayments || [])
-          .filter(bp => bp.collector_share > 0)
-          .map(bp => ({
-            item_type: 'digital_bin',
-            item_id: String(bp.digital_bin_id),
-            amount: parseFloat(bp.collector_share)
-          }));
-      }
-
-      // --- 3b: Undisbursed pickup requests (prepaid, disposed) ---
-      const { data: alreadyWithdrawnPickupRows } = await supabase
-        .from('withdrawal_items')
-        .select('item_id, withdrawals!inner(status)')
-        .eq('item_type', 'pickup_request')
-        .not('withdrawals.status', 'in', '("failed","cancelled")');
-      const alreadyWithdrawnPickupIds = new Set((alreadyWithdrawnPickupRows || []).map(r => r.item_id));
-
-      const { data: disposedPickups } = await supabase
-        .from('pickup_requests')
-        .select('id, collector_total_payout')
-        .eq('collector_id', this.collectorId)
-        .eq('status', 'disposed')
-        .gt('collector_total_payout', 0);
-
-      const pickupItems = (disposedPickups || [])
-        .filter(p => !alreadyWithdrawnPickupIds.has(p.id))
-        .map(p => ({
-          item_type: 'pickup_request',
-          item_id: String(p.id),
-          amount: parseFloat(p.collector_total_payout)
-        }));
-
-      // --- 3c: Undisbursed illegal dumping cleanups (paid by TrashDrop, disposed) ---
-      const { data: alreadyWithdrawnCleanupRows } = await supabase
-        .from('withdrawal_items')
-        .select('item_id, withdrawals!inner(status)')
-        .eq('item_type', 'dumping_cleanup')
-        .not('withdrawals.status', 'in', '("failed","cancelled")');
-      const alreadyWithdrawnCleanupIds = new Set((alreadyWithdrawnCleanupRows || []).map(r => r.item_id));
-
-      const { data: disposedCleanups } = await supabase
-        .from('collector_assignments_view')
-        .select('id, payment')
-        .eq('collector_id', this.collectorId)
-        .eq('original_status', 'disposed')
-        .gt('payment', 0);
-
-      const cleanupItems = (disposedCleanups || [])
-        .filter(c => !alreadyWithdrawnCleanupIds.has(String(c.id)))
-        .map(c => ({
-          item_type: 'dumping_cleanup',
-          item_id: String(c.id),
-          amount: parseFloat(c.payment)
-        }));
-
-      const allItems = [...binItems, ...pickupItems, ...cleanupItems];
-      const totalAvailable = allItems.reduce((s, i) => s + i.amount, 0);
-
-      logger.info(`Eligible items: ${binItems.length} bins, ${pickupItems.length} pickups, ${cleanupItems.length} cleanups, total ₵${totalAvailable.toFixed(2)}`);
-
-      if (allItems.length === 0 || totalAvailable <= 0) {
-        throw new Error('No eligible items for withdrawal.');
-      }
-
-      // Step 4: Select items up to the requested amount
-      let remaining = amount;
-      const selectedItems = [];
-      for (const item of allItems) {
-        if (remaining <= 0) break;
-        const take = Math.min(item.amount, remaining);
-        selectedItems.push({ ...item, amount: take });
-        remaining -= take;
-      }
-
-      // Step 5: Create withdrawal record
-      const { data: withdrawal, error: withdrawalError } = await supabase
-        .from('withdrawals')
-        .insert({
-          collector_id: this.collectorId,
-          amount,
-          status: 'pending',
-          payment_method: 'mobile_money',
-          phone_number: paymentDetails.momoNumber,
-          network: (paymentDetails.momoProvider || 'mtn').toUpperCase(),
-          payment_details: {
-            accountName: paymentDetails.accountName || 'Collector',
-            itemCount: selectedItems.length
-          }
-        })
-        .select()
-        .single();
-
-      if (withdrawalError) {
-        throw new Error(`Failed to create withdrawal: ${withdrawalError.message}`);
-      }
-
-      logger.info('Withdrawal record created:', withdrawal.id);
-
-      // Step 6: Insert withdrawal_items (one per bin/pickup)
-      const itemRecords = selectedItems.map(item => ({
-        withdrawal_id: withdrawal.id,
-        item_type: item.item_type,
-        item_id: item.item_id,
-        amount: item.amount
-      }));
-
-      const { error: itemsError } = await supabase
-        .from('withdrawal_items')
-        .insert(itemRecords);
-
-      if (itemsError) {
-        logger.error('Failed to insert withdrawal_items:', itemsError);
-        // Rollback: mark withdrawal as failed
-        await supabase.from('withdrawals').update({ status: 'failed', gateway_error: 'Failed to link items' }).eq('id', withdrawal.id);
-        throw new Error('Failed to link withdrawal items');
-      }
-
-      logger.info(`Linked ${itemRecords.length} items to withdrawal ${withdrawal.id}`);
-
-      // Step 7: Call TrendiPay disbursement API
-      if (ENABLE_TRENDIPAY) {
-        logger.info('Calling TrendiPay disbursement API...');
-
-        const gatewayResult = await TrendiPayService.initiateDisbursement({
-          reference: withdrawal.id,
-          accountNumber: paymentDetails.momoNumber,
-          rSwitch: paymentDetails.momoProvider,
-          amount,
-          description: `TrashDrop payout (${selectedItems.length} items)`,
-          currency: 'GHS'
-        });
-
-        if (!gatewayResult.success) {
-          await supabase
-            .from('withdrawals')
-            .update({ status: 'failed', gateway_error: gatewayResult.error })
-            .eq('id', withdrawal.id);
-          throw new Error(gatewayResult.error || 'Disbursement gateway error');
-        }
-
-        await supabase
-          .from('withdrawals')
-          .update({
-            status: 'processing',
-            gateway_transaction_id: gatewayResult.transactionId,
-            gateway_response: gatewayResult
-          })
-          .eq('id', withdrawal.id);
-
-        logger.info('TrendiPay disbursement initiated:', { withdrawalId: withdrawal.id, transactionId: gatewayResult.transactionId });
-
-        return {
-          success: true,
-          withdrawalId: withdrawal.id,
-          transactionId: gatewayResult.transactionId,
-          amount,
-          message: 'Withdrawal request submitted. You will receive your funds shortly.',
-          status: 'processing',
-          itemsIncluded: selectedItems.length
-        };
-      } else {
-        // Stub mode: Mark as completed immediately for testing
-        logger.warn('TrendiPay disabled - using stub mode');
-
-        await supabase
-          .from('withdrawals')
-          .update({ status: 'completed', completed_at: new Date().toISOString(), gateway_transaction_id: `stub_${Date.now()}` })
-          .eq('id', withdrawal.id);
-
-        return {
-          success: true,
-          withdrawalId: withdrawal.id,
-          amount,
-          message: 'Withdrawal processed successfully (stub mode)',
-          status: 'completed',
-          itemsIncluded: selectedItems.length
-        };
-      }
-
+      const partial = paid < Number(withdrawal.requested);
+      return {
+        success: true,
+        withdrawalId: withdrawal.withdrawal_id,
+        transactionId: gatewayResult.transactionId,
+        amount: paid,
+        requested: Number(withdrawal.requested),
+        message: partial
+          ? `GHS ${paid.toFixed(2)} is on its way (your earnings are paid out whole, so this is the most that fits GHS ${Number(withdrawal.requested).toFixed(2)}).`
+          : 'Withdrawal request submitted. You will receive your funds shortly.',
+        status: 'processing',
+        itemsIncluded: withdrawal.items
+      };
     } catch (error) {
       logger.error('Error processing withdrawal:', error);
       return {
