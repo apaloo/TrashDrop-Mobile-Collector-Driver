@@ -48,6 +48,12 @@
   right: 0;
 }
 
+/* While the header menu is open, its backdrop must cover everything on the
+   page (map controls, radius panel), so lift the header above them */
+.nav-top-bar.nav-menu-open {
+  z-index: 5000 !important;
+}
+
 .nav-bottom-bar {
   z-index: 1000 !important;
   position: fixed;
