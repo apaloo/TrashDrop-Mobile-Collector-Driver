@@ -4,7 +4,7 @@ import React from 'react';
  * MapControls component - Provides overlay UI elements for the Map
  * This separates the UI controls from the map rendering components
  */
-const MapControls = ({ lastUpdated, isRefreshing, refreshData, requestCount }) => {
+const MapControls = ({ lastUpdated, isRefreshing, refreshData, requestCount, isOnDuty = false }) => {
   if (!lastUpdated) return null;
 
   // Format time as HH:MM:SS
@@ -52,7 +52,9 @@ const MapControls = ({ lastUpdated, isRefreshing, refreshData, requestCount }) =
         </button>
       </div>
       <div className="text-xs text-gray-500 mt-1">
-        {requestCount} pickup requests available
+        {isOnDuty
+          ? `${requestCount} ${requestCount === 1 ? 'request' : 'requests'} within your radius`
+          : 'Off-Duty: go On-Duty to see requests'}
       </div>
     </div>
   );

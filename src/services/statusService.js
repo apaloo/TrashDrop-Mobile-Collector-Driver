@@ -102,6 +102,13 @@ class CollectorStatusService {
       throw new Error('Finish your sign-up before going On-Duty.');
     }
 
+    // The database only lets On-Duty collectors accept requests, so record
+    // the switch there first; never show On-Duty if the server didn't get it
+    const serverDuty = await this.setServerDuty(newStatus === COLLECTOR_STATUS.ONLINE);
+    if (!serverDuty.ok && newStatus === COLLECTOR_STATUS.ONLINE) {
+      throw new Error('Could not go On-Duty. Check your connection and try again.');
+    }
+
     const previousStatus = this.currentStatus;
     const timestamp = new Date();
 
@@ -164,6 +171,36 @@ class CollectorStatusService {
     this.onlineEligible = !!eligible;
     if (!this.onlineEligible && this.currentStatus !== COLLECTOR_STATUS.OFFLINE) {
       this.forceOffline();
+    }
+    // Once the profile is known, make sure the server isn't left On-Duty
+    // from an earlier session while this screen shows Off-Duty
+    if (this.onlineEligible && this.currentStatus !== COLLECTOR_STATUS.ONLINE) {
+      this.setServerDuty(false);
+    }
+  }
+
+  /**
+   * Record On-/Off-Duty on the collector's profile (collector_profiles.on_duty).
+   * Returns { ok }. A database without the on_duty column yet counts as ok, so
+   * the app keeps working before the migration is applied.
+   */
+  async setServerDuty(onDuty) {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user) return { ok: false };
+      const { error } = await supabase
+        .from('collector_profiles')
+        .update({ on_duty: onDuty, on_duty_changed_at: new Date().toISOString() })
+        .eq('user_id', userData.user.id);
+      if (error) {
+        if (/on_duty/.test(error.message || '')) return { ok: true };
+        logger.warn('⚠️ Could not save duty status:', error.message);
+        return { ok: false, error };
+      }
+      return { ok: true };
+    } catch (error) {
+      logger.warn('⚠️ Could not save duty status:', error?.message);
+      return { ok: false, error };
     }
   }
 

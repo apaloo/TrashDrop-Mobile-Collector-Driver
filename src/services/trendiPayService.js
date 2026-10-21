@@ -13,13 +13,12 @@ import { supabase } from './supabase';
 
 // Configuration
 const TRENDIPAY_CONFIG = {
-  // These should be environment variables in production
+  // Public settings only. The API key and webhook secret live in the Supabase
+  // Edge Functions (TRENDIPAY_API_KEY, TRENDIPAY_WEBHOOK_SECRET), never in the browser bundle.
   // Vite uses import.meta.env, not process.env
   apiUrl: import.meta.env.VITE_TRENDIPAY_API_URL || 'https://merchant-api.trendipay.com',
-  apiKey: import.meta.env.VITE_TRENDIPAY_API_KEY || '',
   terminalId: import.meta.env.VITE_TRENDIPAY_TERMINAL_ID || '',
   merchantId: import.meta.env.VITE_TRENDIPAY_MERCHANT_ID || '',
-  webhookSecret: import.meta.env.VITE_TRENDIPAY_WEBHOOK_SECRET || '', // Fix #4: Required for signature verification
   callbackBaseUrl: import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || (() => {
     // Derive functions URL from Supabase project URL
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
@@ -47,13 +46,10 @@ const TRENDIPAY_CONFIG = {
 // === DEBUG: Log TrendiPay config on module load ===
 console.log('🔧 [TrendiPay] Config loaded:', {
   apiUrl: TRENDIPAY_CONFIG.apiUrl,
-  proxyUrl: TRENDIPAY_CONFIG.proxyUrl || '(empty — will call TrendiPay directly!)',
+  proxyUrl: TRENDIPAY_CONFIG.proxyUrl || '(empty)',
   hasAnonKey: !!TRENDIPAY_CONFIG.supabaseAnonKey,
-  hasApiKey: !!TRENDIPAY_CONFIG.apiKey,
-  apiKeyPrefix: TRENDIPAY_CONFIG.apiKey ? TRENDIPAY_CONFIG.apiKey.substring(0, 8) + '...' : '(empty)',
   terminalId: TRENDIPAY_CONFIG.terminalId || '(empty)',
   merchantId: TRENDIPAY_CONFIG.merchantId || '(empty)',
-  hasWebhookSecret: !!TRENDIPAY_CONFIG.webhookSecret,
   callbackBaseUrl: TRENDIPAY_CONFIG.callbackBaseUrl || '(empty)',
   VITE_SUPABASE_FUNCTIONS_URL: import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || '(not set)',
   VITE_API_URL: import.meta.env.VITE_API_URL || '(not set)',
@@ -157,23 +153,8 @@ async function makeProxyRequest(action, payload = null, extra = {}, retryCount =
       console.log(`📡 [TrendiPay] Proxy URL: ${url}`);
       console.log(`📡 [TrendiPay] Proxy body:`, JSON.stringify(proxyBody, null, 2));
     } else {
-      // Direct call (will likely fail with CORS in browser)
-      console.warn('⚠️ [TrendiPay] No proxy URL — calling TrendiPay directly (may fail with CORS)');
-      const endpoint = extra.endpoint || '';
-      const method = extra.method || 'POST';
-      url = `${TRENDIPAY_CONFIG.apiUrl}${endpoint}`;
-      options = {
-        method,
-        headers: {
-          'Authorization': `Bearer ${TRENDIPAY_CONFIG.apiKey}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-Merchant-ID': TRENDIPAY_CONFIG.merchantId,
-        },
-      };
-      if (payload && (method === 'POST' || method === 'PUT')) {
-        options.body = JSON.stringify(payload);
-      }
+      // The API key is held by the proxy only; the browser can't call TrendiPay directly.
+      throw new Error('TrendiPay proxy URL is not configured (VITE_SUPABASE_URL missing)');
     }
 
     const response = await fetch(url, options);
@@ -574,139 +555,17 @@ export async function checkDisbursementStatus(transactionId, reference) {
 }
 
 /**
- * Verify webhook signature using HMAC-SHA256 (Fix #4: Security validation)
- * 
- * TrendiPay signs webhooks with HMAC-SHA256 using your webhook secret.
- * The signature is sent in the X-TrendiPay-Signature header.
- * 
- * @param {string} signature - Signature from X-TrendiPay-Signature header
- * @param {Object|string} payload - Webhook payload (raw body string preferred)
- * @param {Object} options - Optional configuration
- * @param {string} options.algorithm - Hash algorithm (default: 'SHA-256')
- * @param {string} options.encoding - Signature encoding (default: 'hex')
- * @returns {Promise<boolean>} True if signature is valid
+ * Check that the app is set up to reach the TrendiPay proxy.
+ * The credentials themselves live in the Supabase Edge Functions, so this
+ * only checks the public settings the browser needs.
+ *
+ * @returns {Object} Configuration check result
  */
-export async function verifyWebhookSignature(signature, payload, options = {}) {
-  try {
-    const { algorithm = 'SHA-256', encoding = 'hex' } = options;
-    
-    // Validate inputs
-    if (!signature) {
-      logger.warn('Webhook signature missing');
-      return false;
-    }
-    
-    if (!TRENDIPAY_CONFIG.webhookSecret) {
-      logger.error('CRITICAL: Webhook secret not configured! Set VITE_TRENDIPAY_WEBHOOK_SECRET');
-      // In development, you might want to allow unsigned webhooks
-      if (import.meta.env.DEV) {
-        logger.warn('⚠️ DEV MODE: Allowing unsigned webhook (UNSAFE for production)');
-        return true;
-      }
-      return false;
-    }
-    
-    // Normalize payload to string
-    const payloadString = typeof payload === 'string' 
-      ? payload 
-      : JSON.stringify(payload);
-    
-    // Use Web Crypto API (available in browsers and modern Node.js)
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(TRENDIPAY_CONFIG.webhookSecret);
-    const messageData = encoder.encode(payloadString);
-    
-    // Import the secret key
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'HMAC', hash: algorithm },
-      false,
-      ['sign']
-    );
-    
-    // Generate expected signature
-    const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
-    const expectedSignature = Array.from(new Uint8Array(signatureBuffer))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-    
-    // Timing-safe comparison to prevent timing attacks
-    const isValid = timingSafeEqual(signature.toLowerCase(), expectedSignature.toLowerCase());
-    
-    if (!isValid) {
-      logger.warn('Webhook signature mismatch', {
-        receivedPrefix: signature.substring(0, 10) + '...',
-        expectedPrefix: expectedSignature.substring(0, 10) + '...'
-      });
-    } else {
-      logger.info('✅ Webhook signature verified successfully');
-    }
-    
-    return isValid;
-    
-  } catch (error) {
-    logger.error('Error verifying webhook signature:', error);
-    return false;
-  }
-}
-
-/**
- * Timing-safe string comparison to prevent timing attacks
- * @param {string} a - First string
- * @param {string} b - Second string
- * @returns {boolean} True if strings are equal
- */
-function timingSafeEqual(a, b) {
-  if (a.length !== b.length) {
-    return false;
-  }
-  
-  let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return result === 0;
-}
-
-/**
- * Test API connection and credentials
- * 
- * @returns {Promise<Object>} Connection test result
- */
-export async function testConnection() {
-  try {
-    logger.info('Testing TrendiPay API connection...');
-    
-    if (!TRENDIPAY_CONFIG.apiKey || !TRENDIPAY_CONFIG.merchantId) {
-      throw new Error('TrendiPay credentials not configured');
-    }
-    
-    const result = await makeApiRequest('/ping', 'GET');
-    
-    if (!result.success) {
-      throw new Error('Connection test failed');
-    }
-    
-    logger.info('TrendiPay API connection successful');
-    
-    return {
-      success: true,
-      message: 'Connected to TrendiPay API',
-      config: {
-        apiUrl: TRENDIPAY_CONFIG.apiUrl,
-        merchantId: TRENDIPAY_CONFIG.merchantId,
-        hasApiKey: !!TRENDIPAY_CONFIG.apiKey
-      }
-    };
-    
-  } catch (error) {
-    logger.error('TrendiPay connection test failed:', error);
-    return {
-      success: false,
-      error: error.message || 'Connection test failed'
-    };
-  }
+export function testConnection() {
+  const ready = !!(TRENDIPAY_CONFIG.proxyUrl && TRENDIPAY_CONFIG.merchantId && TRENDIPAY_CONFIG.terminalId);
+  return ready
+    ? { success: true, message: 'TrendiPay proxy configured', config: { merchantId: TRENDIPAY_CONFIG.merchantId } }
+    : { success: false, error: 'TrendiPay proxy, merchant or terminal not configured' };
 }
 
 export default {
@@ -714,6 +573,5 @@ export default {
   checkCollectionStatus,
   initiateDisbursement,
   checkDisbursementStatus,
-  verifyWebhookSignature,
   testConnection
 };

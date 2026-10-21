@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { COLLECTOR_TYPE, validateVolunteerSignup, districtsOf } from '../utils/volunteer';
+import { GHANA_REGIONS, OTHER_DISTRICT } from '../config/ghanaRegions';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatPhoneNumber, authService } from '../services/supabase';
@@ -30,6 +32,19 @@ const MILESTONES = [
   { step: 4, icon: '👤', label: 'Your Info'},
   { step: 5, icon: '🚛', label: 'Vehicle'  },
   { step: 6, icon: '🏢', label: 'Company'  },
+];
+// Volunteer clean-up groups: no vehicle or company steps
+const VOLUNTEER_MILESTONES = [
+  { step: 1, icon: '📱', label: 'Phone'     },
+  { step: 2, icon: '🔑', label: 'Verify'    },
+  { step: 3, icon: '🪪', label: 'Leader ID' },
+  { step: 4, icon: '🤝', label: 'Your Group'},
+];
+
+// What kind of account is being created
+const ACCOUNT_KINDS = [
+  { value: COLLECTOR_TYPE.COLLECTOR, emoji: '🛺', label: 'I collect waste', hint: 'Take paid pickups and assignments' },
+  { value: COLLECTOR_TYPE.VOLUNTEER, emoji: '🤝', label: 'Volunteer group', hint: 'Clean up reported dumping sites in your area' },
 ];
 
 // ─── ID type visual options ───────────────────────────────────────────────────
@@ -162,8 +177,15 @@ const SignupPage = () => {
     vehicle_photo: null,
     company_id: '',
     company_name: '',
-    role: 'driver'
+    role: 'driver',
+    // Volunteer clean-up groups
+    collector_type: searchParams.get('type') === COLLECTOR_TYPE.VOLUNTEER ? COLLECTOR_TYPE.VOLUNTEER : COLLECTOR_TYPE.COLLECTOR,
+    group_name: '',
+    leader_name: '',
+    district: '',
+    members: ''
   });
+  const isVolunteer = formData.collector_type === COLLECTOR_TYPE.VOLUNTEER;
   
   // Signed in already (phone verified) but sign-up never finished: skip the
   // phone and code steps and continue from the details, keeping what we have.
@@ -182,7 +204,9 @@ const SignupPage = () => {
       license_plate: profile?.license_plate || profile?.vehicle_plate || prev.license_plate,
       vehicle_color: profile?.vehicle_color || prev.vehicle_color,
       company_id: profile?.company_id || prev.company_id,
-      company_name: profile?.company_name || prev.company_name
+      company_name: profile?.company_name || prev.company_name,
+      collector_type: profile?.collector_type || prev.collector_type,
+      group_name: profile?.collector_type === COLLECTOR_TYPE.VOLUNTEER ? (profile?.first_name || prev.group_name) : prev.group_name
     }));
     setStep(3);
   }, [user?.phone, profile, profileState, setIsCompletingSignup]);
@@ -334,6 +358,21 @@ const SignupPage = () => {
   // Handle final form submission — navigate immediately, finish uploads in background
   const handleSubmit = async (e) => {
     e.preventDefault();
+    let volunteerRequest = null;
+    if (isVolunteer) {
+      const { errors, details } = validateVolunteerSignup(formData);
+      if (Object.keys(errors).length) {
+        setFieldErrors(prev => ({ ...prev, ...errors }));
+        hapticError();
+        return;
+      }
+      volunteerRequest = {
+        groupName: formData.group_name.trim(),
+        region: formData.region,
+        district: formData.district,
+        details: { ...details, leaderPhone: formData.phone }
+      };
+    }
     setLoading(true);
     setError(null);
 
@@ -367,7 +406,23 @@ const SignupPage = () => {
 
         logger.debug('✅ All photos uploaded successfully');
 
-        const signupData = {
+        const signupData = isVolunteer ? {
+          // The group's shared account: its name is the profile name
+          first_name: formData.group_name.trim(),
+          last_name: '',
+          phone: formData.phone,
+          region: formData.region,
+          preferred_language: formData.preferred_language,
+          id_type: formData.id_type,
+          ...photoUrls,
+          license_plate: null,
+          vehicle_color: null,
+          company_id: null,
+          company_name: formData.group_name.trim(),
+          role: 'collector',
+          collector_type: COLLECTOR_TYPE.VOLUNTEER,
+          volunteer_request: volunteerRequest
+        } : {
           first_name: formData.first_name,
           last_name: formData.last_name,
           phone: formData.phone,
@@ -530,9 +585,30 @@ const SignupPage = () => {
         return (
           <>
             <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Create Account</h2>
-            <p className="text-gray-600 dark:text-gray-300 mb-6 text-base">Enter your phone number to get started</p>
+            <p className="text-gray-600 dark:text-gray-300 mb-4 text-base">Who is signing up?</p>
+            <div className="grid grid-cols-2 gap-3 mb-6" role="radiogroup" aria-label="Account type">
+              {ACCOUNT_KINDS.map((k) => (
+                <button key={k.value} type="button" role="radio" aria-checked={formData.collector_type === k.value}
+                  data-testid={`account-kind-${k.value}`}
+                  onClick={() => { setFormData(prev => ({ ...prev, collector_type: k.value })); setError(null); }}
+                  className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 transition-all text-center ${
+                    formData.collector_type === k.value
+                      ? 'border-primary bg-green-50 dark:bg-green-900/30 shadow-md'
+                      : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-gray-400'
+                  }`}>
+                  <span className="text-3xl mb-1">{k.emoji}</span>
+                  <span className={`text-sm font-bold ${formData.collector_type === k.value ? 'text-primary' : 'text-gray-800 dark:text-gray-100'}`}>{k.label}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">{k.hint}</span>
+                </button>
+              ))}
+            </div>
+            {isVolunteer && (
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-xl p-3" data-testid="volunteer-note">
+                Your whole group shares one account. Use the group leader's phone. TrashDrop checks your group before you can claim clean-ups.
+              </p>
+            )}
             <div className="mb-5">
-              <label className="block text-base font-bold mb-2 text-gray-800 dark:text-gray-100">📱 Your Phone Number</label>
+              <label className="block text-base font-bold mb-2 text-gray-800 dark:text-gray-100">📱 {isVolunteer ? 'Group leader\'s phone number' : 'Your Phone Number'}</label>
               {/* Visible +233 prefix badge */}
               <div className={`flex rounded-xl overflow-hidden border-2 transition-colors ${fieldErrors.phone ? 'border-red-500' : 'border-gray-400 dark:border-gray-600 focus-within:border-primary'}`}>
                 <div className="flex items-center px-3 bg-gray-200 dark:bg-gray-700 border-r-2 border-gray-400 dark:border-gray-600 shrink-0">
@@ -650,7 +726,7 @@ const SignupPage = () => {
       case 3:
         return (
           <>
-            <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Your ID Card</h2>
+            <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">{isVolunteer ? 'Group leader\'s ID card' : 'Your ID Card'}</h2>
             <p className="text-gray-600 dark:text-gray-300 mb-5 text-base">Tap the card that looks like yours</p>
 
             {/* Visual ID type picker */}
@@ -699,6 +775,74 @@ const SignupPage = () => {
         );
 
       case 4:
+        if (isVolunteer) {
+          const fieldCls = (name) => `w-full px-4 py-4 text-lg rounded-xl border-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:border-primary transition-colors ${fieldErrors[name] ? 'border-red-500' : 'border-gray-400 dark:border-gray-600'}`;
+          return (
+            <>
+              <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Your Group</h2>
+              <p className="text-gray-600 dark:text-gray-300 mb-5 text-base">Tell us about your clean-up group</p>
+
+              <div className="mb-4">
+                <label htmlFor="group_name" className="block text-base font-bold mb-2 text-gray-800 dark:text-gray-100">🤝 Group name</label>
+                <input id="group_name" type="text" name="group_name" value={formData.group_name} onChange={handleChange}
+                  className={fieldCls('group_name')} placeholder="e.g., Bus Stop Boys" />
+                <FieldError field="group_name" />
+              </div>
+
+              <div className="mb-4">
+                <label htmlFor="leader_name" className="block text-base font-bold mb-2 text-gray-800 dark:text-gray-100">👤 Group leader's full name</label>
+                <input id="leader_name" type="text" name="leader_name" value={formData.leader_name} onChange={handleChange}
+                  className={fieldCls('leader_name')} placeholder="Name on the leader's ID" />
+                <FieldError field="leader_name" />
+              </div>
+
+              <div className="mb-4">
+                <label htmlFor="region" className="block text-base font-bold mb-2 text-gray-800 dark:text-gray-100">📍 Region</label>
+                <select id="region" name="region" value={formData.region}
+                  onChange={(e) => { handleChange(e); setFormData(prev => ({ ...prev, district: '' })); }}
+                  className={fieldCls('region')}>
+                  <option value="">Select your region</option>
+                  {GHANA_REGIONS.map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
+                </select>
+                <FieldError field="region" />
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">You'll see reports to clean up anywhere in this region.</p>
+              </div>
+
+              <div className="mb-4">
+                <label htmlFor="district" className="block text-base font-bold mb-2 text-gray-800 dark:text-gray-100">🏘️ District</label>
+                <select id="district" name="district" value={formData.district} onChange={handleChange} disabled={!formData.region}
+                  className={fieldCls('district')}>
+                  <option value="">{formData.region ? 'Select your district' : 'Choose a region first'}</option>
+                  {districtsOf(formData.region).map(d => <option key={d} value={d}>{d}</option>)}
+                  {formData.region && <option value={OTHER_DISTRICT}>{OTHER_DISTRICT}</option>}
+                </select>
+                <FieldError field="district" />
+              </div>
+
+              <div className="mb-4">
+                <label htmlFor="members" className="block text-base font-bold mb-2 text-gray-800 dark:text-gray-100">👥 How many members? <span className="font-normal text-gray-500">(optional)</span></label>
+                <input id="members" type="text" inputMode="numeric" name="members" value={formData.members} onChange={handleChange}
+                  className={fieldCls('members')} placeholder="e.g., 12" />
+                <FieldError field="members" />
+              </div>
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-xl flex items-start gap-2">
+                  <span className="text-lg shrink-0">⚠️</span>
+                  <p className="text-sm font-semibold text-red-700 dark:text-red-300">{error}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-2">
+                <button type="button" className="flex-1 py-3 rounded-xl font-bold bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-base" onClick={() => setStep(3)}>← Back</button>
+                <button type="button" data-testid="volunteer-submit" className="flex-1 py-4 rounded-xl font-bold bg-primary text-white text-base disabled:opacity-50 shadow-md active:scale-95 transition-all"
+                  onClick={handleSubmit} disabled={loading}>
+                  {loading ? 'Registering...' : '🎉 Register group'}
+                </button>
+              </div>
+            </>
+          );
+        }
         return (
           <>
             <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Your Information</h2>
@@ -986,7 +1130,7 @@ const SignupPage = () => {
         {/* ── Milestone progress bar ── */}
         <div className="mb-5 px-1">
           <div className="flex items-center justify-between">
-            {MILESTONES.map((m, i) => (
+            {(isVolunteer ? VOLUNTEER_MILESTONES : MILESTONES).map((m, i, list) => (
               <div key={m.step} className="flex items-center flex-1">
                 <div className="flex flex-col items-center flex-1">
                   <div className={`w-9 h-9 rounded-full flex items-center justify-center text-base font-bold shadow transition-all ${
@@ -1002,7 +1146,7 @@ const SignupPage = () => {
                     step >= m.step ? 'text-primary' : 'text-gray-400 dark:text-gray-500'
                   }`}>{m.label}</span>
                 </div>
-                {i < MILESTONES.length - 1 && (
+                {i < list.length - 1 && (
                   <div className={`h-1 w-4 mb-4 rounded-full transition-colors ${step > m.step ? 'bg-primary' : 'bg-gray-200 dark:bg-gray-700'}`} />
                 )}
               </div>
@@ -1011,7 +1155,7 @@ const SignupPage = () => {
         </div>
 
         {/* Global error banner (non-field errors) */}
-        {error && step !== 6 && (
+        {error && step !== 6 && !(isVolunteer && step === 4) && (
           <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-xl flex items-start gap-2">
             <span className="text-lg shrink-0">⚠️</span>
             <p className="text-sm font-semibold text-red-700 dark:text-red-300">{error}</p>

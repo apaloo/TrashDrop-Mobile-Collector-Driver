@@ -18,6 +18,8 @@ import Toast from '../components/Toast';
 
 import { PickupRequestStatus, WasteType, AssignmentStatus } from '../utils/types';
 import { transformRequestsData } from '../utils/requestUtils';
+import { filterAvailableRequests, getCachedPosition, toLatLng } from '../utils/availableRequests';
+import { statusService, COLLECTOR_STATUS } from '../services/statusService';
 import { getCurrentLocation, getLocationWithRetry, isWithinRadius } from '../utils/geoUtils';
 import { registerConnectivityListeners } from '../utils/offlineUtils';
 import { supabase, authService } from '../services/supabase';
@@ -94,8 +96,6 @@ const RequestPage = () => {
   const filterContext = useFilters();
   const { 
     filters = { searchRadius: 5, wasteTypes: ['All Types'], minPayment: 0, priority: 'all', activeFilter: 'all' }, 
-    filteredRequests = { available: [], accepted: [], picked_up: [] }, 
-    updateFilteredRequests = () => {} 
   } = filterContext || {};
   
   // Photo capture management
@@ -116,6 +116,7 @@ const RequestPage = () => {
     accepted: [],
     picked_up: []
   });
+
   const [isLoading, setIsLoading] = useState(true);
   // OPTIMIZATION: Separate loading states for better UX
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -124,9 +125,28 @@ const RequestPage = () => {
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
   const [isOnlineStatus, setIsOnlineStatus] = useState(true);
   const [userLocation, setUserLocation] = useState(null);
+
+  // On-Duty state, kept in sync with the status button
+  const [isOnDuty, setIsOnDuty] = useState(() => statusService.getStatus().isOnline);
+  useEffect(() => {
+    setIsOnDuty(statusService.getStatus().isOnline);
+    return statusService.addStatusListener(({ status }) => setIsOnDuty(status === COLLECTOR_STATUS.ONLINE));
+  }, []);
+
+  // Available requests the collector can see: none when Off-Duty, otherwise
+  // those inside the search radius (utils/availableRequests, shared with the
+  // Map). Position: live GPS, else the Map's last position, else the fallback.
+  const filterPosition = useMemo(() => {
+    const live = userLocation && !userLocation.isFallback ? toLatLng(userLocation) : null;
+    return live || getCachedPosition() || toLatLng(userLocation);
+  }, [userLocation]);
+  const visibleAvailable = useMemo(() => {
+    const matches = filterAvailableRequests(requests.available, { isOnDuty, position: filterPosition, filters });
+    const ids = new Set(matches.map(({ request }) => request.id));
+    // Keep the page's own order (newest first)
+    return (requests.available || []).filter(r => r && ids.has(r.id));
+  }, [requests.available, isOnDuty, filterPosition, filters]);
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [currentReport, setCurrentReport] = useState(null);
-  const [showReportModal, setShowReportModal] = useState(false);
   // CRITICAL: Initialize navigation modal state from localStorage (for app switch persistence)
   const savedNavState = useMemo(() => loadNavModalState(), []);
   const [showNavigationModal, setShowNavigationModal] = useState(savedNavState?.isOpen || false);
@@ -535,27 +555,13 @@ const RequestPage = () => {
         if (availableResult?.data) {
           logger.debug('📊 Database query result:', {
             availableCount: availableResult.data.length,
-            sampleData: availableResult.data.slice(0, 2),
-            filteredCount: filteredRequests.available?.length || 0
+            sampleData: availableResult.data.slice(0, 2)
           });
           
-          // Transform all fetched data
-          const allAvailable = transformRequestsData(availableResult.data);
-          
-          // Use Map page's radius-filtered results from FilterContext
-          // Check if Map has actually run its filtering (null = not yet run, [] = ran with 0 results)
-          const hasMapFiltered = filteredRequests.available != null;
-          
-          if (hasMapFiltered) {
-            // Map has run filtering - respect its results (even if empty array)
-            const mapFilteredIds = new Set(filteredRequests.available.map(r => r.id));
-            availableRequests = allAvailable.filter(r => mapFilteredIds.has(r.id));
-            logger.debug('📋 Available requests (Map-filtered):', availableRequests.length, 'of', allAvailable.length, '| Map found:', filteredRequests.available.length);
-          } else {
-            // Fallback: Map hasn't loaded/filtered yet — show all
-            availableRequests = allAvailable;
-            logger.debug('📋 Available requests (all, Map not ready):', availableRequests.length);
-          }
+          // Keep every fetched request here; what the collector sees is narrowed
+          // at render time by duty status, radius and filters (visibleAvailable),
+          // the same rule the Map uses
+          availableRequests = transformRequestsData(availableResult.data);
           
           // Update request cache for snappy UX - immediate update
           setRequestCache(prev => ({
@@ -915,7 +921,10 @@ const RequestPage = () => {
       }
     } catch (err) {
       logger.error('Error accepting request:', err);
-      if (err?.message?.includes('already accepted') || err?.message?.includes('reservation expired')) {
+      if (/On-Duty|active collectors/.test(err?.message || '')) {
+        // Refused by the database (Off-Duty, or not an active collector)
+        showToast(err.message, 'error');
+      } else if (err?.message?.includes('already accepted') || err?.message?.includes('reservation expired')) {
         showToast(err.message, 'error');
         // Refresh the list to show current state
         fetchRequests();
@@ -2359,28 +2368,6 @@ const GeofenceErrorModal = ({
     }
   };
 
-  // Handle view report
-  const handleViewReport = async (requestId) => {
-    try {
-      // Find the request
-      const requestIndex = requests.picked_up.findIndex(req => req.id === requestId);
-      
-      if (requestIndex === -1) {
-        showToast('Request not found', 'error');
-        return;
-      }
-      
-      // Show the request details modal with the report tab active
-      const request = requests.picked_up[requestIndex];
-      setDetailModalData(request);
-      
-      showToast('Viewing disposal report', 'success');
-    } catch (err) {
-      logger.error('Error viewing report:', err);
-      showToast('Failed to view report', 'error');
-    }
-  };
-
   // Handle dispose ALL picked up items at once
   const handleDisposeAll = async () => {
     // Verify user is at a disposal site
@@ -2800,9 +2787,22 @@ const GeofenceErrorModal = ({
                 Try Again
               </button>
             </div>
-          ) : activeTab === 'available' && (!requests.available || requests.available.length === 0) ? (
-            <div className="text-center py-8">
-              <p className="text-gray-600">No available requests at the moment.</p>
+          ) : activeTab === 'available' && !isOnDuty ? (
+            <div className="text-center py-8 px-4" data-testid="available-off-duty">
+              <p className="text-lg font-semibold text-gray-800 mb-1">You're Off-Duty</p>
+              <p className="text-gray-600 mb-4">Go On-Duty to see requests near you.</p>
+              <button
+                type="button"
+                onClick={() => navigate('/map')}
+                className="px-5 py-2.5 bg-green-600 text-white font-semibold rounded-lg"
+              >
+                Go to Map
+              </button>
+            </div>
+          ) : activeTab === 'available' && requests.available && visibleAvailable.length === 0 ? (
+            <div className="text-center py-8 px-4" data-testid="available-none-in-radius">
+              <p className="text-gray-800 font-medium mb-1">No requests in your area</p>
+              <p className="text-sm text-gray-500">Try a bigger radius on the Map, or check back later.</p>
             </div>
           ) : activeTab === 'accepted' && (!requests.accepted || requests.accepted.length === 0) ? (
             <div className="text-center py-8">
@@ -2817,8 +2817,8 @@ const GeofenceErrorModal = ({
               {activeTab === 'available' && (
                 <div>
                   {/* Use local requests state for consistency with other tabs */}
-                  {Array.isArray(requests.available) && requests.available.length > 0 ? (
-                    requests.available.map(request => (
+                  {visibleAvailable.length > 0 ? (
+                    visibleAvailable.map(request => (
                       request && (
                         <MemoizedRequestCard 
                           key={`available-${request.id}`} 
@@ -2831,7 +2831,7 @@ const GeofenceErrorModal = ({
                         />
                       )
                     ))
-                  ) : requests.available && requests.available.length === 0 ? (
+                  ) : requests.available && visibleAvailable.length === 0 ? (
                     <div className="p-4 text-center text-gray-500">
                       <div className="mb-2">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2863,7 +2863,6 @@ const GeofenceErrorModal = ({
                           onCompletePickup={handleCompletePickup}
                           onLocateSite={handleLocateSite}
                           onDisposeBag={handleDisposeBag}
-                          onViewReport={handleViewReport}
                           onScanQRBlocked={handleScanQRBlocked}
                           onDisposeBagBlocked={handleDisposeBagBlocked}
                           siteLocated={locatedSiteRequests.has(request.id)}
@@ -2921,7 +2920,6 @@ const GeofenceErrorModal = ({
                             onCompletePickup={handleCompletePickup}
                             onLocateSite={handleLocateSite}
                             onDisposeBag={handleDisposeBag}
-                            onViewReport={handleViewReport}
                             onScanQRBlocked={handleScanQRBlocked}
                             onDisposeBagBlocked={handleDisposeBagBlocked}
                             siteLocated={siteLocatedForRequest}
