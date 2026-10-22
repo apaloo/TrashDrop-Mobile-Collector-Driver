@@ -28,7 +28,7 @@ import usePhotoCapture from '../hooks/usePhotoCapture';
 import { logger } from '../utils/logger';
 import { DISPOSAL_SITE_RADIUS_KM, GEOFENCE_DESCRIPTIONS } from '../config/geofenceConfig';
 import { initiateCollection } from '../services/paymentService';
-import { disposeDigitalBin, disposePickupRequest } from '../services/disposalService';
+import { disposeDigitalBin, disposePickupRequest, notifyUserOfDisposal } from '../services/disposalService';
 
 // OPTIMIZATION: Memoize RequestCard for better performance
 import { requestManager } from '../services/requestManagement';
@@ -2365,7 +2365,7 @@ const GeofenceErrorModal = ({
         showToast('Processing disposal and calculating earnings...', 'info');
         
         // Call disposal service with sharing model
-        const result = await disposeDigitalBin(requestId, user?.id);
+        const result = await disposeDigitalBin(requestId, user?.id, null, targetSite?.name);
         
         if (!result.success) {
           showToast(result.error || 'Failed to dispose bin', 'error', 5000);
@@ -2483,7 +2483,7 @@ const GeofenceErrorModal = ({
         try {
           if (request.source_type === 'digital_bin') {
             // Dispose digital bin with payout calculation
-            const result = await disposeDigitalBin(request.id, user?.id, selectedDisposalCenter?.id);
+            const result = await disposeDigitalBin(request.id, user?.id, selectedDisposalCenter?.id, selectedDisposalCenter?.name);
             if (result.success) {
               successCount++;
               totalEarnings += result.payoutBreakdown?.collector_total_payout || 0;
@@ -3226,7 +3226,7 @@ const GeofenceErrorModal = ({
               
               if (request.source_type === 'digital_bin') {
                 // Use disposeDigitalBin for digital bins
-                const result = await disposeDigitalBin(assignmentId, user?.id, site?.id);
+                const result = await disposeDigitalBin(assignmentId, user?.id, site?.id, site?.name);
                 
                 if (!result.success) {
                   throw new Error(result.error || 'Failed to dispose bin');
@@ -3249,6 +3249,8 @@ const GeofenceErrorModal = ({
                 if (error) {
                   throw new Error(error.message);
                 }
+
+                await notifyUserOfDisposal('pickup_requests', assignmentId, site?.name);
                 
                 showToast(`Disposal confirmed at ${site.name}!`, 'success');
               }
