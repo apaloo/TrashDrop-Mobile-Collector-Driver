@@ -6,6 +6,7 @@ import { requestVolunteerAccess } from '../services/volunteerService';
 import { logger } from '../utils/logger';
 import { PROFILE_STATE, getProfileState, NO_ACCOUNT_MESSAGE } from '../utils/collectorProfile';
 import { clearAllJobs } from '../utils/offlineJobsCache';
+import { locationBroadcast } from '../services/locationBroadcast';
 
 // Supabase's error when shouldCreateUser is false and the number is unknown
 const isSignupDisallowedError = (message = '') =>
@@ -475,6 +476,8 @@ export const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
       logger.debug('Logging out user...');
+      // Stop sharing location with the user of any job still in progress
+      locationBroadcast.stopTracking();
       // Go Off-Duty on the server while the session can still write
       await statusService.setServerDuty(false);
       const { success, error } = await authService.signOut();

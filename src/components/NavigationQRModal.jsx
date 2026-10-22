@@ -1247,6 +1247,27 @@ const requestCameraPermission = useCallback(async () => {
 
 
 
+  // Opening navigation means the collector is heading to the job: tell the user
+  // (status en_route) and keep sending location while this modal is open, since
+  // the Map page - the other place that sends location - isn't mounted here
+  useEffect(() => {
+    if (!isOpen || !user?.id) return;
+    const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId || '');
+    if (!isValidUuid) return;
+
+    const tableName = sourceType === 'digital_bin' ? 'digital_bins' : 'pickup_requests';
+    supabase
+      .from(tableName)
+      .update({ status: 'en_route' })
+      .eq('id', requestId)
+      .eq('status', 'accepted')
+      .then(({ error }) => {
+        if (error) logger.warn('Could not update status to en_route:', error.message);
+      });
+
+    locationBroadcast.startTracking(requestId, user.id, sourceType);
+  }, [isOpen, requestId, sourceType, user?.id]);
+
   // Cleanup on component unmount or modal close
   useEffect(() => {
     if (!isOpen) {

@@ -10,20 +10,28 @@ class LocationBroadcastService {
     this.isTracking = false;
     this.locationInterval = null;
     this.currentRequestId = null;
+    this.requestTable = 'pickup_requests';
     this.collectorId = null;
     this.BROADCAST_INTERVAL = 10000; // 10 seconds
+    this.STATUS_CHECK_EVERY = 6; // broadcasts (about once a minute)
+    this.broadcastCount = 0;
+    this.hasNotifiedEnRoute = false;
+    this.lastSentEta = null;
+    this.lastEtaSentAt = 0;
   }
 
   /**
-   * Start broadcasting location for an active pickup request
+   * Start broadcasting location for an active pickup request or digital bin
    */
-  async startTracking(requestId, collectorId) {
+  async startTracking(requestId, collectorId, sourceType = 'pickup_request') {
     if (this.isTracking) {
-      logger.warn('Location tracking already active');
-      return;
+      if (this.currentRequestId === requestId) return;
+      // Switching to another job: stop the old one so its user stops getting updates
+      this.stopTracking();
     }
 
     this.currentRequestId = requestId;
+    this.requestTable = sourceType === 'digital_bin' ? 'digital_bins' : 'pickup_requests';
     this.collectorId = collectorId;
     this.isTracking = true;
 
@@ -49,6 +57,10 @@ class LocationBroadcastService {
 
     this.isTracking = false;
     this.currentRequestId = null;
+    this.broadcastCount = 0;
+    this.hasNotifiedEnRoute = false;
+    this.lastSentEta = null;
+    this.lastEtaSentAt = 0;
     
     logger.info('🛑 Stopped location tracking');
   }
@@ -62,6 +74,8 @@ class LocationBroadcastService {
       .update({
         current_latitude: position.latitude.toString(),
         current_longitude: position.longitude.toString(),
+        // Keep the PostGIS column in step too, or the user app keeps reading the old point
+        current_location: `SRID=4326;POINT(${position.longitude} ${position.latitude})`,
         location_updated_at: new Date().toISOString(),
         last_active: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -76,6 +90,14 @@ class LocationBroadcastService {
     if (!this.isTracking || !this.collectorId) return;
 
     try {
+      // Keeps running when the collector leaves the navigation screen, so stop
+      // once the job is finished, cancelled or handed to someone else
+      this.broadcastCount += 1;
+      if (this.broadcastCount % this.STATUS_CHECK_EVERY === 0 && !(await this.isJobStillActive())) {
+        this.stopTracking();
+        return;
+      }
+
       // Get current GPS location
       const position = await this.getCurrentPosition();
       
@@ -141,6 +163,18 @@ class LocationBroadcastService {
     }
   }
 
+  async isJobStillActive() {
+    const { data, error } = await supabase
+      .from(this.requestTable)
+      .select('status, collector_id')
+      .eq('id', this.currentRequestId)
+      .maybeSingle();
+    if (error) return true; // network trouble: keep going, check again later
+    return !!data
+      && data.collector_id === this.collectorId
+      && ['accepted', 'en_route', 'arrived'].includes(data.status);
+  }
+
   /**
    * Get current GPS position
    */
@@ -181,8 +215,8 @@ class LocationBroadcastService {
     try {
       // Get the pickup request to find user_id
       const { data: request } = await supabase
-        .from('pickup_requests')
-        .select('user_id, waste_type, location')
+        .from(this.requestTable)
+        .select('user_id, waste_type')
         .eq('id', this.currentRequestId)
         .single();
 
@@ -223,8 +257,18 @@ class LocationBroadcastService {
     try {
       if (!this.currentRequestId) return;
 
+      // Routes are recalculated often; only tell the user about the first ETA,
+      // a change of 5+ minutes, or a refresh after 10 minutes
+      const now = Date.now();
+      const isFirst = this.lastSentEta === null;
+      const changedEnough = !isFirst && Math.abs(etaMinutes - this.lastSentEta) >= 5;
+      const isDue = now - this.lastEtaSentAt >= 10 * 60 * 1000;
+      if (!isFirst && !changedEnough && !isDue) return;
+      this.lastSentEta = etaMinutes;
+      this.lastEtaSentAt = now;
+
       const { data: request } = await supabase
-        .from('pickup_requests')
+        .from(this.requestTable)
         .select('user_id')
         .eq('id', this.currentRequestId)
         .single();
