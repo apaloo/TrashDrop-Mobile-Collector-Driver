@@ -64,3 +64,32 @@ describe('helpers', () => {
     expect(getCachedPosition()).toBeNull();
   });
 });
+
+describe('toLatLng coordinate formats', () => {
+  // Supabase returns pickup_requests.coordinates (geography) as EWKB hex
+  const ewkb = '0101000020E6100000E7FBA9F1D24DD2BFFCA9F1D24DE21640';
+  const close = ([lat, lng]) => [Number(lat.toFixed(6)), Number(lng.toFixed(6))];
+
+  it('reads EWKB / WKB hex, both byte orders', () => {
+    expect(close(toLatLng(ewkb))).toEqual([5.721, -0.286]);
+    expect(close(toLatLng('0101000000E7FBA9F1D24DD2BFFCA9F1D24DE21640'))).toEqual([5.721, -0.286]);
+    expect(close(toLatLng('0000000001BFD24DD2F1A9FBE74016E24DD2F1A9FC'))).toEqual([5.721, -0.286]);
+  });
+
+  it('reads WKT, GeoJSON and {x, y}', () => {
+    expect(toLatLng('POINT(-0.286 5.721)')).toEqual([5.721, -0.286]);
+    expect(toLatLng('SRID=4326;POINT(-0.286 5.721)')).toEqual([5.721, -0.286]);
+    expect(toLatLng({ type: 'Point', coordinates: [-0.286, 5.721] })).toEqual([5.721, -0.286]);
+    expect(toLatLng({ x: -0.286, y: 5.721 })).toEqual([5.721, -0.286]);
+  });
+
+  it('rejects text that is not a point', () => {
+    expect(toLatLng('Pokuase')).toBeNull();
+    expect(toLatLng('0102000020E6100000')).toBeNull();
+  });
+
+  it('shows a pickup request whose coordinates are EWKB hex in the Available list', () => {
+    const hexBag = { id: 'hex-bag', source_type: 'pickup_request', status: 'pending', coordinates: ewkb };
+    expect(ids(filterAvailableRequests([hexBag], { isOnDuty: true, position: here, filters: { searchRadius: 9 } }))).toEqual(['hex-bag']);
+  });
+});

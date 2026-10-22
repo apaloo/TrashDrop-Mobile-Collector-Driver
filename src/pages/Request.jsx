@@ -474,7 +474,9 @@ const RequestPage = () => {
                       }
                       // [lat, lng] array
                       if (Array.isArray(raw) && raw.length === 2) return { lat: raw[0], lng: raw[1] };
-                      return null;
+                      // EWKB hex, which is how Supabase returns pickup_requests.coordinates
+                      const point = toLatLng(raw);
+                      return point ? { lat: point[0], lng: point[1] } : null;
                     };
 
                     // Combine data and add source type + normalized coordinates
