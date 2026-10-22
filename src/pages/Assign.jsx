@@ -374,6 +374,10 @@ const AssignPage = () => {
   // while the page is showing saved (not freshly loaded) lists.
   const [savedAt, setSavedAt] = useState(null);
   const jobsLoadedRef = useRef(false);
+  // Only lists freshly loaded from the server may be saved. Loading the saved
+  // copy must never save: on that same render the lists are still the empty
+  // starting ones, which used to overwrite (wipe) the saved jobs.
+  const freshListsRef = useRef(false);
   useEffect(() => {
     if (!user?.id || jobsLoadedRef.current) return;
     const saved = loadJobs('assignments', user.id);
@@ -389,7 +393,7 @@ const AssignPage = () => {
   }, [user?.id]);
   // Save fresh lists (after loading, accepting, completing, disposing)
   useEffect(() => {
-    if (!user?.id || !jobsLoadedRef.current || savedAt !== null) return;
+    if (!user?.id || !freshListsRef.current || savedAt !== null) return;
     saveJobs('assignments', user.id, assignments);
   }, [assignments, user?.id, savedAt]);
 
@@ -413,6 +417,7 @@ const AssignPage = () => {
       });
     }
     if (jobsLoadedRef.current) {
+      freshListsRef.current = false;
       setSavedAt(prev => prev || saved?.savedAt || Date.now());
     }
   };
@@ -569,6 +574,7 @@ const AssignPage = () => {
       };
 
       jobsLoadedRef.current = true;
+      freshListsRef.current = true;
       setSavedAt(null);
       setAssignments(groupedAssignments);
       setLastUpdated(new Date().toISOString());

@@ -26,6 +26,9 @@ export default defineConfig({
     },
   },
   build: {
+    // The collector's map marker images are built into the code so the marker
+    // shows offline (no network or cache needed); other assets keep the default.
+    assetsInlineLimit: (filePath) => (/tricycle-3d(-2)?\.webp$/.test(filePath) ? true : undefined),
     // CRITICAL: Aggressive mobile optimization for instant startup
     minify: 'terser',
     terserOptions: {

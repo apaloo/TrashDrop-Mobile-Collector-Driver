@@ -122,6 +122,10 @@ const RequestPage = () => {
   // while the page is showing saved (not freshly loaded) lists.
   const [savedAt, setSavedAt] = useState(null);
   const jobsLoadedRef = useRef(false);
+  // Only lists freshly loaded from the server may be saved. Loading the saved
+  // copy must never save: on that same render the lists are still the empty
+  // starting ones, which used to overwrite (wipe) the saved jobs.
+  const freshListsRef = useRef(false);
   useEffect(() => {
     if (!user?.id || jobsLoadedRef.current) return;
     const saved = loadJobs('requests', user.id);
@@ -139,7 +143,7 @@ const RequestPage = () => {
   }, [user?.id]);
   // Save fresh lists (after loading, accepting, picking up, disposing)
   useEffect(() => {
-    if (!user?.id || !jobsLoadedRef.current || savedAt !== null) return;
+    if (!user?.id || !freshListsRef.current || savedAt !== null) return;
     saveJobs('requests', user.id, {
       available: requests.available,
       accepted: requests.accepted,
@@ -303,6 +307,7 @@ const RequestPage = () => {
           picked_up: saved.data.picked_up || []
         });
       }
+      freshListsRef.current = false;
       setSavedAt(prev => prev || saved?.savedAt || Date.now());
       setError(null);
     } else {
@@ -655,9 +660,11 @@ const RequestPage = () => {
           picked_up: pickedUpResult?.failed ? prev.picked_up : pickedUpRequests
         }));
         if (anyFailed) {
+          freshListsRef.current = false;
           setSavedAt(prev => prev || loadJobs('requests', user?.id)?.savedAt || Date.now());
         } else {
           jobsLoadedRef.current = true;
+          freshListsRef.current = true;
           setSavedAt(null);
         }
         

@@ -3,6 +3,8 @@
  * Creates SVG-based marker icons for the map
  */
 
+import tricycleHorizontal from '../assets/tricycle-3d.webp';
+import tricycleVertical from '../assets/tricycle-3d-2.webp';
 import L from 'leaflet';
 
 // Base64 encoded SVG marker icons for dustbins with wheels and recycling symbol
@@ -150,9 +152,11 @@ export const calculateBearing = (lat1, lng1, lat2, lng2) => {
   return (bearing + 360) % 360; // Normalize to 0-360
 };
 
-// 3D Tricycle image URLs - dual images for horizontal and vertical movement
-const TRICYCLE_HORIZONTAL_URL = '/icons/tricycle-3d.png';    // Side view, faces LEFT by default
-const TRICYCLE_VERTICAL_URL = '/icons/tricycle-3d-2.png';    // Top-down view, faces UP by default
+// 3D Tricycle images - dual images for horizontal and vertical movement.
+// Built into the code as data URLs (assetsInlineLimit in vite.config.js) so the collector's marker shows
+// even offline, without depending on the network or the service-worker cache.
+const TRICYCLE_HORIZONTAL_URL = tricycleHorizontal;    // Side view, faces LEFT by default
+const TRICYCLE_VERTICAL_URL = tricycleVertical;        // Top-down view, faces UP by default
 
 // Icon size for accessibility (larger for vision impaired users)
 const TRICYCLE_ICON_SIZE = 130; // Increased for better visibility and easy tracking
