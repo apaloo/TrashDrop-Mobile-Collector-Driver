@@ -439,6 +439,9 @@ const MapPage = () => {
   const errorToastShownRef = useRef(false);
   const isFetchingRef = useRef(false);
   const positionRef = useRef(position);
+  // position starts as Accra or the cached last fix; only a real GPS fix may be
+  // sent to users as the collector's location
+  const hasLiveFixRef = useRef(false);
   
   // Enhanced geolocation with cached position and real-time updates
   useEffect(() => {
@@ -577,6 +580,7 @@ const MapPage = () => {
       }
       previousPositionRef.current = newPos;
       
+      hasLiveFixRef.current = true;
       setPosition(newPos);
       savePositionToCache(newPos); // Cache for next time
       setError(null);
@@ -668,24 +672,31 @@ const MapPage = () => {
   
 
   // Broadcast collector location to database every 30 seconds
-  // This ensures collector_profiles stays updated for user tracking
+  // This ensures collector_profiles stays updated for user tracking.
+  // Reads the latest fix from positionRef so a new GPS fix doesn't restart the
+  // timer (it used to write on every fix instead of every 30 seconds).
+  const hasLiveFix = hasLiveFixRef.current;
   useEffect(() => {
-    if (!user?.id || !position || !position[0] || !position[1]) return;
+    if (!user?.id || !hasLiveFix) return;
 
     const broadcastLocation = async () => {
+      const current = positionRef.current;
+      if (!hasLiveFixRef.current || !current || !current[0] || !current[1]) return;
+      const [latitude, longitude] = current;
       try {
         const { error } = await supabase.rpc("update_collector_location", {
           p_user_id: user.id,
-          p_longitude: position[1],
-          p_latitude: position[0]
+          p_longitude: longitude,
+          p_latitude: latitude
         });
         if (error) {
-          // Fallback: update without PostGIS
+          // Fallback: update without the RPC
           await supabase
             .from("collector_profiles")
             .update({
-              current_latitude: position[0].toString(),
-              current_longitude: position[1].toString(),
+              current_latitude: latitude.toString(),
+              current_longitude: longitude.toString(),
+              current_location: `SRID=4326;POINT(${longitude} ${latitude})`,
               location_updated_at: new Date().toISOString(),
               last_active: new Date().toISOString()
             })
@@ -696,12 +707,12 @@ const MapPage = () => {
       }
     };
 
-    // Broadcast immediately and then every 30 seconds
+    // Broadcast as soon as there is a fix, then every 30 seconds
     broadcastLocation();
     const intervalId = setInterval(broadcastLocation, 30000);
 
     return () => clearInterval(intervalId);
-  }, [user?.id, position]);
+  }, [user?.id, hasLiveFix]);
   // Fetch user profile
   useEffect(() => {
     const fetchUserProfile = async () => {
