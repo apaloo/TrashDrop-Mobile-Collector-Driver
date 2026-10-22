@@ -281,7 +281,7 @@ function calculatePaymentSharing(digitalBin, payment, actualTips = 0) {
  * @param {string} disposalSiteId - Optional disposal center ID
  * @returns {Promise<Object>} Result with success status and payout info
  */
-export async function disposeDigitalBin(binId, collectorId, disposalSiteId = null) {
+export async function disposeDigitalBin(binId, collectorId, disposalSiteId = null, disposalSiteName = null) {
   try {
     logger.info('Starting disposal process for bin:', binId);
     
@@ -398,6 +398,8 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
       throw new Error(`Failed to update bin: ${updateError.message}`);
     }
     
+    await notifyUserOfDisposal('digital_bins', binId, disposalSiteName);
+
     logger.info('✅ Digital bin disposed successfully:', {
       binId,
       collectorPayout: payoutBreakdown.collector_total_payout,
@@ -531,6 +533,8 @@ export async function disposePickupRequest(requestId, collectorId, disposalSiteI
       throw new Error(`Failed to update request: ${updateError.message}`);
     }
 
+    await notifyUserOfDisposal('pickup_requests', requestId, disposalSiteInfo.name);
+
     logger.info('✅ Pickup request disposed successfully:', {
       requestId,
       fee,
@@ -551,6 +555,43 @@ export async function disposePickupRequest(requestId, collectorId, disposalSiteI
       success: false,
       error: error.message || 'Failed to dispose pickup request'
     };
+  }
+}
+
+/**
+ * Tell the user their waste has been disposed of (the last step of a pickup).
+ * Never throws: a failed notification must not undo or block a disposal.
+ *
+ * @param {string} table - 'pickup_requests' or 'digital_bins'
+ * @param {string} jobId - Pickup request or digital bin UUID
+ * @param {string|null} siteName - Disposal site name, if known
+ */
+export async function notifyUserOfDisposal(table, jobId, siteName = null) {
+  try {
+    const { data: job } = await supabase
+      .from(table)
+      .select('user_id, waste_type')
+      .eq('id', jobId)
+      .single();
+
+    if (!job?.user_id) return;
+
+    const where = siteName ? ` at ${siteName}` : '';
+    const { error } = await supabase
+      .from('notifications')
+      .insert({
+        user_id: job.user_id,
+        title: 'Waste Disposed ♻️',
+        message: `Your ${job.waste_type || 'waste'} has been disposed of${where}. Thank you for using TrashDrop!`,
+        type: 'pickup_disposed',
+        read: false
+      });
+
+    if (error) {
+      logger.warn('Could not notify user of disposal:', error.message);
+    }
+  } catch (error) {
+    logger.warn('Could not notify user of disposal:', error);
   }
 }
 
