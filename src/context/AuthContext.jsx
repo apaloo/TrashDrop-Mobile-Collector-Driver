@@ -5,6 +5,7 @@ import { COLLECTOR_TYPE } from '../utils/volunteer';
 import { requestVolunteerAccess } from '../services/volunteerService';
 import { logger } from '../utils/logger';
 import { PROFILE_STATE, getProfileState, NO_ACCOUNT_MESSAGE } from '../utils/collectorProfile';
+import { clearAllJobs } from '../utils/offlineJobsCache';
 
 // Supabase's error when shouldCreateUser is false and the number is unknown
 const isSignupDisallowedError = (message = '') =>
@@ -487,6 +488,8 @@ export const AuthProvider = ({ children }) => {
 
       // Never carry On-Duty over to whoever signs in next
       statusService.forceOffline();
+      // Job lists saved for offline use belong to this collector only
+      clearAllJobs();
       
       // Clear signup flag if user was in the middle of signup
       localStorage.removeItem('is_completing_signup');

@@ -22,6 +22,7 @@ import { filterAvailableRequests, getCachedPosition, toLatLng } from '../utils/a
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
 import { getCurrentLocation, getLocationWithRetry, isWithinRadius } from '../utils/geoUtils';
 import { registerConnectivityListeners } from '../utils/offlineUtils';
+import { saveJobs, loadJobs, savedAtLabel } from '../utils/offlineJobsCache';
 import { supabase, authService } from '../services/supabase';
 import usePhotoCapture from '../hooks/usePhotoCapture';
 import { logger } from '../utils/logger';
@@ -116,6 +117,35 @@ const RequestPage = () => {
     accepted: [],
     picked_up: []
   });
+
+  // Lists saved on the phone for when the connection drops. savedAt is set
+  // while the page is showing saved (not freshly loaded) lists.
+  const [savedAt, setSavedAt] = useState(null);
+  const jobsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!user?.id || jobsLoadedRef.current) return;
+    const saved = loadJobs('requests', user.id);
+    if (!saved) return;
+    jobsLoadedRef.current = true;
+    setRequests({
+      available: saved.data.available || [],
+      accepted: saved.data.accepted || [],
+      picked_up: saved.data.picked_up || []
+    });
+    setSavedAt(saved.savedAt);
+    // Show them now; a slow or dropped connection must not hide them
+    setIsLoading(false);
+    setIsInitialLoading(false);
+  }, [user?.id]);
+  // Save fresh lists (after loading, accepting, picking up, disposing)
+  useEffect(() => {
+    if (!user?.id || !jobsLoadedRef.current || savedAt !== null) return;
+    saveJobs('requests', user.id, {
+      available: requests.available,
+      accepted: requests.accepted,
+      picked_up: requests.picked_up
+    });
+  }, [requests, user?.id, savedAt]);
 
   const [isLoading, setIsLoading] = useState(true);
   // OPTIMIZATION: Separate loading states for better UX
@@ -261,6 +291,25 @@ const RequestPage = () => {
   };
   
   // Fetch requests from Supabase
+  // Connection lost or loading failed: keep showing the jobs saved on the phone
+  const showSavedJobsOrError = () => {
+    const saved = loadJobs('requests', user?.id);
+    if (jobsLoadedRef.current || saved) {
+      if (!jobsLoadedRef.current && saved) {
+        jobsLoadedRef.current = true;
+        setRequests({
+          available: saved.data.available || [],
+          accepted: saved.data.accepted || [],
+          picked_up: saved.data.picked_up || []
+        });
+      }
+      setSavedAt(prev => prev || saved?.savedAt || Date.now());
+      setError(null);
+    } else {
+      setError("You're offline and no jobs are saved on this phone yet. Connect to the internet to load your jobs.");
+    }
+  };
+
   const fetchRequests = useCallback(async () => {
     try {
       // Clear cache if force reset flag is set (for debugging request issues)
@@ -440,7 +489,7 @@ const RequestPage = () => {
                       coordinates: normalizeCoords(item.bin_locations?.coordinates) || normalizeCoords(item.coordinates)
                     }));
                     
-                    return { data: [...pickupRequests, ...digitalBins] };
+                    return { data: [...pickupRequests, ...digitalBins], failed: !!(pickupResult.error || binsResult.error) };
                   }),
                   
               // Get accepted requests (including digital bins)
@@ -484,7 +533,7 @@ const RequestPage = () => {
                   location: item.bin_locations?.location_name || 'Digital Bin Station'
                 }));
                 
-                return { data: [...pickupRequests, ...digitalBins] };
+                return { data: [...pickupRequests, ...digitalBins], failed: !!(pickupResult.error || binsResult.error) };
               }),
                 
               // Get picked up requests (including digital bins)
@@ -528,7 +577,7 @@ const RequestPage = () => {
                   location: item.bin_locations?.location_name || 'Digital Bin Station'
                 }));
                 
-                return { data: [...pickupRequests, ...digitalBins] };
+                return { data: [...pickupRequests, ...digitalBins], failed: !!(pickupResult.error || binsResult.error) };
               })
             ]);
             
@@ -540,10 +589,10 @@ const RequestPage = () => {
           logger.error('Database query error:', error);
           showToast('Unable to load requests. Using offline mode.', 'error');
           
-          // Fallback to empty data
-          availableResult = { data: [] };
-          acceptedResult = { data: [] };
-          pickedUpResult = { data: [] };
+          // Keep what's on screen / saved instead of emptying the lists
+          availableResult = { data: [], failed: true };
+          acceptedResult = { data: [], failed: true };
+          pickedUpResult = { data: [], failed: true };
         }
         
         // Process results with TURBO mode
@@ -552,7 +601,7 @@ const RequestPage = () => {
         let acceptedRequests = [];
         let pickedUpRequests = [];
         
-        if (availableResult?.data) {
+        if (availableResult?.data && !availableResult.failed) {
           logger.debug('📊 Database query result:', {
             availableCount: availableResult.data.length,
             sampleData: availableResult.data.slice(0, 2)
@@ -573,7 +622,7 @@ const RequestPage = () => {
           }));
         }
         
-        if (acceptedResult?.data) {
+        if (acceptedResult?.data && !acceptedResult.failed) {
           acceptedRequests = transformRequestsData(acceptedResult.data);
           // Update accepted requests cache - immediate update
           setRequestCache(prev => ({
@@ -585,7 +634,7 @@ const RequestPage = () => {
           }));
         }
         
-        if (pickedUpResult?.data) {
+        if (pickedUpResult?.data && !pickedUpResult.failed) {
           pickedUpRequests = transformRequestsData(pickedUpResult.data);
           // Update picked-up requests cache - immediate update
           setRequestCache(prev => ({
@@ -597,12 +646,20 @@ const RequestPage = () => {
           }));
         }
 
-        // Update all state immediately to prevent race conditions
-        setRequests({
-          available: availableRequests,
-          accepted: acceptedRequests,
-          picked_up: pickedUpRequests
-        });
+        // Update all state immediately to prevent race conditions. A list
+        // whose query failed keeps what it had (saved or on screen).
+        const anyFailed = [availableResult, acceptedResult, pickedUpResult].some(r => r?.failed);
+        setRequests(prev => ({
+          available: availableResult?.failed ? prev.available : availableRequests,
+          accepted: acceptedResult?.failed ? prev.accepted : acceptedRequests,
+          picked_up: pickedUpResult?.failed ? prev.picked_up : pickedUpRequests
+        }));
+        if (anyFailed) {
+          setSavedAt(prev => prev || loadJobs('requests', user?.id)?.savedAt || Date.now());
+        } else {
+          jobsLoadedRef.current = true;
+          setSavedAt(null);
+        }
         
         setIsLoading(false);
         setIsInitialLoading(false);
@@ -611,8 +668,8 @@ const RequestPage = () => {
         
         logger.debug('⚡ INSTANT: Request page data loaded');
       } else {
-        // Offline: show error message
-        setError('No internet connection. Please connect to the internet.');
+        // Offline: show the jobs saved on the phone
+        showSavedJobsOrError();
       }
       
       setIsLoading(false);
@@ -620,7 +677,7 @@ const RequestPage = () => {
       setIsRefreshing(false);
     } catch (error) {
       logger.error('Error fetching requests:', error);
-      setError('Failed to fetch requests. Please try again.');
+      showSavedJobsOrError();
       setIsLoading(false);
       setIsInitialLoading(false);
       setIsRefreshing(false);
@@ -1161,13 +1218,11 @@ const RequestPage = () => {
     const setupSubscription = async () => {
       try {
         // Set up connectivity listeners
-        const connectivityListeners = await registerConnectivityListeners((isOnline) => {
-          setIsOnlineStatus(isOnline);
-          if (isOnline) {
-            fetchRequests();
-          }
-        });
-        unregister = connectivityListeners?.unregister || null;
+        // Back online: reload; offline: mark it so the page shows saved jobs
+        unregister = registerConnectivityListeners(
+          () => { setIsOnlineStatus(true); fetchRequests(); },
+          () => setIsOnlineStatus(false)
+        );
 
 
         // Set up real-time subscription
@@ -2558,13 +2613,11 @@ const GeofenceErrorModal = ({
     const setupSubscription = async () => {
       try {
         // Set up connectivity listeners
-        const connectivityListeners = await registerConnectivityListeners((isOnline) => {
-          setIsOnlineStatus(isOnline);
-          if (isOnline) {
-            fetchRequests();
-          }
-        });
-        unregister = connectivityListeners?.unregister || null;
+        // Back online: reload; offline: mark it so the page shows saved jobs
+        unregister = registerConnectivityListeners(
+          () => { setIsOnlineStatus(true); fetchRequests(); },
+          () => setIsOnlineStatus(false)
+        );
 
         // Set up real-time subscription
         subscription = supabase
@@ -2758,6 +2811,14 @@ const GeofenceErrorModal = ({
           }}
         />
         
+        {/* Showing jobs saved on the phone (offline or loading failed) */}
+        {savedAt !== null && !error && (
+          <div className="mx-4 mt-3 p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-sm" role="status" data-testid="saved-jobs-banner">
+            <p className="font-semibold">📶 {isOnlineStatus ? "Couldn't refresh" : "You're offline"}: showing your jobs saved at {savedAtLabel(savedAt)}</p>
+            <p className="mt-0.5">They'll update when you're back online.</p>
+          </div>
+        )}
+
         {/* Requests List */}
         <div className="requests-container">
           {isLoading ? (
@@ -2779,13 +2840,18 @@ const GeofenceErrorModal = ({
                 </svg>
               </div>
               <h3 className="text-lg font-medium mb-1">Error loading requests</h3>
-              <p className="text-gray-600 mb-4">{error.message}</p>
+              <p className="text-gray-600 mb-4 px-4">{typeof error === 'string' ? error : error?.message}</p>
               <button 
                 onClick={fetchRequests}
                 className="px-4 py-2 bg-green-500 text-white rounded-md"
               >
                 Try Again
               </button>
+            </div>
+          ) : activeTab === 'available' && !isOnlineStatus ? (
+            <div className="text-center py-8 px-4" data-testid="available-offline">
+              <p className="text-lg font-semibold text-gray-800 mb-1">You're offline</p>
+              <p className="text-gray-600">New requests show here when you're back online. Your accepted and picked-up jobs are still in their tabs.</p>
             </div>
           ) : activeTab === 'available' && !isOnDuty ? (
             <div className="text-center py-8 px-4" data-testid="available-off-duty">

@@ -8,6 +8,7 @@ import DisposalModal from '../components/DisposalModal';
 import ReportModal from '../components/ReportModal';
 import AssignmentNavigationModal from '../components/AssignmentNavigationModal';
 import { supabase, authService } from '../services/supabase';
+import { saveJobs, loadJobs, savedAtLabel } from '../utils/offlineJobsCache';
 import { useAuth } from '../context/AuthContext';
 import { useAppState } from '../context/AppStateContext';
 import { logger } from '../utils/logger';
@@ -368,6 +369,53 @@ const AssignPage = () => {
     completed: []
   });
   const [fetchError, setFetchError] = useState(null);
+
+  // Lists saved on the phone for when the connection drops. savedAt is set
+  // while the page is showing saved (not freshly loaded) lists.
+  const [savedAt, setSavedAt] = useState(null);
+  const jobsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!user?.id || jobsLoadedRef.current) return;
+    const saved = loadJobs('assignments', user.id);
+    if (!saved) return;
+    jobsLoadedRef.current = true;
+    setAssignments({
+      available: saved.data.available || [],
+      accepted: saved.data.accepted || [],
+      completed: saved.data.completed || []
+    });
+    setSavedAt(saved.savedAt);
+    setLoading(false);
+  }, [user?.id]);
+  // Save fresh lists (after loading, accepting, completing, disposing)
+  useEffect(() => {
+    if (!user?.id || !jobsLoadedRef.current || savedAt !== null) return;
+    saveJobs('assignments', user.id, assignments);
+  }, [assignments, user?.id, savedAt]);
+
+  // Back online: reload the lists
+  const fetchAssignmentsRef = useRef(null);
+  useEffect(() => {
+    const onOnline = () => fetchAssignmentsRef.current?.();
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
+
+  // Loading failed (offline or flaky): keep the saved lists on screen
+  const showSavedAssignments = () => {
+    const saved = loadJobs('assignments', user?.id);
+    if (!jobsLoadedRef.current && saved) {
+      jobsLoadedRef.current = true;
+      setAssignments({
+        available: saved.data.available || [],
+        accepted: saved.data.accepted || [],
+        completed: saved.data.completed || []
+      });
+    }
+    if (jobsLoadedRef.current) {
+      setSavedAt(prev => prev || saved?.savedAt || Date.now());
+    }
+  };
   
   // Track assignments that have had arrival confirmed via navigation modal
   // This is used as a fallback in geofence check since navigation uses accurate GPS
@@ -446,6 +494,7 @@ const AssignPage = () => {
       if (error) {
         logger.error('Error fetching assignments:', error);
         setFetchError('Failed to load assignments. Please try again.');
+        showSavedAssignments();
         return;
       }
 
@@ -519,6 +568,8 @@ const AssignPage = () => {
         )
       };
 
+      jobsLoadedRef.current = true;
+      setSavedAt(null);
       setAssignments(groupedAssignments);
       setLastUpdated(new Date().toISOString());
       
@@ -532,10 +583,12 @@ const AssignPage = () => {
     } catch (error) {
       logger.error('Unexpected error fetching assignments:', error);
       setFetchError('An unexpected error occurred. Please try again.');
+      showSavedAssignments();
     } finally {
       setLoading(false);
     }
   };
+  fetchAssignmentsRef.current = fetchAssignments;
 
   // Fetch user profile
   useEffect(() => {
@@ -1263,6 +1316,14 @@ const AssignPage = () => {
       {/* Scrollable Content Area with padding to account for fixed header */}
       <main className="flex-1 overflow-y-auto pt-40 pb-20 px-4" style={{paddingTop: '13rem'}}>
         
+        {/* Showing assignments saved on the phone (offline or loading failed) */}
+        {savedAt !== null && activeTab !== 'claim' && (
+          <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-sm" role="status" data-testid="saved-jobs-banner">
+            <p className="font-semibold">📶 {typeof navigator !== 'undefined' && navigator.onLine === false ? "You're offline" : "Couldn't refresh"}: showing your assignments saved at {savedAtLabel(savedAt)}</p>
+            <p className="mt-0.5">They'll update when you're back online.</p>
+          </div>
+        )}
+
         {/* Assignment Cards */}
         <div className="assignments-container">
           {activeTab === 'claim' ? (
