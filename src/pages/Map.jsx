@@ -1156,11 +1156,13 @@ const MapPage = () => {
   }, [applyFilters]);
   
   // Helper function to parse PostGIS POINT string to [lat, lng] array
+  // Returns null when the coordinates can't be read: the request is then left
+  // off the map. (It used to return the collector's own position, which put
+  // the request on top of the collector and counted it as "within your radius".)
   const parseCoordinates = (pointString) => {
-    // Return default position if no coordinates
     if (!pointString) {
-      logger.warn('No coordinates provided, using default position');
-      return position;
+      logger.warn('No coordinates provided, skipping request');
+      return null;
     }
     
     // If it's already in the correct format [lat, lng]
@@ -1231,8 +1233,8 @@ const MapPage = () => {
       }
     }
     
-    logger.warn('Using default position, could not parse coordinates:', pointString);
-    return position; // Fallback to default position
+    logger.warn('Could not parse coordinates, skipping request:', pointString);
+    return null;
   };
 
 
@@ -1278,6 +1280,8 @@ const MapPage = () => {
               case 'INSERT': {
                 if (newRecord.status === 'pending') {
                   const coords = parseCoordinates(newRecord.coordinates);
+                  // Unreadable here (bins keep theirs in bin_locations): reload the list
+                  if (!coords) { fetchRequests(); break; }
                   // Transform the new record
                   const transformedRequest = {
                     id: newRecord.id,
@@ -1326,6 +1330,8 @@ const MapPage = () => {
                           oldRecord.status !== 'pending') {
                   // Request became available again
                   const coords = parseCoordinates(newRecord.coordinates);
+                  // Unreadable here (bins keep theirs in bin_locations): reload the list
+                  if (!coords) { fetchRequests(); break; }
                   const transformedRequest = {
                     id: newRecord.id,
                     type: newRecord.waste_type || 'general',
@@ -1390,6 +1396,8 @@ const MapPage = () => {
                     break;
                   }
                   const coords = parseCoordinates(newRecord.coordinates);
+                  // Unreadable here (bins keep theirs in bin_locations): reload the list
+                  if (!coords) { fetchRequests(); break; }
                   const transformedBin = {
                     id: newRecord.id,
                     type: newRecord.waste_type || 'general',
@@ -1433,6 +1441,8 @@ const MapPage = () => {
                           oldRecord.status !== 'pending') {
                   // Digital bin became available again
                   const coords = parseCoordinates(newRecord.coordinates);
+                  // Unreadable here (bins keep theirs in bin_locations): reload the list
+                  if (!coords) { fetchRequests(); break; }
                   const transformedBin = {
                     id: newRecord.id,
                     type: newRecord.waste_type || 'general',

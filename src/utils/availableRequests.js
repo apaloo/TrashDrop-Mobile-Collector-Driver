@@ -12,20 +12,53 @@
 const EARTH_RADIUS_KM = 6371;
 const DEFAULT_RADIUS_KM = 10;
 
-/** [lat, lng] from an array, {lat, lng} or {latitude, longitude}; null if unusable */
+/**
+ * [lng, lat] from PostGIS EWKB/WKB hex, which is how Supabase returns a
+ * geography column (e.g. pickup_requests.coordinates): "0101000020E6100000..."
+ */
+const pointFromWkbHex = (hex) => {
+  if (!/^[0-9a-f]+$/i.test(hex) || hex.length < 42) return null;
+  const bytes = new Uint8Array(hex.match(/../g).map((b) => parseInt(b, 16)));
+  const view = new DataView(bytes.buffer);
+  const littleEndian = bytes[0] === 1;
+  const type = view.getUint32(1, littleEndian);
+  if ((type & 0xff) !== 1) return null; // not a Point
+  const offset = type & 0x20000000 ? 9 : 5; // skip the SRID when present
+  if (bytes.length < offset + 16) return null;
+  return [view.getFloat64(offset, littleEndian), view.getFloat64(offset + 8, littleEndian)];
+};
+
+/**
+ * [lat, lng] from any coordinate format the apps use; null if unusable:
+ * [lat, lng], {lat, lng}, {latitude, longitude}, GeoJSON Point, {x, y},
+ * WKT "POINT(lng lat)" (optionally "SRID=4326;...") and EWKB hex.
+ */
 export const toLatLng = (value) => {
   if (!value) return null;
   let lat;
   let lng;
   if (Array.isArray(value)) {
     [lat, lng] = value;
+  } else if (typeof value === 'string') {
+    const wkt = value.match(/^\s*(?:SRID=\d+;)?POINT\s*\(\s*([-\d.eE+]+)\s+([-\d.eE+]+)\s*\)\s*$/i);
+    const point = wkt ? [wkt[1], wkt[2]] : pointFromWkbHex(value.trim());
+    if (!point) return null;
+    [lng, lat] = point;
   } else if (typeof value === 'object') {
-    lat = value.lat ?? value.latitude;
-    lng = value.lng ?? value.longitude;
+    if (value.type === 'Point' && Array.isArray(value.coordinates)) {
+      [lng, lat] = value.coordinates;
+    } else if (value.x !== undefined && value.y !== undefined) {
+      lng = value.x;
+      lat = value.y;
+    } else {
+      lat = value.lat ?? value.latitude;
+      lng = value.lng ?? value.longitude;
+    }
   }
   lat = Number(lat);
   lng = Number(lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
   return [lat, lng];
 };
 
