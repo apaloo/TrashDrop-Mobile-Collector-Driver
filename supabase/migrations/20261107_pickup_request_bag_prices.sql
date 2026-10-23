@@ -1,15 +1,18 @@
--- Bag prices for pickup requests, for the collector's request card.
+-- Bag prices for pickup requests, for the request card in the collector app.
 --
--- A QR-bag pickup request's fee is the sum of the unit prices of the bags it
--- covers: every bag carries its own unit_price (set from its batch's type,
--- size and number of bags). Bags aren't tied to a request until the collector
--- scans them, so this follows create_pickup_request's FIFO rule: the user's
+-- The fee of a QR-bag pickup request is the sum of the unit prices of the bags it
+-- covers: every bag carries its own unit_price (set from the type,
+-- size and number of bags of its batch). Bags are not tied to a request until the collector
+-- scans them, so this follows the FIFO rule of create_pickup_request: the
 -- active bags from their oldest batch first. When a user has several open
 -- requests, each takes the next bags in that order, so no bag is counted twice.
 --
--- Collectors can't read other users' bags, so this is SECURITY DEFINER and
+-- Collectors cannot read the bags of other users, so this is SECURITY DEFINER and
 -- returns only prices, only to registered active collectors, and only for
 -- pending requests or requests assigned to the caller.
+--
+-- user_reqs lists every open request of those users in the order they were
+-- made, so bags already counted for an earlier request go to that request.
 --
 -- Read-only: it does not change pickup_requests.fee or any payout.
 -- Safe to re-run.
@@ -20,7 +23,7 @@ LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $fn$
   WITH reqs AS (
     SELECT pr.id::text AS id, pr.user_id, pr.created_at,
            GREATEST(COALESCE(pr.estimated_volume, pr.bag_count, 1), 1)::integer AS n
@@ -29,8 +32,6 @@ AS $$
       AND (pr.status = 'pending' OR pr.collector_id = auth.uid())
       AND public.is_active_collector(auth.uid())
   ),
-  -- every open request of those users, in the order they were made, so bags
-  -- already counted for an earlier request go to that request
   user_reqs AS (
     SELECT pr.id::text AS id, pr.user_id,
            GREATEST(COALESCE(pr.estimated_volume, pr.bag_count, 1), 1)::integer AS n,
@@ -60,7 +61,7 @@ AS $$
    AND ub.rn > ur.upto - ur.n
    AND ub.rn <= ur.upto
   GROUP BY r.id, r.n;
-$$;
+$fn$;
 
 REVOKE ALL ON FUNCTION public.get_pickup_request_bag_prices(text[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_pickup_request_bag_prices(text[]) TO authenticated, service_role;
