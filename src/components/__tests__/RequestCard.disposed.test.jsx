@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import RequestCard from '../RequestCard';
 
 jest.mock('../QRCodeScanner', () => () => null);
+jest.mock('../../services/bagPricing', () => ({ scanPickupBag: jest.fn() }));
 jest.mock('../../context/CurrencyContext', () => ({ useCurrency: () => ({ currency: 'GHS' }) }));
 jest.mock('../../utils/geoUtils', () => ({ formatLocationAsync: jest.fn(() => Promise.resolve('Pokuase')) }));
 jest.mock('../../utils/logger', () => ({ logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() } }));

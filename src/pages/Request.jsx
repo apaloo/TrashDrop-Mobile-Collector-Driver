@@ -18,7 +18,7 @@ import Toast from '../components/Toast';
 
 import { PickupRequestStatus, WasteType, AssignmentStatus } from '../utils/types';
 import { transformRequestsData } from '../utils/requestUtils';
-import { withBagPrices } from '../services/bagPricing';
+import { withBagPrices, finalizePickupPayout } from '../services/bagPricing';
 import { filterAvailableRequests, getCachedPosition, toLatLng } from '../utils/availableRequests';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
 import { getCurrentLocation, getLocationWithRetry, isWithinRadius } from '../utils/geoUtils';
@@ -3253,6 +3253,13 @@ const GeofenceErrorModal = ({
                 
                 if (error) {
                   throw new Error(error.message);
+                }
+
+                // Prepaid bags: final payout (scanned bags + tips), worked out by the database
+                try {
+                  await finalizePickupPayout(assignmentId);
+                } catch (payoutError) {
+                  logger.warn('Could not finalize pickup payout:', payoutError?.message || payoutError);
                 }
 
                 await notifyUserOfDisposal('pickup_requests', assignmentId, site?.name);

@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
 import { getDeadheadShare, PROMOTIONAL_FEE_SCHEDULE } from '../utils/paymentCalculations';
+import { finalizePickupPayout } from './bagPricing';
 
 // SOP v4.5.6 Payment Model Constants (aligned with earningsService.js)
 const PAYMENT_SPLITS = {
@@ -425,9 +426,11 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
 /**
  * Dispose a regular pickup request
  * 
- * Applies the same TrashDrop Pricing Algorithm v4.5.6 sharing model
- * used for digital bins. The fee on the pickup_request is already paid;
- * this function calculates and stores the collector/platform split.
+ * Pickup requests are prepaid: the household bought the bags and each bag's
+ * unit_price includes the pickup. The collector earns 100% of the unit prices
+ * of the bags scanned for the request, plus tips, with no request fee taken
+ * off. The database works the payout out (finalize_pickup_request_payout) and
+ * stores it on the request; this function only marks the request disposed.
  * 
  * @param {string} requestId - Pickup request UUID
  * @param {string} collectorId - Collector user UUID
@@ -459,53 +462,24 @@ export async function disposePickupRequest(requestId, collectorId, disposalSiteI
       throw new Error('This request is assigned to a different collector');
     }
 
-    // 4. Get the fee (already paid by the user)
-    const fee = parseFloat(request.fee) || 0;
-    if (fee <= 0) {
-      logger.warn('No fee on pickup request, payout will be zero:', { requestId, fee });
-    }
-
-    // 5. Fetch actual tips from collector_tips table
-    let actualTips = 0;
-    const { data: tipsData } = await supabase
-      .from('collector_tips')
-      .select('amount')
-      .eq('collector_id', collectorId)
-      .eq('request_id', requestId)
-      .eq('status', 'confirmed');
-
-    if (tipsData && tipsData.length > 0) {
-      actualTips = tipsData.reduce((sum, tip) => sum + (parseFloat(tip.amount) || 0), 0);
-      logger.info('Fetched actual tips for request:', { requestId, tipsAmount: actualTips });
-    }
-
-    // 6. Map pickup_request fields to calculatePaymentSharing format
-    const binCompatible = {
-      id: request.id,
-      fee: fee,
-      bags_collected: request.bag_count || 1,
-      is_urgent: request.urgent_enabled || request.is_urgent || false,
-      deadhead_km: parseFloat(request.deadhead_km) || parseFloat(request.distance_km) || 0,
-      surge_multiplier: parseFloat(request.surge_multiplier) || 1.0,
-      recycler_gross_payout: parseFloat(request.recycler_gross_payout) || 0,
-      loyalty_rate: parseFloat(request.loyalty_rate) || 0.01,
+    // 4. Payout: 100% of the scanned bags' unit prices + confirmed tips,
+    //    calculated and stored by the database
+    const payout = await finalizePickupPayout(requestId);
+    const payoutBreakdown = {
+      ...payout,
+      collector_core_payout: Number(payout?.bag_total) || 0,
+      collector_tips: Number(payout?.tips) || 0,
+      collector_total_payout: Number(payout?.total) || 0,
+      platform_share: 0
     };
 
-    const paymentCompatible = {
-      total_bill: fee,
-      bags_collected: request.bag_count || 1,
-    };
-
-    // 7. Calculate payment sharing (TrashDrop Pricing Algorithm v4.5.6)
-    const payoutBreakdown = calculatePaymentSharing(binCompatible, paymentCompatible, actualTips);
-
-    // 8. Build disposal site string
+    // 5. Build disposal site string
     const disposalSite = disposalSiteInfo.name
       ? `${disposalSiteInfo.name}${disposalSiteInfo.address ? ', ' + disposalSiteInfo.address : ''}`
       : 'Disposal Center';
     const disposalTimestamp = new Date().toISOString();
 
-    // 9. Update pickup_requests with disposal info AND payout breakdown
+    // 6. Mark disposed (the payout is already stored on the request)
     const { error: updateError } = await supabase
       .from('pickup_requests')
       .update({
@@ -513,16 +487,6 @@ export async function disposePickupRequest(requestId, collectorId, disposalSiteI
         disposal_site: disposalSite,
         disposal_timestamp: disposalTimestamp,
         disposed_at: disposalTimestamp,
-        collector_core_payout: payoutBreakdown.collector_core_payout,
-        collector_urgent_payout: payoutBreakdown.collector_urgent_payout,
-        collector_distance_payout: payoutBreakdown.collector_distance_payout,
-        collector_surge_payout: payoutBreakdown.collector_surge_payout,
-        collector_tips: payoutBreakdown.collector_tips,
-        collector_recyclables_payout: payoutBreakdown.collector_recyclables_payout,
-        collector_loyalty_cashback: payoutBreakdown.collector_loyalty_cashback,
-        collector_total_payout: payoutBreakdown.collector_total_payout,
-        platform_share: payoutBreakdown.platform_share,
-        payout_breakdown: payoutBreakdown,
         updated_at: disposalTimestamp
       })
       .eq('id', requestId)
@@ -537,7 +501,8 @@ export async function disposePickupRequest(requestId, collectorId, disposalSiteI
 
     logger.info('✅ Pickup request disposed successfully:', {
       requestId,
-      fee,
+      payoutModel: payout?.model,
+      bagsScanned: payout?.bags_scanned,
       collectorPayout: payoutBreakdown.collector_total_payout,
       platformShare: payoutBreakdown.platform_share
     });
