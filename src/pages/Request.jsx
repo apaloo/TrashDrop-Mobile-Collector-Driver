@@ -18,6 +18,7 @@ import Toast from '../components/Toast';
 
 import { PickupRequestStatus, WasteType, AssignmentStatus } from '../utils/types';
 import { transformRequestsData } from '../utils/requestUtils';
+import { withBagPrices } from '../services/bagPricing';
 import { filterAvailableRequests, getCachedPosition, toLatLng } from '../utils/availableRequests';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
 import { getCurrentLocation, getLocationWithRetry, isWithinRadius } from '../utils/geoUtils';
@@ -618,6 +619,8 @@ const RequestPage = () => {
           // at render time by duty status, radius and filters (visibleAvailable),
           // the same rule the Map uses
           availableRequests = transformRequestsData(availableResult.data);
+          // QR-bag requests: show the unit prices of the bags they cover
+          availableRequests = await withBagPrices(availableRequests);
           
           // Update request cache for snappy UX - immediate update
           setRequestCache(prev => ({
@@ -630,7 +633,7 @@ const RequestPage = () => {
         }
         
         if (acceptedResult?.data && !acceptedResult.failed) {
-          acceptedRequests = transformRequestsData(acceptedResult.data);
+          acceptedRequests = await withBagPrices(transformRequestsData(acceptedResult.data));
           // Update accepted requests cache - immediate update
           setRequestCache(prev => ({
             ...prev,

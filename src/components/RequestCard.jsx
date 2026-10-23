@@ -5,6 +5,7 @@ import { PickupRequestStatus, WasteType } from '../utils/types';
 import { isWithinRadius } from '../utils/locationUtils';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatCurrency } from '../utils/currencyUtils';
+import { displayFee } from '../utils/requestFee';
 import { formatLocationAsync } from '../utils/geoUtils';
 import { logger } from '../utils/logger';
 import { PICKUP_ARRIVAL_RADIUS_KM, kmToMeters } from '../config/geofenceConfig';
@@ -549,7 +550,7 @@ const RequestCard = ({
           }`}>
             {request.source_type === 'digital_bin' 
               ? `${(request.waste_type || 'General').charAt(0).toUpperCase() + (request.waste_type || 'General').slice(1)} Bin`
-              : `${request.bags || 1} bag`
+              : `${request.bags || 1} ${(request.bags || 1) === 1 ? 'bag' : 'bags'}`
             }
           </span>
           {request.source_type !== 'digital_bin' && (
@@ -577,7 +578,7 @@ const RequestCard = ({
             </>
           ) : (
             <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm whitespace-nowrap">
-              {formatCurrency(request.fee || 0, currency)}
+              {formatCurrency(displayFee(request), currency)}
             </span>
           )}
         </div>
@@ -695,8 +696,8 @@ const RequestCard = ({
 
               // Legacy request - show estimated breakdown
               // Check for fee existence (including 0 for digital bins)
-              if (request.fee !== undefined && request.fee !== null) {
-                const totalPayout = parseFloat(request.fee);
+              if (request.bag_price_total != null || (request.fee !== undefined && request.fee !== null)) {
+                const totalPayout = parseFloat(displayFee(request)) || 0;
                 
                 // Estimate: 87% core (average deadhead), 13% potential bonuses
                 const estimatedCore = totalPayout * 0.87;
@@ -719,6 +720,13 @@ const RequestCard = ({
                         <span className="font-medium">{formatCurrency(estimatedBonus, currency)}</span>
                       </div>
                       
+                      {request.bag_unit_prices?.length > 0 && (
+                        <div className="flex justify-between text-gray-500 text-xs">
+                          <span>🛍️ Bag prices</span>
+                          <span>{request.bag_unit_prices.map(price => formatCurrency(price, currency)).join(' + ')}</span>
+                        </div>
+                      )}
+
                       <div className="flex justify-between font-bold text-green-600 border-t pt-1 mt-1">
                         <span>Total Payout</span>
                         <span>{formatCurrency(totalPayout, currency)}</span>
