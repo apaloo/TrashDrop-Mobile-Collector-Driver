@@ -301,6 +301,19 @@ const PAYMENT_SPLITS = {
  * @returns {number} Collector's total earnings
  */
 function calculateCollectorEarnings(pickup) {
+  // Prepaid bags: the database stores 100% of the scanned bags' unit prices
+  // + tips (scan_pickup_request_bag / finalize_pickup_request_payout)
+  if (String(pickup.payout_breakdown?.model || '').startsWith('prepaid_bags')) {
+    return parseFloat(pickup.collector_total_payout) || 0;
+  }
+
+  // Nothing stored yet (no bag scanned): estimate the prepaid payout, the unit
+  // price for each requested bag, with no request fee taken off
+  if (pickup.collector_total_payout === null || pickup.collector_total_payout === undefined) {
+    const bags = Math.max(1, parseInt(pickup.estimated_volume || pickup.bag_count, 10) || 1);
+    return (parseFloat(pickup.fee) || 0) * bags + (parseFloat(pickup.collector_tips) || 0);
+  }
+
   // If new payment model fields exist, use them directly (already calculated)
   // VALIDATION: payout must be LESS than the fee (SOP always deducts platform cut)
   if (pickup.collector_total_payout !== null && pickup.collector_total_payout !== undefined) {

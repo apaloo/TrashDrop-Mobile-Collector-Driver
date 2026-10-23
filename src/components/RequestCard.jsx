@@ -6,6 +6,7 @@ import { isWithinRadius } from '../utils/locationUtils';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatCurrency } from '../utils/currencyUtils';
 import { displayFee } from '../utils/requestFee';
+import { scanPickupBag } from '../services/bagPricing';
 import { formatLocationAsync } from '../utils/geoUtils';
 import { logger } from '../utils/logger';
 import { PICKUP_ARRIVAL_RADIUS_KM, kmToMeters } from '../config/geofenceConfig';
@@ -200,35 +201,48 @@ const RequestCard = ({
       }, 1500);
       return;
     }
+  };
 
-    // Process the QR code data from a valid TrashDrop QR code
-    // In a real app, this would extract data from the QR code
-    // For this simulation, we'll use the QR data or generate values if not provided
-    
-    const bagTypes = Object.values(WasteType);
-    const bagType = qrData?.type || bagTypes[Math.floor(Math.random() * bagTypes.length)];
-    const bagWeight = qrData?.weight || (Math.random() * 5 + 0.5).toFixed(1);
-    const bagPoints = qrData?.points || Math.floor(Math.random() * 30) + 10;
-    const bagFee = qrData?.fee || (Math.random() * 5 + 1).toFixed(2);
-    
-    const newBag = {
-      id: qrData?.bagId || `bag-${Date.now()}`,
-      type: bagType,
-      weight: parseFloat(bagWeight),
-      points: bagPoints,
-      fee: parseFloat(bagFee)
-    };
-    
-    const updatedBags = [...scannedBags, newBag];
+  // Prepaid pickup: each scanned bag is checked and priced by the database
+  // (it must belong to this household); the collector earns its unit price
+  const lastBagScanRef = useRef({ text: null, at: 0 });
+  const handlePickupBagScan = async (decodedText) => {
+    // The camera reports the same code several times while it is in view
+    const now = Date.now();
+    if (lastBagScanRef.current.text === decodedText && now - lastBagScanRef.current.at < 3000) return;
+    lastBagScanRef.current = { text: decodedText, at: now };
+
+    const result = await scanPickupBag(request.id, decodedText);
+    if (scanFeedbackTimer.current) clearTimeout(scanFeedbackTimer.current);
+    if (!result.ok) {
+      showScanFeedback('error', 'Bag not accepted', result.message);
+      scanFeedbackTimer.current = setTimeout(() => setScanFeedback(null), 3000);
+      return;
+    }
+
+    const { bag, payout } = result;
+    if (bag.already_scanned || scannedBags.some(b => b.id === bag.id)) {
+      showScanFeedback('error', 'Already scanned', `Bag #${bag.bag_no} is already on this pickup.`);
+      scanFeedbackTimer.current = setTimeout(() => setScanFeedback(null), 3000);
+      return;
+    }
+
+    const updatedBags = [...scannedBags, {
+      id: bag.id,
+      bag_no: bag.bag_no,
+      type: request.waste_type || 'general',
+      weight: null,
+      points: 0,
+      fee: bag.unit_price
+    }];
     setScannedBags(updatedBags);
-    
-    // Call the parent handler
+    showScanFeedback('success', `Bag #${bag.bag_no} scanned`,
+      `${formatCurrency(bag.unit_price, currency)} · your payout ${formatCurrency(payout?.total ?? 0, currency)}`);
+    scanFeedbackTimer.current = setTimeout(() => setScanFeedback(null), 1500);
+
     if (onScanQR) {
       onScanQR(request.id, updatedBags);
     }
-    
-    // No longer closing the scanner after each scan
-    // This allows users to scan multiple bags without reopening the modal
   };
   
   // Render action buttons based on request status
@@ -698,10 +712,11 @@ const RequestCard = ({
               // Check for fee existence (including 0 for digital bins)
               if (request.bag_price_total != null || (request.fee !== undefined && request.fee !== null)) {
                 const totalPayout = parseFloat(displayFee(request)) || 0;
-                
-                // Estimate: 87% core (average deadhead), 13% potential bonuses
-                const estimatedCore = totalPayout * 0.87;
-                const estimatedBonus = totalPayout * 0.13;
+                // Prepaid bags: the collector earns 100% of every bag scanned.
+                // Digital bins: estimate 87% core (average deadhead), 13% potential bonuses
+                const isPrepaidBag = request.source_type !== 'digital_bin';
+                const estimatedCore = isPrepaidBag ? totalPayout : totalPayout * 0.87;
+                const estimatedBonus = isPrepaidBag ? 0 : totalPayout * 0.13;
                 
                 return (
                   <div className="bg-white p-3 rounded border border-blue-200">
@@ -711,14 +726,16 @@ const RequestCard = ({
                     </div>
                     <div className="space-y-1 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-600">💼 Base Payout</span>
+                        <span className="text-gray-600">{isPrepaidBag ? '💼 Bag prices (100% to you)' : '💼 Base Payout'}</span>
                         <span className="font-medium">{formatCurrency(estimatedCore, currency)}</span>
                       </div>
                       
-                      <div className="flex justify-between text-blue-600">
-                        <span>⚡ Potential Bonuses</span>
-                        <span className="font-medium">{formatCurrency(estimatedBonus, currency)}</span>
-                      </div>
+                      {!isPrepaidBag && (
+                        <div className="flex justify-between text-blue-600">
+                          <span>⚡ Potential Bonuses</span>
+                          <span className="font-medium">{formatCurrency(estimatedBonus, currency)}</span>
+                        </div>
+                      )}
                       
                       {request.bag_unit_prices?.length > 0 && (
                         <div className="flex justify-between text-gray-500 text-xs">
@@ -733,7 +750,9 @@ const RequestCard = ({
                       </div>
                     </div>
                     <p className="text-xs text-gray-500 mt-2">
-                      💡 Actual breakdown will be calculated when you accept this request based on your location and bonuses.
+                      {isPrepaidBag
+                        ? '💡 Prepaid bags: you earn the price of every bag you scan for this pickup, plus tips.'
+                        : '💡 Actual breakdown will be calculated when you accept this request based on your location and bonuses.'}
                     </p>
                   </div>
                 );
@@ -874,6 +893,10 @@ const RequestCard = ({
                 onScanSuccess={(decodedText) => {
                   logger.debug('QR Code scanned:', decodedText);
                   const isDigitalBin = request.source_type === 'digital_bin';
+                  if (!isDigitalBin) {
+                    handlePickupBagScan(decodedText);
+                    return;
+                  }
                   try {
                     // Try JSON first (legacy QR codes)
                     const qrData = JSON.parse(decodedText);
@@ -937,16 +960,16 @@ const RequestCard = ({
                                 {bag.type}
                               </span>
                             </td>
-                            <td className="px-3 py-2 whitespace-nowrap text-xs">{bag.weight} kg</td>
-                            <td className="px-3 py-2 whitespace-nowrap text-xs">{bag.points} pts</td>
-                            <td className="px-3 py-2 whitespace-nowrap text-xs">${parseFloat(bag.fee || 0).toFixed(2)}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-xs">{bag.weight != null ? `${bag.weight} kg` : '—'}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-xs">{bag.bag_no ? `Bag #${bag.bag_no}` : `${bag.points || 0} pts`}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-xs">{formatCurrency(bag.fee || 0, currency)}</td>
                           </tr>
                         ))}
                         <tr className="bg-gray-50 font-medium">
                           <td className="px-3 py-2 whitespace-nowrap text-xs">Total</td>
                           <td className="px-3 py-2 whitespace-nowrap text-xs">{scannedBags.reduce((acc, bag) => acc + (parseFloat(bag.weight) || 0), 0).toFixed(1)} kg</td>
                           <td className="px-3 py-2 whitespace-nowrap text-xs">{scannedBags.reduce((acc, bag) => acc + (parseInt(bag.points) || 0), 0)} pts</td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs">${scannedBags.reduce((acc, bag) => acc + (parseFloat(bag.fee) || 0), 0).toFixed(2)}</td>
+                          <td className="px-3 py-2 whitespace-nowrap text-xs">{formatCurrency(scannedBags.reduce((acc, bag) => acc + (parseFloat(bag.fee) || 0), 0), currency)}</td>
                         </tr>
                       </>
                     ) : (
