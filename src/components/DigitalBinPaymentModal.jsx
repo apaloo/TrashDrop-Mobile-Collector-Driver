@@ -4,7 +4,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { logger } from '../utils/logger';
 import { checkPaymentStatus } from '../services/paymentService';
 import { supabase } from '../services/supabase';
-import { PROMOTIONAL_FEE_SCHEDULE } from '../utils/paymentCalculations';
+import { promotionalPayout } from '../utils/paymentCalculations';
 
 /**
  * Digital Bin Payment Modal
@@ -78,7 +78,7 @@ const DigitalBinPaymentModal = ({
     try {
       const { data, error } = await supabase
         .from('digital_bins')
-        .select('id, fee, collector_total_payout, is_promotional, bin_size_liters')
+        .select('id, fee, collector_total_payout, collector_core_payout, is_promotional, bin_size_liters, bag_count')
         .eq('id', bagId)
         .maybeSingle();
 
@@ -89,7 +89,12 @@ const DigitalBinPaymentModal = ({
       if (data) {
         const fee = parseFloat(data.fee) || parseFloat(data.collector_total_payout) || 0;
         logger.info('💰 Bin fee fetched:', bagId, '→', fee, data.is_promotional ? '(PROMO)' : '');
-        return { fee, is_promotional: data.is_promotional || false, bin_size_liters: data.bin_size_liters };
+        return {
+          fee, is_promotional: data.is_promotional || false, bin_size_liters: data.bin_size_liters,
+          collectorPayout: data.is_promotional ? promotionalPayout({
+            binSizeLiters: data.bin_size_liters, bagCount: data.bag_count, storedPayout: data.collector_core_payout, storedFee: data.fee,
+          }).collectorPayout : null,
+        };
       }
       return { fee: 0 };
     } catch (err) {
@@ -142,8 +147,7 @@ const DigitalBinPaymentModal = ({
             // Capture promotional info from the first (primary) bin
             if (result.is_promotional) {
               const size = parseInt(result.bin_size_liters) || 120;
-              const schedule = PROMOTIONAL_FEE_SCHEDULE[size] || PROMOTIONAL_FEE_SCHEDULE[120];
-              setPromoInfo({ is_promotional: true, bin_size_liters: size, collectorPayout: schedule.collectorPayout });
+              setPromoInfo({ is_promotional: true, bin_size_liters: size, collectorPayout: result.collectorPayout });
             }
             return { ...bag, fee: result.fee };
           })
@@ -327,8 +331,7 @@ const DigitalBinPaymentModal = ({
               const fee = result.fee || 0;
               if (result.is_promotional) {
                 const size = parseInt(result.bin_size_liters) || 120;
-                const schedule = PROMOTIONAL_FEE_SCHEDULE[size] || PROMOTIONAL_FEE_SCHEDULE[120];
-                setPromoInfo({ is_promotional: true, bin_size_liters: size, collectorPayout: schedule.collectorPayout });
+                setPromoInfo({ is_promotional: true, bin_size_liters: size, collectorPayout: result.collectorPayout });
               }
               setScannedBags(prev =>
                 prev.map(b => b.id === bagId ? { ...b, fee } : b)
@@ -742,7 +745,7 @@ const DigitalBinPaymentModal = ({
               </div>
               <p className="text-sm text-purple-700">
                 You earn a guaranteed <span className="font-bold text-lg text-purple-900">GHS {promoInfo.collectorPayout.toFixed(2)}</span> for
-                this {promoInfo.bin_size_liters}L bin — platform covers the difference.
+                this {promoInfo.bin_size_liters}L pickup — platform covers the difference.
               </p>
             </div>
           )}

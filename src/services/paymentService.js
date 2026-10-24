@@ -61,10 +61,10 @@ export async function initiateCollection(paymentData) {
     // Fetch digital bin metadata to compute authoritative shares at collection time.
     // Storing the shares locks in the payout the collector was promised at this moment,
     // so future formula changes won't retroactively alter past payouts.
-    let binMetadata = { is_urgent: false, deadhead_km: 0, is_promotional: false, bin_size_liters: 120 };
+    let binMetadata = { is_urgent: false, deadhead_km: 0, is_promotional: false, bin_size_liters: 120, bag_count: 1, collector_core_payout: null };
     const { data: binData, error: binFetchError } = await supabase
       .from('digital_bins')
-      .select('is_urgent, deadhead_km, is_promotional, bin_size_liters')
+      .select('is_urgent, deadhead_km, is_promotional, bin_size_liters, bag_count, collector_core_payout')
       .eq('id', paymentData.digitalBinId)
       .maybeSingle();
 
@@ -80,7 +80,9 @@ export async function initiateCollection(paymentData) {
     if (binMetadata.is_promotional) {
       const promoResult = computePromotionalShares({
         totalBill: paymentData.totalBill,
-        binSizeLiters: binMetadata.bin_size_liters || 120
+        binSizeLiters: binMetadata.bin_size_liters || 120,
+        bagCount: binMetadata.bag_count,
+        storedPayout: binMetadata.collector_core_payout
       });
       collectorShare = promoResult.collectorShare;
       platformShare = promoResult.platformShare;

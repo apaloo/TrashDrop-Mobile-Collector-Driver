@@ -10,7 +10,7 @@ import { scanPickupBag } from '../services/bagPricing';
 import { formatLocationAsync } from '../utils/geoUtils';
 import { logger } from '../utils/logger';
 import { PICKUP_ARRIVAL_RADIUS_KM, kmToMeters } from '../config/geofenceConfig';
-import { PROMOTIONAL_FEE_SCHEDULE } from '../utils/paymentCalculations';
+import { promotionalPayout } from '../utils/paymentCalculations';
 
 const RequestCard = ({ 
   request, 
@@ -582,7 +582,7 @@ const RequestCard = ({
               <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm whitespace-nowrap font-semibold">
                 {formatCurrency(
                   request.collector_total_payout
-                    || (PROMOTIONAL_FEE_SCHEDULE[request.bin_size_liters] || PROMOTIONAL_FEE_SCHEDULE[120]).collectorPayout,
+                    || promotionalPayout({ binSizeLiters: request.bin_size_liters, bagCount: request.bag_count }).collectorPayout,
                   currency
                 )}
               </span>
@@ -679,7 +679,10 @@ const RequestCard = ({
               
               // Promotional digital bin — fixed guaranteed payout, no estimate needed
               if (request.is_promotional && request.source_type === 'digital_bin') {
-                const schedule = PROMOTIONAL_FEE_SCHEDULE[request.bin_size_liters] || PROMOTIONAL_FEE_SCHEDULE[120];
+                const schedule = promotionalPayout({
+                  binSizeLiters: request.bin_size_liters, bagCount: request.bag_count,
+                  storedPayout: request.collector_total_payout, storedFee: request.fee,
+                });
                 const payout = request.collector_total_payout || schedule.collectorPayout;
                 return (
                   <div className="bg-white p-3 rounded border border-purple-200">

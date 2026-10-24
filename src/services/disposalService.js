@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
-import { getDeadheadShare, PROMOTIONAL_FEE_SCHEDULE } from '../utils/paymentCalculations';
+import { getDeadheadShare, promotionalPayout } from '../utils/paymentCalculations';
 import { finalizePickupPayout } from './bagPricing';
 
 // SOP v4.5.6 Payment Model Constants (aligned with earningsService.js)
@@ -67,7 +67,13 @@ function calculatePaymentSharing(digitalBin, payment, actualTips = 0) {
   // ════════════════════════════════════════════════════════════════════
   if (digitalBin.is_promotional) {
     const binSize = parseInt(digitalBin.bin_size_liters) || 120;
-    const schedule = PROMOTIONAL_FEE_SCHEDULE[binSize] || PROMOTIONAL_FEE_SCHEDULE[120];
+    // The payout booked with the bin (promotional rate × bags); see promotionalPayout
+    const schedule = promotionalPayout({
+      binSizeLiters: binSize,
+      bagCount: digitalBin.bag_count,
+      storedPayout: digitalBin.collector_core_payout,
+      storedFee: digitalBin.fee,
+    });
     const clientFee = parseFloat(payment.total_bill) || parseFloat(digitalBin.fee) || schedule.clientFee;
 
     logger.info('🎁 Promotional payout for bin:', {
@@ -88,7 +94,7 @@ function calculatePaymentSharing(digitalBin, payment, actualTips = 0) {
       collector_loyalty_cashback: 0,
       collector_total_payout: schedule.collectorPayout + actualTips,
       platform_share: Math.max(0, clientFee - schedule.collectorPayout),
-      platform_subsidy: schedule.platformSubsidy,
+      platform_subsidy: Math.max(0, schedule.collectorPayout - clientFee),
       platform_core_margin: 0,
       platform_urgent_share: 0,
       platform_surge_share: 0,
