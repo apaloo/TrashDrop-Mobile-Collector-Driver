@@ -300,6 +300,8 @@ export const PROMOTIONAL_FEE_SCHEDULE = {
   120: { clientFee: 18.00, collectorPayout: 30.00, platformSubsidy: 12.00 },
   240: { clientFee: 22.00, collectorPayout: 40.00, platformSubsidy: 18.00 },
   360: { clientFee: 48.00, collectorPayout: 95.00, platformSubsidy: 47.00 },
+  660: { clientFee: 88.00, collectorPayout: 115.00, platformSubsidy: 27.00 },
+  1100: { clientFee: 98.00, collectorPayout: 135.00, platformSubsidy: 37.00 },
 };
 
 export const PROMOTIONAL_MAX_REQUESTS = 5;

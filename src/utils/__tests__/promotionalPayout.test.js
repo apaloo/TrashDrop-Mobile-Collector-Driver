@@ -11,6 +11,11 @@ describe('promotional payout', () => {
       .toEqual({ collectorPayout: 120, clientFee: 66, platformSubsidy: 54 });
   });
 
+  it('knows every size production promotes (promotional_fee_schedule, 2026-10-24)', () => {
+    expect(promotionalPayout({ binSizeLiters: 660 })).toEqual({ collectorPayout: 115, clientFee: 88, platformSubsidy: 27 });
+    expect(promotionalPayout({ binSizeLiters: 1100 })).toEqual({ collectorPayout: 135, clientFee: 98, platformSubsidy: 37 });
+  });
+
   it('treats a missing bag count as one bag', () => {
     expect(promotionalPayout({ binSizeLiters: 120 }).collectorPayout).toBe(30);
   });
