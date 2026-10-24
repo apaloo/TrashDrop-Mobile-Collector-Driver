@@ -300,33 +300,68 @@ export const PROMOTIONAL_FEE_SCHEDULE = {
   120: { clientFee: 18.00, collectorPayout: 30.00, platformSubsidy: 12.00 },
   240: { clientFee: 22.00, collectorPayout: 40.00, platformSubsidy: 18.00 },
   360: { clientFee: 48.00, collectorPayout: 95.00, platformSubsidy: 47.00 },
+  660: { clientFee: 88.00, collectorPayout: 115.00, platformSubsidy: 27.00 },
+  1100: { clientFee: 98.00, collectorPayout: 135.00, platformSubsidy: 37.00 },
 };
 
 export const PROMOTIONAL_MAX_REQUESTS = 5;
 
 /**
+ * A promotional bin's collector payout and client fee.
+ *
+ * The database prices promotional bins when they are booked (household app
+ * migration 20261024000000_server_side_bin_pricing): the
+ * promotional_fee_schedule rate × bags, stored in collector_core_payout and
+ * fee. Use those; the built-in table × bags is only for bins without them.
+ *
+ * @param {Object} params
+ * @param {number} params.binSizeLiters
+ * @param {number} [params.bagCount=1]
+ * @param {number} [params.storedPayout] - the bin's collector_core_payout as booked
+ * @param {number} [params.storedFee] - the bin's fee as booked
+ * @returns {{ collectorPayout: number, clientFee: number, platformSubsidy: number }}
+ */
+export function promotionalPayout({ binSizeLiters, bagCount = 1, storedPayout, storedFee }) {
+  const schedule = PROMOTIONAL_FEE_SCHEDULE[parseInt(binSizeLiters)] || PROMOTIONAL_FEE_SCHEDULE[120];
+  const bags = Math.max(1, parseInt(bagCount) || 1);
+  const stored = parseFloat(storedPayout);
+  const fee = parseFloat(storedFee);
+  const collectorPayout = stored > 0 ? stored : schedule.collectorPayout * bags;
+  const clientFee = fee > 0 ? fee : schedule.clientFee * bags;
+  return {
+    collectorPayout: Number(collectorPayout.toFixed(2)),
+    clientFee: Number(clientFee.toFixed(2)),
+    platformSubsidy: Number(Math.max(0, collectorPayout - clientFee).toFixed(2)),
+  };
+}
+
+/**
  * Compute collector_share and platform_share for a promotional digital bin.
  *
  * Promotional bins bypass the SOP v4.5.6 deadhead/urgent formula entirely.
- * The collector receives a fixed payout determined by bin size. The platform
- * covers the subsidy (collector payout − client fee) from the marketing fund.
+ * The collector receives the payout set when the bin was booked (the
+ * promotional rate × bags, see promotionalPayout). The platform covers the
+ * subsidy (collector payout − client fee) from the marketing fund.
  *
  * @param {Object} params
  * @param {number} params.totalBill - Amount actually collected from the client (GHS)
  * @param {number} params.binSizeLiters - Bin size (120, 240, or 360)
+ * @param {number} [params.bagCount=1] - Bags booked
+ * @param {number} [params.storedPayout] - The bin's collector_core_payout as booked
  * @returns {{ collectorShare: number, platformShare: number, platformSubsidy: number, isPromotional: true, breakdown: Object }}
  */
-export function computePromotionalShares({ totalBill, binSizeLiters }) {
+export function computePromotionalShares({ totalBill, binSizeLiters, bagCount = 1, storedPayout }) {
   const bill = parseFloat(totalBill) || 0;
   const size = parseInt(binSizeLiters) || 120;
 
-  const schedule = PROMOTIONAL_FEE_SCHEDULE[size] || PROMOTIONAL_FEE_SCHEDULE[120];
+  const promo = promotionalPayout({ binSizeLiters: size, bagCount, storedPayout });
+  const schedule = { clientFee: promo.clientFee, collectorPayout: promo.collectorPayout, platformSubsidy: promo.platformSubsidy };
 
-  // Collector gets the guaranteed fixed payout regardless of what the client paid
+  // Collector gets the guaranteed payout regardless of what the client paid
   const collectorShare = schedule.collectorPayout;
 
-  // Platform subsidy = collector payout − client fee (funded from marketing bucket)
-  const platformSubsidy = schedule.platformSubsidy;
+  // Platform subsidy = collector payout − what the client paid (funded from marketing bucket)
+  const platformSubsidy = Math.max(0, collectorShare - bill);
 
   // Platform net share from the client fee (may be 0 or slightly negative after subsidy)
   // The client's full payment goes toward the collector payout; subsidy covers the gap.
