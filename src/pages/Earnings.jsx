@@ -399,11 +399,12 @@ const EarningsPage = () => {
     monthlyEarnings: 0,
     pendingDisposalEarnings: 0,
     disposedEarnings: 0,
-    withdrawableEarnings: 0,     // Disposed digital bins + disposed prepaid pickups — can be withdrawn
+    withdrawableEarnings: 0,     // Disposed digital bins + disposed prepaid pickups + cash promo top-ups — can be withdrawn
     estimatedPendingEarnings: 0, // Estimated value of collecting bins/pickups — dispose to unlock
     cashCollectedEarnings: 0,    // Cash already received by collector — not platform-withdrawable
     platformEarnings: 0,
     grossRevenue: 0,
+    promoSubsidy: 0,             // TrashDrop's top-up on promotional bins (on top of what users paid)
     // Stats
     completedJobs: 0,
     pendingDisposalJobs: 0,
@@ -431,7 +432,7 @@ const EarningsPage = () => {
     totalEarnings, weeklyEarnings, monthlyEarnings, 
     pendingDisposalEarnings, disposedEarnings,
     withdrawableEarnings, estimatedPendingEarnings, cashCollectedEarnings,
-    platformEarnings, grossRevenue, 
+    platformEarnings, grossRevenue, promoSubsidy,
     chartData: earningsData, transactions,
     detailedEarnings, loyaltyTier,
     paymentModeBreakdown,
@@ -441,6 +442,8 @@ const EarningsPage = () => {
   // Withdrawable = disposed digital bins (actual gateway receipt) + disposed prepaid pickups.
   // Cash earnings excluded — collector already has those.
   const actualWithdrawableAmount = withdrawableEarnings;
+  // Share percentages are known once anything was earned (the platform's can be 0: promotional bins)
+  const hasShares = stats.collectorSharePercent > 0 || stats.platformSharePercent > 0;
   
   // Fix: Filter transactions by period
   const filteredTransactions = transactions.filter(transaction => {
@@ -517,6 +520,7 @@ const EarningsPage = () => {
         cashCollectedEarnings: statsData.cashCollectedEarnings ?? data.cashCollectedEarnings ?? 0,
         platformEarnings: statsData.platformEarnings || data.platformEarnings || 0,
         grossRevenue: statsData.grossRevenue || data.grossRevenue || 0,
+        promoSubsidy: statsData.promoSubsidy || 0,
         completedJobs: statsData.completedJobs || data.jobCounts?.disposed || 0,
         pendingDisposalJobs: statsData.pendingDisposalJobs || data.jobCounts?.pickedUp || 0,
         disposedJobs: statsData.disposedJobs || data.jobCounts?.disposed || 0,
@@ -813,7 +817,7 @@ const EarningsPage = () => {
           <div className="bg-gradient-to-r from-green-500 to-green-600 p-5 text-center">
             <p className="text-green-100 text-sm mb-1">Ready to Withdraw</p>
             <p className="text-4xl font-bold text-white">₵{withdrawableEarnings.toFixed(2)}</p>
-            <p className="text-green-200 text-xs mt-1">Disposed earnings (MoMo/e-Cash bins + prepaid pickups)</p>
+            <p className="text-green-200 text-xs mt-1">Disposed earnings (MoMo/e-Cash bins + prepaid pickups + promo top-ups)</p>
           </div>
           
           {/* Simple Breakdown */}
@@ -827,7 +831,7 @@ const EarningsPage = () => {
                   <p className="text-xs text-yellow-600">Already received from client</p>
                 </div>
               </div>
-              <span className="text-2xl font-bold text-yellow-700">₵{(cashCollectedEarnings || (paymentModeBreakdown?.cash?.collected) || 0).toFixed(2)}</span>
+              <span className="text-2xl font-bold text-yellow-700">₵{(paymentModeBreakdown?.cash?.collected ?? cashCollectedEarnings ?? 0).toFixed(2)}</span>
             </div>
             
             {/* MoMo/e-Cash - Total received via platform (like Cash: shows gross, not just withdrawable) */}
@@ -867,6 +871,12 @@ const EarningsPage = () => {
                 <span>Gross Revenue (User Paid)</span>
                 <span className="font-semibold">₵{grossRevenue.toFixed(2)}</span>
               </div>
+              {promoSubsidy > 0 && (
+                <div className="flex justify-between text-sm text-purple-700 mb-1">
+                  <span>🎁 TrashDrop promo top-up</span>
+                  <span className="font-semibold">+₵{promoSubsidy.toFixed(2)}</span>
+                </div>
+              )}
               {paymentModeBreakdown && ((paymentModeBreakdown.cash?.grossRevenue || paymentModeBreakdown.cash?.collected) > 0 || (paymentModeBreakdown.digital?.grossRevenue || paymentModeBreakdown.digital?.collected) > 0) && (
                 <div className="flex gap-3 text-xs text-gray-500 mb-2">
                   {(paymentModeBreakdown.cash?.grossRevenue || paymentModeBreakdown.cash?.collected || 0) > 0 && (
@@ -885,16 +895,18 @@ const EarningsPage = () => {
                 <div className="flex h-full">
                   <div 
                     className="bg-green-500 h-full flex items-center justify-center text-xs text-white font-medium"
-                    style={{ width: `${stats.collectorSharePercent > 0 ? stats.collectorSharePercent : 87}%` }}
+                    style={{ width: `${hasShares ? stats.collectorSharePercent : 87}%` }}
                   >
-                    {stats.collectorSharePercent > 0 ? stats.collectorSharePercent : '--'}%
+                    {hasShares ? stats.collectorSharePercent : '--'}%
                   </div>
-                  <div 
-                    className="bg-blue-500 h-full flex items-center justify-center text-xs text-white font-medium"
-                    style={{ width: `${stats.platformSharePercent > 0 ? stats.platformSharePercent : 13}%` }}
-                  >
-                    {stats.platformSharePercent > 0 ? stats.platformSharePercent : '--'}%
-                  </div>
+                  {(!hasShares || stats.platformSharePercent > 0) && (
+                    <div 
+                      className="bg-blue-500 h-full flex items-center justify-center text-xs text-white font-medium"
+                      style={{ width: `${hasShares ? stats.platformSharePercent : 13}%` }}
+                    >
+                      {hasShares ? stats.platformSharePercent : '--'}%
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

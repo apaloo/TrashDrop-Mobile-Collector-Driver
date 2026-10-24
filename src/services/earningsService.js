@@ -929,11 +929,13 @@ class EarningsService {
       const binPaymentSuccessAmountMap = {}; // total_bill — SUCCESS only (for pending: only confirmed MoMo/e-Cash)
       const binPaymentCollectorShareMap = {}; // collector_share — SUCCESS records only
       const binPaymentPlatformShareMap = {};  // platform_share — SUCCESS records only
+      const binPaymentSubsidyMap = {};        // platform_subsidy — SUCCESS only (promotional top-up)
+      const binPaymentPromoMap = {};          // is_promotional — SUCCESS only
       
       if (binIds.length > 0) {
         const { data: payments, error: paymentsError } = await supabase
           .from('bin_payments')
-          .select('digital_bin_id, payment_mode, total_bill, collector_share, platform_share, type, status, created_at')
+          .select('digital_bin_id, payment_mode, total_bill, collector_share, platform_share, platform_subsidy, is_promotional, type, status, created_at')
           .in('digital_bin_id', binIds)
           .eq('type', 'collection')
           .order('created_at', { ascending: false });
@@ -963,6 +965,8 @@ class EarningsService {
               if (p.platform_share !== null && p.platform_share !== undefined) {
                 binPaymentPlatformShareMap[binId] = parseFloat(p.platform_share);
               }
+              binPaymentSubsidyMap[binId] = parseFloat(p.platform_subsidy) || 0;
+              binPaymentPromoMap[binId] = p.is_promotional === true;
             }
           });
         }
@@ -1029,9 +1033,12 @@ class EarningsService {
       // Helper: resolve collector earnings for a digital bin with priority:
       //   1. bin_payments.collector_share (pre-computed at collection time — authoritative)
       //      VALIDATION: collector_share must be LESS than total_bill (SOP always deducts platform cut)
-      //      If collector_share >= total_bill, SOP was never applied (legacy bug) — return 0
+      //      If collector_share >= total_bill, SOP was never applied (legacy bug) — return 0.
+      //      Promotional bins are the exception: the promotional payout is above
+      //      the client's fee and TrashDrop tops it up (platform_subsidy).
       //   2. No bin_payments record = no actual payment processed = 0 earnings
       //   3. Bin must be 'disposed' to be withdrawable
+      const isPromoBin = (b) => b.is_promotional === true || binPaymentPromoMap[b.id] === true;
       const resolveBinCollectorEarnings = (b) => {
         // Only disposed bins are withdrawable
         if (b.status !== 'disposed') {
@@ -1043,7 +1050,7 @@ class EarningsService {
         if (storedShare !== undefined) {
           // If we have total_bill to validate against: collector_share must be < total_bill
           // If collector_share >= total_bill, SOP was never applied (legacy bug) — return 0
-          if (actualAmount !== null && actualAmount > 0 && storedShare >= actualAmount) {
+          if (actualAmount !== null && actualAmount > 0 && storedShare >= actualAmount && !isPromoBin(b)) {
             return 0; // Invalid data, no actual earnings
           }
           // Trust stored share (actual processed payment)
@@ -1083,6 +1090,15 @@ class EarningsService {
         return sum + resolveBinCollectorEarnings(b);
       }, 0);
 
+      // TrashDrop's top-up on disposed promotional bins (promotional payout above the client's fee)
+      const promoSubsidy = (b) => (isPromoBin(b) && b.status === 'disposed' ? (binPaymentSubsidyMap[b.id] || 0) : 0);
+      const promoSubsidyTotal = disposedBins.reduce((sum, b) => sum + promoSubsidy(b), 0);
+      // Paid in cash, the collector already has the client's fee; TrashDrop owes the
+      // top-up (td_withdrawable_items part D). Paid by MoMo/e-Cash it is inside collector_share.
+      const promoCashSubsidyOwed = disposedBins.reduce((sum, b) => (
+        binPaymentModeMap[b.id] === 'cash' ? sum + promoSubsidy(b) : sum
+      ), 0);
+
       // Authority assignment earnings
       const assignmentEarnings = authorityAssignments?.reduce((sum, a) => sum + (a.payment || 0), 0) || 0;
 
@@ -1096,8 +1112,9 @@ class EarningsService {
       // Cash bins are excluded: collector already has the cash from the client.
       // Pickup requests are PREPAID (platform holds the funds), so disposed pickups are withdrawable.
       const pickupDisposedWithdrawable = disposedRequests.reduce((sum, p) => sum + calculateCollectorEarnings(p), 0);
-      // Disposed cleanups are paid by TrashDrop, so they are withdrawable too.
-      const withdrawableEarnings = binsDisposedDigitalEarnings + pickupDisposedWithdrawable + cleanupDisposedEarnings;
+      // Disposed cleanups are paid by TrashDrop, so they are withdrawable too, and so
+      // is TrashDrop's top-up on promotional bins paid in cash.
+      const withdrawableEarnings = binsDisposedDigitalEarnings + pickupDisposedWithdrawable + cleanupDisposedEarnings + promoCashSubsidyOwed;
 
       // === CALCULATE PLATFORM EARNINGS (App Bucket) ===
       
@@ -1112,7 +1129,7 @@ class EarningsService {
         const actualAmount = binPaymentAmountMap[b.id];
         if (storedPlatformShare !== undefined) {
           // If collector_share was invalid (>= total_bill), platform_share is also suspect
-          const collectorShareInvalid = storedCollectorShare !== undefined && actualAmount !== undefined && actualAmount > 0 && storedCollectorShare >= actualAmount;
+          const collectorShareInvalid = !isPromoBin(b) && storedCollectorShare !== undefined && actualAmount !== undefined && actualAmount > 0 && storedCollectorShare >= actualAmount;
           if (!collectorShareInvalid) return storedPlatformShare;
         }
         if (actualAmount !== undefined && actualAmount > 0) {
@@ -1182,14 +1199,16 @@ class EarningsService {
         const platformEarnings = resolveBinPlatformEarnings(b);
         const actualAmount = binPaymentAmountMap[b.id];
         const rawFee = actualAmount !== undefined ? actualAmount : (parseFloat(b.fee) || parseFloat(b.payout) || 0);
+        // What the client paid: promotional payouts include TrashDrop's top-up, so use the fee
+        const received = isPromoBin(b) ? rawFee : collectorEarnings + platformEarnings;
         
         if (paymentMode === 'cash') {
           cashGrossRevenue += rawFee;
-          cashCollected += collectorEarnings + platformEarnings;
+          cashCollected += received;
           cashPlatformDue += platformEarnings;
         } else {
           digitalGrossRevenue += rawFee;
-          digitalCollected += collectorEarnings + platformEarnings;
+          digitalCollected += received;
           digitalCollectorDue += collectorEarnings;
         }
       });
@@ -1418,9 +1437,11 @@ class EarningsService {
             binPlatformEarnings,
             // Gross revenue (user paid)
             grossRevenue,
-            // Collector share percentage
-            collectorSharePercent: grossRevenue > 0 ? Math.round((totalEarnings / grossRevenue) * 100) : 0,
-            platformSharePercent: grossRevenue > 0 ? Math.round((totalPlatformEarnings / grossRevenue) * 100) : 0,
+            // TrashDrop's top-up on promotional bins (on top of what users paid)
+            promoSubsidy: promoSubsidyTotal,
+            // Shares of everything paid in: users plus TrashDrop's promotional top-up
+            collectorSharePercent: grossRevenue + promoSubsidyTotal > 0 ? Math.round((totalEarnings / (grossRevenue + promoSubsidyTotal)) * 100) : 0,
+            platformSharePercent: grossRevenue + promoSubsidyTotal > 0 ? Math.round((totalPlatformEarnings / (grossRevenue + promoSubsidyTotal)) * 100) : 0,
             // Job counts
             completedJobs,
             pendingDisposalJobs: totalPickedUpJobs,
@@ -1433,7 +1454,9 @@ class EarningsService {
             weeklyEarnings,
             monthlyEarnings,
             // Withdrawal-ready amount: disposed digital bins + disposed pickup requests
+            // + TrashDrop's top-up on promotional bins paid in cash
             withdrawableEarnings,
+            promoCashSubsidyOwed,
             // Estimated pending: what collector can expect after disposing current collecting bins/pickups
             estimatedPendingEarnings,
             // Cash already collected by collector (tracked but not platform-withdrawable)
@@ -1624,9 +1647,10 @@ class EarningsService {
           return; // Skip - no actual payment processed
         }
         
-        // Use stored payout fields if available and valid
+        // Use stored payout fields if available and valid. A promotional payout is
+        // above the client's fee by design (TrashDrop tops it up), so it is valid too.
         if (bin.collector_core_payout !== null && bin.collector_core_payout !== undefined && 
-            bin.collector_core_payout < actualBill) {
+            (bin.collector_core_payout < actualBill || bin.is_promotional === true)) {
           buckets.core += bin.collector_core_payout || 0;
           buckets.urgent += bin.collector_urgent_payout || 0;
           buckets.distance += bin.collector_distance_payout || 0;
