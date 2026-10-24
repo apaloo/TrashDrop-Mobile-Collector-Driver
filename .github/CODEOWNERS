@@ -1,0 +1,7 @@
+# Accepted TrashDrop Digital Bin Pricing (docs/DIGITAL_BIN_PRICING.md in
+# TrashDrop-Mobile-User-Domestic): changes need the owner's review.
+/CLAUDE.md                                         @apaloo
+/src/utils/paymentCalculations.js                  @apaloo
+/src/services/disposalService.js                   @apaloo
+/src/services/paymentService.js                    @apaloo
+/src/utils/__tests__/promotionalPayout.test.js     @apaloo
