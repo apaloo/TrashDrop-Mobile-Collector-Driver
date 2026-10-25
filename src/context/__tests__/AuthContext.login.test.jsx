@@ -8,7 +8,7 @@ jest.mock('../../utils/logger', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
 }));
 jest.mock('../../services/statusService', () => ({
-  statusService: { setOnlineEligibility: jest.fn(), forceOffline: jest.fn(), setServerDuty: jest.fn(() => Promise.resolve({ ok: true })) }
+  statusService: { setOnlineEligibility: jest.fn(), forceOffline: jest.fn(), goOnDutyByDefault: jest.fn(() => Promise.resolve()), setServerDuty: jest.fn(() => Promise.resolve({ ok: true })) }
 }));
 jest.mock('../../services/supabase', () => ({
   supabase: {
@@ -98,7 +98,7 @@ describe('login', () => {
     expect(localStorage.getItem('last_login_time')).toBeNull();
   });
 
-  it('signs a registered collector in, Off-Duty, with the profile shared', async () => {
+  it('signs a registered collector in, On-Duty by default, with the profile shared', async () => {
     authService.verifyOtp.mockResolvedValue({ success: true, user: { id: 'jack', phone: '233245724489' } });
     authService.getUserProfile.mockResolvedValue({ success: true, profile: JACK });
     await renderProvider();
@@ -108,8 +108,10 @@ describe('login', () => {
     expect(screen.getByTestId('state')).toHaveTextContent(`in:${PROFILE_STATE.READY}`);
     expect(auth.profile.first_name).toBe('Jack');
     expect(authService.signOut).not.toHaveBeenCalled();
+    // Nothing carries over from an earlier session; the new one opens On-Duty
     expect(statusService.forceOffline).toHaveBeenCalled();
-    expect(statusService.setServerDuty).toHaveBeenCalledWith(false);
+    expect(statusService.goOnDutyByDefault).toHaveBeenCalled();
+    expect(statusService.setServerDuty).not.toHaveBeenCalledWith(false);
     expect(statusService.setOnlineEligibility).toHaveBeenLastCalledWith(true);
     // Loaded once during login, not again by the effect
     expect(authService.getUserProfile).toHaveBeenCalledTimes(1);

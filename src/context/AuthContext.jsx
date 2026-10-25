@@ -335,9 +335,10 @@ export const AuthProvider = ({ children }) => {
         return { success: false, noAccount: true, error: NO_ACCOUNT_MESSAGE };
       }
 
-      // New sessions always start Off-Duty, on this device and on the server
+      // Nothing carries over from an earlier session on this device; the new
+      // session opens On-Duty (statusService.goOnDutyByDefault)
       statusService.forceOffline();
-      statusService.setServerDuty(false);
+      statusService.goOnDutyByDefault();
       
       // Store login time for 24-hour session tracking
       const loginTime = Date.now();
