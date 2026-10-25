@@ -42,6 +42,11 @@ export const STATUS_CONFIG = {
   }
 };
 
+// While On-Duty the app checks in this often (collector_profiles.last_active)
+export const HEARTBEAT_INTERVAL_MS = 60 * 1000;
+// Set once the collector picks a status; cleared when the app is opened again
+const STATUS_CHOICE_KEY = 'collector_status_chosen';
+
 class CollectorStatusService {
   constructor() {
     this.currentStatus = COLLECTOR_STATUS.OFFLINE;
@@ -56,9 +61,66 @@ class CollectorStatusService {
     // Only collectors with a complete, active profile may go On-Duty.
     // AuthContext sets this once the profile has loaded.
     this.onlineEligible = false;
+    // Bumped on every status change, so a slow backend sync can't undo one
+    this.statusVersion = 0;
+    this.defaultOnDutyPromise = null;
+    this.heartbeatTimer = null;
+
+    if (typeof window !== 'undefined') {
+      // Back online: retry the default On-Duty, and check in straight away
+      window.addEventListener('online', () => {
+        this.goOnDutyByDefault();
+        if (this.currentStatus === COLLECTOR_STATUS.ONLINE) this.sendHeartbeat();
+      });
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && this.currentStatus === COLLECTOR_STATUS.ONLINE) {
+          this.sendHeartbeat();
+        }
+      });
+    }
     
     // Initialize from localStorage
     this.initializeStatus();
+  }
+
+  /** Whether the collector picked a status themselves since the app opened */
+  hasChosenStatus() {
+    try {
+      return sessionStorage.getItem(STATUS_CHOICE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  setChosenStatus(chosen) {
+    try {
+      if (chosen) sessionStorage.setItem(STATUS_CHOICE_KEY, '1');
+      else sessionStorage.removeItem(STATUS_CHOICE_KEY);
+    } catch {
+      // Private mode without storage: the choice lasts until the next reload
+    }
+  }
+
+  /**
+   * The app opens On-Duty: once the profile is complete, go On-Duty unless the
+   * collector already picked a status since the app opened. If the server
+   * can't be reached, stay Off-Duty and try again when the connection returns.
+   */
+  goOnDutyByDefault() {
+    if (!this.onlineEligible || this.hasChosenStatus() || this.defaultOnDutyPromise
+      || this.currentStatus === COLLECTOR_STATUS.ONLINE) {
+      return this.defaultOnDutyPromise || Promise.resolve();
+    }
+    this.defaultOnDutyPromise = this.setStatus(COLLECTOR_STATUS.ONLINE, { reason: 'app opened', byDefault: true })
+      .catch((error) => {
+        logger.warn('⚠️ Could not go On-Duty when the app opened:', error?.message);
+      })
+      .finally(() => {
+        this.defaultOnDutyPromise = null;
+      });
+    return this.defaultOnDutyPromise;
   }
 
   /**
@@ -70,7 +132,7 @@ class CollectorStatusService {
       const savedStatus = localStorage.getItem('collector_status');
       const savedSessionStart = localStorage.getItem('collector_session_start');
       
-      if (savedStatus && Object.values(COLLECTOR_STATUS).includes(savedStatus) && this.onlineEligible) {
+      if (savedStatus && Object.values(COLLECTOR_STATUS).includes(savedStatus) && this.onlineEligible && !this.statusVersion) {
         this.currentStatus = savedStatus;
       }
       
@@ -92,7 +154,7 @@ class CollectorStatusService {
    * Change collector status
    */
   async setStatus(newStatus, options = {}) {
-    const { reason = '', silent = false } = options;
+    const { reason = '', silent = false, byDefault = false } = options;
     
     if (!Object.values(COLLECTOR_STATUS).includes(newStatus)) {
       throw new Error(`Invalid status: ${newStatus}`);
@@ -102,11 +164,22 @@ class CollectorStatusService {
       throw new Error('Finish your sign-up before going On-Duty.');
     }
 
+    // Anything but the app's own default is the collector's choice, and stays
+    // until the app is opened again
+    if (!byDefault) this.setChosenStatus(true);
+
     // The database only lets On-Duty collectors accept requests, so record
     // the switch there first; never show On-Duty if the server didn't get it
     const serverDuty = await this.setServerDuty(newStatus === COLLECTOR_STATUS.ONLINE);
     if (!serverDuty.ok && newStatus === COLLECTOR_STATUS.ONLINE) {
       throw new Error('Could not go On-Duty. Check your connection and try again.');
+    }
+
+    // The collector picked a status while the default On-Duty was saving:
+    // theirs wins, and the server must not stay On-Duty because of ours
+    if (byDefault && this.hasChosenStatus()) {
+      if (this.currentStatus !== COLLECTOR_STATUS.ONLINE) await this.setServerDuty(false);
+      return { success: false, previousStatus: this.currentStatus, currentStatus: this.currentStatus, timestamp: new Date() };
     }
 
     const previousStatus = this.currentStatus;
@@ -121,6 +194,9 @@ class CollectorStatusService {
       }
 
       this.currentStatus = newStatus;
+      this.statusVersion += 1;
+      if (newStatus === COLLECTOR_STATUS.ONLINE) this.startHeartbeat();
+      else this.stopHeartbeat();
 
       // Persist to localStorage
       localStorage.setItem('collector_status', newStatus);
@@ -172,10 +248,14 @@ class CollectorStatusService {
     if (!this.onlineEligible && this.currentStatus !== COLLECTOR_STATUS.OFFLINE) {
       this.forceOffline();
     }
-    // Once the profile is known, make sure the server isn't left On-Duty
-    // from an earlier session while this screen shows Off-Duty
     if (this.onlineEligible && this.currentStatus !== COLLECTOR_STATUS.ONLINE) {
-      this.setServerDuty(false);
+      if (this.hasChosenStatus()) {
+        // The collector chose another status: make sure the server isn't left
+        // On-Duty from an earlier session while this screen shows otherwise
+        this.setServerDuty(false);
+      } else {
+        this.goOnDutyByDefault();
+      }
     }
   }
 
@@ -205,12 +285,49 @@ class CollectorStatusService {
   }
 
   /**
+   * Tell the server the app is open and reachable (collector_profiles.last_active).
+   * The admin site only shows an On-Duty collector as online while these keep
+   * coming; on_duty alone stays true when the phone goes offline.
+   */
+  async sendHeartbeat() {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user) return;
+      const { error } = await supabase
+        .from('collector_profiles')
+        .update({ last_active: new Date().toISOString() })
+        .eq('user_id', userData.user.id);
+      if (error) logger.warn('⚠️ Heartbeat failed:', error.message);
+    } catch (error) {
+      logger.warn('⚠️ Heartbeat failed:', error?.message);
+    }
+  }
+
+  /** Check in now and every minute while On-Duty */
+  startHeartbeat() {
+    this.stopHeartbeat();
+    this.sendHeartbeat();
+    this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), HEARTBEAT_INTERVAL_MS);
+  }
+
+  stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  /**
    * Reset to Off-Duty without touching the backend. Used on login and logout so
-   * one collector's On-Duty state never carries over to the next session.
+   * one collector's On-Duty state never carries over to the next session; the
+   * next session opens On-Duty again (see goOnDutyByDefault).
    */
   forceOffline() {
     const previousStatus = this.currentStatus;
     this.currentStatus = COLLECTOR_STATUS.OFFLINE;
+    this.statusVersion += 1;
+    this.stopHeartbeat();
+    this.setChosenStatus(false);
     this.sessionStart = null;
     localStorage.removeItem('collector_status');
     localStorage.removeItem('collector_session_start');
@@ -308,6 +425,7 @@ class CollectorStatusService {
    * Sync status with backend
    */
   async syncStatusWithBackend() {
+    const version = this.statusVersion;
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
@@ -323,9 +441,13 @@ class CollectorStatusService {
         return;
       }
 
+      // Never undo a status set while this was loading
+      if (version !== this.statusVersion) return;
+
       if (data && data.status && (this.onlineEligible || data.status === COLLECTOR_STATUS.OFFLINE)) {
         this.currentStatus = data.status;
         localStorage.setItem('collector_status', data.status);
+        if (data.status === COLLECTOR_STATUS.ONLINE) this.startHeartbeat();
       }
     } catch (error) {
       logger.error('❌ Error syncing with backend:', error);
@@ -421,6 +543,7 @@ class CollectorStatusService {
    * Clean up resources
    */
   cleanup() {
+    this.stopHeartbeat();
     if (this.currentStatus === COLLECTOR_STATUS.ONLINE) {
       this.endOnlineSession();
     }
