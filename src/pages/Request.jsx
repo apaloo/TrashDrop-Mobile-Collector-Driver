@@ -2796,7 +2796,7 @@ const GeofenceErrorModal = ({
         
         {/* Toast notification */}
         {toast.show && (
-          <div className={`fixed bottom-20 left-0 right-0 mx-auto w-5/6 p-4 rounded-md shadow-lg ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-500'} text-white text-center z-50`}>
+          <div className={`fixed bottom-20 left-0 right-0 mx-auto w-5/6 p-4 rounded-md shadow-lg ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-700'} text-white text-center z-50`}>
             {toast.message}
             <button 
               onClick={hideToast}

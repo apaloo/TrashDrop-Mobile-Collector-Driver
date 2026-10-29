@@ -28,13 +28,13 @@ export const LogoutConfirmationModal = ({ isOpen, onClose, onConfirm, isLoading 
             </svg>
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Sign Out</h3>
-            <p className="text-sm text-gray-600">Are you sure you want to sign out?</p>
+            <h3 className="text-lg font-semibold text-td-ink">Sign Out</h3>
+            <p className="text-sm text-td-sage">Are you sure you want to sign out?</p>
           </div>
         </div>
 
-        <div className="bg-gray-50 rounded-lg p-3 mb-4">
-          <p className="text-xs text-gray-600">
+        <div className="bg-td-cream rounded-lg p-3 mb-4">
+          <p className="text-xs text-td-sage">
             <span className="font-medium">Note:</span> You'll need to sign in again to access your account and continue collecting.
           </p>
         </div>
@@ -43,7 +43,7 @@ export const LogoutConfirmationModal = ({ isOpen, onClose, onConfirm, isLoading 
           <button
             onClick={onClose}
             disabled={isLoading}
-            className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex-1 px-4 py-2 text-sm font-medium text-td-ink bg-gray-100 border border-td-border-strong rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             Cancel
           </button>

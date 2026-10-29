@@ -1373,7 +1373,7 @@ const requestCameraPermission = useCallback(async () => {
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-full overflow-hidden flex flex-col mx-4">
         {/* Header */}
         <div className="p-5 border-b flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-gray-800 flex-1 truncate pr-2">
+          <h2 className="text-xl font-semibold text-td-ink flex-1 truncate pr-2">
             {mode === 'navigation' ? 'Pickup Navigation' : 'Scan QR Code'}
           </h2>
           <div className="flex items-center space-x-2">
@@ -1383,7 +1383,7 @@ const requestCameraPermission = useCallback(async () => {
               className={`p-2 rounded-full transition-colors duration-200 ${
                 isScreenOn 
                   ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200' 
-                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                  : 'bg-gray-100 text-td-sage hover:bg-gray-200'
               }`}
               aria-label={isScreenOn ? 'Disable keep screen on' : 'Enable keep screen on'}
               title={isScreenOn ? 'Screen will stay on' : 'Screen may turn off'}
@@ -1456,15 +1456,15 @@ const requestCameraPermission = useCallback(async () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-800 mb-2">GPS Signal Unavailable</h3>
-                    <p className="text-gray-600 text-sm mb-4">
+                    <h3 className="text-lg font-semibold text-td-ink mb-2">GPS Signal Unavailable</h3>
+                    <p className="text-td-sage text-sm mb-4">
                       Unable to get your current location. Please ensure GPS is enabled and try again.
                     </p>
                     <div className="space-y-3">
                       <button
                         onClick={handleRetryLocation}
                         disabled={isLoading}
-                        className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center disabled:opacity-50"
+                        className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center disabled:opacity-50"
                       >
                         {isLoading ? (
                           <>
@@ -1498,7 +1498,7 @@ const requestCameraPermission = useCallback(async () => {
                         </button>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 mt-4">
+                    <p className="text-xs text-td-sage mt-4">
                       Tip: Go outside or near a window for better GPS signal
                     </p>
                   </div>
@@ -1543,8 +1543,8 @@ const requestCameraPermission = useCallback(async () => {
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                    <p className="mt-2 text-gray-600 text-sm">Getting your location...</p>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-td-forest mx-auto"></div>
+                    <p className="mt-2 text-td-sage text-sm">Getting your location...</p>
                   </div>
                 </div>
               )}
@@ -1561,7 +1561,7 @@ const requestCameraPermission = useCallback(async () => {
                         <p className="text-red-600 mb-4">Camera error: {error?.message}</p>
                         <button
                           onClick={handleBackToNavigation}
-                          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
                         >
                           Back to Map
                         </button>
@@ -1635,7 +1635,7 @@ const requestCameraPermission = useCallback(async () => {
                   <div className="mt-4 text-center">
                     <p className="text-white text-sm mb-2">Position the QR code within the scanner frame</p>
                     {scannedItems.length > 0 && (
-                      <p className="text-green-500 text-sm">
+                      <p className="text-green-700 text-sm">
                         {scannedItems.length} item{scannedItems.length > 1 ? 's' : ''} scanned
                       </p>
                     )}
@@ -1652,7 +1652,7 @@ const requestCameraPermission = useCallback(async () => {
           {/* Distance Display - Centered Above Buttons */}
           <div className="text-center mb-4">
             {mode === 'navigation' && (
-              <div className="text-gray-700">
+              <div className="text-td-ink">
                 {isWithinGeofence ? (
                   <div className="flex items-center justify-center text-green-600">
                     <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
@@ -1676,7 +1676,7 @@ const requestCameraPermission = useCallback(async () => {
               </div>
             )}
             {mode === 'qr' && (
-              <div className="text-gray-700">
+              <div className="text-td-ink">
                 {scannedItems.length > 0 ? (
                   `${scannedItems.length} item${scannedItems.length > 1 ? 's' : ''} scanned`
                 ) : (
@@ -1710,7 +1710,7 @@ const requestCameraPermission = useCallback(async () => {
                     onClick={handleSwitchToQR}
                     className={`flex-1 min-w-0 px-3 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm transform hover:scale-105 ${
                       isCameraPreloading
-                        ? 'bg-green-500 opacity-75'
+                        ? 'bg-green-600 opacity-75'
                         : 'bg-green-600 hover:bg-green-700 hover:shadow-lg'
                     }`}
                     aria-label="Switch to QR code scanning"
@@ -1767,8 +1767,8 @@ const requestCameraPermission = useCallback(async () => {
                     onClick={startVoiceNavigation}
                     className={`w-full px-3 py-2 text-white rounded-lg transition-all duration-300 font-medium shadow-sm ${
                       isLoading
-                        ? 'bg-blue-500 opacity-75'
-                        : 'bg-blue-600 hover:bg-blue-700'
+                        ? 'bg-green-600 opacity-75'
+                        : 'bg-green-600 hover:bg-green-700'
                     }`}
                     aria-label="Start voice navigation"
                     disabled={isLoading || !userLocation}
@@ -1821,7 +1821,7 @@ const requestCameraPermission = useCallback(async () => {
               <div className="flex flex-col space-y-3 md:flex-row md:space-y-0 md:space-x-2">
                 <button
                   onClick={handleBackToNavigation}
-                  className="w-full px-5 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm text-center"
+                  className="w-full px-5 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors font-medium shadow-sm text-center"
                   aria-label="Return to navigation"
                 >
                   Back to Map

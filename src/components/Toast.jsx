@@ -28,11 +28,11 @@ const Toast = ({ message, type = 'info', duration = 3000, onClose }) => {
     const baseStyles = "fixed top-20 left-1/2 transform -translate-x-1/2 py-2 px-4 rounded-md shadow-lg z-[99999] transition-opacity duration-300 flex items-center";
     
     const typeStyles = {
-      info: "bg-blue-100 text-blue-800 border-l-4 border-blue-500",
+      info: "bg-blue-100 text-blue-800 border-l-4 border-blue-700",
       success: "bg-green-100 text-green-800 border-l-4 border-green-500",
       warning: "bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500",
       error: "bg-red-100 text-red-800 border-l-4 border-red-500",
-      offline: "bg-gray-100 text-gray-800 border-l-4 border-gray-500",
+      offline: "bg-gray-100 text-td-ink border-l-4 border-gray-500",
     };
     
     return `${baseStyles} ${typeStyles[type] || typeStyles.info} ${visible ? 'opacity-100' : 'opacity-0'}`;
@@ -43,7 +43,7 @@ const Toast = ({ message, type = 'info', duration = 3000, onClose }) => {
     switch (type) {
       case 'success':
         return (
-          <svg className="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-green-700 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
           </svg>
         );
@@ -61,13 +61,13 @@ const Toast = ({ message, type = 'info', duration = 3000, onClose }) => {
         );
       case 'offline':
         return (
-          <svg className="w-5 h-5 text-gray-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-td-sage mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 5.636a9 9 0 010 12.728m-3.536-3.536a5 5 0 010-7.072m-3.183 1.757a3 3 0 010 3.558"></path>
           </svg>
         );
       default:
         return (
-          <svg className="w-5 h-5 text-blue-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-blue-700 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
         );
@@ -85,7 +85,7 @@ const Toast = ({ message, type = 'info', duration = 3000, onClose }) => {
             setTimeout(onClose, 300);
           }
         }}
-        className="ml-3 text-gray-500 hover:text-gray-700"
+        className="ml-3 text-td-sage hover:text-td-ink"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
