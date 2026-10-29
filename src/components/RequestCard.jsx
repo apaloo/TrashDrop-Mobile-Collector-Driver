@@ -144,7 +144,7 @@ const RequestCard = ({
       case WasteType.PAPER:
         return 'bg-yellow-100 text-yellow-800';
       case WasteType.METAL:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-td-ink';
       case WasteType.GLASS:
         return 'bg-green-100 text-green-800';
       case WasteType.ORGANIC:
@@ -152,7 +152,7 @@ const RequestCard = ({
       case WasteType.RECYCLING:
         return 'bg-teal-100 text-teal-800';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-td-ink';
     }
   };
   
@@ -267,7 +267,7 @@ const RequestCard = ({
         // Different styling for digital bins (but same workflow)
         const buttonClasses = isDigitalBin 
           ? "w-full bg-black hover:bg-gray-800 text-white py-3 px-4 rounded-md flex items-center justify-center"
-          : "w-full bg-green-500 hover:bg-green-600 text-white py-3 px-4 rounded-md flex items-center justify-center";
+          : "w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-md flex items-center justify-center";
         
         return (
           <div>
@@ -301,10 +301,10 @@ const RequestCard = ({
               }}
               className={`w-full py-3 px-4 rounded-md flex items-center justify-center transition-all duration-300 ${
                 highlightDirections 
-                  ? 'bg-blue-600 animate-pulse ring-4 ring-blue-300 scale-105' 
+                  ? 'bg-blue-700 text-white animate-pulse ring-4 ring-blue-300 scale-105' 
                   : navigationStarted 
-                    ? 'bg-green-500 text-white' 
-                    : 'bg-blue-500 hover:bg-blue-600 text-white'
+                    ? 'bg-green-600 text-white' 
+                    : 'bg-blue-700 hover:bg-blue-800 text-white'
               }`}
             >
               {/* Step number circle */}
@@ -326,7 +326,7 @@ const RequestCard = ({
             
             {/* Visual arrow between steps when navigation not started */}
             {!navigationStarted && (
-              <div className="flex justify-center text-gray-400">
+              <div className="flex justify-center text-td-sage">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
                 </svg>
@@ -349,8 +349,8 @@ const RequestCard = ({
               }}
               className={`w-full py-3 px-4 rounded-md flex items-center justify-center transition-all duration-300 ${
                 navigationStarted 
-                  ? 'bg-purple-500 hover:bg-purple-600 text-white' 
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  ? 'bg-purple-700 hover:bg-purple-800 text-white' 
+                  : 'bg-gray-300 text-td-sage cursor-not-allowed'
               }`}
             >
               {/* Step number circle */}
@@ -382,7 +382,7 @@ const RequestCard = ({
           return (
             <div className="flex flex-col gap-2 w-full">
               {/* Disposed tag (bins and bags) */}
-              <div className="w-full bg-gray-100 border-2 border-gray-300 text-gray-700 py-3 px-4 rounded-md flex items-center justify-center font-medium">
+              <div className="w-full bg-gray-100 border-2 border-td-border-strong text-td-ink py-3 px-4 rounded-md flex items-center justify-center font-medium">
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
                 </svg>
@@ -405,10 +405,10 @@ const RequestCard = ({
                 }}
                 className={`w-full py-3 px-4 rounded-md flex items-center justify-center transition-all duration-300 ${
                   highlightLocateSite 
-                    ? 'bg-blue-600 animate-pulse ring-4 ring-blue-300 scale-105' 
+                    ? 'bg-blue-700 text-white animate-pulse ring-4 ring-blue-300 scale-105' 
                     : siteLocated 
-                      ? 'bg-green-500 text-white' 
-                      : 'bg-blue-500 hover:bg-blue-600 text-white'
+                      ? 'bg-green-600 text-white' 
+                      : 'bg-blue-700 hover:bg-blue-800 text-white'
                 }`}
               >
                 {/* Step number circle */}
@@ -431,7 +431,7 @@ const RequestCard = ({
               
               {/* Visual arrow between steps when site not located */}
               {!siteLocated && (
-                <div className="flex justify-center text-gray-400">
+                <div className="flex justify-center text-td-sage">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
                   </svg>
@@ -454,8 +454,8 @@ const RequestCard = ({
                 }}
                 className={`w-full py-3 px-4 rounded-md flex items-center justify-center transition-all duration-300 ${
                   siteLocated 
-                    ? 'bg-green-500 hover:bg-green-600 text-white' 
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    ? 'bg-green-600 hover:bg-green-700 text-white' 
+                    : 'bg-gray-300 text-td-sage cursor-not-allowed'
                 }`}
                 id="disposeBagButton"
               >
@@ -496,7 +496,7 @@ const RequestCard = ({
             <div>
               <button 
                 onClick={() => onAccept && onAccept(request.id)}
-                className="w-full bg-green-500 hover:bg-green-600 text-white py-3 px-4 rounded-md flex items-center justify-center"
+                className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-md flex items-center justify-center"
               >
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
@@ -511,7 +511,7 @@ const RequestCard = ({
         return (
           <div className="w-full p-3 bg-gray-100 rounded-md text-center">
             <p className="text-sm text-gray-600">Status: {request.status || 'undefined'}</p>
-            <p className="text-xs text-gray-500 mt-1">Action buttons unavailable</p>
+            <p className="text-xs text-td-sage mt-1">Action buttons unavailable</p>
           </div>
         );
     }
@@ -521,7 +521,7 @@ const RequestCard = ({
     <div className={`bg-white rounded-lg shadow-md mb-4 overflow-hidden relative ${selected ? 'ring-2 ring-green-500' : ''}`}>
       {/* Accent in top-right corner - black for digital bins, green for others */}
       <div className={`absolute top-0 right-0 w-12 h-12 transform rotate-45 translate-x-6 -translate-y-6 ${
-        request.source_type === 'digital_bin' ? 'bg-black' : 'bg-green-500'
+        request.source_type === 'digital_bin' ? 'bg-black' : 'bg-green-600'
       }`}></div>
       
       {/* Selection checkbox - only shown when selectable is true */}
@@ -531,7 +531,7 @@ const RequestCard = ({
             type="checkbox"
             checked={selected}
             onChange={() => onSelect && onSelect(request.id)}
-            className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+            className="w-5 h-5 rounded border-td-border-strong text-green-600 focus:ring-green-600"
           />
         </div>
       )}
@@ -542,7 +542,7 @@ const RequestCard = ({
           <h3 className="font-medium">
             {request.source_type === 'digital_bin' ? 'Digital Bin' : 'Digital Bag'}
           </h3>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-td-sage">
             {formatDate(request.created_at)}
           </div>
         </div>
@@ -559,7 +559,7 @@ const RequestCard = ({
         <div className="flex flex-wrap items-center justify-center gap-2 mb-3">
           <span className={`px-3 py-1 rounded-full text-sm whitespace-nowrap ${
             request.source_type === 'digital_bin' 
-              ? 'bg-gray-100 text-gray-800' 
+              ? 'bg-gray-100 text-td-ink' 
               : 'bg-blue-100 text-blue-800'
           }`}>
             {request.source_type === 'digital_bin' 
@@ -610,14 +610,14 @@ const RequestCard = ({
         
         {/* Expanded Content */}
         {expanded && (
-          <div className="mb-4 p-3 bg-gray-50 rounded-md space-y-3">
+          <div className="mb-4 p-3 bg-td-cream rounded-md space-y-3">
             {/* Payment Breakdown - show for both new and legacy requests */}
             {(() => {
               // New payment model - has breakdown data
               if (request.collector_core_payout) {
                 return (
                   <div className="bg-white p-3 rounded border border-green-200">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Your Payout Breakdown</h4>
+                    <h4 className="text-sm font-semibold text-td-ink mb-2">Your Payout Breakdown</h4>
                     <div className="space-y-1 text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-600">
@@ -704,7 +704,7 @@ const RequestCard = ({
                         <span>{formatCurrency(payout, currency)}</span>
                       </div>
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">
+                    <p className="text-xs text-td-sage mt-2">
                       🎁 New-user promotional pricing — platform covers the difference.
                     </p>
                   </div>
@@ -724,7 +724,7 @@ const RequestCard = ({
                 return (
                   <div className="bg-white p-3 rounded border border-blue-200">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-sm font-semibold text-gray-700">Estimated Payout Breakdown</h4>
+                      <h4 className="text-sm font-semibold text-td-ink">Estimated Payout Breakdown</h4>
                       <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Estimated</span>
                     </div>
                     <div className="space-y-1 text-sm">
@@ -741,7 +741,7 @@ const RequestCard = ({
                       )}
                       
                       {request.bag_unit_prices?.length > 0 && (
-                        <div className="flex justify-between text-gray-500 text-xs">
+                        <div className="flex justify-between text-td-sage text-xs">
                           <span>🛍️ Bag prices</span>
                           <span>{request.bag_unit_prices.map(price => formatCurrency(price, currency)).join(' + ')}</span>
                         </div>
@@ -752,7 +752,7 @@ const RequestCard = ({
                         <span>{formatCurrency(totalPayout, currency)}</span>
                       </div>
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">
+                    <p className="text-xs text-td-sage mt-2">
                       {isPrepaidBag
                         ? '💡 Prepaid bags: you earn the price of every bag you scan for this pickup, plus tips.'
                         : '💡 Actual breakdown will be calculated when you accept this request based on your location and bonuses.'}
@@ -770,11 +770,11 @@ const RequestCard = ({
         
         {/* Scanned Bags */}
         {scannedBags.length > 0 && (
-          <div className="mb-4 p-3 bg-gray-50 rounded-md">
+          <div className="mb-4 p-3 bg-td-cream rounded-md">
             <h4 className="text-sm font-medium mb-2">Scanned Bags ({scannedBags.length})</h4>
             <div className="space-y-2">
               {scannedBags.map((bag, index) => (
-                <div key={bag.id || index} className="flex justify-between items-center p-2 bg-white rounded border border-gray-200">
+                <div key={bag.id || index} className="flex justify-between items-center p-2 bg-white rounded border border-td-border">
                   <div className="flex items-center">
                     <span className={`${getWasteTypeBadgeColor(bag.type)} px-2 py-1 rounded-full text-xs mr-2`}>
                       {bag.type}
@@ -792,7 +792,7 @@ const RequestCard = ({
                 </div>
               ))}
               
-              <div className="mt-2 pt-2 border-t border-gray-200">
+              <div className="mt-2 pt-2 border-t border-td-border">
                 <div className="flex justify-between font-medium">
                   <span>Total:</span>
                   <div className="flex space-x-4">
@@ -829,7 +829,7 @@ const RequestCard = ({
             <div className="flex justify-center">
               <button
                 onClick={() => setShowLocationModal(false)}
-                className="px-6 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
               >
                 OK, I Understand
               </button>
@@ -844,7 +844,7 @@ const RequestCard = ({
           <div className="bg-white rounded-lg w-full max-w-md my-8 mx-auto shadow-xl">
             <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center z-10">
               <h2 className="text-lg font-medium">Scan QR Code</h2>
-              <button onClick={() => setShowQRScanner(false)} className="text-gray-500 hover:bg-gray-100 rounded-full p-1">
+              <button onClick={() => setShowQRScanner(false)} className="text-td-sage hover:bg-gray-100 rounded-full p-1">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -945,12 +945,12 @@ const RequestCard = ({
               <div className="mb-4 overflow-x-auto">
                 <h3 className="text-sm font-medium mb-2">Scanned Bags ({scannedBags.length || 0})</h3>
                 <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-td-cream">
                     <tr>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Weight</th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Points</th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fee</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-td-sage uppercase tracking-wider">Type</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-td-sage uppercase tracking-wider">Weight</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-td-sage uppercase tracking-wider">Points</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-td-sage uppercase tracking-wider">Fee</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -968,7 +968,7 @@ const RequestCard = ({
                             <td className="px-3 py-2 whitespace-nowrap text-xs">{formatCurrency(bag.fee || 0, currency)}</td>
                           </tr>
                         ))}
-                        <tr className="bg-gray-50 font-medium">
+                        <tr className="bg-td-cream font-medium">
                           <td className="px-3 py-2 whitespace-nowrap text-xs">Total</td>
                           <td className="px-3 py-2 whitespace-nowrap text-xs">{scannedBags.reduce((acc, bag) => acc + (parseFloat(bag.weight) || 0), 0).toFixed(1)} kg</td>
                           <td className="px-3 py-2 whitespace-nowrap text-xs">{scannedBags.reduce((acc, bag) => acc + (parseInt(bag.points) || 0), 0)} pts</td>
@@ -977,7 +977,7 @@ const RequestCard = ({
                       </>
                     ) : (
                       <tr>
-                        <td colSpan="4" className="px-3 py-4 text-center text-sm text-gray-500">No bags scanned yet</td>
+                        <td colSpan="4" className="px-3 py-4 text-center text-sm text-td-sage">No bags scanned yet</td>
                       </tr>
                     )}
                   </tbody>
@@ -987,7 +987,7 @@ const RequestCard = ({
               {/* Location Status Indicator - Always visible */}
               <div className={`mb-4 p-3 rounded-md ${isWithinRange ? 'bg-green-50' : 'bg-red-50'}`}>
                 <div className="flex items-center">
-                  <div className={`w-3 h-3 rounded-full mr-2 ${isWithinRange ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  <div className={`w-3 h-3 rounded-full mr-2 ${isWithinRange ? 'bg-green-600' : 'bg-red-500'}`}></div>
                   <p className={`text-sm ${isWithinRange ? 'text-green-700' : 'text-red-700'}`}>
                     {isWithinRange 
                       ? 'You are within 50 meters of the pickup location' 
@@ -1008,7 +1008,7 @@ const RequestCard = ({
                     setShowQRScanner(false);
                   }}
                   className={`w-full py-2 px-4 rounded-md flex items-center justify-center text-white ${isWithinRange 
-                    ? 'bg-green-500 hover:bg-green-600' 
+                    ? 'bg-green-600 hover:bg-green-700' 
                     : 'bg-red-400 cursor-not-allowed'}`}
                 >
                   {isWithinRange 

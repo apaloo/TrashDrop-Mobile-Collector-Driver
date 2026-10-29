@@ -2174,7 +2174,7 @@ const GeofenceErrorModal = ({
           <h3 className="text-xl font-bold text-red-600">Location Restriction</h3>
           <button 
             onClick={onClose} 
-            className="text-gray-500 hover:text-gray-700"
+            className="text-td-sage hover:text-td-ink"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -2195,12 +2195,12 @@ const GeofenceErrorModal = ({
           {locationError && (
             <div className="bg-red-50 border border-red-200 rounded p-3 mb-4">
               <p className="text-sm text-red-600 font-medium">Error: {locationError}</p>
-              <p className="text-sm text-gray-600 mt-1">Please enable location services in your browser settings.</p>
+              <p className="text-sm text-td-sage mt-1">Please enable location services in your browser settings.</p>
               
               {locationError.includes('timeout') && (
                 <div className="mt-2 pt-2 border-t border-red-100">
-                  <p className="text-sm text-gray-700">Location request timed out. This could be due to:</p>
-                  <ul className="list-disc list-inside text-sm text-gray-700 mt-1">
+                  <p className="text-sm text-td-ink">Location request timed out. This could be due to:</p>
+                  <ul className="list-disc list-inside text-sm text-td-ink mt-1">
                     <li>Poor GPS signal</li>
                     <li>Browser location permissions not granted</li>
                     <li>Device location services disabled</li>
@@ -2217,9 +2217,9 @@ const GeofenceErrorModal = ({
             </div>
           )}
           
-          <div className="bg-blue-50 border border-blue-200 rounded p-3">
-            <p className="text-sm text-blue-600">Please move closer to the disposal center and try again.</p>
-            <p className="text-sm text-gray-600 mt-1">The disposal center is located at: <strong>{siteName}{siteAddress ? `, ${siteAddress}` : ''}</strong></p>
+          <div className="bg-td-tonal border border-td-border rounded p-3">
+            <p className="text-sm text-td-forest">Please move closer to the disposal center and try again.</p>
+            <p className="text-sm text-td-sage mt-1">The disposal center is located at: <strong>{siteName}{siteAddress ? `, ${siteAddress}` : ''}</strong></p>
           </div>
         </div>
         
@@ -2227,7 +2227,7 @@ const GeofenceErrorModal = ({
           {onLocateSite && (
             <button 
               onClick={onLocateSite}
-              className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md"
+              className="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md"
             >
               Get Directions
             </button>
@@ -2235,7 +2235,7 @@ const GeofenceErrorModal = ({
           
           <button 
             onClick={onClose}
-            className="bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 px-4 rounded-md"
+            className="bg-gray-200 hover:bg-gray-300 text-td-ink py-2 px-4 rounded-md"
           >
             Close
           </button>
@@ -2755,19 +2755,19 @@ const GeofenceErrorModal = ({
         {/* Tab Navigation - Fixed */}
         <div className="flex border-b bg-white text-black">
           <button 
-            className={`flex-1 py-3 text-center font-medium ${activeTab === 'available' ? 'text-green-600 border-b-2 border-green-500' : 'text-gray-600'}`}
+            className={`flex-1 py-3 text-center font-medium ${activeTab === 'available' ? 'text-green-600 border-b-2 border-green-500' : 'text-td-sage'}`}
             onClick={() => setActiveTab('available')}
           >
             Available
           </button>
           <button 
-            className={`flex-1 py-3 text-center font-medium ${activeTab === 'accepted' ? 'text-green-600 border-b-2 border-green-500' : 'text-gray-600'}`}
+            className={`flex-1 py-3 text-center font-medium ${activeTab === 'accepted' ? 'text-green-600 border-b-2 border-green-500' : 'text-td-sage'}`}
             onClick={() => setActiveTab('accepted')}
           >
             Accepted
           </button>
           <button 
-            className={`flex-1 py-3 text-center font-medium ${activeTab === 'picked_up' ? 'text-green-600 border-b-2 border-green-500' : 'text-gray-600'}`}
+            className={`flex-1 py-3 text-center font-medium ${activeTab === 'picked_up' ? 'text-green-600 border-b-2 border-green-500' : 'text-td-sage'}`}
             onClick={() => setActiveTab('picked_up')}
           >
             Picked Up
@@ -2776,7 +2776,7 @@ const GeofenceErrorModal = ({
         
         {/* Last Updated Info */}
         {lastUpdated && (
-          <div className="text-xs text-gray-500 text-center py-2 bg-white">
+          <div className="text-xs text-td-sage text-center py-2 bg-white">
             Last updated: {new Date(lastUpdated).toLocaleString()}
             <button 
               onClick={fetchRequests} 
@@ -2796,7 +2796,7 @@ const GeofenceErrorModal = ({
         
         {/* Toast notification */}
         {toast.show && (
-          <div className={`fixed bottom-20 left-0 right-0 mx-auto w-5/6 p-4 rounded-md shadow-lg ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white text-center z-50`}>
+          <div className={`fixed bottom-20 left-0 right-0 mx-auto w-5/6 p-4 rounded-md shadow-lg ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-500'} text-white text-center z-50`}>
             {toast.message}
             <button 
               onClick={hideToast}
@@ -2840,8 +2840,8 @@ const GeofenceErrorModal = ({
                   <div className="animate-spin h-12 w-12 border-4 border-green-500 border-t-transparent rounded-full"></div>
                   <div className="animate-ping absolute inset-0 h-12 w-12 rounded-full border-2 border-green-400 opacity-30"></div>
                 </div>
-                <span className="text-gray-600 mt-4 font-medium">Loading requests...</span>
-                <div className="mt-2 text-xs text-gray-500">{isOnlineStatus ? 'Fetching latest data' : 'Using cached data'}</div>
+                <span className="text-td-sage mt-4 font-medium">Loading requests...</span>
+                <div className="mt-2 text-xs text-td-sage">{isOnlineStatus ? 'Fetching latest data' : 'Using cached data'}</div>
               </div>
             </div>
           ) : error ? (
@@ -2852,23 +2852,23 @@ const GeofenceErrorModal = ({
                 </svg>
               </div>
               <h3 className="text-lg font-medium mb-1">Error loading requests</h3>
-              <p className="text-gray-600 mb-4 px-4">{typeof error === 'string' ? error : error?.message}</p>
+              <p className="text-td-sage mb-4 px-4">{typeof error === 'string' ? error : error?.message}</p>
               <button 
                 onClick={fetchRequests}
-                className="px-4 py-2 bg-green-500 text-white rounded-md"
+                className="px-4 py-2 bg-green-600 text-white rounded-md"
               >
                 Try Again
               </button>
             </div>
           ) : activeTab === 'available' && !isOnlineStatus ? (
             <div className="text-center py-8 px-4" data-testid="available-offline">
-              <p className="text-lg font-semibold text-gray-800 mb-1">You're offline</p>
-              <p className="text-gray-600">New requests show here when you're back online. Your accepted and picked-up jobs are still in their tabs.</p>
+              <p className="text-lg font-semibold text-td-ink mb-1">You're offline</p>
+              <p className="text-td-sage">New requests show here when you're back online. Your accepted and picked-up jobs are still in their tabs.</p>
             </div>
           ) : activeTab === 'available' && !isOnDuty ? (
             <div className="text-center py-8 px-4" data-testid="available-off-duty">
-              <p className="text-lg font-semibold text-gray-800 mb-1">You're Off-Duty</p>
-              <p className="text-gray-600 mb-4">Go On-Duty to see requests near you.</p>
+              <p className="text-lg font-semibold text-td-ink mb-1">You're Off-Duty</p>
+              <p className="text-td-sage mb-4">Go On-Duty to see requests near you.</p>
               <button
                 type="button"
                 onClick={() => navigate('/map')}
@@ -2879,16 +2879,16 @@ const GeofenceErrorModal = ({
             </div>
           ) : activeTab === 'available' && requests.available && visibleAvailable.length === 0 ? (
             <div className="text-center py-8 px-4" data-testid="available-none-in-radius">
-              <p className="text-gray-800 font-medium mb-1">No requests in your area</p>
-              <p className="text-sm text-gray-500">Try a bigger radius on the Map, or check back later.</p>
+              <p className="text-td-ink font-medium mb-1">No requests in your area</p>
+              <p className="text-sm text-td-sage">Try a bigger radius on the Map, or check back later.</p>
             </div>
           ) : activeTab === 'accepted' && (!requests.accepted || requests.accepted.length === 0) ? (
             <div className="text-center py-8">
-              <p className="text-gray-600">You haven't accepted any requests yet.</p>
+              <p className="text-td-sage">You haven't accepted any requests yet.</p>
             </div>
           ) : activeTab === 'picked_up' && (!requests.picked_up || requests.picked_up.length === 0) ? (
             <div className="text-center py-8">
-              <p className="text-gray-600">You haven't picked up any requests yet.</p>
+              <p className="text-td-sage">You haven't picked up any requests yet.</p>
             </div>
           ) : (
             <>
@@ -2910,17 +2910,17 @@ const GeofenceErrorModal = ({
                       )
                     ))
                   ) : requests.available && visibleAvailable.length === 0 ? (
-                    <div className="p-4 text-center text-gray-500">
+                    <div className="p-4 text-center text-td-sage">
                       <div className="mb-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-td-sage mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m-6 3l6-3" />
                         </svg>
                       </div>
-                      <h3 className="font-medium text-gray-900 mb-1">No requests in your area</h3>
-                      <p className="text-sm text-gray-500">Try adjusting the search radius or check back later</p>
+                      <h3 className="font-medium text-td-ink mb-1">No requests in your area</h3>
+                      <p className="text-sm text-td-sage">Try adjusting the search radius or check back later</p>
                     </div>
                   ) : (
-                    <div className="p-4 text-center text-gray-500">
+                    <div className="p-4 text-center text-td-sage">
                       <div className="animate-pulse">Loading available requests...</div>
                     </div>
                   )}
@@ -2952,7 +2952,7 @@ const GeofenceErrorModal = ({
                       )
                     ))
                   ) : (
-                    <div className="p-4 text-center text-gray-500">
+                    <div className="p-4 text-center text-td-sage">
                       No accepted requests found
                     </div>
                   )}
@@ -3008,7 +3008,7 @@ const GeofenceErrorModal = ({
                         );
                       })
                   ) : (
-                    <div className="p-4 text-center text-gray-500">
+                    <div className="p-4 text-center text-td-sage">
                       No picked up requests found
                     </div>
                   )}

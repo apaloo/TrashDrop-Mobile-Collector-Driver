@@ -79,9 +79,9 @@ const EnhancedRequestCard = ({
       case 'collecting':
         return 'bg-yellow-100 text-yellow-800';
       case 'disposed':
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-td-ink';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-td-ink';
     }
   };
 
@@ -98,16 +98,16 @@ const EnhancedRequestCard = ({
   };
 
   return (
-    <div className={`bg-white rounded-lg shadow-md border ${isExpired ? 'border-red-300 opacity-75' : 'border-gray-200'} p-4 mb-4`}>
+    <div className={`bg-white rounded-lg shadow-md border ${isExpired ? 'border-red-300 opacity-75' : 'border-td-border'} p-4 mb-4`}>
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center space-x-2">
           <span className="text-xl">{getWasteTypeIcon(request.waste_type)}</span>
           <div>
-            <h3 className="font-semibold text-gray-900 capitalize">
+            <h3 className="font-semibold text-td-ink capitalize">
               {request.waste_type || 'General'} Waste
             </h3>
-            <p className="text-sm text-gray-600">ID: {request.id?.slice(-8) || 'Unknown'}</p>
+            <p className="text-sm text-td-sage">ID: {request.id?.slice(-8) || 'Unknown'}</p>
           </div>
         </div>
         
@@ -139,11 +139,11 @@ const EnhancedRequestCard = ({
       <div className="mb-3">
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center space-x-1">
-            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-td-sage" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            <span className="text-gray-600">{request.location || 'Location not specified'}</span>
+            <span className="text-td-sage">{request.location || 'Location not specified'}</span>
           </div>
           
           <div className="font-semibold text-green-600">
@@ -152,7 +152,7 @@ const EnhancedRequestCard = ({
         </div>
         
         {request.special_instructions && (
-          <div className="mt-2 p-2 bg-blue-50 rounded text-sm text-blue-800">
+          <div className="mt-2 p-2 bg-td-tonal rounded text-sm text-blue-800">
             💡 {request.special_instructions}
           </div>
         )}
@@ -160,14 +160,14 @@ const EnhancedRequestCard = ({
 
       {/* Completion Details */}
       {showCompletionDetails && (
-        <div className="mb-3 p-3 bg-gray-50 rounded-lg">
+        <div className="mb-3 p-3 bg-td-cream rounded-lg">
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="text-gray-600">Picked up:</span>
+              <span className="text-td-sage">Picked up:</span>
               <p className="font-medium">{formatDate(request.picked_up_at)}</p>
             </div>
             <div>
-              <span className="text-gray-600">Disposed:</span>
+              <span className="text-td-sage">Disposed:</span>
               <p className="font-medium">{formatDate(request.disposed_at)}</p>
             </div>
           </div>
@@ -189,7 +189,7 @@ const EnhancedRequestCard = ({
           <>
             <button
               onClick={() => onOpenDirections(request.id, request)}
-              className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
+              className="flex-1 px-4 py-2 bg-gray-100 text-td-ink rounded-lg hover:bg-gray-200 text-sm font-medium"
             >
               📍 Directions
             </button>
@@ -198,8 +198,8 @@ const EnhancedRequestCard = ({
               disabled={isExpired}
               className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium ${
                 isExpired 
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
+                  ? 'bg-gray-300 text-td-sage cursor-not-allowed'
+                  : 'bg-green-600 text-white hover:bg-green-700'
               }`}
             >
               {isExpired ? '❌ Expired' : '✅ Accept'}
@@ -212,7 +212,7 @@ const EnhancedRequestCard = ({
           <>
             <button
               onClick={() => onOpenDirections(request.id, request)}
-              className="flex-1 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm font-medium"
+              className="flex-1 px-4 py-2 bg-td-tonal text-td-forest rounded-lg hover:bg-blue-200 text-sm font-medium"
             >
               🧭 Navigate
             </button>
@@ -254,8 +254,8 @@ const EnhancedRequestCard = ({
       </div>
 
       {/* Timestamps */}
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <div className="flex justify-between items-center text-xs text-gray-500">
+      <div className="mt-3 pt-3 border-t border-td-border">
+        <div className="flex justify-between items-center text-xs text-td-sage">
           <span>Created: {formatDate(request.created_at)}</span>
           {request.accepted_at && (
             <span>Accepted: {formatDate(request.accepted_at)}</span>
