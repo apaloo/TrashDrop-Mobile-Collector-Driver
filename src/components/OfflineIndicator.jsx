@@ -37,7 +37,7 @@ const OfflineIndicator = () => {
         
         {online && offlineQueue.length > 0 && !syncing && (
           <button 
-            className="bg-white text-blue-600 px-3 py-1 rounded-md text-xs font-medium"
+            className="bg-white text-td-forest px-3 py-1 rounded-md text-xs font-medium"
             onClick={() => useOffline().syncOfflineActions()}
           >
             Sync Now

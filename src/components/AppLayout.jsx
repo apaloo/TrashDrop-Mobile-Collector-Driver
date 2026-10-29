@@ -17,7 +17,7 @@ const AppLayout = ({ children }) => {
   const isPublicRoute = publicRoutes.includes(location.pathname);
   
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 relative">
+    <div className="flex flex-col min-h-screen bg-td-cream relative">
       {/* Show TopNavBar only on authenticated routes */}
       {!isPublicRoute && <TopNavBar user={user} />}
       

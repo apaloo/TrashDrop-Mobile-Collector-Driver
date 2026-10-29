@@ -17,26 +17,26 @@ export const COLLECTOR_STATUS = {
 // Status colors and UI configuration
 export const STATUS_CONFIG = {
   [COLLECTOR_STATUS.ONLINE]: {
-    color: 'bg-green-500',
-    textColor: 'text-green-600',
+    color: 'bg-green-600', // white on it 6.3:1 (#22C55E was 2.3:1)
+    textColor: 'text-green-700',
     label: 'On-Duty',
     description: 'Available for new requests'
   },
   [COLLECTOR_STATUS.OFFLINE]: {
-    color: 'bg-gray-500',
+    color: 'bg-gray-600',
     textColor: 'text-gray-600',
     label: 'Off-Duty',
     description: 'Not accepting requests'
   },
   [COLLECTOR_STATUS.BUSY]: {
-    color: 'bg-yellow-500',
-    textColor: 'text-yellow-600',
+    color: 'bg-yellow-700', // still amber; white text readable
+    textColor: 'text-yellow-700',
     label: 'Busy',
     description: 'Currently handling requests'
   },
   [COLLECTOR_STATUS.BREAK]: {
-    color: 'bg-blue-500',
-    textColor: 'text-blue-600',
+    color: 'bg-blue-700',
+    textColor: 'text-blue-700',
     label: 'On Break',
     description: 'Taking a break'
   }

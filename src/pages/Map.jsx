@@ -233,6 +233,7 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters, getMaxRadius })
         {/* Radius Slider - Dynamic max based on extension status */}
         <input 
           type="range" 
+          aria-label="Search radius in kilometres"
           min="1" 
           max={currentMaxRadius} 
           step="1"
@@ -241,9 +242,9 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters, getMaxRadius })
             const newDistance = parseFloat(e.target.value) || 5;
             handleFilterChange({ searchRadius: newDistance });
           }} 
-          className="w-full accent-green-500"
+          className="w-full accent-green-600"
         />
-        <div className="flex justify-between text-xs text-gray-500 mt-1">
+        <div className="flex justify-between text-xs text-td-sage mt-1">
           <span>1km</span>
           <span>{currentMaxRadius}km</span>
         </div>
@@ -265,8 +266,8 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters, getMaxRadius })
                 onClick={() => handleCategorySelect(category)}
                 className={`py-2 px-4 rounded-md text-center transition-colors duration-200 ${
                   safeFilters.activeFilter === category 
-                    ? 'bg-green-500 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'bg-green-600 text-white' 
+                    : 'bg-gray-100 text-td-ink hover:bg-gray-200'
                 }`}
               >
                 {label}
@@ -303,7 +304,7 @@ const FilterPanel = ({ isOpen, onClose, filters, updateFilters, applyFilters }) 
     <div className="absolute top-0 left-0 z-20 w-full h-full bg-white bg-opacity-95 p-4 flex flex-col">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-bold">Filter Requests</h3>
-        <button onClick={onClose} className="text-gray-500">
+        <button onClick={onClose} className="text-td-sage">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -312,10 +313,11 @@ const FilterPanel = ({ isOpen, onClose, filters, updateFilters, applyFilters }) 
       
       {/* Distance filter */}
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">Max Distance</label>
+        <label className="block text-sm font-medium text-td-ink mb-1">Max Distance</label>
         <div className="flex items-center">
           <input 
             type="range" 
+            aria-label="Maximum distance in kilometres"
             min="1" 
             max="10" 
             step="0.5"
@@ -329,7 +331,7 @@ const FilterPanel = ({ isOpen, onClose, filters, updateFilters, applyFilters }) 
       
       {/* Waste type filter */}
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">Waste Types</label>
+        <label className="block text-sm font-medium text-td-ink mb-1">Waste Types</label>
         <div className="grid grid-cols-2 gap-2">
           {Object.values(WasteType).map((type) => (
             <div key={type} className="flex items-center">
@@ -348,7 +350,7 @@ const FilterPanel = ({ isOpen, onClose, filters, updateFilters, applyFilters }) 
       
       {/* Payment filter */}
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">Min Payment (₵)</label>
+        <label className="block text-sm font-medium text-td-ink mb-1">Min Payment (₵)</label>
         <input 
           type="number" 
           min="0"
@@ -360,7 +362,7 @@ const FilterPanel = ({ isOpen, onClose, filters, updateFilters, applyFilters }) 
       
       {/* Priority filter */}
       <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+        <label className="block text-sm font-medium text-td-ink mb-1">Priority</label>
         <select 
           value={safeFilters.priority}
           onChange={(e) => updateFilters({ priority: e.target.value })}
@@ -1575,7 +1577,7 @@ const MapPage = () => {
       medium: 'bg-yellow-100 text-yellow-800',
       low: 'bg-green-100 text-green-800'
     };
-    return colors[priority] || 'bg-gray-100 text-gray-800';
+    return colors[priority] || 'bg-gray-100 text-td-ink';
   };
 
   // Loading overlay component
@@ -1649,7 +1651,7 @@ const MapPage = () => {
                 // Force a refresh of the page to retry geolocation
                 window.location.reload();
               }}
-              className="mt-2 text-sm text-blue-600 hover:underline"
+              className="mt-2 text-sm text-td-forest hover:underline"
             >
               Retry
             </button>
@@ -1695,7 +1697,7 @@ const MapPage = () => {
           <div className="flex items-center justify-center h-full">
             <div className="flex flex-col items-center">
               <div className="animate-spin rounded-full h-10 w-10 border-4 border-primary border-t-transparent"></div>
-              <p className="mt-4 text-gray-600">Loading pickup requests...</p>
+              <p className="mt-4 text-td-sage">Loading pickup requests...</p>
             </div>
           </div>
         ) : (
@@ -1766,11 +1768,11 @@ const MapPage = () => {
                 />
                 
                 {/* User location marker with heading-based rotation */}
-                <Marker position={position} icon={createTricycleIcon(currentHeading)}>
+                <Marker position={position} icon={createTricycleIcon(currentHeading)} title="Your location" alt="Your location">
                   <Popup>
                     <div className="text-center">
-                      <p className="font-medium text-blue-600">Your Location</p>
-                      <p className="text-sm text-gray-600">
+                      <p className="font-medium text-td-forest">Your Location</p>
+                      <p className="text-sm text-td-sage">
                         {isWaitingForGPS 
                           ? 'Waiting for GPS...'
                           : isUsingFallbackLocation
@@ -1789,12 +1791,12 @@ const MapPage = () => {
                         <p className="text-xs text-orange-600">🔄 Acquiring GPS...</p>
                       )}
                       {isUsingFallbackLocation && (
-                        <p className="text-xs text-blue-600">📍 Using Accra center as approximate location</p>
+                        <p className="text-xs text-td-forest">📍 Using Accra center as approximate location</p>
                       )}
                       {hasGoodAccuracy && (
                         <p className="text-xs text-green-600">✅ Accuracy ≤50m achieved</p>
                       )}
-                      <p className="text-xs text-gray-500 mt-1">Heading: {currentHeading.toFixed(0)}°</p>
+                      <p className="text-xs text-td-sage mt-1">Heading: {currentHeading.toFixed(0)}°</p>
                     </div>
                   </Popup>
                 </Marker>
@@ -1857,19 +1859,19 @@ const MapPage = () => {
                     >
                       <Popup>
                         <div className="text-center max-w-xs">
-                          <h3 className="font-medium text-gray-900 mb-1">
+                          <h3 className="font-medium text-td-ink mb-1">
                               {request.source_type === 'digital_bin' ? (
                                 <>Digital Bin - {assignedWasteType?.charAt(0).toUpperCase() + assignedWasteType?.slice(1)}</>
                               ) : (
                                 <>{assignedWasteType?.charAt(0).toUpperCase() + assignedWasteType?.slice(1)} Waste</>
                               )}
                             </h3>
-                            <p className="text-sm text-gray-600 mb-2">{request.location}</p>
-                            <p className="text-sm text-gray-600 mb-2">
+                            <p className="text-sm text-td-sage mb-2">{request.location}</p>
+                            <p className="text-sm text-td-sage mb-2">
                               Distance: {formatDistance(calculateDistance(position, request.coordinates))}
                             </p>
                             {request.source_type === 'digital_bin' ? (
-                              <p className="text-sm text-blue-600 mb-2 font-medium">Digital Bin Collection</p>
+                              <p className="text-sm text-td-forest mb-2 font-medium">Digital Bin Collection</p>
                             ) : (
                               <p className="text-lg font-bold text-green-600 mb-2">₵{request.fee}</p>
                             )}
@@ -1899,8 +1901,8 @@ const MapPage = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-800 mb-2">Acquiring GPS Location</h3>
-                    <p className="text-gray-600 text-sm mb-4">
+                    <h3 className="text-lg font-semibold text-td-ink mb-2">Acquiring GPS Location</h3>
+                    <p className="text-td-sage text-sm mb-4">
                       Please wait while we get your current location. This ensures accurate navigation and distance calculations.
                     </p>
                     <div className="flex items-center justify-center gap-2 text-orange-600 mb-4">
@@ -1912,7 +1914,7 @@ const MapPage = () => {
                         <p className="text-red-700 text-sm">{error}</p>
                       </div>
                     )}
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-td-sage">
                       Tip: Go outside or near a window for better GPS signal. Ensure location permissions are enabled.
                     </p>
                   </div>

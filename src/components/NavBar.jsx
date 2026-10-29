@@ -41,7 +41,7 @@ export const TopNavBar = memo(({ user }) => {
           {/* Logo */}
           <Link to="/" className="flex items-center">
             <img src={logo} alt="TrashDrop Logo" className="h-8 mr-2" width="32" height="32" loading="eager" decoding="sync" />
-            <span className="text-green-500 text-xl font-bold">TrashDrop Carter</span>
+            <span className="text-green-700 text-xl font-bold">TrashDrop Carter</span>
           </Link>
 
           {/* Profile Dropdown */}
@@ -50,10 +50,10 @@ export const TopNavBar = memo(({ user }) => {
               className="flex items-center focus:outline-none"
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             >
-              <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white font-medium">
+              <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center text-white font-medium">
                 {userProfile?.first_name?.[0]?.toUpperCase() || ''}{userProfile?.last_name?.[0]?.toUpperCase() || (userProfile ? '' : 'U')}
               </div>
-              <span className="ml-2 hidden md:inline text-gray-700">
+              <span className="ml-2 hidden md:inline text-td-ink">
                 {userProfile?.first_name && userProfile?.last_name 
                   ? `${userProfile.first_name} ${userProfile.last_name}` 
                   : 'User'}
@@ -67,14 +67,14 @@ export const TopNavBar = memo(({ user }) => {
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-[3000]">
                 <Link
                   to="/profile"
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  className="block px-4 py-2 text-sm text-td-ink hover:bg-gray-100"
                   onClick={() => setIsDropdownOpen(false)}
                 >
                   Profile
                 </Link>
                 <Link
                   to="/earnings"
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  className="block px-4 py-2 text-sm text-td-ink hover:bg-gray-100"
                   onClick={() => setIsDropdownOpen(false)}
                 >
                   Earnings
