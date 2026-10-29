@@ -115,12 +115,12 @@ const PullToRefresh = ({
         {isRefreshing ? (
           <div className="flex items-center">
             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-500 mr-2"></div>
-            <span className="text-sm text-gray-600">{loadingText}</span>
+            <span className="text-sm text-td-sage">{loadingText}</span>
           </div>
         ) : (
           <div className="flex flex-col items-center">
             <svg 
-              className="w-6 h-6 text-green-500 transition-transform duration-200"
+              className="w-6 h-6 text-green-700 transition-transform duration-200"
               style={{ transform: `rotate(${Math.min(180, progress * 1.8)}deg)` }}
               fill="none" 
               stroke="currentColor" 
@@ -129,7 +129,7 @@ const PullToRefresh = ({
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
             </svg>
-            <span className="text-xs text-gray-500 mt-1">
+            <span className="text-xs text-td-sage mt-1">
               {progress >= 100 ? 'Release to refresh' : 'Pull to refresh'}
             </span>
           </div>
@@ -145,7 +145,7 @@ const PullToRefresh = ({
       {isRefreshing && (
         <div className="fixed top-0 left-0 right-0 flex items-center justify-center bg-white bg-opacity-80 py-2 z-10">
           <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-500 mr-2"></div>
-          <span className="text-sm text-gray-600">{loadingText}</span>
+          <span className="text-sm text-td-sage">{loadingText}</span>
         </div>
       )}
     </div>

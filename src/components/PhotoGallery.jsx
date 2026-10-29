@@ -150,7 +150,7 @@ const PhotoGallery = ({ photos, emptyText = 'No photos attached.' }) => {
   const markFailed = (url) => setFailed((prev) => new Set(prev).add(url));
 
   if (urls.length === 0) {
-    return emptyText ? <p className="text-gray-500 text-sm">{emptyText}</p> : null;
+    return emptyText ? <p className="text-td-sage text-sm">{emptyText}</p> : null;
   }
 
   const hiddenCount = urls.length - COLLAPSED_COUNT;
@@ -166,7 +166,7 @@ const PhotoGallery = ({ photos, emptyText = 'No photos attached.' }) => {
               key={url + index}
               type="button"
               onClick={() => (isLastCollapsed ? setExpanded(true) : setViewerIndex(index))}
-              className="relative aspect-square overflow-hidden rounded-md bg-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="relative aspect-square overflow-hidden rounded-md bg-gray-200 focus:outline-none focus:ring-2 focus:ring-green-600"
               aria-label={isLastCollapsed ? `Show ${hiddenCount} more photos` : `Open photo ${index + 1} of ${urls.length}`}
             >
               <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => markFailed(url)} />
@@ -185,7 +185,7 @@ const PhotoGallery = ({ photos, emptyText = 'No photos attached.' }) => {
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="flex-1 rounded-md border border-gray-300 bg-white py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            className="flex-1 rounded-md border border-td-border-strong bg-white py-2 text-sm font-medium text-td-ink hover:bg-gray-100"
           >
             {expanded ? 'Show less' : `Show all ${urls.length} photos`}
           </button>

@@ -15,8 +15,8 @@ const reportedOn = (v) => (v ? new Date(v).toLocaleDateString('en-GB', { day: 'n
 const Notice = ({ emoji, heading, children, testId }) => (
   <div className="text-center py-10 px-4" data-testid={testId}>
     <div className="text-4xl mb-3">{emoji}</div>
-    <p className="text-lg font-bold text-gray-900 mb-1">{heading}</p>
-    <div className="text-gray-600 text-sm">{children}</div>
+    <p className="text-lg font-bold text-td-ink mb-1">{heading}</p>
+    <div className="text-td-sage text-sm">{children}</div>
   </div>
 );
 
@@ -90,7 +90,7 @@ const ClaimReports = ({ onClaimed, showToast, profile = null }) => {
   };
 
   if (reports === null) {
-    return <div className="text-center py-10 text-gray-600" data-testid="claim-loading">Loading reports near you...</div>;
+    return <div className="text-center py-10 text-td-sage" data-testid="claim-loading">Loading reports near you...</div>;
   }
 
   if (access && access.role !== 'volunteer') {
@@ -129,9 +129,9 @@ const ClaimReports = ({ onClaimed, showToast, profile = null }) => {
       )}
 
       <div className="flex items-center gap-2 mb-3">
-        <label htmlFor="claim-district" className="text-sm text-gray-700 shrink-0">District</label>
+        <label htmlFor="claim-district" className="text-sm text-td-ink shrink-0">District</label>
         <select id="claim-district" value={district} onChange={e => setDistrict(e.target.value)}
-          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 text-sm">
+          className="flex-1 border border-td-border-strong rounded-lg px-3 py-2 bg-white text-td-ink text-sm">
           <option value="">All of {access?.region || 'your region'} ({reports.length})</option>
           {districts.map(d => (
             <option key={d} value={d}>{d} ({reports.filter(r => r.district === d).length})</option>
@@ -151,27 +151,27 @@ const ClaimReports = ({ onClaimed, showToast, profile = null }) => {
               <div className="mb-3 empty:hidden">
                 <PhotoGallery photos={r.photos} emptyText={null} />
               </div>
-              <h3 className="font-semibold text-base text-gray-800">{r.area_name || r.location || 'Reported dumping site'}</h3>
-              <p className="text-sm text-gray-600">{[r.district, r.region].filter(Boolean).join(', ')}</p>
+              <h3 className="font-semibold text-base text-td-ink">{r.area_name || r.location || 'Reported dumping site'}</h3>
+              <p className="text-sm text-td-sage">{[r.district, r.region].filter(Boolean).join(', ')}</p>
               <div className="flex flex-wrap gap-2 mt-2">
                 {r.severity && (
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${SEVERITY_CLASS[r.severity] || 'bg-gray-100 text-gray-800 border-gray-200'}`}>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${SEVERITY_CLASS[r.severity] || 'bg-gray-100 text-td-ink border-td-border'}`}>
                     {title(r.severity)} severity
                   </span>
                 )}
-                {r.waste_type && <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">{title(r.waste_type)}</span>}
-                {r.size && <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">{title(r.size)} pile</span>}
-                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-800 border border-blue-200">Reported {reportedOn(r.created_at)}</span>
+                {r.waste_type && <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-td-ink border border-td-border">{title(r.waste_type)}</span>}
+                {r.size && <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-td-ink border border-td-border">{title(r.size)} pile</span>}
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-td-tonal text-blue-800 border border-td-border">Reported {reportedOn(r.created_at)}</span>
               </div>
-              {r.description && <p className="text-sm text-gray-700 mt-2">{r.description}</p>}
+              {r.description && <p className="text-sm text-td-ink mt-2">{r.description}</p>}
 
               {confirmingId === r.id ? (
                 <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg" data-testid="claim-confirm">
-                  <p className="text-sm text-gray-800 mb-2">
+                  <p className="text-sm text-td-ink mb-2">
                     Your group will clean this up. Accept it within {ACCEPT_WITHIN_HOURS} hours and finish within {FINISH_WITHIN_HOURS}, or it goes back for others.
                   </p>
                   <div className="flex gap-2">
-                    <button type="button" className="flex-1 py-2 rounded-lg bg-gray-200 text-gray-800 font-medium" onClick={() => setConfirmingId(null)} disabled={busyId === r.id}>
+                    <button type="button" className="flex-1 py-2 rounded-lg bg-gray-200 text-td-ink font-medium" onClick={() => setConfirmingId(null)} disabled={busyId === r.id}>
                       Cancel
                     </button>
                     <button type="button" className="flex-1 py-2 rounded-lg bg-green-600 text-white font-bold disabled:opacity-50" onClick={() => claim(r)} disabled={busyId === r.id}>
@@ -189,7 +189,7 @@ const ClaimReports = ({ onClaimed, showToast, profile = null }) => {
         ))
       )}
 
-      <p className="text-xs text-gray-500 text-center mt-2 mb-4">
+      <p className="text-xs text-td-sage text-center mt-2 mb-4">
         Your group can have up to {MAX_OPEN_CLAIMS} clean-ups open at a time.
       </p>
     </div>

@@ -201,14 +201,14 @@ const EnhancedRequestPage = () => {
   // Show session error if initialization failed
   if (sessionError && !isInitialized) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-td-cream">
         <TopNavBar title="Requests" />
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-center">
             <p className="text-red-600 mb-4">Failed to initialize request session</p>
-            <p className="text-gray-600">{sessionError}</p>
+            <p className="text-td-sage">{sessionError}</p>
             <button 
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg"
+              className="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg"
               onClick={() => window.location.reload()}
             >
               Retry
@@ -235,7 +235,7 @@ const EnhancedRequestPage = () => {
   const getTabCount = (tab) => getTabRequests(tab).length;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-td-cream">
       <TopNavBar 
         title="Requests" 
         showNotificationBadge={hasUnreadNotifications}
@@ -250,7 +250,7 @@ const EnhancedRequestPage = () => {
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => setFilterModalOpen(true)}
-                className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg flex items-center space-x-2"
+                className="px-3 py-2 bg-green-600 text-white text-sm rounded-lg flex items-center space-x-2"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 2v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
@@ -264,14 +264,14 @@ const EnhancedRequestPage = () => {
               {hasActiveFilter && (
                 <button
                   onClick={handleClearFilters}
-                  className="px-3 py-2 bg-gray-200 text-gray-700 text-sm rounded-lg"
+                  className="px-3 py-2 bg-gray-200 text-td-ink text-sm rounded-lg"
                 >
                   Clear
                 </button>
               )}
             </div>
             
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-td-sage">
               {availableRequests.length > 0 && (
                 <span>{availableRequests.length} requests reserved</span>
               )}
@@ -279,7 +279,7 @@ const EnhancedRequestPage = () => {
           </div>
           
           {hasActiveFilter && (
-            <div className="mt-2 text-xs text-blue-600">
+            <div className="mt-2 text-xs text-td-forest">
               Active filters: {Object.keys(filterCriteria).join(', ')}
             </div>
           )}
@@ -297,14 +297,14 @@ const EnhancedRequestPage = () => {
                 key={tab.id}
                 className={`flex-1 px-4 py-3 text-sm font-medium border-b-2 ${
                   activeTab === tab.id
-                    ? 'text-blue-600 border-blue-600'
-                    : 'text-gray-500 border-transparent hover:text-gray-700'
+                    ? 'text-td-forest border-td-forest'
+                    : 'text-td-sage border-transparent hover:text-td-ink'
                 }`}
                 onClick={() => handleTabChange(tab.id)}
               >
                 {tab.label}
                 {tab.count > 0 && (
-                  <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-600 rounded-full">
+                  <span className="ml-2 px-2 py-1 text-xs bg-td-tonal text-td-forest rounded-full">
                     {tab.count}
                   </span>
                 )}
@@ -316,8 +316,8 @@ const EnhancedRequestPage = () => {
         {/* Loading State */}
         {(isLoading || !isInitialized) && (
           <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <span className="ml-3 text-gray-600">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-td-forest"></div>
+            <span className="ml-3 text-td-sage">
               {!isInitialized ? 'Initializing session...' : 'Loading...'}
             </span>
           </div>
@@ -330,7 +330,7 @@ const EnhancedRequestPage = () => {
             <div>
               {availableRequests.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-gray-600">
+                  <p className="text-td-sage">
                     {hasActiveFilter 
                       ? 'No requests match your current filters' 
                       : 'No available requests. Apply filters to see matching requests.'
@@ -339,7 +339,7 @@ const EnhancedRequestPage = () => {
                   {!hasActiveFilter && (
                     <button
                       onClick={() => setFilterModalOpen(true)}
-                      className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg"
+                      className="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg"
                     >
                       Apply Filters
                     </button>
@@ -366,7 +366,7 @@ const EnhancedRequestPage = () => {
             <div>
               {acceptedRequests.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-gray-600">You haven't accepted any requests yet.</p>
+                  <p className="text-td-sage">You haven't accepted any requests yet.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -389,7 +389,7 @@ const EnhancedRequestPage = () => {
             <div>
               {completedRequests.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-gray-600">You haven't completed any requests yet.</p>
+                  <p className="text-td-sage">You haven't completed any requests yet.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -463,13 +463,13 @@ const FilterModal = ({ isOpen, onClose, filters, onFiltersChange, onApply, curre
         <div className="p-4 space-y-4">
           {/* Waste Type Filter */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-td-ink mb-2">
               Waste Type
             </label>
             <select
               value={filters.waste_type || ''}
               onChange={(e) => handleFilterChange('waste_type', e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-lg"
+              className="w-full p-2 border border-td-border-strong rounded-lg"
             >
               <option value="">All Types</option>
               <option value="plastic">Plastic</option>
@@ -482,14 +482,14 @@ const FilterModal = ({ isOpen, onClose, filters, onFiltersChange, onApply, curre
 
           {/* Minimum Fee Filter */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-td-ink mb-2">
               Minimum Fee (GHS)
             </label>
             <input
               type="number"
               value={filters.min_fee || ''}
               onChange={(e) => handleFilterChange('min_fee', parseFloat(e.target.value) || 0)}
-              className="w-full p-2 border border-gray-300 rounded-lg"
+              className="w-full p-2 border border-td-border-strong rounded-lg"
               placeholder="0"
               min="0"
               step="0.5"
@@ -498,14 +498,14 @@ const FilterModal = ({ isOpen, onClose, filters, onFiltersChange, onApply, curre
 
           {/* Distance Filter */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-td-ink mb-2">
               Maximum Distance (km)
             </label>
             <input
               type="number"
               value={filters.max_distance || ''}
               onChange={(e) => handleFilterChange('max_distance', parseFloat(e.target.value) || 0)}
-              className="w-full p-2 border border-gray-300 rounded-lg"
+              className="w-full p-2 border border-td-border-strong rounded-lg"
               placeholder="10"
               min="1"
               max="50"
@@ -516,13 +516,13 @@ const FilterModal = ({ isOpen, onClose, filters, onFiltersChange, onApply, curre
         <div className="p-4 border-t flex space-x-3">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            className="flex-1 px-4 py-2 border border-td-border-strong text-td-ink rounded-lg hover:bg-td-cream"
           >
             Cancel
           </button>
           <button
             onClick={onApply}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
           >
             Apply Filters
           </button>
@@ -541,7 +541,7 @@ const NotificationModal = ({ isOpen, onClose, notifications, onNotificationClick
       <div className="bg-white rounded-lg max-w-md w-full max-h-[80vh] overflow-y-auto">
         <div className="p-4 border-b flex items-center justify-between">
           <h3 className="text-lg font-semibold">Notifications</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+          <button onClick={onClose} className="text-td-sage hover:text-td-ink">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -550,7 +550,7 @@ const NotificationModal = ({ isOpen, onClose, notifications, onNotificationClick
         
         <div className="max-h-96 overflow-y-auto">
           {notifications.length === 0 ? (
-            <div className="p-4 text-center text-gray-500">
+            <div className="p-4 text-center text-td-sage">
               No notifications
             </div>
           ) : (
@@ -558,17 +558,17 @@ const NotificationModal = ({ isOpen, onClose, notifications, onNotificationClick
               <div
                 key={notification.id}
                 className={`p-4 border-b cursor-pointer hover:bg-gray-50 ${
-                  !notification.read_at ? 'bg-blue-50' : ''
+                  !notification.read_at ? 'bg-td-tonal' : ''
                 }`}
                 onClick={() => onNotificationClick(notification)}
               >
                 <div className="flex items-start space-x-3">
                   <div className={`w-2 h-2 rounded-full mt-2 ${
-                    !notification.read_at ? 'bg-blue-600' : 'bg-gray-300'
+                    !notification.read_at ? 'bg-green-600' : 'bg-gray-300'
                   }`} />
                   <div className="flex-1">
-                    <p className="text-sm text-gray-900">{notification.message}</p>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-sm text-td-ink">{notification.message}</p>
+                    <p className="text-xs text-td-sage mt-1">
                       {new Date(notification.created_at).toLocaleString()}
                     </p>
                   </div>
