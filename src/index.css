@@ -3,13 +3,15 @@
 @tailwind utilities;
 
 :root {
-  --color-primary: #4CAF50;
-  --color-secondary: #FF9800;
-  --color-danger: #F44336;
-  --color-dark: #333333;
-  --color-light: #F5F5F5;
+  /* The design system (src/theme/tokens.css): the brand's dark green for
+     actions, DM Sans only */
+  --color-primary: #1b6e35;
+  --color-secondary: #b4530e;
+  --color-danger: #b91c1c;
+  --color-dark: #0a0f0a;
+  --color-light: #f6f8f4;
   
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: var(--td-font);
   line-height: 1.5;
   font-weight: 400;
 
@@ -21,7 +23,7 @@
 
 @layer base {
   body {
-    @apply m-0 bg-white text-gray-800;
+    @apply m-0 bg-white text-td-ink;
   }
   
   h1, h2, h3, h4, h5, h6 {
@@ -37,7 +39,7 @@
   }
   
   a {
-    @apply text-blue-600 dark:text-blue-400 hover:underline;
+    @apply text-td-forest dark:text-green-300 hover:underline;
   }
 }
 
