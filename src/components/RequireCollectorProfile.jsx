@@ -4,7 +4,7 @@ import { PROFILE_STATE, signupPathFor } from '../utils/collectorProfile';
 import { isVolunteerPath, isVolunteerProfile } from '../utils/volunteer';
 
 const FullScreen = ({ children }) => (
-  <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+  <div className="flex min-h-screen items-center justify-center bg-td-cream p-6">
     <div className="w-full max-w-sm text-center">{children}</div>
   </div>
 );
@@ -26,7 +26,7 @@ const RequireCollectorProfile = ({ children }) => {
     return (
       <FullScreen>
         <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent" role="status" />
-        <p className="mt-4 text-gray-700 font-medium">Checking your account...</p>
+        <p className="mt-4 text-td-ink font-medium">Checking your account...</p>
       </FullScreen>
     );
   }
@@ -38,8 +38,8 @@ const RequireCollectorProfile = ({ children }) => {
   if (profileState === PROFILE_STATE.ERROR) {
     return (
       <FullScreen>
-        <p className="text-lg font-bold text-gray-900 mb-2">We couldn't load your account</p>
-        <p className="text-gray-600 mb-6">Check your internet connection and try again.</p>
+        <p className="text-lg font-bold text-td-ink mb-2">We couldn't load your account</p>
+        <p className="text-td-sage mb-6">Check your internet connection and try again.</p>
         <button type="button" className="w-full py-3 bg-primary text-white font-bold rounded-xl" onClick={refreshProfile}>
           Try again
         </button>
@@ -52,10 +52,10 @@ const RequireCollectorProfile = ({ children }) => {
     return (
       <FullScreen>
         <div className="text-5xl mb-4">{blocked ? '⏸️' : '📝'}</div>
-        <p className="text-xl font-bold text-gray-900 mb-2">
+        <p className="text-xl font-bold text-td-ink mb-2">
           {blocked ? 'Your account is on hold' : 'Your sign-up isn\'t finished'}
         </p>
-        <p className="text-gray-600 mb-6">
+        <p className="text-td-sage mb-6">
           {blocked
             ? 'You can\'t take jobs or cash out right now. Please contact TrashDrop support.'
             : isVolunteerProfile(profile)
@@ -67,7 +67,7 @@ const RequireCollectorProfile = ({ children }) => {
             Finish sign-up
           </a>
         )}
-        <button type="button" className="w-full py-3 bg-gray-200 text-gray-800 font-bold rounded-xl" onClick={logout}>
+        <button type="button" className="w-full py-3 bg-gray-200 text-td-ink font-bold rounded-xl" onClick={logout}>
           Sign out
         </button>
       </FullScreen>

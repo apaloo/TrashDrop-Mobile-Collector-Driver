@@ -14,10 +14,10 @@ const LoadingIndicator = ({ size = 'md', color = 'primary', fullScreen = false, 
   
   // Color classes
   const colorClasses = {
-    primary: 'border-green-500',
-    secondary: 'border-blue-500',
+    primary: 'border-green-600',
+    secondary: 'border-td-forest',
     white: 'border-white',
-    gray: 'border-gray-300'
+    gray: 'border-td-border-strong'
   };
   
   // Container classes
@@ -29,7 +29,7 @@ const LoadingIndicator = ({ size = 'md', color = 'primary', fullScreen = false, 
     <div className={containerClasses}>
       <div className="flex flex-col items-center">
         <div className={`animate-spin rounded-full ${sizeClasses[size]} border-b-2 ${colorClasses[color]}`}></div>
-        {text && <p className="mt-3 text-gray-600">{text}</p>}
+        {text && <p className="mt-3 text-td-sage">{text}</p>}
       </div>
     </div>
   );

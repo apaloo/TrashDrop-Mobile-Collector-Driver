@@ -16,7 +16,7 @@ const WelcomePage = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center bg-gray-50 dark:bg-gray-900 p-4">
+    <div className="min-h-screen flex flex-col items-center bg-td-cream dark:bg-gray-900 p-4">
       {/* Progress indicator */}
       <div className="w-full max-w-md mt-8 mb-4">
         <div className="w-full bg-gray-200 rounded-full h-2">

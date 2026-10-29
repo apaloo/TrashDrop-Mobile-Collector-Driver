@@ -92,14 +92,14 @@ class ErrorBoundary extends Component {
             
             {this.props.fallbackUI || (
               <>
-                <p className="mb-6 text-gray-700">
+                <p className="mb-6 text-td-ink">
                   We encountered an error while processing your request. Please try again.
                 </p>
                 
                 <div className="flex flex-col space-y-3">
                   <button
                     onClick={() => window.location.reload()}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                    className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
                     aria-label="Reload page"
                   >
                     Reload Page
@@ -107,26 +107,26 @@ class ErrorBoundary extends Component {
                   
                   <button
                     onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
-                    className="px-6 py-3 text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                    className="px-6 py-3 text-td-forest border border-td-forest rounded-lg hover:bg-green-100 transition-colors"
                   >
                     Try Again
                   </button>
                 </div>
                 
                 {error && process.env.NODE_ENV === 'development' && (
-                  <details className="mt-6 p-4 border border-gray-300 rounded-lg text-left">
-                    <summary className="text-sm text-gray-600 cursor-pointer hover:text-gray-800">
+                  <details className="mt-6 p-4 border border-td-border-strong rounded-lg text-left">
+                    <summary className="text-sm text-td-sage cursor-pointer hover:text-td-ink">
                       Technical Details (Development)
                     </summary>
                     <div className="mt-3 space-y-2">
                       <div>
-                        <strong className="text-xs text-gray-500">Error Message:</strong>
+                        <strong className="text-xs text-td-sage">Error Message:</strong>
                         <pre className="mt-1 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-32">
                           {error.message}
                         </pre>
                       </div>
                       <div>
-                        <strong className="text-xs text-gray-500">Stack Trace:</strong>
+                        <strong className="text-xs text-td-sage">Stack Trace:</strong>
                         <pre className="mt-1 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-32">
                           {error.stack}
                         </pre>
