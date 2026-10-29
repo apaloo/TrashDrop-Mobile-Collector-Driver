@@ -546,8 +546,8 @@ const DigitalBinPaymentModal = ({
                   {!pollTimedOut ? (
                     <>
                       <div className="flex items-center justify-center space-x-3 mb-3">
-                        <Loader2 className="text-blue-600 animate-spin" size={32} />
-                        <span className="text-blue-700 font-bold text-base">{processingMessage}</span>
+                        <Loader2 className="text-td-forest animate-spin" size={32} />
+                        <span className="text-td-forest font-bold text-base">{processingMessage}</span>
                       </div>
                       {authorizationSteps.length > 0 && (
                         <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-left">
@@ -569,7 +569,7 @@ const DigitalBinPaymentModal = ({
                         <span className="text-2xl">⏰</span>
                         <span className="font-bold text-base">Payment confirmation timed out</span>
                       </div>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-td-sage">
                         The client may have approved but confirmation hasn't been received yet.
                       </p>
                       <div className="flex flex-col gap-2">
@@ -622,14 +622,14 @@ const DigitalBinPaymentModal = ({
                               poll();
                             }, 5000);
                           }}
-                          className="w-full py-2.5 bg-blue-100 text-blue-700 font-bold rounded-xl hover:bg-blue-200 transition-colors"
+                          className="w-full py-2.5 bg-td-tonal text-td-forest font-bold rounded-xl hover:bg-blue-200 transition-colors"
                         >
                           🔄 Keep Waiting
                         </button>
                         <button
                           type="button"
                           onClick={onClose}
-                          className="w-full py-2.5 bg-gray-100 text-gray-600 font-semibold rounded-xl hover:bg-gray-200 transition-colors"
+                          className="w-full py-2.5 bg-gray-100 text-td-sage font-semibold rounded-xl hover:bg-gray-200 transition-colors"
                         >
                           Close
                         </button>
@@ -655,7 +655,7 @@ const DigitalBinPaymentModal = ({
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="text-2xl">�️</span>
-                <span className="text-base font-bold text-gray-800">
+                <span className="text-base font-bold text-td-ink">
                   Bin: <span className="text-2xl text-green-700">{scannedBags.length > 0 ? '1' : '0'}</span>
                 </span>
               </div>
@@ -677,9 +677,9 @@ const DigitalBinPaymentModal = ({
                           GHS {bin.fee.toFixed(2)}
                         </span>
                       ) : bin.fee === null ? (
-                        <Loader2 size={14} className="text-gray-400 animate-spin ml-1" />
+                        <Loader2 size={14} className="text-td-sage animate-spin ml-1" />
                       ) : (
-                        <span className="text-gray-400 text-sm ml-1">GHS 0.00</span>
+                        <span className="text-td-sage text-sm ml-1">GHS 0.00</span>
                       )}
                     </div>
                   </div>
@@ -703,12 +703,12 @@ const DigitalBinPaymentModal = ({
                   className="w-full"
                   style={{ minHeight: '260px' }}
                 />
-                <div className="flex items-center justify-between p-3 bg-blue-50">
-                  <p className="text-sm font-semibold text-blue-700">📸 Point at bin QR code</p>
+                <div className="flex items-center justify-between p-3 bg-td-tonal">
+                  <p className="text-sm font-semibold text-td-forest">📸 Point at bin QR code</p>
                   <button
                     type="button"
                     onClick={() => setShowScanner(false)}
-                    className="px-4 py-2 bg-gray-300 text-gray-800 text-sm font-bold rounded-lg hover:bg-gray-400 transition-colors"
+                    className="px-4 py-2 bg-gray-300 text-td-ink text-sm font-bold rounded-lg hover:bg-gray-400 transition-colors"
                   >
                     Stop
                   </button>
@@ -723,7 +723,7 @@ const DigitalBinPaymentModal = ({
                 <button
                   type="button"
                   onClick={startInlineScanner}
-                  className="mt-2 px-4 py-2 bg-blue-100 text-blue-700 text-sm font-bold rounded-lg"
+                  className="mt-2 px-4 py-2 bg-td-tonal text-td-forest text-sm font-bold rounded-lg"
                 >
                   Try again
                 </button>
@@ -752,19 +752,19 @@ const DigitalBinPaymentModal = ({
 
           {/* ─── Total Bill ─── */}
           <div>
-            <label className="flex items-center gap-2 text-base font-bold text-gray-800 mb-2">
+            <label className="flex items-center gap-2 text-base font-bold text-td-ink mb-2">
               <span className="text-xl">💰</span>
               Total Bill (GHS)
             </label>
             {/* Auto-calculated hint */}
             {isFetchingFees && (
-              <div className="flex items-center gap-2 mb-2 text-sm text-blue-600">
+              <div className="flex items-center gap-2 mb-2 text-sm text-td-forest">
                 <Loader2 size={14} className="animate-spin" />
                 <span>Loading bin fee...</span>
               </div>
             )}
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xl font-bold text-gray-500">GHS</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xl font-bold text-td-sage">GHS</span>
               <input
                 type="number"
                 step="0.01"
@@ -776,18 +776,18 @@ const DigitalBinPaymentModal = ({
                   setBillManuallyEdited(true);
                 }}
                 placeholder="0.00"
-                className={`w-full pl-14 pr-10 py-3.5 border-2 rounded-xl text-2xl font-bold text-gray-900 ${
-                  errors.totalBill ? 'border-red-500 bg-red-50' : 'border-gray-300 focus:border-green-500'
+                className={`w-full pl-14 pr-10 py-3.5 border-2 rounded-xl text-2xl font-bold text-td-ink ${
+                  errors.totalBill ? 'border-red-500 bg-red-50' : 'border-td-border-strong focus:border-green-500'
                 } focus:outline-none focus:ring-2 focus:ring-green-200`}
                 disabled={isSubmitting || (paymentStatus && paymentStatus !== 'failed')}
                 required
               />
-              <PencilLine size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <PencilLine size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-td-sage" />
             </div>
             {/* Show auto-sum reference when collector has edited manually */}
             {billManuallyEdited && autoCalculatedBill > 0 && (
               <div className="flex items-center justify-between mt-2">
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-td-sage">
                   Auto total: <span className="font-bold">GHS {autoCalculatedBill.toFixed(2)}</span>
                 </p>
                 <button
@@ -796,7 +796,7 @@ const DigitalBinPaymentModal = ({
                     setTotalBill(autoCalculatedBill.toFixed(2));
                     setBillManuallyEdited(false);
                   }}
-                  className="text-sm font-bold text-blue-600 underline"
+                  className="text-sm font-bold text-td-forest underline"
                 >
                   Use auto total
                 </button>
@@ -814,7 +814,7 @@ const DigitalBinPaymentModal = ({
 
           {/* ─── Payment Mode ─── */}
           <div>
-            <label className="flex items-center gap-2 text-base font-bold text-gray-800 mb-3">
+            <label className="flex items-center gap-2 text-base font-bold text-td-ink mb-3">
               <span className="text-xl">💳</span>
               How is client paying?
             </label>
@@ -826,7 +826,7 @@ const DigitalBinPaymentModal = ({
                 className={`px-3 py-3.5 rounded-xl border-2 text-base font-bold transition-all ${
                   paymentMode === 'momo'
                     ? 'border-green-500 bg-green-50 text-green-700 shadow-md ring-2 ring-green-200'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    : 'border-td-border bg-white text-td-sage hover:border-gray-300'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 📱 MoMo
@@ -837,8 +837,8 @@ const DigitalBinPaymentModal = ({
                 disabled={isSubmitting || (paymentStatus && paymentStatus !== 'failed')}
                 className={`px-3 py-3.5 rounded-xl border-2 text-base font-bold transition-all ${
                   paymentMode === 'e_cash'
-                    ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md ring-2 ring-blue-200'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    ? 'border-td-forest bg-td-tonal text-td-forest shadow-md ring-2 ring-blue-200'
+                    : 'border-td-border bg-white text-td-sage hover:border-gray-300'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 💵 e-Cash
@@ -850,7 +850,7 @@ const DigitalBinPaymentModal = ({
                 className={`px-3 py-3.5 rounded-xl border-2 text-base font-bold transition-all ${
                   paymentMode === 'cash'
                     ? 'border-yellow-500 bg-yellow-50 text-yellow-700 shadow-md ring-2 ring-yellow-200'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    : 'border-td-border bg-white text-td-sage hover:border-gray-300'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 🪙 Cash
@@ -862,7 +862,7 @@ const DigitalBinPaymentModal = ({
           {(paymentMode === 'momo' || paymentMode === 'e_cash') && (
             <>
               <div>
-                <label className="flex items-center gap-2 text-base font-bold text-gray-800 mb-2">
+                <label className="flex items-center gap-2 text-base font-bold text-td-ink mb-2">
                   <span className="text-xl">📞</span>
                   Client {paymentMode === 'momo' ? 'MoMo' : 'e-Cash'} Number
                 </label>
@@ -873,7 +873,7 @@ const DigitalBinPaymentModal = ({
                   onChange={(e) => setClientMomo(e.target.value)}
                   placeholder="0244123456"
                   className={`w-full px-4 py-3.5 border-2 rounded-xl text-lg font-semibold ${
-                    errors.clientMomo ? 'border-red-500 bg-red-50' : 'border-gray-300 focus:border-green-500'
+                    errors.clientMomo ? 'border-red-500 bg-red-50' : 'border-td-border-strong focus:border-green-500'
                   } focus:outline-none focus:ring-2 focus:ring-green-200`}
                   disabled={isSubmitting || (paymentStatus && paymentStatus !== 'failed')}
                   required
@@ -885,7 +885,7 @@ const DigitalBinPaymentModal = ({
 
               {/* Network Selection */}
               <div>
-                <label className="flex items-center gap-2 text-base font-bold text-gray-800 mb-3">
+                <label className="flex items-center gap-2 text-base font-bold text-td-ink mb-3">
                   <span className="text-xl">📡</span>
                   Network
                 </label>
@@ -920,8 +920,8 @@ const DigitalBinPaymentModal = ({
                     disabled={isSubmitting || (paymentStatus && paymentStatus !== 'failed')}
                     className={`px-3 py-3.5 rounded-xl border-2 text-base font-bold transition-all ${
                       clientRSwitch === 'airteltigo'
-                        ? 'border-blue-400 bg-blue-100 text-blue-700 shadow-md ring-2 ring-blue-200'
-                        : 'border-blue-100 bg-blue-50 text-blue-700 hover:border-blue-200'
+                        ? 'border-blue-400 bg-td-tonal text-td-forest shadow-md ring-2 ring-blue-200'
+                        : 'border-blue-100 bg-td-tonal text-td-forest hover:border-blue-200'
                     } disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
                     AirtelTigo
@@ -944,7 +944,7 @@ const DigitalBinPaymentModal = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-3.5 border-2 border-gray-300 rounded-xl text-gray-700 text-base font-bold hover:bg-gray-50 transition-colors"
+                className="flex-1 px-4 py-3.5 border-2 border-td-border-strong rounded-xl text-td-ink text-base font-bold hover:bg-td-cream transition-colors"
               >
                 Cancel
               </button>
@@ -957,7 +957,7 @@ const DigitalBinPaymentModal = ({
               </button>
             </div>
           ) : paymentStatus === 'success' || paymentStatus === 'pending' || paymentStatus === 'processing' ? (
-            <div className="pt-4 text-center text-gray-600 text-base font-semibold">
+            <div className="pt-4 text-center text-td-sage text-base font-semibold">
               {paymentStatus === 'success' && 'Closing...'}
               {(paymentStatus === 'pending' || paymentStatus === 'processing') && 'Please wait...'}
             </div>
@@ -967,7 +967,7 @@ const DigitalBinPaymentModal = ({
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="flex-1 px-4 py-3.5 border-2 border-gray-300 rounded-xl text-gray-700 text-base font-bold hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-3.5 border-2 border-td-border-strong rounded-xl text-td-ink text-base font-bold hover:bg-td-cream transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>

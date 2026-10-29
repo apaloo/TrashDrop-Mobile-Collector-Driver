@@ -82,7 +82,7 @@ const AssignmentList = ({ assignments, userLocation }) => {
     <div className="bg-white rounded-lg shadow-md overflow-hidden">
       <div className="p-4 border-b">
         <div className="flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-gray-800">Assignments</h2>
+          <h2 className="text-lg font-semibold text-td-ink">Assignments</h2>
           <span className="text-sm text-gray-600">{filteredAssignments.length} items</span>
         </div>
         
@@ -93,7 +93,7 @@ const AssignmentList = ({ assignments, userLocation }) => {
               id="sort"
               value={sortOption}
               onChange={handleSortChange}
-              className="w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="w-full text-sm rounded-md border-td-border-strong shadow-sm focus:border-blue-500 focus:ring-green-600"
             >
               <option value="distance">Distance</option>
               <option value="name">Customer Name</option>
@@ -107,7 +107,7 @@ const AssignmentList = ({ assignments, userLocation }) => {
               id="filter"
               value={filterStatus}
               onChange={handleFilterChange}
-              className="w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="w-full text-sm rounded-md border-td-border-strong shadow-sm focus:border-blue-500 focus:ring-green-600"
             >
               <option value="all">All</option>
               <option value="available">Available</option>
@@ -121,7 +121,7 @@ const AssignmentList = ({ assignments, userLocation }) => {
       <div className="overflow-hidden">
         {filteredAssignments.length === 0 ? (
           <div className="text-center text-gray-600 py-8">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-td-sage" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
             <p className="mt-2">No assignments found</p>
@@ -138,7 +138,7 @@ const AssignmentList = ({ assignments, userLocation }) => {
                 <div className="p-4 hover:bg-gray-50">
                   <div className="flex justify-between">
                     <div>
-                      <h3 className="text-sm font-medium text-gray-800">{assignment.customer_name}</h3>
+                      <h3 className="text-sm font-medium text-td-ink">{assignment.customer_name}</h3>
                       <p className="text-xs text-gray-600 mt-1">{assignment.location}</p>
                     </div>
                     
@@ -161,7 +161,7 @@ const AssignmentList = ({ assignments, userLocation }) => {
                   
                   <div className="mt-2 flex justify-end space-x-2">
                     <button
-                      className="text-xs bg-white border border-gray-300 rounded px-2 py-1 hover:bg-gray-50 text-gray-700"
+                      className="text-xs bg-white border border-td-border-strong rounded px-2 py-1 hover:bg-gray-50 text-td-ink"
                       onClick={() => {
                         // In a real app, this would navigate to the assignment details
                         logger.debug('View details for assignment:', assignment.id);
@@ -171,7 +171,7 @@ const AssignmentList = ({ assignments, userLocation }) => {
                     </button>
                     
                     <button
-                      className="text-xs bg-green-500 rounded px-2 py-1 hover:bg-green-600 text-white"
+                      className="text-xs bg-green-600 rounded px-2 py-1 hover:bg-green-700 text-white"
                       onClick={() => {
                         // In a real app, this would navigate to the assignment location
                         const url = `https://www.google.com/maps/dir/?api=1&destination=${assignment.latitude},${assignment.longitude}`;

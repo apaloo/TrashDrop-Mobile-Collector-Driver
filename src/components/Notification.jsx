@@ -80,7 +80,7 @@ const Notification = ({ message, type = 'info', duration = 5000, onClose }) => {
           <div className="ml-4 flex-shrink-0 flex">
             <button
               onClick={handleClose}
-              className="inline-flex text-gray-400 hover:text-gray-500 focus:outline-none"
+              className="inline-flex text-td-sage hover:text-gray-500 focus:outline-none"
             >
               <svg 
                 className="h-5 w-5" 

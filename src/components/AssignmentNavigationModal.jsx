@@ -585,7 +585,7 @@ const AssignmentNavigationModal = ({
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-full overflow-hidden flex flex-col mx-4">
         {/* Header */}
         <div className="p-5 border-b flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-gray-800 flex-1 truncate pr-2">
+          <h2 className="text-xl font-semibold text-td-ink flex-1 truncate pr-2">
             Navigate to {assignmentTitle}
           </h2>
           <div className="flex items-center space-x-2">
@@ -595,7 +595,7 @@ const AssignmentNavigationModal = ({
               className={`p-2 rounded-full transition-colors duration-200 ${
                 isScreenOn 
                   ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200' 
-                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                  : 'bg-gray-100 text-td-sage hover:bg-gray-200'
               }`}
               aria-label={isScreenOn ? 'Disable keep screen on' : 'Enable keep screen on'}
               title={isScreenOn ? 'Screen will stay on' : 'Screen may turn off'}
@@ -654,10 +654,10 @@ const AssignmentNavigationModal = ({
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                  <p className="mt-2 text-gray-600 text-sm">Getting your location...</p>
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-td-forest mx-auto"></div>
+                  <p className="mt-2 text-td-sage text-sm">Getting your location...</p>
                   {destination && (
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-td-sage">
                       Parsing assignment coordinates...
                     </p>
                   )}
@@ -669,25 +669,25 @@ const AssignmentNavigationModal = ({
 
         {/* Navigation Instructions Panel */}
         {isNavigating && navigationInstructions.length > 0 && (
-          <div className="bg-blue-50 border-t border-blue-200">
+          <div className="bg-td-tonal border-t border-td-border">
             {/* Collapsible Header */}
             <div className="p-4 pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center flex-1">
-                  <div className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-2">
+                  <div className="bg-green-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-2">
                     {currentStep + 1}
                   </div>
-                  <span className="text-sm text-blue-600 font-medium">
+                  <span className="text-sm text-td-forest font-medium">
                     Step {currentStep + 1} of {navigationInstructions.length}
                   </span>
-                  <div className="text-xs text-blue-500 ml-auto mr-2">
+                  <div className="text-xs text-td-forest ml-auto mr-2">
                     {navigationInstructions[currentStep]?.distance} • {navigationInstructions[currentStep]?.duration}
                   </div>
                 </div>
                 {/* Collapse/Expand Button */}
                 <button
                   onClick={() => setIsInstructionsCollapsed(!isInstructionsCollapsed)}
-                  className="p-1.5 rounded-full hover:bg-blue-100 transition-colors duration-200"
+                  className="p-1.5 rounded-full hover:bg-green-100 transition-colors duration-200"
                   aria-label={isInstructionsCollapsed ? "Expand instructions" : "Collapse instructions"}
                 >
                   <svg 
@@ -711,19 +711,19 @@ const AssignmentNavigationModal = ({
               }}
             >
               <div className="px-4 pb-4">
-                <div className="bg-white rounded-lg p-3 shadow-sm border border-blue-200">
+                <div className="bg-white rounded-lg p-3 shadow-sm border border-td-border">
                   <div className="flex items-start">
-                    <div className="bg-blue-100 rounded-full p-2 mr-3 flex-shrink-0">
-                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="bg-td-tonal rounded-full p-2 mr-3 flex-shrink-0">
+                      <svg className="w-4 h-4 text-td-forest" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                       </svg>
                     </div>
                     <div className="flex-1">
-                      <p className="text-gray-800 font-medium">
+                      <p className="text-td-ink font-medium">
                         {navigationInstructions[currentStep] ? translateNavInstruction(navigationInstructions[currentStep], preferredLang) : ''}
                       </p>
                       {getDistanceToNextStep() && (
-                        <p className="text-sm text-gray-500 mt-1">
+                        <p className="text-sm text-td-sage mt-1">
                           {formatDistance(getDistanceToNextStep())} to next step
                         </p>
                       )}
@@ -733,7 +733,7 @@ const AssignmentNavigationModal = ({
                 
                 {/* Next instruction preview */}
                 {currentStep < navigationInstructions.length - 1 && (
-                  <div className="mt-3 text-xs text-gray-500">
+                  <div className="mt-3 text-xs text-td-sage">
                     <span className="font-medium">Next:</span> {navigationInstructions[currentStep + 1] ? translateNavInstruction(navigationInstructions[currentStep + 1], preferredLang) : ''}
                   </div>
                 )}
@@ -761,7 +761,7 @@ const AssignmentNavigationModal = ({
                 🎯 You have arrived! Ready to start cleaning.
               </div>
             ) : (
-              <div className="text-gray-700">
+              <div className="text-td-ink">
                 {distanceToDestination !== null && !isNaN(distanceToDestination) ? (
                   <div>
                     <div className="font-medium text-base">
@@ -822,7 +822,7 @@ const AssignmentNavigationModal = ({
                   <span>I'm Here</span>
                 </div>
               </button>
-              <p className="text-xs text-gray-500 text-center mt-1">Tap if you're at the location but GPS is inaccurate</p>
+              <p className="text-xs text-td-sage text-center mt-1">Tap if you're at the location but GPS is inaccurate</p>
             </div>
           )}
 
@@ -860,7 +860,7 @@ const AssignmentNavigationModal = ({
                     startInAppNavigation();
                   }
                 }}
-                className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-300 font-medium shadow-sm transform hover:scale-105"
+                className="w-full px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-300 font-medium shadow-sm transform hover:scale-105"
                 disabled={isLoading}
               >
                 <div className="flex items-center justify-center space-x-2">
@@ -951,8 +951,8 @@ const AssignmentNavigationModal = ({
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Mission Accomplished!</h3>
-              <p className="text-gray-600">{assignmentTitle} has been completed successfully.</p>
+              <h3 className="text-lg font-semibold text-td-ink mb-2">Mission Accomplished!</h3>
+              <p className="text-td-sage">{assignmentTitle} has been completed successfully.</p>
             </div>
           </div>
         )}

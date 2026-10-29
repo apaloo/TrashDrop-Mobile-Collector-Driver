@@ -354,14 +354,14 @@ const DisposalModal = ({
               </svg>
             </div>
             <h3 className="text-xl font-bold mb-2">Location Restriction</h3>
-            <p className="text-gray-600 mb-6">
+            <p className="text-td-sage mb-6">
               You must be within 50 meters of the selected dumping site to confirm disposal.
               Please move closer to the site and try again.
             </p>
             <div className="flex justify-center">
               <button
                 onClick={closeLocationModal}
-                className="px-6 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
               >
                 OK, I Understand
               </button>
@@ -372,11 +372,12 @@ const DisposalModal = ({
       
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-full flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
-          <h2 className="text-xl font-bold text-gray-800">Nearest Dumping Sites</h2>
+        <div className="p-4 border-b border-td-border flex justify-between items-center flex-shrink-0">
+          <h2 className="text-xl font-bold text-td-ink">Nearest Dumping Sites</h2>
           <button 
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
+            aria-label="Close"
+            className="text-td-sage hover:text-td-ink"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -385,14 +386,14 @@ const DisposalModal = ({
         </div>
         
         {/* View Tabs */}
-        <div className="px-4 pt-2 border-b border-gray-200 flex-shrink-0">
+        <div className="px-4 pt-2 border-b border-td-border flex-shrink-0">
           <div className="flex gap-1">
             <button
               onClick={() => setActiveTab('list')}
               className={`flex-1 py-2 px-4 text-sm font-medium rounded-t-lg transition-colors ${
                 activeTab === 'list'
                   ? 'bg-white text-green-600 border-b-2 border-green-500'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  : 'bg-gray-100 text-td-sage hover:bg-gray-200'
               }`}
             >
               <span className="flex items-center justify-center gap-2">
@@ -407,7 +408,7 @@ const DisposalModal = ({
               className={`flex-1 py-2 px-4 text-sm font-medium rounded-t-lg transition-colors ${
                 activeTab === 'map'
                   ? 'bg-white text-green-600 border-b-2 border-green-500'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  : 'bg-gray-100 text-td-sage hover:bg-gray-200'
               }`}
             >
               <span className="flex items-center justify-center gap-2">
@@ -421,7 +422,7 @@ const DisposalModal = ({
         </div>
         
         {/* Filter Buttons */}
-        <div className="px-4 pt-2 pb-1 border-b border-gray-100 flex-shrink-0">
+        <div className="px-4 pt-2 pb-1 border-b border-td-border flex-shrink-0">
           <div className="flex gap-1 overflow-x-auto pb-2 scrollbar-hide">
             {filterOptions.map(option => (
               <button
@@ -429,8 +430,8 @@ const DisposalModal = ({
                 onClick={() => setCenterTypeFilter(option.key)}
                 className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
                   centerTypeFilter === option.key
-                    ? 'bg-green-500 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-100 text-td-sage hover:bg-gray-200'
                 }`}
               >
                 <span>{option.icon}</span>
@@ -451,7 +452,7 @@ const DisposalModal = ({
           <div 
             className={`absolute inset-0 overflow-y-auto p-4 bg-white ${activeTab === 'list' ? 'z-20' : 'z-0'}`}
           >
-          <p className="text-sm text-gray-500 mb-3">
+          <p className="text-sm text-td-sage mb-3">
             {filteredCenters.length} sites found • Select a site to dispose waste
           </p>
           
@@ -464,21 +465,21 @@ const DisposalModal = ({
                 className={`border rounded-lg p-3 cursor-pointer transition-colors ${
                   selectedSite?.id === site.id 
                     ? 'border-green-500 bg-green-50' 
-                    : 'border-gray-200 hover:border-gray-300'
+                    : 'border-td-border hover:border-gray-300'
                 }`}
               >
                 <div className="flex justify-between items-start">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-medium text-gray-800 truncate">{site.name}</h3>
+                      <h3 className="font-medium text-td-ink truncate">{site.name}</h3>
                       {/* Center Type Badge */}
                       <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
                         site.center_type === 'landfill' ? 'bg-amber-100 text-amber-700' :
                         site.center_type === 'recycling_plant' ? 'bg-green-100 text-green-700' :
                         site.center_type === 'e_waste' ? 'bg-purple-100 text-purple-700' :
-                        site.center_type === 'treatment_plant' ? 'bg-blue-100 text-blue-700' :
+                        site.center_type === 'treatment_plant' ? 'bg-td-tonal text-td-forest' :
                         site.center_type === 'compost_plant' ? 'bg-lime-100 text-lime-700' :
-                        'bg-gray-100 text-gray-600'
+                        'bg-gray-100 text-td-sage'
                       }`}>
                         {site.center_type === 'landfill' ? 'Landfill' :
                          site.center_type === 'recycling_plant' ? 'Recycling' :
@@ -488,10 +489,10 @@ const DisposalModal = ({
                          site.center_type === 'container' ? 'Container' : 'Center'}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600 truncate">{site.address}</p>
+                    <p className="text-sm text-td-sage truncate">{site.address}</p>
                     {/* Region & District */}
                     {site.region && (
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-td-sage">
                         {site.district ? `${site.district}, ` : ''}{site.region}
                       </p>
                     )}
@@ -502,10 +503,10 @@ const DisposalModal = ({
                         </svg>
                         <span className="text-xs ml-1">{site.rating}</span>
                       </div>
-                      <span className="text-xs text-gray-500">{site.openHours}</span>
+                      <span className="text-xs text-td-sage">{site.openHours}</span>
                       {/* Waste Types */}
                       {site.waste_type && site.waste_type !== 'Not Specified' && (
-                        <span className="text-xs text-gray-400 truncate max-w-[120px]" title={site.waste_type}>
+                        <span className="text-xs text-td-sage truncate max-w-[120px]" title={site.waste_type}>
                           {site.waste_type.split(',').slice(0, 2).join(', ')}{site.waste_type.split(',').length > 2 ? '...' : ''}
                         </span>
                       )}
@@ -515,7 +516,7 @@ const DisposalModal = ({
                     <span className="text-sm font-medium text-green-600">{site.distance}</span>
                     {/* Phone indicator */}
                     {site.phone && (
-                      <a href={`tel:${site.phone}`} onClick={(e) => e.stopPropagation()} className="text-xs text-blue-500 hover:underline mt-1">
+                      <a href={`tel:${site.phone}`} onClick={(e) => e.stopPropagation()} className="text-xs text-td-forest hover:underline mt-1">
                         📞 Call
                       </a>
                     )}
@@ -523,7 +524,7 @@ const DisposalModal = ({
                 </div>
                 
                 {selectedSite?.id === site.id && (
-                  <div className="mt-3 pt-3 border-t border-gray-200">
+                  <div className="mt-3 pt-3 border-t border-td-border">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -655,8 +656,8 @@ const DisposalModal = ({
             <div className="h-full flex items-center justify-center bg-gray-100">
               <div className="text-center p-4">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-3"></div>
-                <p className="text-gray-600 font-medium">Acquiring GPS location...</p>
-                <p className="text-xs text-gray-500 mt-1">Please enable GPS for accurate map display</p>
+                <p className="text-td-sage font-medium">Acquiring GPS location...</p>
+                <p className="text-xs text-td-sage mt-1">Please enable GPS for accurate map display</p>
               </div>
             </div>
           )}
@@ -666,8 +667,8 @@ const DisposalModal = ({
             <div className="absolute bottom-2 left-2 right-2 bg-white rounded-lg shadow-lg p-3 z-[1000]">
               <div className="flex justify-between items-start">
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-gray-800 truncate">{selectedSite.name}</h4>
-                  <p className="text-xs text-gray-500 truncate">{selectedSite.address}</p>
+                  <h4 className="font-medium text-td-ink truncate">{selectedSite.name}</h4>
+                  <p className="text-xs text-td-sage truncate">{selectedSite.address}</p>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-sm font-medium text-green-600">{selectedSite.distance}</span>
                     {isWithinRange ? (
@@ -699,10 +700,10 @@ const DisposalModal = ({
         </div>
         
         {/* Footer with Action Buttons */}
-        <div className="border-t border-gray-200 p-4 flex justify-between">
+        <div className="border-t border-td-border p-4 flex justify-between">
           <button
             onClick={onClose}
-            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 border border-td-border-strong rounded-md text-td-ink hover:bg-td-cream transition-colors"
           >
             Cancel
           </button>
@@ -715,7 +716,7 @@ const DisposalModal = ({
                 ? 'bg-gray-400 cursor-not-allowed'
                 : selectedSite && !isWithinRange
                   ? 'bg-red-400 cursor-not-allowed'
-                  : 'bg-green-500 hover:bg-green-600'
+                  : 'bg-green-600 hover:bg-green-700'
             }`}
           >
             {isDisposing ? 'Confirming...' : 

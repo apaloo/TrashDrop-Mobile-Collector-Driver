@@ -24,15 +24,15 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
   const getStatusRibbonColor = (status) => {
     switch (status) {
       case AssignmentStatus.AVAILABLE:
-        return 'bg-blue-500';
+        return 'bg-blue-700';
       case AssignmentStatus.ACCEPTED:
-        return 'bg-amber-500';
+        return 'bg-amber-700';
       case AssignmentStatus.COMPLETED:
-        return 'bg-green-500';
+        return 'bg-green-600';
       case AssignmentStatus.DISPOSED:
-        return 'bg-purple-500';
+        return 'bg-purple-700';
       default:
-        return 'bg-gray-500';
+        return 'bg-gray-600';
     }
   };
 
@@ -60,7 +60,7 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
       case 'low':
         return 'bg-green-100 text-green-800 border-green-200';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-gray-100 text-td-ink border-td-border';
     }
   };
   
@@ -87,10 +87,10 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
         {/* Header */}
         <div className="flex justify-between items-start mb-3">
           <div>
-            <h3 className="font-semibold text-base text-gray-800 capitalize">{assignment.type} Assignment</h3>
+            <h3 className="font-semibold text-base text-td-ink capitalize">{assignment.type} Assignment</h3>
             <p className="text-sm text-gray-600">{assignment.location}</p>
           </div>
-          <span className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded-full font-medium">#{assignment.id}</span>
+          <span className="text-xs bg-gray-100 text-td-ink px-2 py-1 rounded-full font-medium">#{assignment.id}</span>
         </div>
         
         {/* Main Info */}
@@ -129,25 +129,25 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
         
         {/* Expandable Details */}
         {expanded && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
+          <div className="mt-3 pt-3 border-t border-td-border">
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div>
-                <p className="text-gray-500">Authority</p>
+                <p className="text-td-sage">Authority</p>
                 <p className="font-medium">{assignment.authority}</p>
               </div>
               <div>
-                <p className="text-gray-500">Created</p>
+                <p className="text-td-sage">Created</p>
                 <p className="font-medium">{formatDate(assignment.created_at)}</p>
               </div>
               {assignment.accepted_at && (
                 <div>
-                  <p className="text-gray-500">Accepted</p>
+                  <p className="text-td-sage">Accepted</p>
                   <p className="font-medium">{formatDate(assignment.accepted_at)}</p>
                 </div>
               )}
               {assignment.completed_at && (
                 <div>
-                  <p className="text-gray-500">Completed</p>
+                  <p className="text-td-sage">Completed</p>
                   <p className="font-medium">{formatDate(assignment.completed_at)}</p>
                 </div>
               )}
@@ -156,7 +156,7 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
         )}
         
         {/* Footer */}
-        <div className="flex flex-col mt-3 pt-3 border-t border-gray-100">
+        <div className="flex flex-col mt-3 pt-3 border-t border-td-border">
           {/* View More/Less Button */}
           <div className="mb-3">
             <button 
@@ -168,7 +168,7 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
                   setExpanded(!expanded);
                 }
               }} 
-              className="text-sm text-gray-500 hover:text-gray-700 flex items-center"
+              className="text-sm text-td-sage hover:text-td-ink flex items-center"
             >
               {expanded ? (
                 <>
@@ -193,7 +193,7 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
             {assignment.status === AssignmentStatus.AVAILABLE && (
               <button 
                 onClick={() => onAccept(assignment.id)} 
-                className="w-full py-3 bg-green-500 text-white rounded-md flex items-center justify-center hover:bg-green-600 transition-colors"
+                className="w-full py-3 bg-green-600 text-white rounded-md flex items-center justify-center hover:bg-green-700 transition-colors"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -207,7 +207,7 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
                 <div>
                   <button 
                     onClick={() => onNavigate(assignment)}
-                    className="py-3 bg-indigo-500 text-white rounded-md flex items-center justify-center hover:bg-indigo-600 transition-colors w-full"
+                    className="py-3 bg-indigo-700 text-white rounded-md flex items-center justify-center hover:bg-indigo-800 transition-colors w-full"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
@@ -217,7 +217,7 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
                 </div>
                 <button 
                   onClick={() => onComplete(assignment.id)}
-                  className="py-3 bg-green-500 text-white rounded-md flex items-center justify-center hover:bg-green-600 transition-colors"
+                  className="py-3 bg-green-600 text-white rounded-md flex items-center justify-center hover:bg-green-700 transition-colors"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -231,7 +231,7 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
               assignment.hasDisposed ? (
                 <button 
                   onClick={() => onViewReport(assignment.id)}
-                  className="w-full py-3 bg-purple-500 text-white rounded-md flex items-center justify-center hover:bg-purple-600 transition-colors"
+                  className="w-full py-3 bg-purple-700 text-white rounded-md flex items-center justify-center hover:bg-purple-800 transition-colors"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -242,7 +242,7 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
                 <div className="grid grid-cols-2 gap-2">
                   <button 
                     onClick={() => onDumpingSite(assignment.id)}
-                    className="py-3 bg-blue-500 text-white rounded-md flex items-center justify-center hover:bg-blue-600 transition-colors"
+                    className="py-3 bg-blue-700 text-white rounded-md flex items-center justify-center hover:bg-blue-800 transition-colors"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -252,7 +252,7 @@ const AssignmentCard = ({ assignment, onAccept, onComplete, onViewMore, onNaviga
                   </button>
                   <button 
                     onClick={() => onDispose(assignment.id)}
-                    className="py-3 bg-green-500 text-white rounded-md flex items-center justify-center hover:bg-green-600 transition-colors"
+                    className="py-3 bg-green-600 text-white rounded-md flex items-center justify-center hover:bg-green-700 transition-colors"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1306,7 +1306,7 @@ const AssignPage = () => {
         
         {/* Last Updated Info */}
         {lastUpdated && (
-          <div className="text-xs text-gray-500 text-center py-2 bg-white">
+          <div className="text-xs text-td-sage text-center py-2 bg-white">
             Last updated: {new Date(lastUpdated).toLocaleString()}
             <button 
               onClick={fetchAssignments} 
@@ -1346,7 +1346,7 @@ const AssignPage = () => {
                   <div className="animate-ping absolute inset-0 h-12 w-12 rounded-full border-2 border-green-400 opacity-30"></div>
                 </div>
                 <span className="text-gray-600 mt-4 font-medium">Loading assignments...</span>
-                <div className="mt-2 text-xs text-gray-500">Fetching latest data</div>
+                <div className="mt-2 text-xs text-td-sage">Fetching latest data</div>
               </div>
             </div>
           ) : activeTab === 'available' && assignments.available.length === 0 ? (
@@ -1483,7 +1483,7 @@ const AssignPage = () => {
       
       {/* Toast Notification */}
       {toast.show && (
-        <div className={`fixed bottom-20 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-md shadow-lg ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white`}>
+        <div className={`fixed bottom-20 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-md shadow-lg ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-700'} text-white`}>
           {toast.message}
         </div>
       )}

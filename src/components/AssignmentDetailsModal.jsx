@@ -55,7 +55,7 @@ const AssignmentDetailsModal = ({
       case 'low':
         return 'bg-green-100 text-green-800 border-green-200';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-gray-100 text-td-ink border-td-border';
     }
   };
 
@@ -100,11 +100,12 @@ const AssignmentDetailsModal = ({
     <div className={modalContainerClass}>
       <div className={modalContentClass}>
         {/* Header */}
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-800 capitalize">{assignment.type} Assignment</h2>
+        <div className="p-4 border-b border-td-border flex justify-between items-center">
+          <h2 className="text-xl font-bold text-td-ink capitalize">{assignment.type} Assignment</h2>
           <button 
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
+            aria-label="Close"
+            className="text-td-sage hover:text-td-ink"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -116,9 +117,9 @@ const AssignmentDetailsModal = ({
         <div className="overflow-y-auto p-4 flex-1">
           {/* Basic Info */}
           <div className="mb-4">
-            <p className="text-sm text-gray-600">{assignment.location}</p>
+            <p className="text-sm text-td-sage">{assignment.location}</p>
             <div className="flex items-center mt-1">
-              <span className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded-full font-medium mr-2">#{assignment.id}</span>
+              <span className="text-xs bg-gray-100 text-td-ink px-2 py-1 rounded-full font-medium mr-2">#{assignment.id}</span>
               <span className={`text-xs px-2 py-1 rounded-full font-medium ${getPriorityBadgeColor(assignment.priority)}`}>
                 {assignment.priority.charAt(0).toUpperCase() + assignment.priority.slice(1)} Priority
               </span>
@@ -145,69 +146,69 @@ const AssignmentDetailsModal = ({
                 </Marker>
               </MapContainer>
             </div>
-            <div className="p-2 bg-gray-50 border-t border-gray-200">
-              <p className="text-sm text-gray-600 font-medium">{assignment.location}</p>
-              <p className="text-xs text-gray-500">Distance: {assignment.distance}</p>
+            <div className="p-2 bg-td-cream border-t border-td-border">
+              <p className="text-sm text-td-sage font-medium">{assignment.location}</p>
+              <p className="text-xs text-td-sage">Distance: {assignment.distance}</p>
             </div>
           </div>
           
           {/* Details */}
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
-              <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Authority</p>
-              <p className="font-semibold text-gray-900">{assignment.authority}</p>
+              <p className="text-td-sage text-xs uppercase tracking-wide mb-1">Authority</p>
+              <p className="font-semibold text-td-ink">{assignment.authority}</p>
             </div>
             {!hidePayment && (
             <div>
-              <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Payment</p>
+              <p className="text-td-sage text-xs uppercase tracking-wide mb-1">Payment</p>
               <p className="font-semibold text-green-600 text-lg">₵{assignment.payment}</p>
             </div>
             )}
             <div>
-              <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Size of Dumping</p>
-              <p className="font-semibold text-gray-900 capitalize">{assignment.size || 'N/A'}</p>
+              <p className="text-td-sage text-xs uppercase tracking-wide mb-1">Size of Dumping</p>
+              <p className="font-semibold text-td-ink capitalize">{assignment.size || 'N/A'}</p>
             </div>
             <div>
-              <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Created</p>
-              <p className="font-semibold text-gray-900">{formatDate(assignment.created_at)}</p>
+              <p className="text-td-sage text-xs uppercase tracking-wide mb-1">Created</p>
+              <p className="font-semibold text-td-ink">{formatDate(assignment.created_at)}</p>
             </div>
             {assignment.accepted_at && (
               <div>
-                <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Accepted</p>
-                <p className="font-semibold text-gray-900">{formatDate(assignment.accepted_at)}</p>
+                <p className="text-td-sage text-xs uppercase tracking-wide mb-1">Accepted</p>
+                <p className="font-semibold text-td-ink">{formatDate(assignment.accepted_at)}</p>
               </div>
             )}
             {assignment.completed_at && (
               <div>
-                <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Completed</p>
-                <p className="font-semibold text-gray-900">{formatDate(assignment.completed_at)}</p>
+                <p className="text-td-sage text-xs uppercase tracking-wide mb-1">Completed</p>
+                <p className="font-semibold text-td-ink">{formatDate(assignment.completed_at)}</p>
               </div>
             )}
           </div>
           
           {/* Type of Waste */}
           <div className="mb-4">
-            <h4 className="font-medium text-gray-700 mb-1">Type of Waste</h4>
-            <p className="text-gray-600 text-sm bg-gray-50 p-3 rounded-md capitalize">
+            <h4 className="font-medium text-td-ink mb-1">Type of Waste</h4>
+            <p className="text-td-sage text-sm bg-td-cream p-3 rounded-md capitalize">
               {assignment.type || 'N/A'}
             </p>
           </div>
           
           {/* Photos */}
           <div className="mb-4">
-            <h4 className="font-medium text-gray-700 mb-1">Photos</h4>
-            <div className="bg-gray-50 p-3 rounded-md">
+            <h4 className="font-medium text-td-ink mb-1">Photos</h4>
+            <div className="bg-td-cream p-3 rounded-md">
               <PhotoGallery photos={assignment.photos} />
             </div>
           </div>
         </div>
         
         {/* Action Buttons */}
-        <div className="p-4 border-t border-gray-200 bg-white sticky bottom-0">
+        <div className="p-4 border-t border-td-border bg-white sticky bottom-0">
           {assignment.status === AssignmentStatus.AVAILABLE && (
             <button 
               onClick={() => onAccept(assignment.id)} 
-              className="w-full py-4 bg-green-500 text-white text-lg font-semibold rounded-lg flex items-center justify-center hover:bg-green-600 transition-colors"
+              className="w-full py-4 bg-green-600 text-white text-lg font-semibold rounded-lg flex items-center justify-center hover:bg-green-700 transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -229,7 +230,7 @@ const AssignmentDetailsModal = ({
               </button>
               <button 
                 onClick={() => onComplete(assignment.id)}
-                className="w-full py-4 bg-green-500 text-white text-lg font-semibold rounded-lg flex items-center justify-center hover:bg-green-600 transition-colors"
+                className="w-full py-4 bg-green-600 text-white text-lg font-semibold rounded-lg flex items-center justify-center hover:bg-green-700 transition-colors"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -265,7 +266,7 @@ const AssignmentDetailsModal = ({
                   </button>
                   <button 
                     onClick={() => onDispose(assignment.id)}
-                    className="w-full py-4 bg-green-500 text-white text-lg font-semibold rounded-lg flex items-center justify-center hover:bg-green-600 transition-colors"
+                    className="w-full py-4 bg-green-600 text-white text-lg font-semibold rounded-lg flex items-center justify-center hover:bg-green-700 transition-colors"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
