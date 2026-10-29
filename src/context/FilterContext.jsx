@@ -1,5 +1,6 @@
 import { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { logger } from '../utils/logger';
+import { WASTE_CATEGORIES } from '../utils/availableRequests';
 
 const FilterContext = createContext();
 
@@ -34,6 +35,13 @@ export const FilterProvider = ({ children }) => {
       const savedFilters = localStorage.getItem('collectorFilters');
       if (savedFilters) {
         const parsed = JSON.parse(savedFilters);
+        // A waste type button saved before the buttons changed (Hazardous is now
+        // Organic) starts again from All Types; a current one gets its current types
+        const savedType = parsed.activeFilter || 'all';
+        if (savedType !== 'all') {
+          parsed.activeFilter = WASTE_CATEGORIES[savedType] ? savedType : 'all';
+          parsed.wasteTypes = WASTE_CATEGORIES[savedType] || ['All Types'];
+        }
         const updatedFilters = {
           searchRadius: Math.min(Math.max(parsed.searchRadius || MAX_RADIUS, 1), MAX_RADIUS),
           wasteTypes: Array.isArray(parsed.wasteTypes) && parsed.wasteTypes.length > 0 

@@ -15,7 +15,7 @@ import { supabase, authService } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
 import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, createTricycleIcon, calculateBearing, getStopIcon, digitalBinMarkerIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
-import { filterAvailableRequests } from '../utils/availableRequests';
+import { filterAvailableRequests, WASTE_CATEGORIES } from '../utils/availableRequests';
 import useWakeLock from '../hooks/useWakeLock';
 import { audioAlertService } from '../services/audioAlertService';
 import { logger } from '../utils/logger';
@@ -173,30 +173,17 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters, getMaxRadius })
     updateFilters(updates);
     applyFilters();
   };
-  // Group waste types into categories
+  // Waste type buttons, matching the types households book (see WASTE_CATEGORIES)
   const wasteTypeCategories = {
     all: 'All Types',
     recyclable: 'Recyclable',
     general: 'General',
-    hazardous: 'Hazardous'
-  };
-  
-  // Map waste types to categories
-  const categoryMapping = {
-    recyclable: [WasteType.PLASTIC, WasteType.PAPER, WasteType.GLASS, WasteType.METAL, WasteType.RECYCLING],
-    general: [WasteType.GENERAL, WasteType.ORGANIC],
-    hazardous: [] // Add hazardous waste types if available
+    organic: 'Organic'
   };
   
   // Handle category selection
   const handleCategorySelect = (category) => {
-    let selectedTypes;
-    
-    if (category === 'all') {
-      selectedTypes = Object.values(WasteType);
-    } else {
-      selectedTypes = categoryMapping[category] || [];
-    }
+    const selectedTypes = category === 'all' ? ['All Types'] : WASTE_CATEGORIES[category];
     
     handleFilterChange({
       wasteTypes: selectedTypes,
@@ -264,6 +251,7 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters, getMaxRadius })
               <button
                 key={category}
                 onClick={() => handleCategorySelect(category)}
+                aria-pressed={safeFilters.activeFilter === category}
                 className={`py-2 px-4 rounded-md text-center transition-colors duration-200 ${
                   safeFilters.activeFilter === category 
                     ? 'bg-green-600 text-white' 
