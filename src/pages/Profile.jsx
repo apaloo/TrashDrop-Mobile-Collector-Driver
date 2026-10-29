@@ -133,12 +133,12 @@ const ProfilePage = () => {
   // Show loading state
   if (loading) {
     return (
-      <div className="flex flex-col min-h-screen bg-gray-50">
+      <div className="flex flex-col min-h-screen bg-td-cream">
         <TopNavBar user={null} />
         <div className="flex-grow mt-14 mb-16 px-4 py-3 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading profile...</p>
+            <p className="text-td-sage">Loading profile...</p>
           </div>
         </div>
         <BottomNavBar />
@@ -150,11 +150,11 @@ const ProfilePage = () => {
   // so this is only a fallback.
   if (!user) {
     return (
-      <div className="flex flex-col min-h-screen bg-gray-50">
+      <div className="flex flex-col min-h-screen bg-td-cream">
         <TopNavBar user={null} />
         <div className="flex-grow mt-14 mb-16 px-4 py-3 flex items-center justify-center">
           <div className="text-center">
-            <p className="text-lg font-bold text-gray-900 mb-4">Your sign-up isn't finished.</p>
+            <p className="text-lg font-bold text-td-ink mb-4">Your sign-up isn't finished.</p>
             <a href={signupPathFor(authUser?.phone)} className="inline-block px-6 py-3 bg-primary text-white font-bold rounded-xl">
               Finish sign-up
             </a>
@@ -166,28 +166,28 @@ const ProfilePage = () => {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
+    <div className="flex flex-col min-h-screen bg-td-cream">
       <TopNavBar user={user} />
       
       <div className="flex-grow mt-14 mb-16 px-4 py-3">
         <div className="flex flex-col items-center mb-6">
-          <div className="w-24 h-24 bg-gray-300 rounded-full mb-3 flex items-center justify-center text-4xl text-gray-700">
+          <div className="w-24 h-24 bg-gray-300 rounded-full mb-3 flex items-center justify-center text-4xl text-td-ink">
             {user.first_name[0]}{user.last_name[0]}
           </div>
           <h1 className="text-2xl font-bold">{user.first_name} {user.last_name}</h1>
-          <p className="text-sm text-gray-500 mt-1">Member since {new Date(user.joined_date).toLocaleDateString()}</p>
+          <p className="text-sm text-td-sage mt-1">Member since {new Date(user.joined_date).toLocaleDateString()}</p>
         </div>
         
         {/* Tab Navigation */}
         <div className="flex border-b mb-4 overflow-x-auto">
           <button
-            className={`flex-1 px-4 py-2 text-sm sm:text-base whitespace-nowrap ${activeTab === 'personal' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'}`}
+            className={`flex-1 px-4 py-2 text-sm sm:text-base whitespace-nowrap ${activeTab === 'personal' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-td-sage'}`}
             onClick={() => setActiveTab('personal')}
           >
             Personal Info
           </button>
           <button
-            className={`flex-1 px-4 py-2 text-sm sm:text-base whitespace-nowrap ${activeTab === 'vehicle' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-gray-500'}`}
+            className={`flex-1 px-4 py-2 text-sm sm:text-base whitespace-nowrap ${activeTab === 'vehicle' ? 'border-b-2 border-primary text-primary font-semibold' : 'text-td-sage'}`}
             onClick={() => setActiveTab('vehicle')}
           >
             Vehicle
@@ -261,7 +261,7 @@ const ProfilePage = () => {
                 
                 <div className="mb-3">
                   <label className="block text-sm font-medium mb-1">🗣️ Voice Navigation Language</label>
-                  <p className="text-xs text-gray-500 mb-2">Choose the language you hear during navigation</p>
+                  <p className="text-xs text-td-sage mb-2">Choose the language you hear during navigation</p>
                   <div className="space-y-1.5">
                     {SUPPORTED_LANGUAGES.map((lang) => (
                       <label
@@ -269,7 +269,7 @@ const ProfilePage = () => {
                         className={`flex items-center p-2.5 rounded-lg border-2 cursor-pointer transition-colors ${
                           editForm.preferred_language === lang.code
                             ? 'border-primary bg-primary/10'
-                            : 'border-gray-200 hover:border-gray-300'
+                            : 'border-td-border hover:border-gray-300'
                         }`}
                       >
                         <input
@@ -283,7 +283,7 @@ const ProfilePage = () => {
                         <span className="text-xl mr-2">{lang.flag}</span>
                         <div className="flex-1">
                           <span className="font-semibold text-sm">{lang.nativeLabel}</span>
-                          <span className="text-xs text-gray-500 ml-1">({lang.label})</span>
+                          <span className="text-xs text-td-sage ml-1">({lang.label})</span>
                         </div>
                         {editForm.preferred_language === lang.code && (
                           <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
@@ -304,7 +304,7 @@ const ProfilePage = () => {
                   </button>
                   <button 
                     type="button"
-                    className="btn bg-gray-300 text-gray-800"
+                    className="btn bg-gray-300 text-td-ink"
                     onClick={() => {
                       setEditForm({ ...user });
                       setIsEditing(false);
@@ -317,17 +317,17 @@ const ProfilePage = () => {
             ) : (
               <div className="space-y-3">
                 <div>
-                  <p className="text-sm text-gray-500">Phone</p>
+                  <p className="text-sm text-td-sage">Phone</p>
                   <p>{user.phone}</p>
                 </div>
                 
                 <div>
-                  <p className="text-sm text-gray-500">Region</p>
+                  <p className="text-sm text-td-sage">Region</p>
                   <p>{user.region}</p>
                 </div>
                 
                 <div>
-                  <p className="text-sm text-gray-500">🗣️ Voice Navigation Language</p>
+                  <p className="text-sm text-td-sage">🗣️ Voice Navigation Language</p>
                   <p>
                     {(() => {
                       const lang = SUPPORTED_LANGUAGES.find(l => l.code === user.preferred_language);
@@ -337,12 +337,12 @@ const ProfilePage = () => {
                 </div>
                 
                 <div>
-                  <p className="text-sm text-gray-500">Company</p>
+                  <p className="text-sm text-td-sage">Company</p>
                   <p>{user.company.name} ({user.company.id})</p>
                 </div>
                 
                 <div>
-                  <p className="text-sm text-gray-500">Role</p>
+                  <p className="text-sm text-td-sage">Role</p>
                   <p>{user.company.role}</p>
                 </div>
               </div>
@@ -359,17 +359,17 @@ const ProfilePage = () => {
             
             <div className="space-y-3">
               <div>
-                <p className="text-sm text-gray-500">Vehicle Type</p>
+                <p className="text-sm text-td-sage">Vehicle Type</p>
                 <p>{user.vehicle.type}</p>
               </div>
               
               <div>
-                <p className="text-sm text-gray-500">License Plate</p>
+                <p className="text-sm text-td-sage">License Plate</p>
                 <p>{user.vehicle.license_plate}</p>
               </div>
               
               <div>
-                <p className="text-sm text-gray-500">Color</p>
+                <p className="text-sm text-td-sage">Color</p>
                 <p>{user.vehicle.color}</p>
               </div>
             </div>

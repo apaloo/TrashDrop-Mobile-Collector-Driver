@@ -92,10 +92,11 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
       <div className="bg-white rounded-lg w-full max-w-md">
         <div className="p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-bold text-gray-900">Cash Out</h2>
+            <h2 className="text-2xl font-bold text-td-ink">Cash Out</h2>
             <button 
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-700"
+              aria-label="Close"
+              className="text-td-sage hover:text-td-ink"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -110,12 +111,12 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Withdrawal Submitted!</h3>
-              <p className="text-gray-500 mb-6">
+              <h3 className="text-lg font-medium text-td-ink mb-2">Withdrawal Submitted!</h3>
+              <p className="text-td-sage mb-6">
                 ₵{(paidAmount ?? parseFloat(amount)).toFixed(2)} is being sent to your {momoProvider.toUpperCase()} account. You'll receive it shortly.
               </p>
               {paidAmount != null && paidAmount < parseFloat(amount) && (
-                <p className="text-sm text-gray-500 -mt-4 mb-6">
+                <p className="text-sm text-td-sage -mt-4 mb-6">
                   Earnings are paid out whole, so this is the most that fits ₵{parseFloat(amount).toFixed(2)}. The rest stays in your balance.
                 </p>
               )}
@@ -123,12 +124,12 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
           ) : (
             <form onSubmit={handleSubmit}>
               <div className="mb-4">
-                <label className="block text-gray-900 text-base font-bold mb-2" htmlFor="amount">
+                <label className="block text-td-ink text-base font-bold mb-2" htmlFor="amount">
                   Amount (₵)
                 </label>
-                <p className="text-xs text-gray-500 mb-2">Earnings are paid out whole, so you may receive a little less than you type.</p>
+                <p className="text-xs text-td-sage mb-2">Earnings are paid out whole, so you may receive a little less than you type.</p>
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">₵</span>
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-td-sage">₵</span>
                   <input
                     id="amount"
                     type="text"
@@ -143,7 +144,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
                   <div className="mt-1">
                     <p className="text-sm text-green-600 font-semibold">Available for withdrawal: ₵{withdrawableAmount.toFixed(2)}</p>
                     {hasPendingEarnings && (
-                      <p className="text-xs text-amber-600 mt-1">
+                      <p className="text-xs text-amber-700 mt-1">
                         + ₵{pendingDisposalAmount.toFixed(2)} pending — dispose to unlock
                       </p>
                     )}
@@ -154,7 +155,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
                       No funds available for withdrawal
                     </p>
                     {hasPendingEarnings && (
-                      <p className="text-xs text-amber-600 mt-1">
+                      <p className="text-xs text-amber-700 mt-1">
                         You have ₵{pendingDisposalAmount.toFixed(2)} pending disposal. Dispose your collected waste at a facility to unlock these funds.
                       </p>
                     )}
@@ -163,7 +164,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
               </div>
               
               <div className="mb-4">
-                <label className="block text-gray-900 text-base font-bold mb-2">
+                <label className="block text-td-ink text-base font-bold mb-2">
                   Payment Method
                 </label>
                 <div className="bg-gray-100 p-3 rounded-lg">
@@ -177,7 +178,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
                       onChange={() => setPaymentMethod('momo')}
                       className="h-4 w-4 text-primary"
                     />
-                    <label htmlFor="momo" className="ml-2 text-gray-900 font-medium">
+                    <label htmlFor="momo" className="ml-2 text-td-ink font-medium">
                       Mobile Money (MOMO)
                     </label>
                   </div>
@@ -187,7 +188,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
               {paymentMethod === 'momo' && (
                 <>
                   <div className="mb-4">
-                    <label className="block text-gray-900 text-base font-bold mb-2">
+                    <label className="block text-td-ink text-base font-bold mb-2">
                       MOMO Provider
                     </label>
                     <div className="grid grid-cols-3 gap-2">
@@ -207,7 +208,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
                       </button>
                       <button
                         type="button"
-                        className={`py-3 px-3 rounded-lg border-2 font-bold transition-all ${momoProvider === 'airtel' ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-300' : 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'}`}
+                        className={`py-3 px-3 rounded-lg border-2 font-bold transition-all ${momoProvider === 'airtel' ? 'bg-blue-700 text-white border-blue-800 ring-2 ring-blue-300' : 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'}`}
                         onClick={() => setMomoProvider('airtel')}
                       >
                         AirtelTigo
@@ -216,7 +217,7 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
                   </div>
                   
                   <div className="mb-6">
-                    <label className="block text-gray-900 text-base font-bold mb-2" htmlFor="momoNumber">
+                    <label className="block text-td-ink text-base font-bold mb-2" htmlFor="momoNumber">
                       MOMO Number
                     </label>
                     <input
@@ -243,14 +244,14 @@ const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, 
                 <button
                   type="button"
                   onClick={onClose}
-                  className="mr-2 px-4 py-2 text-gray-500 hover:text-gray-700"
+                  className="mr-2 px-4 py-2 text-td-sage hover:text-td-ink"
                   disabled={isLoading}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 flex items-center"
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-opacity-50 flex items-center"
                   disabled={isLoading}
                 >
                   {isLoading ? (
@@ -280,7 +281,7 @@ const EarningsLineChart = ({ data, period }) => {
   // Guard against undefined or empty data
   if (!data || !Array.isArray(data) || data.length === 0) {
     return (
-      <div className="mt-4 mb-6 text-center text-gray-500">
+      <div className="mt-4 mb-6 text-center text-td-sage">
         <p>No earnings data available</p>
       </div>
     );
@@ -291,8 +292,8 @@ const EarningsLineChart = ({ data, period }) => {
   return (
     <div className="mt-4 mb-6">
       <div className="flex justify-between mb-2">
-        <span className="text-sm text-gray-500">Earnings ({period})</span>
-        <span className="text-sm text-gray-500">Max: ₵{maxValue.toFixed(2)}</span>
+        <span className="text-sm text-td-sage">Earnings ({period})</span>
+        <span className="text-sm text-td-sage">Max: ₵{maxValue.toFixed(2)}</span>
       </div>
       <div className="flex items-end h-32 space-x-1">
         {data.map((item, index) => (
@@ -332,17 +333,17 @@ const TransactionItem = ({ transaction }) => {
   };
 
   return (
-    <div className="py-3 border-b border-gray-200">
+    <div className="py-3 border-b border-td-border">
       <div className="flex justify-between">
         <div>
           <p className="font-medium">{formatTransactionType(transaction.type)}</p>
-          <p className="text-xs text-gray-500">{transaction.id}</p>
+          <p className="text-xs text-td-sage">{transaction.id}</p>
         </div>
         <div className="text-right">
           <p className={`font-bold ${transaction.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
             {transaction.amount > 0 ? '+' : ''}₵{parseFloat(transaction.amount).toFixed(2)}
           </p>
-          <p className="text-xs text-gray-500">{new Date(transaction.date).toLocaleDateString()}</p>
+          <p className="text-xs text-td-sage">{new Date(transaction.date).toLocaleDateString()}</p>
         </div>
       </div>
       {transaction.note && (
@@ -351,7 +352,7 @@ const TransactionItem = ({ transaction }) => {
             ? 'bg-amber-100 text-amber-800 border border-amber-300' 
             : transaction.note === 'Disposed'
               ? 'bg-green-100 text-green-800 border border-green-300'
-              : 'bg-gray-100 text-gray-700 border border-gray-300'
+              : 'bg-gray-100 text-td-ink border border-td-border-strong'
         }`}>
           {transaction.note === 'Pending disposal' && '🚚 '}
           {transaction.note === 'Disposed' && '✅ '}
@@ -666,7 +667,7 @@ const EarningsPage = () => {
   // Show loading state only during initial auth check or first data load
   if (!hasInitiallyChecked || (isLoading && transactions.length === 0)) {
     return (
-      <div className="flex flex-col min-h-screen bg-gray-50">
+      <div className="flex flex-col min-h-screen bg-td-cream">
         <div className="flex-grow mt-14 mb-16 flex items-center justify-center">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -683,11 +684,11 @@ const EarningsPage = () => {
   // Show authentication required state (redirect handled by useEffect above)
   if (!user?.id) {
     return (
-      <div className="flex flex-col min-h-screen bg-gray-50">
+      <div className="flex flex-col min-h-screen bg-td-cream">
         <div className="flex-grow mt-14 mb-16 flex items-center justify-center">
           <div className="text-center">
             <p className="text-gray-600">Authentication required to view earnings</p>
-            <p className="text-sm text-gray-500 mt-2">Redirecting to login...</p>
+            <p className="text-sm text-td-sage mt-2">Redirecting to login...</p>
           </div>
         </div>
         <BottomNavBar />
@@ -696,7 +697,7 @@ const EarningsPage = () => {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 relative">
+    <div className="flex flex-col min-h-screen bg-td-cream relative">
       <TopNavBar user={user} />
       
       {/* Overlay loader for refresh - keeps content visible */}
@@ -704,33 +705,33 @@ const EarningsPage = () => {
         <div className="fixed inset-0 bg-white/70 z-50 flex items-center justify-center">
           <div className="bg-white rounded-xl p-6 shadow-lg flex flex-col items-center">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mb-3"></div>
-            <p className="text-gray-700 font-medium">Refreshing data...</p>
+            <p className="text-td-ink font-medium">Refreshing data...</p>
           </div>
         </div>
       )}
       
       <div className="flex-grow mt-14 mb-16 flex flex-col">
         {/* Fixed Header Section */}
-        <div className="fixed top-14 left-0 right-0 bg-gray-50 z-10 px-4 pt-3 pb-2">
+        <div className="fixed top-14 left-0 right-0 bg-td-cream z-10 px-4 pt-3 pb-2">
         <h1 className="text-2xl font-bold mb-4">Earnings</h1>
         
         {/* Period Selector */}
         <div className="flex justify-start mb-4">
           <div className="inline-flex rounded-md shadow-sm">
             <button
-              className={`px-4 py-2 text-sm rounded-l-md ${period === 'week' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700'}`}
+              className={`px-4 py-2 text-sm rounded-l-md ${period === 'week' ? 'bg-primary text-white' : 'bg-gray-100 text-td-ink'}`}
               onClick={() => setPeriod('week')}
             >
               Week
             </button>
             <button
-              className={`px-4 py-2 text-sm ${period === 'month' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700'}`}
+              className={`px-4 py-2 text-sm ${period === 'month' ? 'bg-primary text-white' : 'bg-gray-100 text-td-ink'}`}
               onClick={() => setPeriod('month')}
             >
               Month
             </button>
             <button
-              className={`px-4 py-2 text-sm rounded-r-md ${period === 'year' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700'}`}
+              className={`px-4 py-2 text-sm rounded-r-md ${period === 'year' ? 'bg-primary text-white' : 'bg-gray-100 text-td-ink'}`}
               onClick={() => setPeriod('year')}
             >
               Year
@@ -741,7 +742,7 @@ const EarningsPage = () => {
         {/* Cash Out Button */}
         <button 
           onClick={() => setShowCashOutModal(true)}
-          className="w-full bg-primary text-white py-3 rounded-lg flex items-center justify-center mb-6 shadow-md hover:bg-green-600 transition-colors"
+          className="w-full bg-primary text-white py-3 rounded-lg flex items-center justify-center mb-6 shadow-md hover:bg-green-700 transition-colors"
         >
           <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
@@ -798,15 +799,15 @@ const EarningsPage = () => {
         {/* Summary Cards */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-white p-4 rounded-lg shadow">
-            <p className="text-gray-500 text-sm mb-1">Total Earnings</p>
+            <p className="text-td-sage text-sm mb-1">Total Earnings</p>
             <p className="text-xl font-bold">₵{totalEarnings.toFixed(2)}</p>
           </div>
           <div className="bg-white p-4 rounded-lg shadow">
-            <p className="text-gray-500 text-sm mb-1">Completed Jobs</p>
+            <p className="text-td-sage text-sm mb-1">Completed Jobs</p>
             <p className="text-xl font-bold">{stats.completedJobs}</p>
           </div>
           <div className="bg-white p-4 rounded-lg shadow">
-            <p className="text-gray-500 text-sm mb-1">Avg. Per Job</p>
+            <p className="text-td-sage text-sm mb-1">Avg. Per Job</p>
             <p className="text-xl font-bold">₵{stats.avgPerJob.toFixed(2)}</p>
           </div>
         </div>
@@ -828,7 +829,7 @@ const EarningsPage = () => {
                 <span className="text-3xl mr-3">💵</span>
                 <div>
                   <span className="text-lg font-bold text-yellow-800">Cash</span>
-                  <p className="text-xs text-yellow-600">Already received from client</p>
+                  <p className="text-xs text-yellow-700">Already received from client</p>
                 </div>
               </div>
               <span className="text-2xl font-bold text-yellow-700">₵{(paymentModeBreakdown?.cash?.collected ?? cashCollectedEarnings ?? 0).toFixed(2)}</span>
@@ -853,7 +854,7 @@ const EarningsPage = () => {
                   <span className="text-3xl mr-3">🚚</span>
                   <div>
                     <span className="text-lg font-bold text-amber-800">Pending</span>
-                    <p className="text-xs text-amber-600">Estimated — dispose to unlock</p>
+                    <p className="text-xs text-amber-700">Estimated — dispose to unlock</p>
                   </div>
                 </div>
                 <span className="text-2xl font-bold text-amber-700">∼₵{estimatedPendingEarnings.toFixed(2)}</span>
@@ -865,7 +866,7 @@ const EarningsPage = () => {
         {/* Revenue Split - Collector vs Platform (SOP v4.5.6) */}
         {grossRevenue > 0 && (
           <div className="bg-white rounded-lg shadow mb-6 p-4">
-            <h3 className="text-lg font-bold text-gray-800 mb-3">Revenue Split</h3>
+            <h3 className="text-lg font-bold text-td-ink mb-3">Revenue Split</h3>
             <div className="mb-4">
               <div className="flex justify-between text-sm text-gray-600 mb-1">
                 <span>Gross Revenue (User Paid)</span>
@@ -878,7 +879,7 @@ const EarningsPage = () => {
                 </div>
               )}
               {paymentModeBreakdown && ((paymentModeBreakdown.cash?.grossRevenue || paymentModeBreakdown.cash?.collected) > 0 || (paymentModeBreakdown.digital?.grossRevenue || paymentModeBreakdown.digital?.collected) > 0) && (
-                <div className="flex gap-3 text-xs text-gray-500 mb-2">
+                <div className="flex gap-3 text-xs text-td-sage mb-2">
                   {(paymentModeBreakdown.cash?.grossRevenue || paymentModeBreakdown.cash?.collected || 0) > 0 && (
                     <span className="bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded">
                       💵 Cash: ₵{(paymentModeBreakdown.cash.grossRevenue ?? paymentModeBreakdown.cash.collected).toFixed(2)}
@@ -894,14 +895,14 @@ const EarningsPage = () => {
               <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
                 <div className="flex h-full">
                   <div 
-                    className="bg-green-500 h-full flex items-center justify-center text-xs text-white font-medium"
+                    className="bg-green-600 h-full flex items-center justify-center text-xs text-white font-medium"
                     style={{ width: `${hasShares ? stats.collectorSharePercent : 87}%` }}
                   >
                     {hasShares ? stats.collectorSharePercent : '--'}%
                   </div>
                   {(!hasShares || stats.platformSharePercent > 0) && (
                     <div 
-                      className="bg-blue-500 h-full flex items-center justify-center text-xs text-white font-medium"
+                      className="bg-blue-700 h-full flex items-center justify-center text-xs text-white font-medium"
                       style={{ width: `${hasShares ? stats.platformSharePercent : 13}%` }}
                     >
                       {hasShares ? stats.platformSharePercent : '--'}%
@@ -934,14 +935,14 @@ const EarningsPage = () => {
         {/* Payment Mode Settlement (Cash vs Digital) */}
         {stats.paymentModeBreakdown && (stats.paymentModeBreakdown.cash.collected > 0 || stats.paymentModeBreakdown.digital.collected > 0) && (
           <div className="bg-white rounded-lg shadow mb-6 p-4">
-            <h3 className="text-lg font-bold text-gray-800 mb-3">Payment Settlement</h3>
+            <h3 className="text-lg font-bold text-td-ink mb-3">Payment Settlement</h3>
             <div className="space-y-3">
               {/* Cash Payments */}
               {stats.paymentModeBreakdown.cash.collected > 0 && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center">
-                      <span className="text-yellow-600 mr-2">💵</span>
+                      <span className="text-yellow-700 mr-2">💵</span>
                       <span className="text-yellow-800 font-medium">Cash Collected</span>
                     </div>
                     <span className="font-bold text-yellow-700">₵{stats.paymentModeBreakdown.cash.collected.toFixed(2)}</span>
@@ -972,21 +973,21 @@ const EarningsPage = () => {
               
               {/* Reconciliation Section */}
               {stats.paymentModeBreakdown.reconciliation && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                  <p className="text-sm font-medium text-gray-700 mb-2">📊 Reconciliation</p>
+                <div className="bg-td-cream border border-td-border rounded-lg p-3">
+                  <p className="text-sm font-medium text-td-ink mb-2">📊 Reconciliation</p>
                   
                   {/* Commission deducted from digital payout */}
                   {stats.paymentModeBreakdown.reconciliation.commissionDeducted > 0 && (
                     <div className="flex items-center justify-between text-sm mb-1">
                       <span className="text-gray-600">Commission deducted from payout:</span>
-                      <span className="font-semibold text-orange-600">-₵{stats.paymentModeBreakdown.reconciliation.commissionDeducted.toFixed(2)}</span>
+                      <span className="font-semibold text-orange-700">-₵{stats.paymentModeBreakdown.reconciliation.commissionDeducted.toFixed(2)}</span>
                     </div>
                   )}
                   
                   {/* Net payout to collector (after deduction) */}
                   {stats.paymentModeBreakdown.reconciliation.netPayoutToCollector > 0 && (
-                    <div className="flex items-center justify-between text-sm border-t border-gray-200 pt-2 mt-2">
-                      <span className="text-gray-700 font-medium">Net payout to you:</span>
+                    <div className="flex items-center justify-between text-sm border-t border-td-border pt-2 mt-2">
+                      <span className="text-td-ink font-medium">Net payout to you:</span>
                       <span className="font-bold text-green-600">₵{stats.paymentModeBreakdown.reconciliation.netPayoutToCollector.toFixed(2)}</span>
                     </div>
                   )}
@@ -1028,11 +1029,11 @@ const EarningsPage = () => {
                 </div>
               ) : (
                 // Fully settled
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <div className="bg-td-cream border border-td-border rounded-lg p-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
                       <span className="mr-2">🤝</span>
-                      <span className="font-medium text-gray-700">Fully Settled</span>
+                      <span className="font-medium text-td-ink">Fully Settled</span>
                     </div>
                     <span className="font-bold text-gray-600">₵0.00</span>
                   </div>
@@ -1045,51 +1046,51 @@ const EarningsPage = () => {
         {/* Earnings Breakdown (SOP v4.5.6) */}
         {detailedEarnings && detailedEarnings.buckets && (
           <div className="bg-white rounded-lg shadow mb-6 p-4">
-            <h3 className="text-lg font-bold text-gray-800 mb-3">Earnings Breakdown</h3>
+            <h3 className="text-lg font-bold text-td-ink mb-3">Earnings Breakdown</h3>
             <div className="space-y-2">
               <div className="flex justify-between items-center py-2 border-b">
-                <span className="text-gray-700">💼 Base Core Pickups</span>
+                <span className="text-td-ink">💼 Base Core Pickups</span>
                 <span className="font-semibold text-green-600">₵{detailedEarnings.buckets.core.toFixed(0)}</span>
               </div>
               
               {detailedEarnings.buckets.urgent > 0 && (
                 <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-gray-700">⚡ Urgent Bonuses</span>
-                  <span className="font-semibold text-orange-600">₵{detailedEarnings.buckets.urgent.toFixed(0)}</span>
+                  <span className="text-td-ink">⚡ Urgent Bonuses</span>
+                  <span className="font-semibold text-orange-700">₵{detailedEarnings.buckets.urgent.toFixed(0)}</span>
                 </div>
               )}
               
               {detailedEarnings.buckets.distance > 0 && (
                 <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-gray-700">📍 Distance Bonuses</span>
+                  <span className="text-td-ink">📍 Distance Bonuses</span>
                   <span className="font-semibold text-blue-600">₵{detailedEarnings.buckets.distance.toFixed(0)}</span>
                 </div>
               )}
               
               {detailedEarnings.buckets.surge > 0 && (
                 <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-gray-700">🔥 Surge Bonuses</span>
+                  <span className="text-td-ink">🔥 Surge Bonuses</span>
                   <span className="font-semibold text-red-600">₵{detailedEarnings.buckets.surge.toFixed(0)}</span>
                 </div>
               )}
               
               {detailedEarnings.buckets.tips > 0 && (
                 <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-gray-700">💵 Tips Received</span>
+                  <span className="text-td-ink">💵 Tips Received</span>
                   <span className="font-semibold text-purple-600">₵{detailedEarnings.buckets.tips.toFixed(0)}</span>
                 </div>
               )}
               
               {detailedEarnings.buckets.recyclables > 0 && (
                 <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-gray-700">♻️ Recyclables Share</span>
+                  <span className="text-td-ink">♻️ Recyclables Share</span>
                   <span className="font-semibold text-teal-600">₵{detailedEarnings.buckets.recyclables.toFixed(0)}</span>
                 </div>
               )}
               
               {detailedEarnings.buckets.loyalty > 0 && (
                 <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-gray-700">⭐ Loyalty Cashback</span>
+                  <span className="text-td-ink">⭐ Loyalty Cashback</span>
                   <span className="font-semibold text-indigo-600">₵{detailedEarnings.buckets.loyalty.toFixed(0)}</span>
                 </div>
               )}
@@ -1129,7 +1130,7 @@ const EarningsPage = () => {
           <button
             className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg text-base font-bold transition-all ${
               activeTab === 'summary' 
-                ? 'bg-green-500 text-white shadow-md' 
+                ? 'bg-green-600 text-white shadow-md' 
                 : 'bg-transparent text-gray-600 hover:bg-gray-200'
             }`}
             onClick={() => setActiveTab('summary')}
@@ -1140,7 +1141,7 @@ const EarningsPage = () => {
           <button
             className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg text-base font-bold transition-all ${
               activeTab === 'transactions' 
-                ? 'bg-green-500 text-white shadow-md' 
+                ? 'bg-green-600 text-white shadow-md' 
                 : 'bg-transparent text-gray-600 hover:bg-gray-200'
             }`}
             onClick={() => setActiveTab('transactions')}
@@ -1159,7 +1160,7 @@ const EarningsPage = () => {
             {/* Stats Summary */}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div className="card">
-                <p className="text-sm text-gray-500 mb-1">This {period.charAt(0).toUpperCase() + period.slice(1)}</p>
+                <p className="text-sm text-td-sage mb-1">This {period.charAt(0).toUpperCase() + period.slice(1)}</p>
                 <p className="text-xl font-bold">
                   ₵{period === 'week' ? (weeklyEarnings || 0).toFixed(2) : 
                       period === 'month' ? (monthlyEarnings || 0).toFixed(2) : 
@@ -1167,7 +1168,7 @@ const EarningsPage = () => {
                 </p>
               </div>
               <div className="card">
-                <p className="text-sm text-gray-500 mb-1">Avg. per Job</p>
+                <p className="text-sm text-td-sage mb-1">Avg. per Job</p>
                 <p className="text-xl font-bold">₵{(stats.avgPerJob || 0).toFixed(2)}</p>
               </div>
             </div>
@@ -1202,7 +1203,7 @@ const EarningsPage = () => {
                 <TransactionItem key={transaction.id || index} transaction={transaction} />
               ))}
               {filteredTransactions.length === 0 && (
-                <p className="text-gray-500 text-center py-4">
+                <p className="text-td-sage text-center py-4">
                   {transactions.length === 0 ? 'No transactions yet' : `No transactions this ${period}`}
                 </p>
               )}
@@ -1214,7 +1215,7 @@ const EarningsPage = () => {
                 <button
                   onClick={() => setTransactionPage(p => Math.max(1, p - 1))}
                   disabled={transactionPage === 1}
-                  className={`px-3 py-1 rounded ${transactionPage === 1 ? 'bg-gray-200 text-gray-400' : 'bg-primary text-white'}`}
+                  className={`px-3 py-1 rounded ${transactionPage === 1 ? 'bg-gray-200 text-td-sage' : 'bg-primary text-white'}`}
                 >
                   Previous
                 </button>
@@ -1224,7 +1225,7 @@ const EarningsPage = () => {
                 <button
                   onClick={() => setTransactionPage(p => Math.min(totalPages, p + 1))}
                   disabled={transactionPage === totalPages}
-                  className={`px-3 py-1 rounded ${transactionPage === totalPages ? 'bg-gray-200 text-gray-400' : 'bg-primary text-white'}`}
+                  className={`px-3 py-1 rounded ${transactionPage === totalPages ? 'bg-gray-200 text-td-sage' : 'bg-primary text-white'}`}
                 >
                   Next
                 </button>

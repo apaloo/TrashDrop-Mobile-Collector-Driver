@@ -28,7 +28,7 @@ const SignOutSection = () => {
   };
 
   return (
-    <div className="mt-8 mb-4 border-t border-gray-200 pt-6">
+    <div className="mt-8 mb-4 border-t border-td-border pt-6">
       <button
         type="button"
         onClick={() => setIsModalOpen(true)}
@@ -36,7 +36,7 @@ const SignOutSection = () => {
       >
         Sign out
       </button>
-      <p className="mt-2 text-xs text-gray-500 text-center">You'll need a code sent to your phone to sign back in.</p>
+      <p className="mt-2 text-xs text-td-sage text-center">You'll need a code sent to your phone to sign back in.</p>
 
       <LogoutConfirmationModal
         isOpen={isModalOpen}

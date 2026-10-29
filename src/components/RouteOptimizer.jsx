@@ -593,7 +593,7 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
               </span>
             )}
             <span 
-              className={`text-xs ${cachedTileCount > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'} px-2 py-1 rounded flex items-center whitespace-nowrap`}
+              className={`text-xs ${cachedTileCount > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-td-sage'} px-2 py-1 rounded flex items-center whitespace-nowrap`}
               title={`${cachedTileCount} map tiles cached for offline use`}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -621,17 +621,17 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
       )}
       
       {/* Fixed position container for route info and navigation button */}
-      <div className="sticky top-0 bg-white shadow-md border-b border-gray-200 mb-2">
+      <div className="sticky top-0 bg-white shadow-md border-b border-td-border mb-2">
         {isLoading ? (
           <div className="flex justify-center items-center py-4">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
-            <span className="ml-2 text-gray-600">Calculating optimal route...</span>
+            <span className="ml-2 text-td-sage">Calculating optimal route...</span>
           </div>
         ) : optimizedRoute.length === 0 ? (
           <div className="py-6 text-center px-4">
             <div className="text-5xl mb-3">🗺️</div>
-            <p className="text-lg font-bold text-gray-700 mb-2">No jobs on your route</p>
-            <p className="text-sm text-gray-500 mb-4">Accept jobs first, then your route will show here.</p>
+            <p className="text-lg font-bold text-td-ink mb-2">No jobs on your route</p>
+            <p className="text-sm text-td-sage mb-4">Accept jobs first, then your route will show here.</p>
             <div className="bg-green-50 rounded-xl px-5 py-3 inline-block">
               <p className="text-sm text-green-800">
                 👇 Tap <span className="font-bold">Request</span> or <span className="font-bold">Assign</span> below to get jobs
@@ -639,22 +639,22 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
             </div>
           </div>
         ) : (
-          <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+          <div className="bg-td-cream p-3 rounded-lg border border-td-border">
             {farStopCount > 0 && (
               <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900" role="alert" data-testid="far-stops-warning">
                 <p className="font-bold">⚠️ {farStopCount === 1 ? '1 job is' : `${farStopCount} jobs are`} over {FAR_STOP_KM} km away</p>
                 <p className="text-sm mt-1">Check the job's location before you go. Tap Info on the job below.</p>
               </div>
             )}
-            <div className="flex justify-between text-sm text-gray-700 font-medium mb-3">
+            <div className="flex justify-between text-sm text-td-ink font-medium mb-3">
               <div className="flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-td-sage mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                 </svg>
                 <span>Total distance: <span className="text-green-600">{totalDistance.toFixed(1)} km</span></span>
               </div>
               <div className="flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-td-sage mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span>Estimated time: <span className="text-green-600">{formatDuration(estimatedTime)}</span></span>
@@ -664,7 +664,7 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
             <div className="flex space-x-2 mb-2">
               <button
                 onClick={navigateToRoute}
-                className="flex-1 py-2.5 bg-green-500 text-white rounded-md flex items-center justify-center hover:bg-green-600 transition-colors font-medium shadow-sm"
+                className="flex-1 py-2.5 bg-green-600 text-white rounded-md flex items-center justify-center hover:bg-green-700 transition-colors font-medium shadow-sm"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
@@ -674,7 +674,7 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
               
               <button
                 onClick={exportRoute}
-                className="px-4 py-2.5 bg-blue-500 text-white rounded-md flex items-center justify-center hover:bg-blue-600 transition-colors font-medium shadow-sm"
+                className="px-4 py-2.5 bg-green-600 text-white rounded-md flex items-center justify-center hover:bg-green-700 transition-colors font-medium shadow-sm"
                 title="Share or export route details"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -688,8 +688,8 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
             {/*
             <div className="flex space-x-2">
               {isSavingTiles ? (
-                <div className="w-full py-2 bg-blue-100 text-blue-800 rounded-md flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
+                <div className="w-full py-2 bg-td-tonal text-td-forest rounded-md flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-td-forest mr-2"></div>
                   <span>Saving map tiles... {savingProgress}%</span>
                 </div>
               ) : isOfflineMode ? (
@@ -705,7 +705,7 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
               ) : (
                 <button
                   onClick={handleSaveMapTiles}
-                  className="flex-1 py-2 bg-blue-100 text-blue-700 rounded-md flex items-center justify-center hover:bg-blue-200 transition-colors"
+                  className="flex-1 py-2 bg-td-tonal text-td-forest rounded-md flex items-center justify-center hover:bg-blue-200 transition-colors"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -749,11 +749,13 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
                 <Marker 
                   position={[userLocation.latitude, userLocation.longitude]}
                   icon={tricycleIcon}
+                  title="Your location"
+                  alt="Your location"
                 >
                   <Popup>
                     <div className="text-center">
                       <strong>Your Location</strong>
-                      <p className="text-xs text-gray-600">Starting point</p>
+                      <p className="text-xs text-td-sage">Starting point</p>
                     </div>
                   </Popup>
                 </Marker>
@@ -769,18 +771,18 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
                   >
                     <Popup>
                       <div>
-                        <div className={`text-sm font-bold ${stop.type === 'request' ? 'text-red-600' : 'text-blue-600'} mb-1`}>
+                        <div className={`text-sm font-bold ${stop.type === 'request' ? 'text-red-600' : 'text-blue-700'} mb-1`}>
                           {stop.type === 'request' ? 'Request' : 'Assignment'} #{index + 1}
                         </div>
                         <p className="text-xs">{stop.location}</p>
-                        <p className="text-xs text-gray-600">{stop.customer_name}</p>
+                        <p className="text-xs text-td-sage">{stop.customer_name}</p>
                         {stop.waste_type && (
                           <p className="text-xs mt-1 bg-gray-100 px-2 py-1 rounded inline-block">
                             {stop.waste_type}
                           </p>
                         )}
-                        <div className="mt-2 pt-2 border-t border-gray-200">
-                          <p className="text-xs text-gray-500">
+                        <div className="mt-2 pt-2 border-t border-td-border">
+                          <p className="text-xs text-td-sage">
                             Stop {index + 1} of {optimizedRoute.length}
                           </p>
                         </div>
@@ -907,9 +909,9 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
             
             {/* Modal Footer - Hidden during turn-by-turn */}
             {!isInTurnByTurn && (
-              <div className="bg-gray-50 p-3 space-y-3 flex-shrink-0 border-t">
+              <div className="bg-td-cream p-3 space-y-3 flex-shrink-0 border-t">
                 <div className="flex justify-between items-center">
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-td-sage">
                     <span className="font-medium">{totalDistance.toFixed(1)} km</span> · 
                     <span className="ml-1 font-medium">{estimatedTime} min</span>
                   </div>
@@ -944,7 +946,7 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
                       });
                     }
                   }}
-                  className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-300 font-medium shadow-sm transform hover:scale-105 flex items-center justify-center"
+                  className="w-full px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-300 font-medium shadow-sm transform hover:scale-105 flex items-center justify-center"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
