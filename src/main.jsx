@@ -7,6 +7,7 @@ const startupStartTime = Date.now();
 logger.debug('⚡ main.jsx loading started at:', startupStartTime);
 
 // CSS styling - loaded synchronously for immediate rendering
+import './theme/tokens.css'
 import './index.css'
 import './styles/mapStyles.css' // Global map styles for z-index management
 import App from './App.jsx' // Using real App with proper credentials

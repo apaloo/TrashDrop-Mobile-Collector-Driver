@@ -6,17 +6,50 @@ export default {
   ],
   theme: {
     extend: {
+      // The design system (src/theme/tokens.css, the same as the website and
+      // the household app): DM Sans only, 13px the smallest text, and the
+      // brand's dark green for actions.
+      fontFamily: {
+        sans: ["'DM Sans'", 'system-ui', '-apple-system', "'Segoe UI'", 'Roboto', 'sans-serif'],
+      },
+      fontSize: {
+        xs: ['0.8125rem', { lineHeight: '1.125rem' }],
+      },
       colors: {
-        primary: "#4CAF50",
-        'primary-dark': "#3B8C3F",
-        'primary-light': "#A5D6A7",
-        secondary: "#FF9800",
-        'secondary-dark': "#F57C00",
-        'secondary-light': "#FFE0B2",
-        danger: "#F44336",
-        'danger-dark': "#D32F2F",
-        dark: "#333333",
-        light: "#F5F5F5",
+        // primary was #4CAF50 (white on it 2.8:1); now the dark green (6.3:1)
+        primary: "#1b6e35",
+        'primary-dark': "#155a2b",
+        'primary-light': "#e6f2e9",
+        // secondary was #FF9800 and danger #F44336: white on them failed;
+        // the darker orange and red keep their meaning and pass
+        secondary: "#b4530e",
+        'secondary-dark': "#8a3f0b",
+        'secondary-light': "#fdebd9",
+        danger: "#b91c1c",
+        'danger-dark': "#991b1b",
+        dark: "#0a0f0a",
+        light: "#f6f8f4",
+        // Green buttons, links and text in the dark green family
+        green: {
+          '600': '#1b6e35',
+          '700': '#155a2b',
+          '800': '#114a23',
+        },
+        td: {
+          lime: '#b6ee69',
+          orange: '#f98b38',
+          'orange-text': '#b4530e',
+          forest: '#1b6e35',
+          'forest-dk': '#155a2b',
+          tonal: '#e6f2e9',
+          ink: '#0a0f0a',
+          sage: '#525c52',
+          'sage-dark': '#a9b2a9',
+          cream: '#f6f8f4',
+          border: '#dfe4dc',
+          'border-strong': '#8a8f9c',
+          error: '#b91c1c',
+        },
       },
       animation: {
         'fadeIn': 'fadeIn 0.5s ease-in-out',
