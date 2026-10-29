@@ -339,6 +339,8 @@ const OfflineNavigationMap = ({
             <Marker
               position={[userLocation.lat || userLocation[0], userLocation.lng || userLocation[1]]}
               icon={createTricycleIcon()}
+              title="Your location"
+              alt="Your location"
             >
               <Popup>
                 <div className="text-center">

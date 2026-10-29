@@ -95,21 +95,21 @@ const RouteStatistics = ({ assignments, userLocation, analyticsService }) => {
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden">
       <div className="p-4 border-b">
-        <h2 className="text-lg font-semibold text-gray-800">Route Statistics</h2>
+        <h2 className="text-lg font-semibold text-td-ink">Route Statistics</h2>
       </div>
       
       <div className="p-4">
         {stats.assignmentCount === 0 ? (
           <div className="text-center py-6 px-4">
             <div className="text-4xl mb-3">📊</div>
-            <p className="text-base font-bold text-gray-700 mb-1">Nothing to show yet</p>
-            <p className="text-sm text-gray-500">Accept some jobs first, then come here to see how far you will drive.</p>
+            <p className="text-base font-bold text-td-ink mb-1">Nothing to show yet</p>
+            <p className="text-sm text-td-sage">Accept some jobs first, then come here to see how far you will drive.</p>
           </div>
         ) : (
           <div>
             <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="bg-blue-50 p-3 rounded-lg">
-                <p className="text-sm text-blue-600 font-medium">Total Distance</p>
+              <div className="bg-td-tonal p-3 rounded-lg">
+                <p className="text-sm text-td-forest font-medium">Total Distance</p>
                 <p className="text-xl font-bold text-blue-800">{stats.totalDistance.toFixed(1)} km</p>
               </div>
               
@@ -120,9 +120,9 @@ const RouteStatistics = ({ assignments, userLocation, analyticsService }) => {
             </div>
             
             <div className="grid grid-cols-3 gap-3">
-              <div className="bg-gray-50 p-3 rounded-lg">
-                <p className="text-xs text-gray-600 font-medium">Pickups</p>
-                <p className="text-lg font-bold text-gray-800">{stats.assignmentCount}</p>
+              <div className="bg-td-cream p-3 rounded-lg">
+                <p className="text-xs text-td-sage font-medium">Pickups</p>
+                <p className="text-lg font-bold text-td-ink">{stats.assignmentCount}</p>
               </div>
               
               <div className="bg-yellow-50 p-3 rounded-lg">
@@ -137,22 +137,22 @@ const RouteStatistics = ({ assignments, userLocation, analyticsService }) => {
             </div>
             
             <div className="mt-4 pt-3 border-t">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Efficiency Insights</h3>
-              <ul className="text-xs text-gray-600 space-y-1">
+              <h3 className="text-sm font-medium text-td-ink mb-2">Efficiency Insights</h3>
+              <ul className="text-xs text-td-sage space-y-1">
                 <li className="flex items-start">
-                  <svg className="h-4 w-4 text-green-500 mr-1 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <svg className="h-4 w-4 text-green-700 mr-1 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                   </svg>
                   <span>Optimized route saves approximately {(stats.co2Savings / 2.3 * 10).toFixed(1)} km of driving</span>
                 </li>
                 <li className="flex items-start">
-                  <svg className="h-4 w-4 text-green-500 mr-1 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <svg className="h-4 w-4 text-green-700 mr-1 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                   </svg>
                   <span>Average of {(stats.totalDistance / stats.assignmentCount).toFixed(1)} km between each pickup</span>
                 </li>
                 <li className="flex items-start">
-                  <svg className="h-4 w-4 text-green-500 mr-1 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <svg className="h-4 w-4 text-green-700 mr-1 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                   </svg>
                   <span>Estimated {formatDuration(stats.estimatedTime / stats.assignmentCount)} per pickup on average</span>
@@ -162,7 +162,7 @@ const RouteStatistics = ({ assignments, userLocation, analyticsService }) => {
                 {performanceAnalytics && (
                   <>
                     <li className="flex items-start">
-                      <svg className="h-4 w-4 text-blue-500 mr-1 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                      <svg className="h-4 w-4 text-td-forest mr-1 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
                       <span>Last 7 days: {performanceAnalytics.totalPickups} completed pickups, ₵{performanceAnalytics.totalEarnings.toFixed(2)} earned</span>
@@ -178,7 +178,7 @@ const RouteStatistics = ({ assignments, userLocation, analyticsService }) => {
                 
                 {isLoadingAnalytics && (
                   <li className="flex items-start">
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-blue-600 mr-1 mt-0.5"></div>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-td-border-strong border-t-blue-600 mr-1 mt-0.5"></div>
                     <span>Loading performance data...</span>
                   </li>
                 )}

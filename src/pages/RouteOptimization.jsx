@@ -316,10 +316,10 @@ const RouteOptimizationPage = () => {
       <div className="fixed top-0 left-0 right-0 z-50 bg-white shadow pt-14">
           <div className="max-w-7xl mx-auto px-4 py-2">
             <div>
-              <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <h1 className="text-xl font-bold text-td-ink flex items-center gap-2">
                 <span>🗺️</span> My Route
               </h1>
-              <p className="text-xs text-gray-600">
+              <p className="text-xs text-td-sage">
                 See all your jobs and the best way to go
               </p>
             </div>

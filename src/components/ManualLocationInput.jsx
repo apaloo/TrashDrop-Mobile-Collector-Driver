@@ -123,7 +123,7 @@ const ManualLocationInput = ({ onLocationSubmit, onCancel }) => {
 
   return (
     <div className="bg-white rounded-lg shadow-md p-4 max-w-md mx-auto">
-      <h2 className="text-lg font-semibold text-gray-800 mb-4">Enter Your Location</h2>
+      <h2 className="text-lg font-semibold text-td-ink mb-4">Enter Your Location</h2>
       
       {error && (
         <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-3 mb-4">
@@ -133,7 +133,7 @@ const ManualLocationInput = ({ onLocationSubmit, onCancel }) => {
       
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
-          <label htmlFor="latitude" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="latitude" className="block text-sm font-medium text-td-ink mb-1">
             Latitude
           </label>
           <input
@@ -142,13 +142,13 @@ const ManualLocationInput = ({ onLocationSubmit, onCancel }) => {
             value={latitude}
             onChange={(e) => setLatitude(e.target.value)}
             placeholder="e.g., 37.7749"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="w-full px-3 py-2 border border-td-border-strong rounded-md focus:outline-none focus:ring-2 focus:ring-green-600"
             required
           />
         </div>
         
         <div className="mb-4">
-          <label htmlFor="longitude" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="longitude" className="block text-sm font-medium text-td-ink mb-1">
             Longitude
           </label>
           <input
@@ -157,7 +157,7 @@ const ManualLocationInput = ({ onLocationSubmit, onCancel }) => {
             value={longitude}
             onChange={(e) => setLongitude(e.target.value)}
             placeholder="e.g., -122.4194"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="w-full px-3 py-2 border border-td-border-strong rounded-md focus:outline-none focus:ring-2 focus:ring-green-600"
             required
           />
         </div>
@@ -166,7 +166,7 @@ const ManualLocationInput = ({ onLocationSubmit, onCancel }) => {
           <button
             type="button"
             onClick={handleUseCurrentCity}
-            className="w-full py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors"
+            className="w-full py-2 bg-gray-200 text-td-ink rounded-md hover:bg-gray-300 transition-colors"
           >
             Select from Common Cities
           </button>
@@ -175,14 +175,14 @@ const ManualLocationInput = ({ onLocationSubmit, onCancel }) => {
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 transition-colors"
+              className="flex-1 py-2 bg-gray-100 text-td-ink rounded-md hover:bg-gray-200 transition-colors"
             >
               Cancel
             </button>
             
             <button
               type="submit"
-              className="flex-1 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+              className="flex-1 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
             >
               Use Location
             </button>
@@ -190,7 +190,7 @@ const ManualLocationInput = ({ onLocationSubmit, onCancel }) => {
         </div>
       </form>
       
-      <div className="mt-4 text-xs text-gray-500">
+      <div className="mt-4 text-xs text-td-sage">
         <p>Need help finding your coordinates?</p>
         <a 
           href="https://www.latlong.net/" 
