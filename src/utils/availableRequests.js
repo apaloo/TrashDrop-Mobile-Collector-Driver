@@ -80,7 +80,20 @@ export const getCachedPosition = () => {
   }
 };
 
-const wasteTypeOf = (request) => request.waste_type || request.type;
+const wasteTypeOf = (request) => String(request.waste_type || request.type || '').toLowerCase();
+
+/**
+ * The Map's waste type buttons and the types each one shows: the types
+ * households book a bag or bin as (general, recycling, plastic, organic),
+ * plus older recyclable names. Any other filter value matches that type only.
+ */
+export const WASTE_CATEGORIES = {
+  recyclable: ['recyclable', 'recycling', 'plastic', 'paper', 'glass', 'metal'],
+  general: ['general'],
+  organic: ['organic'],
+};
+
+const inFilter = (type, filter) => (WASTE_CATEGORIES[filter] || [String(filter).toLowerCase()]).includes(type);
 
 /**
  * Filter requests by the collector's duty status, position and filters.
@@ -106,8 +119,9 @@ export const filterAvailableRequests = (requests, { isOnDuty, position, filters 
       const km = distanceKm(origin, target);
       if (!(km <= radiusKm)) return null;
 
-      if (activeFilter !== 'all' && wasteTypeOf(request) !== activeFilter) return null;
-      if (wasteTypes.length > 0 && !wasteTypes.includes('All Types') && !wasteTypes.includes(wasteTypeOf(request))) return null;
+      const type = wasteTypeOf(request);
+      if (activeFilter !== 'all' && !inFilter(type, activeFilter)) return null;
+      if (wasteTypes.length > 0 && !wasteTypes.includes('All Types') && !wasteTypes.some(t => inFilter(type, t))) return null;
       if (minPayment > 0 && (parseFloat(request.fee) || 0) < minPayment) return null;
       if (priority !== 'all' && request.priority !== priority) return null;
 

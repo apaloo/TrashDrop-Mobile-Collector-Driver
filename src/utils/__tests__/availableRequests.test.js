@@ -1,4 +1,4 @@
-import { filterAvailableRequests, toLatLng, distanceKm, getCachedPosition } from '../availableRequests';
+import { filterAvailableRequests, toLatLng, distanceKm, getCachedPosition, WASTE_CATEGORIES } from '../availableRequests';
 
 // Pokuase area (screenshot): collector, a bin ~1 km away, a bag ~4 km away
 const here = [5.6850, -0.2860];
@@ -92,4 +92,18 @@ describe('toLatLng coordinate formats', () => {
     const hexBag = { id: 'hex-bag', source_type: 'pickup_request', status: 'pending', coordinates: ewkb };
     expect(ids(filterAvailableRequests([hexBag], { isOnDuty: true, position: here, filters: { searchRadius: 9 } }))).toEqual(['hex-bag']);
   });
+});
+
+describe('Map waste type buttons', () => {
+  const at = (id, waste_type) => ({ id, source_type: 'pickup_request', status: 'pending', coordinates: here, waste_type });
+  const bags = [at('gen', 'general'), at('rec', 'recycling'), at('pla', 'plastic'), at('org', 'organic'), at('old', 'Recyclable')];
+  const shown = (activeFilter) => ids(filterAvailableRequests(bags, {
+    isOnDuty: true, position: here,
+    filters: { searchRadius: 10, activeFilter, wasteTypes: activeFilter === 'all' ? ['All Types'] : WASTE_CATEGORIES[activeFilter] },
+  })).sort();
+
+  it('All Types shows every bag', () => expect(shown('all')).toEqual(['gen', 'old', 'org', 'pla', 'rec']));
+  it('Recyclable shows recycling and plastic bags', () => expect(shown('recyclable')).toEqual(['old', 'pla', 'rec']));
+  it('General shows general bags only', () => expect(shown('general')).toEqual(['gen']));
+  it('Organic shows organic bags only', () => expect(shown('organic')).toEqual(['org']));
 });
