@@ -2,7 +2,7 @@ import { TopNavBar } from '../components/NavBar';
 
 const TermsPage = () => {
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="flex flex-col min-h-screen bg-td-cream dark:bg-gray-900">
       <TopNavBar />
       
       <div className="flex-grow mt-14 mb-4 px-4 py-3 max-w-3xl mx-auto">
@@ -111,7 +111,7 @@ const TermsPage = () => {
           </p>
         </div>
         
-        <div className="text-center text-sm text-gray-500 mt-8 mb-4">
+        <div className="text-center text-sm text-td-sage mt-8 mb-4">
           Last Updated: July 1, 2025
         </div>
         

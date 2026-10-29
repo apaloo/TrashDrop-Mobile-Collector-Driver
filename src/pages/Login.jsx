@@ -139,7 +139,7 @@ const LoginPage = () => {
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-td-cream dark:bg-gray-900">
       <div className="w-full max-w-md">
 
         {/* Logo */}
@@ -149,22 +149,22 @@ const LoginPage = () => {
             alt="TrashDrop Logo"
             className="w-20 h-20 rounded-2xl shadow-lg mb-3 transform hover:scale-105 transition-transform"
           />
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">TrashDrop</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Collector App</p>
+          <h1 className="text-3xl font-bold text-td-ink dark:text-white">TrashDrop</h1>
+          <p className="text-td-sage dark:text-gray-400 text-sm mt-1">Collector App</p>
         </div>
 
         {!otpSent ? (
           /* ── Step 1: Phone number ── */
           <>
-            <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white text-center">Welcome back</h2>
-            <p className="text-gray-600 dark:text-gray-300 mb-6 text-base text-center">Enter your phone number to sign in</p>
+            <h2 className="text-2xl font-bold mb-2 text-td-ink dark:text-white text-center">Welcome back</h2>
+            <p className="text-td-sage dark:text-gray-300 mb-6 text-base text-center">Enter your phone number to sign in</p>
 
             <div className="mb-5">
-              <label className="block text-base font-bold mb-2 text-gray-800 dark:text-gray-100">📱 Your Phone Number</label>
+              <label className="block text-base font-bold mb-2 text-td-ink dark:text-gray-100">📱 Your Phone Number</label>
               <div className={`flex rounded-xl overflow-hidden border-2 transition-colors ${phoneError ? 'border-red-500' : 'border-gray-400 dark:border-gray-600 focus-within:border-primary'}`}>
                 <div className="flex items-center px-3 bg-gray-200 dark:bg-gray-700 border-r-2 border-gray-400 dark:border-gray-600 shrink-0">
                   <span className="text-lg mr-1">🇬🇭</span>
-                  <span className="font-bold text-gray-800 dark:text-white text-base">+233</span>
+                  <span className="font-bold text-td-ink dark:text-white text-base">+233</span>
                 </div>
                 <input
                   type="tel"
@@ -173,10 +173,10 @@ const LoginPage = () => {
                   value={phoneNumber}
                   onChange={(e) => { setPhoneNumber(e.target.value); setPhoneError(null); setNoAccount(false); }}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSendOtp(e); }}
-                  className="flex-1 px-4 py-4 text-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none"
+                  className="flex-1 px-4 py-4 text-lg bg-white dark:bg-gray-800 text-td-ink dark:text-white placeholder-gray-400 focus:outline-none"
                 />
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">We will send a code to this number</p>
+              <p className="text-sm text-td-sage dark:text-gray-400 mt-2">We will send a code to this number</p>
               {phoneError && (
                 <p className="mt-2 text-sm font-semibold text-red-500 flex items-center gap-1">
                   <span>⚠️</span> {phoneError}
@@ -184,8 +184,8 @@ const LoginPage = () => {
               )}
               {noAccount && (
                 <div className="mt-3 rounded-xl border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/20 p-4" role="alert">
-                  <p className="font-bold text-gray-900 dark:text-white">{NO_ACCOUNT_MESSAGE}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Sign up to start collecting with TrashDrop.</p>
+                  <p className="font-bold text-td-ink dark:text-white">{NO_ACCOUNT_MESSAGE}</p>
+                  <p className="text-sm text-td-sage dark:text-gray-300 mt-1">Sign up to start collecting with TrashDrop.</p>
                   <button
                     type="button"
                     className="mt-3 w-full py-3 bg-primary text-white font-bold rounded-xl"
@@ -208,7 +208,7 @@ const LoginPage = () => {
               ) : '📨 Send Code'}
             </button>
 
-            <p className="mt-6 text-center text-gray-600 dark:text-gray-300 text-sm">
+            <p className="mt-6 text-center text-td-sage dark:text-gray-300 text-sm">
               Don't have an account?{' '}
               <a href="/signup" className="text-primary font-bold underline">Sign up</a>
             </p>
@@ -216,23 +216,23 @@ const LoginPage = () => {
         ) : (
           /* ── Step 2: OTP verification ── */
           <>
-            <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Enter your code</h2>
+            <h2 className="text-2xl font-bold mb-2 text-td-ink dark:text-white">Enter your code</h2>
 
             {/* SMS guidance banner */}
-            <div className="flex items-center gap-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-xl p-3 mb-5">
+            <div className="flex items-center gap-3 bg-td-tonal dark:bg-blue-900/30 border border-td-border dark:border-blue-700 rounded-xl p-3 mb-5">
               <div className="text-3xl shrink-0">💬</div>
               <p className="text-sm text-blue-800 dark:text-blue-200 leading-snug">
                 Open your <strong>Messages app</strong>. Find the 6-number code from <strong>TrashDrop</strong> and enter it below.
               </p>
             </div>
 
-            <p className="mb-4 text-sm text-gray-600 dark:text-gray-300">
-              Code sent to <span className="font-bold text-gray-900 dark:text-white">{formatPhoneNumber(phoneNumber)}</span>
+            <p className="mb-4 text-sm text-td-sage dark:text-gray-300">
+              Code sent to <span className="font-bold text-td-ink dark:text-white">{formatPhoneNumber(phoneNumber)}</span>
             </p>
 
             {/* 6 digit boxes */}
             <div className="mb-2">
-              <label className="block text-base font-bold mb-3 text-gray-800 dark:text-gray-100">🔑 Code from your messages</label>
+              <label className="block text-base font-bold mb-3 text-td-ink dark:text-gray-100">🔑 Code from your messages</label>
               <div className="flex gap-2 justify-center">
                 {otpDigits.map((digit, i) => (
                   <input
@@ -244,7 +244,7 @@ const LoginPage = () => {
                     value={digit}
                     onChange={(e) => handleOtpDigit(i, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                    className={`w-12 h-14 text-center text-2xl font-bold rounded-xl border-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none transition-colors ${
+                    className={`w-12 h-14 text-center text-2xl font-bold rounded-xl border-2 bg-white dark:bg-gray-800 text-td-ink dark:text-white focus:outline-none transition-colors ${
                       otpError ? 'border-red-500 bg-red-50 dark:bg-red-900/20' :
                       digit ? 'border-primary bg-green-50 dark:bg-green-900/20' :
                       'border-gray-400 dark:border-gray-600 focus:border-primary'
@@ -281,7 +281,7 @@ const LoginPage = () => {
               </button>
               <button
                 type="button"
-                className="text-gray-500 dark:text-gray-400 text-sm"
+                className="text-td-sage dark:text-gray-400 text-sm"
                 onClick={handleSendOtp}
                 disabled={loading}
               >
@@ -292,7 +292,7 @@ const LoginPage = () => {
         )}
 
         {/* Footer */}
-        <p className="mt-8 text-center text-xs text-gray-400 dark:text-gray-500">
+        <p className="mt-8 text-center text-xs text-td-sage dark:text-gray-500">
           By continuing, you agree to our{' '}
           <a href="/terms" className="text-primary underline">Terms of Service</a>
           {' '}and{' '}

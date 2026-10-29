@@ -2,7 +2,7 @@ import React from 'react';
 
 const AppSkeleton = () => {
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-td-cream flex flex-col">
       {/* Top Navigation Skeleton */}
       <div className="bg-white shadow-sm border-b px-4 py-3">
         <div className="flex items-center justify-between">
@@ -19,8 +19,8 @@ const AppSkeleton = () => {
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
               <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
-              <p className="mt-4 text-gray-600 font-medium">⚡ Starting TrashDrop...</p>
-              <p className="mt-2 text-sm text-gray-500">Getting your location and loading data</p>
+              <p className="mt-4 text-td-sage font-medium">⚡ Starting TrashDrop...</p>
+              <p className="mt-2 text-sm text-td-sage">Getting your location and loading data</p>
             </div>
           </div>
 
@@ -30,7 +30,7 @@ const AppSkeleton = () => {
               {Array.from({ length: 16 }).map((_, i) => (
                 <div 
                   key={i} 
-                  className="border border-gray-200 bg-gradient-to-br from-green-50 to-blue-50 animate-pulse"
+                  className="border border-td-border bg-gradient-to-br from-green-50 to-blue-50 animate-pulse"
                   style={{ animationDelay: `${i * 0.1}s` }}
                 />
               ))}
@@ -70,7 +70,7 @@ const AppSkeleton = () => {
       {/* Progress Indicators */}
       <div className="absolute top-20 left-4 right-4">
         <div className="bg-white rounded-lg shadow-sm p-3 mb-2 opacity-90">
-          <div className="flex items-center text-sm text-gray-600">
+          <div className="flex items-center text-sm text-td-sage">
             <div className="h-2 w-2 bg-green-400 rounded-full animate-pulse mr-2"></div>
             <span>Services starting...</span>
           </div>

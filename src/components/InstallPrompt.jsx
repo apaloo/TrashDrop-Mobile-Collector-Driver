@@ -178,10 +178,10 @@ const InstallPrompt = () => {
               </svg>
             )}
           </div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">
+          <h2 className="text-xl font-bold text-td-ink mb-2">
             {isAndroid ? 'Welcome to TrashDrop' : 'Install TrashDrop'}
           </h2>
-          <p className="text-gray-600 text-sm">
+          <p className="text-td-sage text-sm">
             {isAndroid
               ? 'Your app is ready! Enjoy fast loading, offline access, and instant pickup notifications — all from your browser.'
               : 'Install our app for the best experience with faster loading, offline access, and push notifications.'}
@@ -196,7 +196,7 @@ const InstallPrompt = () => {
             { icon: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9', text: 'Get notified of new pickups' },
             { icon: 'M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z', text: 'Easy access from home screen' },
           ].map(({ icon, text }) => (
-            <div key={text} className="flex items-center text-sm text-gray-700">
+            <div key={text} className="flex items-center text-sm text-td-ink">
               <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-3 flex-shrink-0">
                 <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icon} />
@@ -209,25 +209,25 @@ const InstallPrompt = () => {
 
         {/* Manual instructions (non-Android or when user explicitly asks) */}
         {showManualInstructions && (
-          <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+          <div className="mb-4 p-4 bg-td-tonal rounded-xl border border-td-border">
             <h3 className="font-semibold text-blue-800 mb-2 text-sm">Add to Home Screen:</h3>
             {isIOS ? (
-              <div className="text-sm text-blue-700 space-y-2">
-                <p>1. Tap the <strong>Share</strong> button <span className="inline-block bg-blue-100 px-1.5 py-0.5 rounded text-xs">↑</span> at the bottom of Safari</p>
+              <div className="text-sm text-td-forest space-y-2">
+                <p>1. Tap the <strong>Share</strong> button <span className="inline-block bg-td-tonal px-1.5 py-0.5 rounded text-xs">↑</span> at the bottom of Safari</p>
                 <p>2. Scroll down and tap <strong>"Add to Home Screen"</strong></p>
                 <p>3. Tap <strong>"Add"</strong> in the top right</p>
               </div>
             ) : isAndroid ? (
-              <div className="text-sm text-blue-700 space-y-2">
-                <p>1. Tap the <strong>menu</strong> button <span className="inline-block bg-blue-100 px-1.5 py-0.5 rounded text-xs">⋮</span> in your browser</p>
+              <div className="text-sm text-td-forest space-y-2">
+                <p>1. Tap the <strong>menu</strong> button <span className="inline-block bg-td-tonal px-1.5 py-0.5 rounded text-xs">⋮</span> in your browser</p>
                 <p>2. Tap <strong>"Add to Home screen"</strong></p>
                 <p>3. Tap <strong>"Add"</strong> to confirm</p>
-                <p className="mt-2 text-xs text-blue-600 bg-blue-100 rounded-lg p-2">
+                <p className="mt-2 text-xs text-td-forest bg-td-tonal rounded-lg p-2">
                   <strong>Tip:</strong> If you see a security warning, tap <strong>"More details"</strong> then <strong>"Install anyway"</strong>. The app is safe — the warning is about Chrome's packaging, not your data.
                 </p>
               </div>
             ) : (
-              <div className="text-sm text-blue-700 space-y-2">
+              <div className="text-sm text-td-forest space-y-2">
                 <p>1. Click the <strong>install icon</strong> in your browser's address bar</p>
                 <p>2. Or open browser menu → <strong>"Install TrashDrop Carter"</strong></p>
               </div>
@@ -253,14 +253,14 @@ const InstallPrompt = () => {
               {!showManualInstructions ? (
                 <button
                   onClick={() => setShowManualInstructions(true)}
-                  className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors duration-200 text-sm"
+                  className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-td-ink font-medium rounded-xl transition-colors duration-200 text-sm"
                 >
                   Add to Home Screen
                 </button>
               ) : (
                 <button
                   onClick={handleDismiss}
-                  className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors duration-200 text-sm"
+                  className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-td-ink font-medium rounded-xl transition-colors duration-200 text-sm"
                 >
                   Done
                 </button>
@@ -304,7 +304,7 @@ const InstallPrompt = () => {
               <button
                 onClick={handleDismiss}
                 disabled={isInstalling}
-                className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors duration-200 disabled:opacity-50"
+                className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-td-ink font-medium rounded-xl transition-colors duration-200 disabled:opacity-50"
               >
                 Maybe Later
               </button>
