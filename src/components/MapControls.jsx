@@ -33,12 +33,12 @@ const MapControls = ({ lastUpdated, isRefreshing, refreshData, requestCount, isO
         <span className="mr-2">Last updated: {formatTime(lastUpdated)}</span>
         <button
           onClick={refreshData}
-          className="text-blue-600 flex items-center"
+          className="text-td-forest flex items-center"
           disabled={isRefreshing}
         >
           {isRefreshing ? (
             <>
-              <div className="animate-spin w-3 h-3 border border-blue-600 border-t-transparent rounded-full mr-1"></div>
+              <div className="animate-spin w-3 h-3 border border-td-forest border-t-transparent rounded-full mr-1"></div>
               <span>Refreshing</span>
             </>
           ) : (
@@ -51,7 +51,7 @@ const MapControls = ({ lastUpdated, isRefreshing, refreshData, requestCount, isO
           )}
         </button>
       </div>
-      <div className="text-xs text-gray-500 mt-1">
+      <div className="text-xs text-td-sage mt-1">
         {isOnDuty
           ? `${requestCount} ${requestCount === 1 ? 'request' : 'requests'} within your radius`
           : 'Off-Duty: go On-Duty to see requests'}

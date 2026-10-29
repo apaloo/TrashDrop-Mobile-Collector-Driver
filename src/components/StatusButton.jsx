@@ -135,7 +135,7 @@ const StatusButton = ({ className = '', showSessionInfo = false }) => {
             {/* Options Button */}
             <button
               onClick={() => setShowDetails(!showDetails)}
-              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+              className="p-1 text-td-sage hover:text-td-ink transition-colors"
               title="Status options"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -146,8 +146,8 @@ const StatusButton = ({ className = '', showSessionInfo = false }) => {
 
           {/* Session Info - Compact */}
           {showSessionInfo && statusInfo.isOnline && statusInfo.sessionStart && (
-            <div className="mt-1 pt-1 border-t border-gray-100">
-              <div className="flex items-center text-xs text-gray-500 space-x-2">
+            <div className="mt-1 pt-1 border-t border-td-border">
+              <div className="flex items-center text-xs text-td-sage space-x-2">
                 <div className="flex items-center space-x-1">
                   <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -165,9 +165,9 @@ const StatusButton = ({ className = '', showSessionInfo = false }) => {
 
         {/* Status Options Dropdown */}
         {showDetails && (
-          <div className="absolute top-full right-0 mt-1 w-56 bg-white rounded-md shadow-lg border border-gray-100 z-50" style={{ marginRight: '-0.5rem' }}>
+          <div className="absolute top-full right-0 mt-1 w-56 bg-white rounded-md shadow-lg border border-td-border z-50" style={{ marginRight: '-0.5rem' }}>
             <div className="p-3">
-              <h4 className="text-xs font-medium text-gray-900 mb-2">Change Status</h4>
+              <h4 className="text-xs font-medium text-td-ink mb-2">Change Status</h4>
               
               {/* Status Options */}
               <div className="space-y-1">
@@ -180,8 +180,8 @@ const StatusButton = ({ className = '', showSessionInfo = false }) => {
                       w-full flex items-center justify-between p-2 rounded text-left
                       transition-all duration-200
                       ${status === statusInfo.status 
-                        ? 'bg-gray-100 border border-gray-300' 
-                        : 'bg-gray-50 hover:bg-gray-100 border border-transparent hover:border-gray-200'
+                        ? 'bg-gray-100 border border-td-border-strong' 
+                        : 'bg-td-cream hover:bg-gray-100 border border-transparent hover:border-gray-200'
                       }
                       disabled:cursor-not-allowed disabled:opacity-50
                     `}
@@ -189,13 +189,13 @@ const StatusButton = ({ className = '', showSessionInfo = false }) => {
                     <div className="flex items-center space-x-2">
                       <div className={`w-3 h-3 rounded-full ${config.color}`} />
                       <div>
-                        <div className="text-xs font-medium text-gray-900">{config.label}</div>
-                        <div className="text-xs text-gray-500">{config.description}</div>
+                        <div className="text-xs font-medium text-td-ink">{config.label}</div>
+                        <div className="text-xs text-td-sage">{config.description}</div>
                       </div>
                     </div>
                     
                     {status === statusInfo.status && (
-                      <svg className="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3 h-3 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                       </svg>
                     )}
@@ -205,16 +205,16 @@ const StatusButton = ({ className = '', showSessionInfo = false }) => {
 
               {/* Session Statistics - Compact */}
               {statusInfo.isOnline && statusInfo.sessionStart && (
-                <div className="mt-2 pt-2 border-t border-gray-100">
-                  <h5 className="text-xs font-medium text-gray-700 mb-1">Session</h5>
+                <div className="mt-2 pt-2 border-t border-td-border">
+                  <h5 className="text-xs font-medium text-td-ink mb-1">Session</h5>
                   <div className="grid grid-cols-2 gap-1 text-xs">
                     <div className="bg-green-50 p-1 rounded">
                       <div className="font-medium text-green-700 text-xs">Duration</div>
                       <div className="text-green-600 text-xs">{formatSessionTime(statusInfo.sessionStart)}</div>
                     </div>
-                    <div className="bg-blue-50 p-1 rounded">
-                      <div className="font-medium text-blue-700 text-xs">Requests</div>
-                      <div className="text-blue-600 text-xs">{statusInfo.sessionStats.requestsAccepted}</div>
+                    <div className="bg-td-tonal p-1 rounded">
+                      <div className="font-medium text-td-forest text-xs">Requests</div>
+                      <div className="text-td-forest text-xs">{statusInfo.sessionStats.requestsAccepted}</div>
                     </div>
                   </div>
                 </div>
@@ -223,7 +223,7 @@ const StatusButton = ({ className = '', showSessionInfo = false }) => {
               {/* Close Button */}
               <button
                 onClick={() => setShowDetails(false)}
-                className="w-full mt-2 px-2 py-1 text-xs text-gray-600 hover:text-gray-800 transition-colors"
+                className="w-full mt-2 px-2 py-1 text-xs text-td-sage hover:text-td-ink transition-colors"
               >
                 Close
               </button>

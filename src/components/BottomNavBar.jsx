@@ -22,17 +22,17 @@ const BottomNavBar = () => {
   const shownItems = volunteer ? navItems.filter(item => isVolunteerPath(item.path)) : navItems;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white shadow-lg z-50 border-t border-gray-200 nav-bottom-bar">
+    <nav className="fixed bottom-0 left-0 right-0 bg-white shadow-lg z-50 border-t border-td-border nav-bottom-bar">
       <div className="flex justify-around items-center py-2">
         {shownItems.map((item) => (
           <Link
             key={item.path}
             to={item.path}
-            className={`flex flex-col items-center justify-center px-3 py-1 ${currentPath === item.path ? 'text-green-500 font-medium' : 'text-gray-500'}`}
+            className={`flex flex-col items-center justify-center px-3 py-1 ${currentPath === item.path ? 'text-green-700 font-medium' : 'text-td-sage'}`}
           >
             <div className="w-6 h-6">{item.icon}</div>
             <span className="text-xs mt-1">{item.label}</span>
-            {currentPath === item.path && <div className="h-1 w-8 bg-green-500 rounded-full mt-1"></div>}
+            {currentPath === item.path && <div className="h-1 w-8 bg-green-600 rounded-full mt-1"></div>}
           </Link>
         ))}
       </div>
