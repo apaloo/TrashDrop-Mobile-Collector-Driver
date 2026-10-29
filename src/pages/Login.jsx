@@ -147,7 +147,7 @@ const LoginPage = () => {
           <img
             src={logo}
             alt="TrashDrop Logo"
-            className="w-20 h-20 rounded-2xl shadow-lg mb-3 transform hover:scale-105 transition-transform"
+            className="w-20 h-20 p-1 object-contain bg-white rounded-2xl shadow-lg mb-3 transform hover:scale-105 transition-transform"
           />
           <h1 className="text-3xl font-bold text-td-ink dark:text-white">TrashDrop</h1>
           <p className="text-td-sage dark:text-gray-400 text-sm mt-1">Collector App</p>
