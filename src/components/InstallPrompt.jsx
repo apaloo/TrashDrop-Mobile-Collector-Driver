@@ -153,7 +153,7 @@ const InstallPrompt = () => {
       <div className="mb-8 text-center">
         <div className="w-24 h-24 mx-auto mb-4 bg-white rounded-2xl shadow-lg flex items-center justify-center">
           <img
-            src="/logo.png"
+            src="/logo.svg"
             alt="TrashDrop"
             className="w-20 h-20 object-contain"
             onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}

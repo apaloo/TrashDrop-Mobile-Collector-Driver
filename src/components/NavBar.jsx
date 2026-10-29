@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, memo } from 'react';
 import { Link } from 'react-router-dom';
-// Use public logo.png (preloaded in index.html) for instant rendering during navigation
-const logo = '/logo.png';
+// The household app's logo (public/logo.svg, preloaded in index.html): the old
+// lime-only logo.png was hard to see on the white bar
+const logo = '/logo.svg';
 import { useAuth } from '../context/AuthContext';
 
 /**
@@ -40,7 +41,7 @@ export const TopNavBar = memo(({ user }) => {
         <div className="flex justify-between items-center">
           {/* Logo */}
           <Link to="/" className="flex items-center">
-            <img src={logo} alt="TrashDrop Logo" className="h-8 mr-2" width="32" height="32" loading="eager" decoding="sync" />
+            <img src={logo} alt="TrashDrop Logo" className="h-10 w-auto mr-2" width="60" height="40" loading="eager" decoding="sync" />
             <span className="text-green-700 text-xl font-bold">TrashDrop Carter</span>
           </Link>
 

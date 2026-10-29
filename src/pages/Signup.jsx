@@ -1123,7 +1123,9 @@ const SignupPage = () => {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-6">
-          <img src="/icons/logo-08.png" alt="TrashDrop Logo" className="w-24 h-24 object-contain mb-2" />
+          <div className="w-24 h-24 mb-2 bg-white rounded-2xl shadow-lg flex items-center justify-center">
+            <img src="/logo.svg" alt="TrashDrop Logo" className="w-20 h-20 object-contain" />
+          </div>
           <p className="text-td-sage dark:text-gray-400 text-base font-medium">TrashDrop Carter Registration</p>
         </div>
 
