@@ -1665,7 +1665,10 @@ const MapPage = () => {
 
   // Return the component UI
   return (
-    <div className="flex flex-col h-screen">
+    // Pinned to the visible screen so the page itself never scrolls. It was
+    // h-screen (100vh), which on phone browsers is taller than what shows
+    // while the address bar is visible, so the map sat on a page that slid.
+    <div className="fixed inset-0 flex flex-col overflow-hidden overscroll-none">
       <TopNavBar user={user} />
       
       {/* Toast notification */}
