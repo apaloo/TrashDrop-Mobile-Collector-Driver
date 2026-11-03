@@ -810,8 +810,12 @@ const MapPage = () => {
     // Prevent duplicate simultaneous fetches
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
+    // Only the first load shows the loading screen or tells the collector it
+    // failed. Later refreshes run in the background: the map stays as it is
+    // and the markers change when the new list arrives.
+    const firstLoad = !requestsLoadedRef.current;
     try {
-      setIsLoading(true);
+      if (firstLoad) setIsLoading(true);
       setError(null);
       
       // Check if we're online
@@ -930,7 +934,7 @@ const MapPage = () => {
         logger.info('📊 Fetched:', pickupRequests.length, 'pickups +', digitalBins.length, 'bins =', data.length, 'total');
       } else {
         // Offline - no cache available
-        showToast('No internet connection. Please connect to view pickup requests.', 'error');
+        if (firstLoad) showToast('No internet connection. Please connect to view pickup requests.', 'error');
         return;
       }
       
@@ -1031,7 +1035,7 @@ const MapPage = () => {
         logger.debug('🔄 Transformed:', transformedData.length, 'items');
     } catch (error) {
       logger.error('Error fetching pickup requests:', error);
-      showToast('Failed to load pickup requests', 'error');
+      if (firstLoad) showToast('Failed to load pickup requests', 'error');
       
       // No cache available - applyFilters will run via debounced useEffect
     } finally {
@@ -1040,20 +1044,16 @@ const MapPage = () => {
     }
   }, [position]);
 
-  // Refresh data
+  // Refresh data in the background: no toasts or overlay, only the refresh
+  // button's own spinner (in MapControls). Offline it waits for the next try.
   const refreshData = useCallback(async () => {
-    if (!isOnlineStatus) {
-      showToast('Cannot refresh while offline', 'error');
-      return;
-    }
+    if (!isOnlineStatus) return;
     
     setIsRefreshing(true);
     try {
       await fetchRequests();
-      showToast('Data refreshed', 'success');
     } catch (error) {
       logger.error('Error refreshing data:', error);
-      showToast('Failed to refresh data', 'error');
     } finally {
       setIsRefreshing(false);
     }
@@ -1311,11 +1311,7 @@ const MapPage = () => {
                     // Data updated
                     return updated;
                   });
-                  
-                  // Only show toast if it was assigned to someone else (not by current user's action)
-                  if (newRecord.collector_id !== user?.id) {
-                    showToast('A pickup request was claimed by another collector', 'info');
-                  }
+
                 } else if (newRecord.status === 'pending' && 
                           oldRecord.status !== 'pending') {
                   // Request became available again
@@ -1356,7 +1352,6 @@ const MapPage = () => {
                   const updated = prev.filter(r => r.id !== oldRecord.id);
                   return updated;
                 });
-                showToast('A pickup request was removed', 'info');
                 break;
               }
             }
@@ -1423,10 +1418,7 @@ const MapPage = () => {
                     const updated = prev.filter(r => r.id !== newRecord.id);
                     return updated;
                   });
-                  
-                  if (newRecord.collector_id !== user?.id) {
-                    showToast('A digital bin was collected by another collector', 'info');
-                  }
+
                 } else if (newRecord.status === 'pending' && 
                           oldRecord.status !== 'pending') {
                   // Digital bin became available again
@@ -1465,7 +1457,6 @@ const MapPage = () => {
                   const updated = prev.filter(r => r.id !== oldRecord.id);
                   return updated;
                 });
-                showToast('A digital bin was removed', 'info');
                 break;
               }
             }
@@ -1479,7 +1470,6 @@ const MapPage = () => {
           .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
               logger.info('Subscribed to pickup_requests and digital_bins tables');
-              showToast('Live updates enabled', 'success', 2000);
             }
           });
       } catch (error) {
@@ -1568,23 +1558,6 @@ const MapPage = () => {
     return colors[priority] || 'bg-gray-100 text-td-ink';
   };
 
-  // Loading overlay component
-  const LoadingOverlay = ({ show, message = 'Loading...' }) => {
-    if (!show) return null;
-    
-    return (
-      <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-        <div className="bg-white p-4 rounded-md shadow-lg flex items-center">
-          <svg className="animate-spin h-5 w-5 text-primary mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <span>{message}</span>
-        </div>
-      </div>
-    );
-  };
-  
   // Waste type legend component
   const WasteLegend = () => {
     return null;
@@ -1930,12 +1903,7 @@ const MapPage = () => {
               updateFilters={updateFilters} 
               applyFilters={applyFilters}
             />
-            
-            {/* Loading overlay for refresh operations */}
-            <LoadingOverlay 
-              show={isRefreshing && requests.length > 0} 
-              message="Refreshing requests..."
-            />
+
           </>
         )}
       </div>
