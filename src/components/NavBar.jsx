@@ -40,9 +40,15 @@ export const TopNavBar = memo(({ user }) => {
         )}
         <div className="flex justify-between items-center">
           {/* Logo */}
-          <Link to="/" className="flex items-center">
-            <img src={logo} alt="TrashDrop Logo" className="h-10 w-auto mr-2" width="60" height="40" loading="eager" decoding="sync" />
-            <span className="text-green-700 text-xl font-bold">TrashDrop Carter</span>
+          <Link to="/" className="flex items-center" aria-label="TrashDrop Carter home">
+            {/* Phones: the logo alone, cropped to its artwork (the file has blank
+                margins) so its lettering fills the 40px the initials circle uses.
+                In rem so the crop holds when the text size changes. */}
+            <span className="md:hidden relative h-10 w-[3.875rem] overflow-hidden">
+              <img src={logo} alt="" className="absolute -top-[0.625rem] -left-[0.625rem] h-[3.8125rem] w-auto max-w-none" loading="eager" decoding="sync" />
+            </span>
+            <img src={logo} alt="" className="hidden md:block h-10 w-auto mr-2" width="60" height="40" loading="eager" decoding="sync" />
+            <span className="hidden md:inline text-green-700 text-xl font-bold">TrashDrop Carter</span>
           </Link>
 
           {/* Profile Dropdown */}
