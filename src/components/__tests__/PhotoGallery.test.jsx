@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import PhotoGallery from '../PhotoGallery';
 
 const photos = ['a.jpg', 'b.jpg', 'c.jpg', 'd.jpg', 'e.jpg', 'f.jpg'];
@@ -93,5 +93,53 @@ describe('PhotoGallery', () => {
   it('renders nothing for no photos when emptyText is null', () => {
     const { container } = render(<PhotoGallery photos={null} emptyText={null} />);
     expect(container).toBeEmptyDOMElement();
+  });
+  describe('slideshow', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+    const wait = (ms) => act(() => { jest.advanceTimersByTime(ms); });
+
+    it('moves on every 4 seconds and loops back to the first photo', () => {
+      render(<PhotoGallery photos={['a.jpg', 'b.jpg', 'c.jpg']} />);
+      fireEvent.click(screen.getByRole('button', { name: 'View full screen' }));
+      expect(viewerImage()).toHaveAttribute('src', 'a.jpg');
+      wait(3999);
+      expect(viewerImage()).toHaveAttribute('src', 'a.jpg');
+      wait(1);
+      expect(viewerImage()).toHaveAttribute('src', 'b.jpg');
+      wait(4000);
+      wait(4000);
+      expect(viewerImage()).toHaveAttribute('src', 'a.jpg');
+    });
+
+    it('pauses and plays with the button and the space bar', () => {
+      render(<PhotoGallery photos={['a.jpg', 'b.jpg', 'c.jpg']} />);
+      fireEvent.click(screen.getByRole('button', { name: 'View full screen' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Pause slideshow' }));
+      wait(10000);
+      expect(viewerImage()).toHaveAttribute('src', 'a.jpg');
+
+      fireEvent.keyDown(window, { key: ' ' });
+      expect(screen.getByRole('button', { name: 'Pause slideshow' })).toBeInTheDocument();
+      wait(4000);
+      expect(viewerImage()).toHaveAttribute('src', 'b.jpg');
+    });
+
+    it('gives a photo the full 4 seconds after a manual move', () => {
+      render(<PhotoGallery photos={['a.jpg', 'b.jpg', 'c.jpg']} />);
+      fireEvent.click(screen.getByRole('button', { name: 'View full screen' }));
+      wait(3000);
+      fireEvent.click(screen.getByRole('button', { name: 'Next photo' }));
+      wait(3000);
+      expect(viewerImage()).toHaveAttribute('src', 'b.jpg');
+      wait(1000);
+      expect(viewerImage()).toHaveAttribute('src', 'c.jpg');
+    });
+
+    it('does not play or offer Pause for a single photo', () => {
+      render(<PhotoGallery photos="only.jpg" />);
+      fireEvent.click(screen.getByRole('button', { name: 'Open photo 1 of 1' }));
+      expect(screen.queryByRole('button', { name: /slideshow/ })).not.toBeInTheDocument();
+    });
   });
 });

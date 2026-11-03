@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, X, Images } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Images, Pause, Play } from 'lucide-react';
 
 // Photos shown before "Show all" is tapped (one row of the grid)
 const COLLAPSED_COUNT = 3;
 // Minimum horizontal drag, in px, that counts as a swipe
 const SWIPE_THRESHOLD = 50;
+// Slideshow: time each photo stays up before the next one
+const SLIDE_INTERVAL_MS = 4000;
 
 // Accepts an array of URLs, a single URL, or a JSON-encoded array (some
 // request rows store photo_urls as text)
@@ -18,12 +20,22 @@ const normalizePhotos = (photos) => {
 };
 
 /**
- * Full-screen photo viewer: swipe, arrow buttons or keyboard arrows to move
- * between photos; tap X, the backdrop or Escape to close.
+ * Full-screen photo viewer. With more than one photo it plays as a slideshow,
+ * moving on every few seconds and looping; Pause/Play (or the space bar)
+ * stops and starts it. Swipe, arrow buttons, dots or keyboard arrows move
+ * between photos and restart the count; tap X, the backdrop or Escape to close.
  */
 const PhotoLightbox = ({ photos, index, onIndexChange, onClose }) => {
   const touchStartX = useRef(null);
   const count = photos.length;
+  const [playing, setPlaying] = useState(count > 1);
+
+  // Re-armed whenever the photo changes, so a manual move gets a full interval
+  useEffect(() => {
+    if (!playing || count < 2) return undefined;
+    const timer = setTimeout(() => onIndexChange((index + 1) % count), SLIDE_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [playing, index, count, onIndexChange]);
 
   const showPrevious = useCallback(() => onIndexChange((index - 1 + count) % count), [index, count, onIndexChange]);
   const showNext = useCallback(() => onIndexChange((index + 1) % count), [index, count, onIndexChange]);
@@ -33,10 +45,14 @@ const PhotoLightbox = ({ photos, index, onIndexChange, onClose }) => {
       if (e.key === 'Escape') onClose();
       else if (e.key === 'ArrowLeft') showPrevious();
       else if (e.key === 'ArrowRight') showNext();
+      else if (e.key === ' ' && count > 1) {
+        e.preventDefault();
+        setPlaying((p) => !p);
+      }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose, showPrevious, showNext]);
+  }, [onClose, showPrevious, showNext, count]);
 
   const handleTouchStart = (e) => {
     touchStartX.current = e.touches[0].clientX;
@@ -60,6 +76,17 @@ const PhotoLightbox = ({ photos, index, onIndexChange, onClose }) => {
     >
       <div className="flex items-center justify-between px-4 py-3 text-white">
         <span className="text-sm font-medium">{index + 1} / {count}</span>
+        {count > 1 && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setPlaying((p) => !p); }}
+            className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm font-medium hover:bg-white/20"
+            aria-label={playing ? 'Pause slideshow' : 'Play slideshow'}
+          >
+            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {playing ? 'Pause' : 'Play'}
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}
