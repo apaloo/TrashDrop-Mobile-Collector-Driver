@@ -119,3 +119,13 @@ export const transformRequestsData = (
     return a.distanceValue - b.distanceValue;
   });
 };
+
+/**
+ * Whether a scanned digital bin code belongs to this accepted request.
+ * The household app's code is https://trashdrop.app/bin/<digital bin id>, the
+ * request's own id (the map's scan, NavigationQRModal, checks the same). A
+ * bin's location id never counts: every booking at that address shares it.
+ */
+export const isScanForDigitalBin = (scannedId, request) =>
+  Boolean(scannedId && request?.id) &&
+  String(scannedId).toLowerCase() === String(request.id).toLowerCase();

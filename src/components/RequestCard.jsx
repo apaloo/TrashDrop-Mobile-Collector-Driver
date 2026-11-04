@@ -9,6 +9,7 @@ import { displayFee } from '../utils/requestFee';
 import { scanPickupBag } from '../services/bagPricing';
 import { formatLocationAsync } from '../utils/geoUtils';
 import { logger } from '../utils/logger';
+import { isScanForDigitalBin } from '../utils/requestUtils';
 import { PICKUP_ARRIVAL_RADIUS_KM, kmToMeters } from '../config/geofenceConfig';
 import { promotionalPayout } from '../utils/paymentCalculations';
 
@@ -174,11 +175,9 @@ const RequestCard = ({
       const code = qrData?.code || (bagId ? `https://trashdrop.app/bin/${bagId}` : null);
       logger.debug('📦 Digital bin QR scanned via RequestCard:', bagId);
 
-      // Validate: scanned QR must match this request's expected QR value
-      // QR URLs contain the location_id (e.g. /bin/<location_id>), not the digital bin id
-      const expectedId = request.location_id || request.id;
-      if (!bagId || bagId !== expectedId) {
-        logger.error('❌ QR code mismatch! Expected:', expectedId, 'Got:', bagId);
+      // Validate: the code must be this request's own bin id (see isScanForDigitalBin)
+      if (!isScanForDigitalBin(bagId, request)) {
+        logger.error('❌ QR code mismatch! Expected:', request.id, 'Got:', bagId);
         showScanFeedback('error', 'Wrong bin! Try again.', 'This is not the right QR code. Point your camera at the correct bin.');
         // Auto-dismiss red flash after 3s, scanner stays open for retry
         scanFeedbackTimer.current = setTimeout(() => {
