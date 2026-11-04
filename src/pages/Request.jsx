@@ -17,7 +17,7 @@ import DigitalBinPaymentModal from '../components/DigitalBinPaymentModal';
 import Toast from '../components/Toast';
 
 import { PickupRequestStatus, WasteType, AssignmentStatus } from '../utils/types';
-import { transformRequestsData } from '../utils/requestUtils';
+import { transformRequestsData, isScanForDigitalBin } from '../utils/requestUtils';
 import { withBagPrices, finalizePickupPayout } from '../services/bagPricing';
 import { filterAvailableRequests, getCachedPosition, toLatLng } from '../utils/availableRequests';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
@@ -1553,11 +1553,9 @@ const RequestPage = () => {
         const scannedBinId = scannedBags[0]?.id;
         const scannedCode = scannedBags[0]?.code;
 
-        // Validate scanned QR matches the accepted request
-        // QR URLs contain location_id (e.g. /bin/<location_id>), not the digital bin id
-        const expectedId = currentRequest.location_id || requestId;
-        if (scannedBinId !== expectedId) {
-          logger.error('❌ QR code mismatch! Expected:', expectedId, 'Got:', scannedBinId);
+        // Validate scanned QR matches the accepted request (its own bin id)
+        if (!isScanForDigitalBin(scannedBinId, currentRequest)) {
+          logger.error('❌ QR code mismatch! Expected:', currentRequest.id, 'Got:', scannedBinId);
           showToast(`Wrong bin! Scanned bin does not match this request.`, 'error');
           return;
         }
