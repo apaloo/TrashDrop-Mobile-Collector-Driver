@@ -223,9 +223,10 @@ const RequestPage = () => {
   };
   
   // Hide toast notification
-  const hideToast = () => {
-    setToast({ ...toast, show: false });
-  };
+  // Stable, so the toast's close timer isn't restarted on every render
+  const hideToast = useCallback(() => {
+    setToast(prev => ({ ...prev, show: false }));
+  }, []);
   
   // Show toast for photo-related errors
   useEffect(() => {
@@ -2792,19 +2793,6 @@ const GeofenceErrorModal = ({
         
         {/* Radius Filter and Multi-select controls removed - using Map page's radius setting instead */}
         
-        {/* Toast notification */}
-        {toast.show && (
-          <div className={`fixed bottom-20 left-0 right-0 mx-auto w-5/6 p-4 rounded-md shadow-lg ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-700'} text-white text-center z-50`}>
-            {toast.message}
-            <button 
-              onClick={hideToast}
-              className="absolute top-1 right-1 text-white"
-            >
-              ×
-            </button>
-          </div>
-        )}
-        
         {/* Geofence Error Modal */}
         <GeofenceErrorModal 
           isOpen={geofenceModalOpen} 
@@ -3037,7 +3025,7 @@ const GeofenceErrorModal = ({
       
       {/* Toast Notification */}
       {toast.show && (
-        <Toast message={toast.message} type={toast.type} onClose={() => setToast({ ...toast, show: false })} />
+        <Toast message={toast.message} type={toast.type} duration={toast.duration} onClose={hideToast} />
       )}
       
       {/* Navigation Modal */}
