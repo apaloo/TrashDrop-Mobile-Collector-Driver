@@ -7,6 +7,7 @@ import { formatPhoneNumber, authService } from '../services/supabase';
 import { logger } from '../utils/logger';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '../config/languageConfig';
 import { PROFILE_STATE, toLocalPhone } from '../utils/collectorProfile';
+import { extractCode, useOtpAutofill } from '../hooks/useOtpAutofill';
 
 // ─── Plain-language error messages ───────────────────────────────────────────
 const friendlyError = (raw = '') => {
@@ -140,6 +141,8 @@ const SignupPage = () => {
   const [companySearch, setCompanySearch] = useState('');
   // OTP digit refs for 6-box input
   const otpRefs = [useRef(), useRef(), useRef(), useRef(), useRef(), useRef()];
+  // Stops a second check of the code while one is already running
+  const verifyingRef = useRef(false);
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
 
   // Haptic feedback helper
@@ -227,7 +230,20 @@ const SignupPage = () => {
   };
 
   // Handle OTP digit boxes
+  // The whole code arrived at once (phone autofill, paste, or read from the
+  // text): fill every box and continue without another tap
+  const fillCode = (code) => {
+    setOtpDigits(code.split(''));
+    setFormData(prev => ({ ...prev, otp: code }));
+    clearFieldError('otp');
+    setError(null);
+    otpRefs[5].current?.blur();
+    handleVerifyOtp(code);
+  };
+
   const handleOtpDigit = (index, value) => {
+    const code = extractCode(value);
+    if (code) { fillCode(code); return; }
     if (!/^\d*$/.test(value)) return;
     const digits = [...otpDigits];
     digits[index] = value.slice(-1);
@@ -237,6 +253,17 @@ const SignupPage = () => {
     setError(null);
     if (value && index < 5) otpRefs[index + 1].current?.focus();
   };
+
+  const handleOtpPaste = (e) => {
+    const code = extractCode(e.clipboardData?.getData('text'));
+    if (code) {
+      e.preventDefault();
+      fillCode(code);
+    }
+  };
+
+  // Android: read the code from the text as soon as it arrives
+  useOtpAutofill(step === 2, fillCode);
 
   const handleOtpKeyDown = (index, e) => {
     if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
@@ -309,12 +336,15 @@ const SignupPage = () => {
   };
   
   // Verify OTP and proceed to next step
-  const handleVerifyOtp = async () => {
+  const handleVerifyOtp = async (filledCode) => {
+    if (verifyingRef.current) return;
+    verifyingRef.current = true;
+    const code = typeof filledCode === 'string' ? filledCode : formData.otp;
     setLoading(true);
     setError(null);
     
     try {
-      if (formData.otp.length !== 6 || !/^\d+$/.test(formData.otp)) {
+      if (code.length !== 6 || !/^\d+$/.test(code)) {
         throw new Error('Wrong code. Please enter all 6 numbers.');
       }
       
@@ -326,7 +356,7 @@ const SignupPage = () => {
       // This authenticates the user and creates their session in Supabase
       // BUT we don't update AuthContext yet - that happens after profile creation
       logger.debug('Verifying OTP with Supabase...');
-      const { success, error: verifyError } = await authService.verifyOtp(formData.phone, formData.otp);
+      const { success, error: verifyError } = await authService.verifyOtp(formData.phone, code);
       
       if (!success) {
         localStorage.removeItem('is_completing_signup');
@@ -351,6 +381,7 @@ const SignupPage = () => {
       setOtpDigits(['', '', '', '', '', '']);
       setTimeout(() => otpRefs[0].current?.focus(), 100);
     } finally {
+      verifyingRef.current = false;
       setLoading(false);
     }
   };
@@ -676,9 +707,11 @@ const SignupPage = () => {
                     ref={otpRefs[i]}
                     type="text"
                     inputMode="numeric"
-                    maxLength={1}
+                    autoComplete="one-time-code"
+                    aria-label={`Code number ${i + 1}`}
                     value={digit}
                     onChange={(e) => handleOtpDigit(i, e.target.value)}
+                    onPaste={handleOtpPaste}
                     onKeyDown={(e) => handleOtpKeyDown(i, e)}
                     className={`w-12 h-14 text-center text-2xl font-bold rounded-xl border-2 bg-white dark:bg-gray-800 text-td-ink dark:text-white focus:outline-none transition-colors ${
                       fieldErrors.otp ? 'border-red-500 bg-red-50 dark:bg-red-900/20' :
@@ -698,7 +731,7 @@ const SignupPage = () => {
             <button
               type="button"
               className="w-full py-4 bg-primary text-white text-lg font-bold rounded-xl mt-4 shadow-md active:scale-95 transition-all disabled:opacity-50"
-              onClick={handleVerifyOtp}
+              onClick={() => handleVerifyOtp()}
               disabled={loading || formData.otp.length !== 6}
             >
               {loading ? (
