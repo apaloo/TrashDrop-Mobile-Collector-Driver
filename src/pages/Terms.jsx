@@ -103,11 +103,10 @@ const TermsPage = () => {
             If you have any questions about these Terms of Service, please contact us at:
           </p>
           <p className="mt-2">
-            <strong>TrashDrop Inc.</strong><br />
-            123 Waste Management Ave<br />
+            <strong>TrashDrop by Infobrix Limited</strong><br />
             Accra, Ghana<br />
-            Email: support@trashdrop.com<br />
-            Phone: +233 50 123 4567
+            Email: hello@trashdrops.com<br />
+            Phone: +233 20 933 8885
           </p>
         </div>
         

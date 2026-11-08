@@ -118,10 +118,9 @@ const PrivacyPage = () => {
             If you have any questions or concerns about this Privacy Policy, please contact us at:
           </p>
           <p>
-            <strong>TrashDrop Inc.</strong><br />
-            123 Waste Management Ave<br />
+            <strong>TrashDrop by Infobrix Limited</strong><br />
             Accra, Ghana<br />
-            Email: privacy@trashdrop.com<br />
+            Email: hello@trashdrops.com<br />
             Phone: +233 20 933 8885
           </p>
         </div>
