@@ -122,7 +122,7 @@ const PrivacyPage = () => {
             123 Waste Management Ave<br />
             Accra, Ghana<br />
             Email: privacy@trashdrop.com<br />
-            Phone: +233 50 123 4567
+            Phone: +233 20 933 8885
           </p>
         </div>
         
