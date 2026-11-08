@@ -107,6 +107,21 @@ describe('LocationOffBanner', () => {
     await waitFor(() => expect(screen.queryByRole('button')).not.toBeInTheDocument());
   });
 
+  it('when blocked, tapping shows the steps and closes when allowed', async () => {
+    setPermission('denied');
+    failWith(DENIED);
+    render(<LocationOffBanner />);
+    fireEvent.click(await screen.findByRole('button', { name: /Tap to allow/ }));
+
+    expect(await screen.findByRole('dialog', { name: 'Allow location for TrashDrop' })).toBeInTheDocument();
+    expect(screen.getByText(/Tap Settings, then Site settings, then Location/)).toBeInTheDocument();
+
+    setPermission('granted');
+    succeed();
+    await act(async () => { window.dispatchEvent(new Event('focus')); });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
   it('says blocked when the site is not allowed', async () => {
     setPermission('denied');
     failWith(DENIED);
