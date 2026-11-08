@@ -101,14 +101,7 @@ export default defineConfig({
         orientation: 'portrait',
         start_url: '/',
         scope: '/',
-        prefer_related_applications: true,
-        related_applications: [
-          {
-            platform: 'play',
-            url: 'https://play.google.com/store/apps/details?id=com.trashdrop.carter',
-            id: 'com.trashdrop.carter'
-          }
-        ],
+        prefer_related_applications: false,
         launch_handler: {
           client_mode: 'navigate-existing'
         },
