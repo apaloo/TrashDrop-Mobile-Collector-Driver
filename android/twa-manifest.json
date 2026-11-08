@@ -1,0 +1,43 @@
+{
+  "packageId": "com.trashdrop.carter",
+  "host": "trashdrop-mobile-collector.netlify.app",
+  "name": "TrashDrop Carter",
+  "launcherName": "TrashDrop Carter",
+  "display": "standalone",
+  "themeColor": "#9AE65C",
+  "themeColorDark": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#00000000",
+  "navigationDividerColorDark": "#00000000",
+  "backgroundColor": "#FFFFFF",
+  "enableNotifications": true,
+  "startUrl": "/?android_layer=1",
+  "iconUrl": "https://trashdrop-mobile-collector.netlify.app/icons/icon-512x512.png",
+  "maskableIconUrl": "https://trashdrop-mobile-collector.netlify.app/icons/maskable_icon.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./signing.keystore",
+    "alias": "my-key-alias"
+  },
+  "appVersionName": "1.1.0",
+  "appVersionCode": 2,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://trashdrop-mobile-collector.netlify.app/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://trashdrop-mobile-collector.netlify.app/",
+  "minSdkVersion": 23,
+  "orientation": "portrait",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "appVersion": "1.1.0"
+}

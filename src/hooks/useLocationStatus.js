@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { hasAndroidLayer, noteAndroidLayer, openLocationDialog } from '../utils/androidLayer';
+
+// Read at start-up, before the app changes the address
+noteAndroidLayer();
 
 const PERMISSION_DENIED = 1;
 const POSITION_UNAVAILABLE = 2;
 const RECHECK_MS = 60000;
+const AFTER_DIALOG_WAIT_MS = 1500;
 const OPTIONS = { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 };
 
 const readPermission = async () => {
@@ -29,15 +34,19 @@ export const problemFromError = (error, permission) => {
  * Rechecks when the collector comes back to the app and every minute, so the
  * warning clears by itself. turnOn() must run straight from a tap: a location
  * request made from a tap is what lets Android Chrome show its own "Turn on
- * location?" dialog without the collector leaving the app.
+ * location?" dialog without the collector leaving the app. The installed
+ * Android app opens Google's own dialog instead (see utils/androidLayer).
  */
 export const useLocationStatus = () => {
   const [problem, setProblem] = useState(null);
   const [checking, setChecking] = useState(false);
   const [tappedAndStillOff, setTappedAndStillOff] = useState(false);
   const mounted = useRef(true);
+  const problemRef = useRef(null);
+  problemRef.current = problem;
+  const dialogOpened = useRef(false);
 
-  const check = useCallback(({ fromTap = false } = {}) => {
+  const check = useCallback(({ fromTap = false, afterDialog = false } = {}) => {
     if (!navigator.geolocation?.getCurrentPosition) return;
     if (fromTap) setChecking(true);
     navigator.geolocation.getCurrentPosition(
@@ -53,7 +62,7 @@ export const useLocationStatus = () => {
         const next = problemFromError(error, permission);
         if (next) setProblem(next);
         setChecking(false);
-        if (fromTap && next) setTappedAndStillOff(true);
+        if ((fromTap || afterDialog) && next) setTappedAndStillOff(true);
       },
       OPTIONS
     );
@@ -65,7 +74,13 @@ export const useLocationStatus = () => {
     const autoCheck = async () => {
       if (document.visibilityState !== 'visible') return;
       if ((await readPermission()) === 'prompt') return;
-      if (mounted.current) check();
+      const afterDialog = dialogOpened.current;
+      if (afterDialog) {
+        // Back from Google's dialog: give the phone a moment to switch on
+        dialogOpened.current = false;
+        await new Promise((resolve) => setTimeout(resolve, AFTER_DIALOG_WAIT_MS));
+      }
+      if (mounted.current) check({ afterDialog });
     };
     autoCheck();
     const timer = setInterval(autoCheck, RECHECK_MS);
@@ -85,7 +100,16 @@ export const useLocationStatus = () => {
     };
   }, [check]);
 
-  const turnOn = useCallback(() => check({ fromTap: true }), [check]);
+  const turnOn = useCallback(() => {
+    // The installed app can open Google's own dialog. Otherwise the request
+    // from this tap gives Chrome the chance to show its dialog.
+    if (problemRef.current === 'off' && hasAndroidLayer()) {
+      dialogOpened.current = true;
+      openLocationDialog();
+      return;
+    }
+    check({ fromTap: true });
+  }, [check]);
 
   return { problem, checking, tappedAndStillOff, turnOn };
 };
