@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { TopNavBar } from './NavBar';
 import BottomNavBar from './BottomNavBar';
 import OfflineIndicator from './OfflineIndicator';
+import LocationOffBanner from './LocationOffBanner';
 import { useAuth } from '../context/AuthContext';
 
 /**
@@ -28,6 +29,9 @@ const AppLayout = ({ children }) => {
       
       {/* Show BottomNavBar only on authenticated routes */}
       {!isPublicRoute && <BottomNavBar />}
+
+      {/* Collectors can't work without location: one tap to turn it on */}
+      {!isPublicRoute && user && <LocationOffBanner />}
       
       {/* Offline indicator is always visible when needed */}
       <OfflineIndicator />
