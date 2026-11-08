@@ -6,6 +6,9 @@ const INSTALL_PROMPT_DISMISSED_KEY = 'trashdrop_install_prompt_dismissed';
 const INSTALL_PROMPT_DISMISSED_TIMESTAMP = 'trashdrop_install_prompt_dismissed_at';
 const INSTALL_PROMPT_VERSION_KEY = 'trashdrop_install_prompt_version';
 const REPROMPT_DELAY_DAYS = 7;
+// How long a tap waits for the browser to say it can install. The tap only
+// stays valid for the install dialog for about five seconds.
+const INSTALL_READY_WAIT_MS = 3000;
 
 // Bump this on every deploy where you want the prompt to re-appear
 const APP_VERSION = '3.2.0';
@@ -20,20 +23,20 @@ const resetPromptState = () => {
 /**
  * InstallPrompt Component
  *
- * Platform-aware install strategy:
- * - **Android**: Does NOT trigger Chrome's native install prompt (which creates
- *   a WebAPK scanned by Google Play Protect).  Instead, offers "Open App" to
- *   continue in the browser — the full PWA experience works identically via
- *   the service worker without installation.  A secondary link shows manual
- *   home-screen instructions for users who want an icon.
- * - **iOS / Desktop**: Uses the native beforeinstallprompt when available,
- *   falling back to manual instructions.
+ * Tapping install opens the browser's own install dialog wherever the browser
+ * offers one. Where it doesn't (iOS Safari, some Android browsers, or the
+ * browser isn't ready yet) the steps to install by hand replace the benefits
+ * list, so the tap always visibly does something.
+ *
+ * The buttons sit outside the scrolling area so they stay on screen on short
+ * phones.
  */
 const InstallPrompt = () => {
   const [showPrompt, setShowPrompt] = useState(false);
   const [showManualInstructions, setShowManualInstructions] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const deferredPromptRef = useRef(null);
+  const installReadyRef = useRef(null);
 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   const isAndroid = /Android/.test(navigator.userAgent);
@@ -52,14 +55,13 @@ const InstallPrompt = () => {
     }
   }, []);
 
-  // Capture native prompt (iOS/desktop only — we never call .prompt() on Android)
+  // Keep the browser's install offer until the collector taps install
   useEffect(() => {
     const handler = (e) => {
       e.preventDefault();
-      if (!isAndroid) {
-        deferredPromptRef.current = e;
-        logger.info('📥 Native install prompt captured');
-      }
+      deferredPromptRef.current = e;
+      installReadyRef.current?.();
+      logger.info('📥 Native install prompt captured');
     };
     window.addEventListener('beforeinstallprompt', handler);
 
@@ -74,7 +76,7 @@ const InstallPrompt = () => {
       window.removeEventListener('beforeinstallprompt', handler);
       window.removeEventListener('appinstalled', installedHandler);
     };
-  }, [isAndroid]);
+  }, []);
 
   // Show prompt logic
   useEffect(() => {
@@ -98,43 +100,45 @@ const InstallPrompt = () => {
     return () => clearTimeout(timer);
   }, [isStandalone]);
 
-  // Install handler — safe: never calls native prompt on Android
   const handleInstall = useCallback(async () => {
-    if (isAndroid) {
-      // Skip native prompt entirely to avoid WebAPK → Play Protect scan.
-      // Show manual add-to-homescreen instructions instead.
-      setShowManualInstructions(true);
-      return;
-    }
-
-    // iOS / Desktop: try native prompt
-    if (deferredPromptRef.current) {
-      setIsInstalling(true);
-      try {
-        deferredPromptRef.current.prompt();
-        const { outcome } = await deferredPromptRef.current.userChoice;
-        logger.info(`📥 Native install result: ${outcome}`);
-        if (outcome === 'accepted') {
-          localStorage.setItem(INSTALL_PROMPT_KEY, 'installed');
-          setShowPrompt(false);
-          return;
-        }
-      } catch (err) {
-        logger.error('❌ Native prompt error:', err);
-      } finally {
-        deferredPromptRef.current = null;
-        setIsInstalling(false);
+    setIsInstalling(true);
+    try {
+      // The browser can announce it's ready a moment after this screen appears
+      if (!deferredPromptRef.current) {
+        await new Promise((resolve) => {
+          installReadyRef.current = resolve;
+          setTimeout(resolve, INSTALL_READY_WAIT_MS);
+        });
+        installReadyRef.current = null;
       }
+
+      const installOffer = deferredPromptRef.current;
+      if (!installOffer) {
+        setShowManualInstructions(true);
+        return;
+      }
+
+      deferredPromptRef.current = null;
+      await installOffer.prompt();
+      const { outcome } = await installOffer.userChoice;
+      logger.info(`📥 Native install result: ${outcome}`);
+      if (outcome === 'accepted') {
+        localStorage.setItem(INSTALL_PROMPT_KEY, 'installed');
+        setShowPrompt(false);
+      }
+    } catch (err) {
+      logger.error('❌ Native prompt error:', err);
+      setShowManualInstructions(true);
+    } finally {
+      setIsInstalling(false);
     }
+  }, []);
 
-    setShowManualInstructions(true);
-  }, [isAndroid]);
-
-  // "Open App" — primary CTA on Android: just dismiss and use in browser
+  // "Open App": use it in the browser this time. Asks again on the next visit.
   const handleOpenApp = useCallback(() => {
     localStorage.setItem(INSTALL_PROMPT_KEY, 'shown');
     setShowPrompt(false);
-    logger.info('📱 User chose to continue in browser (Android – skipping WebAPK)');
+    logger.info('📱 User chose to continue in browser');
   }, []);
 
   const handleDismiss = useCallback(() => {
@@ -148,9 +152,11 @@ const InstallPrompt = () => {
   if (!showPrompt || isStandalone) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-gradient-to-b from-green-600 to-green-800 flex flex-col items-center justify-center p-6">
+    <div className="fixed inset-0 h-[100dvh] z-[9999] bg-gradient-to-b from-green-600 to-green-800 flex flex-col">
+      <div data-testid="install-scroll" className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+      <div className="min-h-full flex flex-col items-center justify-center p-6">
       {/* Logo */}
-      <div className="mb-8 text-center">
+      <div className="mb-6 text-center">
         <div className="w-24 h-24 mx-auto mb-4 bg-white rounded-2xl shadow-lg flex items-center justify-center">
           <img
             src="/logo.svg"
@@ -165,7 +171,7 @@ const InstallPrompt = () => {
       </div>
 
       {/* Card */}
-      <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full">
         <div className="text-center mb-6">
           <div className="w-16 h-16 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center">
             {isAndroid ? (
@@ -183,13 +189,14 @@ const InstallPrompt = () => {
           </h2>
           <p className="text-td-sage text-sm">
             {isAndroid
-              ? 'Your app is ready! Enjoy fast loading, offline access, and instant pickup notifications — all from your browser.'
+              ? 'Add TrashDrop Carter to your phone for fast loading, offline access, and instant pickup notifications.'
               : 'Install our app for the best experience with faster loading, offline access, and push notifications.'}
           </p>
         </div>
 
         {/* Benefits */}
-        <div className="space-y-3 mb-6">
+        {!showManualInstructions && (
+        <div className="space-y-3">
           {[
             { icon: 'M13 10V3L4 14h7v7l9-11h-7z', text: 'Lightning-fast loading times' },
             { icon: 'M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3m8.293 8.293l1.414 1.414', text: 'Works offline — no internet needed' },
@@ -206,10 +213,11 @@ const InstallPrompt = () => {
             </div>
           ))}
         </div>
+        )}
 
-        {/* Manual instructions (non-Android or when user explicitly asks) */}
+        {/* Steps to install by hand, when the browser can't do it for us */}
         {showManualInstructions && (
-          <div className="mb-4 p-4 bg-td-tonal rounded-xl border border-td-border">
+          <div className="p-4 bg-td-tonal rounded-xl border border-td-border">
             <h3 className="font-semibold text-blue-800 mb-2 text-sm">Add to Home Screen:</h3>
             {isIOS ? (
               <div className="text-sm text-td-forest space-y-2">
@@ -220,7 +228,7 @@ const InstallPrompt = () => {
             ) : isAndroid ? (
               <div className="text-sm text-td-forest space-y-2">
                 <p>1. Tap the <strong>menu</strong> button <span className="inline-block bg-td-tonal px-1.5 py-0.5 rounded text-xs">⋮</span> in your browser</p>
-                <p>2. Tap <strong>"Add to Home screen"</strong></p>
+                <p>2. Tap <strong>"Add to Home screen"</strong> or <strong>"Install app"</strong></p>
                 <p>3. Tap <strong>"Add"</strong> to confirm</p>
                 <p className="mt-2 text-xs text-td-forest bg-td-tonal rounded-lg p-2">
                   <strong>Tip:</strong> If you see a security warning, tap <strong>"More details"</strong> then <strong>"Install anyway"</strong>. The app is safe — the warning is about Chrome's packaging, not your data.
@@ -235,89 +243,47 @@ const InstallPrompt = () => {
           </div>
         )}
 
-        {/* Buttons */}
-        <div className="space-y-3">
-          {isAndroid ? (
-            <>
-              {/* Android: primary = open app in browser (no WebAPK, no Play Protect) */}
-              <button
-                onClick={handleOpenApp}
-                className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl transition-colors duration-200 flex items-center justify-center"
-              >
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                </svg>
-                Open App
-              </button>
+      </div>
 
-              {!showManualInstructions ? (
-                <button
-                  onClick={() => setShowManualInstructions(true)}
-                  className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-td-ink font-medium rounded-xl transition-colors duration-200 text-sm"
-                >
-                  Add to Home Screen
-                </button>
-              ) : (
-                <button
-                  onClick={handleDismiss}
-                  className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-td-ink font-medium rounded-xl transition-colors duration-200 text-sm"
-                >
-                  Done
-                </button>
-              )}
-            </>
+      {!isAndroid && (
+        <p className="mt-6 text-green-200 text-xs text-center max-w-xs">
+          You can always install later from your browser menu
+        </p>
+      )}
+      </div>
+      </div>
+
+      {/* Always on screen, whatever the phone's height */}
+      <div className="shrink-0 bg-white rounded-t-2xl px-6 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        <div className="space-y-3 max-w-sm mx-auto">
+          {!showManualInstructions ? (
+            <button
+              onClick={handleInstall}
+              disabled={isInstalling}
+              className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl transition-colors duration-200 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {isInstalling ? 'Getting ready…' : isAndroid ? 'Add to Home Screen' : 'Install App'}
+            </button>
           ) : (
-            <>
-              {/* iOS / Desktop: native install or manual instructions */}
-              {!showManualInstructions ? (
-                <button
-                  onClick={handleInstall}
-                  disabled={isInstalling}
-                  className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl transition-colors duration-200 flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed"
-                >
-                  {isInstalling ? (
-                    <>
-                      <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      Installing...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      Install App
-                    </>
-                  )}
-                </button>
-              ) : (
-                <button
-                  onClick={handleDismiss}
-                  className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl transition-colors duration-200"
-                >
-                  Got it, I'll install now
-                </button>
-              )}
+            <button
+              onClick={isAndroid ? handleOpenApp : handleDismiss}
+              className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl transition-colors duration-200"
+            >
+              Done
+            </button>
+          )}
 
-              <button
-                onClick={handleDismiss}
-                disabled={isInstalling}
-                className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-td-ink font-medium rounded-xl transition-colors duration-200 disabled:opacity-50"
-              >
-                Maybe Later
-              </button>
-            </>
+          {!showManualInstructions && (
+            <button
+              onClick={isAndroid ? handleOpenApp : handleDismiss}
+              disabled={isInstalling}
+              className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-td-ink font-medium rounded-xl transition-colors duration-200 text-sm disabled:opacity-50"
+            >
+              {isAndroid ? 'Open App' : 'Maybe Later'}
+            </button>
           )}
         </div>
       </div>
-
-      <p className="mt-6 text-green-200 text-xs text-center max-w-xs">
-        {isAndroid
-          ? 'Bookmark this page for quick access anytime'
-          : 'You can always install later from your browser menu'}
-      </p>
     </div>
   );
 };
