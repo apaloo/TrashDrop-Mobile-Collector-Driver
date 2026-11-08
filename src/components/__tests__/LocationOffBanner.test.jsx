@@ -3,6 +3,13 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import '@testing-library/jest-dom';
 import LocationOffBanner from '../LocationOffBanner';
 import { problemFromError } from '../../hooks/useLocationStatus';
+import { hasAndroidLayer, openLocationDialog } from '../../utils/androidLayer';
+
+jest.mock('../../utils/androidLayer', () => ({
+  noteAndroidLayer: jest.fn(),
+  hasAndroidLayer: jest.fn(() => false),
+  openLocationDialog: jest.fn(),
+}));
 
 const DENIED = { code: 1 };
 const UNAVAILABLE = { code: 2 };
@@ -105,5 +112,54 @@ describe('LocationOffBanner', () => {
     failWith(DENIED);
     render(<LocationOffBanner />);
     expect(await screen.findByRole('button', { name: /Location is blocked. Tap to allow/ })).toBeInTheDocument();
+  });
+
+  describe('in the installed Android app', () => {
+    beforeEach(() => {
+      hasAndroidLayer.mockReturnValue(true);
+      openLocationDialog.mockClear();
+    });
+    afterEach(() => hasAndroidLayer.mockReturnValue(false));
+
+    it("opens Google's dialog on tap instead of asking the browser", async () => {
+      failWith(UNAVAILABLE);
+      render(<LocationOffBanner />);
+      const banner = await screen.findByRole('button', { name: /Tap to turn on/ });
+      const callsBefore = getCurrentPosition.mock.calls.length;
+
+      fireEvent.click(banner);
+
+      expect(openLocationDialog).toHaveBeenCalledTimes(1);
+      expect(getCurrentPosition.mock.calls.length).toBe(callsBefore);
+    });
+
+    it('clears after coming back with location on', async () => {
+      failWith(UNAVAILABLE);
+      render(<LocationOffBanner />);
+      fireEvent.click(await screen.findByRole('button', { name: /Tap to turn on/ }));
+
+      succeed();
+      await act(async () => { window.dispatchEvent(new Event('focus')); });
+
+      await waitFor(() => expect(screen.queryByRole('button')).not.toBeInTheDocument(), { timeout: 3000 });
+    });
+
+    it('gives the manual step if it is still off after the dialog', async () => {
+      failWith(UNAVAILABLE);
+      render(<LocationOffBanner />);
+      fireEvent.click(await screen.findByRole('button', { name: /Tap to turn on/ }));
+
+      await act(async () => { window.dispatchEvent(new Event('focus')); });
+
+      expect(await screen.findByText(/Swipe down from the top/, {}, { timeout: 3000 })).toBeInTheDocument();
+    });
+
+    it('a blocked app still asks through the browser', async () => {
+      setPermission('denied');
+      failWith(DENIED);
+      render(<LocationOffBanner />);
+      fireEvent.click(await screen.findByRole('button', { name: /Tap to allow/ }));
+      expect(openLocationDialog).not.toHaveBeenCalled();
+    });
   });
 });
