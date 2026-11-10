@@ -878,64 +878,30 @@ const AssignPage = () => {
     setDetailsModalOpen(false); // Close details modal if open
   };
   
-  // Handle assignment arrival (called when navigation modal confirms user is within 50m)
+  // Handle assignment arrival (called when the navigation modal confirms the
+  // collector is at the site and taps "Start Cleaning"). Arriving does not
+  // complete the job: it opens the completion step, which needs the cleanup
+  // photos. The job becomes 'completed' only when those are submitted
+  // (handleCompletionSubmit).
   const handleAssignmentArrival = async (assignmentId) => {
-    try {
-      logger.info(`✅ Assignment ${assignmentId} arrival confirmed via navigation modal`);
-      
-      // Mark this assignment as having confirmed arrival (for geofence fallback)
-      setConfirmedArrivals(prev => new Set([...prev, assignmentId]));
-      
-      // Clear persisted navigation modal state on arrival
-      saveAssignNavModalState(null);
-      clearActiveModal();
-      
-      const assignmentToComplete = assignments.accepted.find(assign => assign.id === assignmentId);
-      if (!assignmentToComplete) {
-        showToast('Assignment not found', 'error');
-        return;
-      }
+    logger.info(`✅ Assignment ${assignmentId} arrival confirmed via navigation modal`);
 
-      // Update assignment status to completed in Supabase
-      // Write directly to illegal_dumping_mobile table (not the view)
-      const { error } = await supabase
-        .from('illegal_dumping_mobile')
-        .update({ 
-          status: 'completed',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', assignmentId);
+    // Remember the arrival so the completion geofence check passes (navigation uses accurate GPS)
+    setConfirmedArrivals(prev => new Set([...prev, assignmentId]));
 
-      if (error) {
-        logger.error('Error auto-completing assignment:', error);
-        showToast('Failed to complete assignment. Please try again.', 'error');
-        return;
-      }
+    // Clear persisted navigation modal state on arrival
+    saveAssignNavModalState(null);
+    clearActiveModal();
 
-      // Update local state
-      const updatedAssignment = {
-        ...assignmentToComplete,
-        status: AssignmentStatus.COMPLETED,
-        completed_at: new Date().toISOString(),
-        hasDisposed: false
-      };
-      
-      setAssignments(prev => ({
-        available: prev.available,
-        accepted: prev.accepted.filter(assign => assign.id !== assignmentId),
-        completed: [...prev.completed, updatedAssignment]
-      }));
-      
-      // Switch to completed tab to show the result
-      setActiveTab('completed');
-      
-      // Show success toast
-      showToast('🎉 Assignment completed successfully!');
-      
-    } catch (error) {
-      logger.error('Unexpected error auto-completing assignment:', error);
-      showToast('An unexpected error occurred. Please try again.', 'error');
+    const assignmentToComplete = assignments.accepted.find(assign => assign.id === assignmentId);
+    if (!assignmentToComplete) {
+      showToast('Assignment not found', 'error');
+      return;
     }
+
+    setSelectedAssignment(assignmentToComplete);
+    setCompletionModalOpen(true);
+    setDetailsModalOpen(false);
   };
   
   // Legacy Google Maps navigation (keeping for fallback)
