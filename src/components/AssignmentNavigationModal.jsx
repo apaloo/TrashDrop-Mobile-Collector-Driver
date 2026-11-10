@@ -25,7 +25,10 @@ const AssignmentNavigationModal = ({
   destination,
   assignmentId,
   assignmentTitle = 'Assignment',
-  onArrival
+  onArrival,
+  // Disposal trips only: when set, arrival shows a "Dispose waste" button
+  // that hands the collector back to the disposal confirmation.
+  onDisposeNow
 }) => {
   const { saveNavigationState, restoreNavigationState, clearNavigationState } = useNavigationPersistence();
   const { language: preferredLang, t, translateStep } = useLanguage();
@@ -758,7 +761,9 @@ const AssignmentNavigationModal = ({
                 <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M3 10a7 7 0 1114 0 7 7 0 01-14 0zm7-3a1 1 0 00-.867.5L8 9H6a1 1 0 100 2h2l1.133 1.5a1 1 0 001.734 0L12 11h2a1 1 0 100-2h-2l-1.133-1.5A1 1 0 0010 7z" clipRule="evenodd" />
                 </svg>
-                🎯 You have arrived! Ready to start cleaning.
+                {onDisposeNow
+                  ? '🎯 You have arrived at the dump site.'
+                  : '🎯 You have arrived! Ready to start cleaning.'}
               </div>
             ) : (
               <div className="text-td-ink">
@@ -805,6 +810,19 @@ const AssignmentNavigationModal = ({
               </div>
             )}
           </div>
+
+          {/* Disposal trips: one big button once the collector has arrived */}
+          {onDisposeNow && withinGeofence && !hasArrived && (
+            <div className="mb-3">
+              <button
+                onClick={onDisposeNow}
+                className="w-full px-4 py-4 text-white bg-green-600 rounded-lg hover:bg-green-700 active:bg-green-800 transition-all duration-200 font-bold text-lg shadow-md"
+                aria-label="Dispose waste at this dump site"
+              >
+                Dispose waste
+              </button>
+            </div>
+          )}
 
           {/* "I'm Here" manual arrival button - shown when close but GPS won't auto-trigger */}
           {!hasArrived && !withinGeofence && isWithinManualRange && (

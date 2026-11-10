@@ -339,6 +339,26 @@ const DisposalModal = ({
     setNavigationTitle('');
   };
   
+  // Collector tapped "Dispose waste" after arriving: close only the map and go
+  // back to this modal, where the chosen site is still selected. The GPS fix
+  // taken when this modal opened is stale by now, so refresh it - otherwise the
+  // 50m check would still use the old position.
+  const handleDisposeNow = () => {
+    handleCloseNavigation();
+    setActiveTab('list');
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation([position.coords.latitude, position.coords.longitude]);
+        },
+        (error) => {
+          logger.error('Error refreshing location after arrival:', error);
+        },
+        { enableHighAccuracy: true }
+      );
+    }
+  };
+
   return (
     <>
       {/* Disposal Modal */}
@@ -740,6 +760,7 @@ const DisposalModal = ({
           destination={navigationDestination}
           assignmentId={assignment?.id}
           assignmentTitle={navigationTitle}
+          onDisposeNow={handleDisposeNow}
           onArrival={() => {
             if (onArrivalAtDisposalSite && currentNavigationSite) {
               onArrivalAtDisposalSite(currentNavigationSite);
