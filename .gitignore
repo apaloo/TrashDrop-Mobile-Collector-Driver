@@ -46,3 +46,4 @@ TRENDIPAY*.md
 TERMINAL_ID*.md
 verify-config.js
 DIGITAL_BIN_QR_SCAN_VERIFICATION.md
+.known-failing-results.json

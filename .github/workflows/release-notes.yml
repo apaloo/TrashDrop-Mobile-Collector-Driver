@@ -1,0 +1,29 @@
+name: Release notes
+
+# After CI passes on main (Netlify then deploys main), record a GitHub
+# Release listing the pull requests it shipped: the deploy log for
+# traceability and the "what changed" list for Operations.
+on:
+  workflow_run:
+    workflows: [ "CI" ]
+    types: [ completed ]
+    branches: [ main ]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const run = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/release-notes.js`);
+            await run({ github, context, core }, {
+              sha: context.payload.workflow_run.head_sha,
+              runUrl: context.payload.workflow_run.html_url,
+            });
