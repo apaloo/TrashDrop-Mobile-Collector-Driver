@@ -4,7 +4,8 @@ import { getCurrentLocation, isWithinRadius, calculateDistance } from '../utils/
 import Toast from './Toast';
 import { debounce } from 'lodash';
 import { useAuth } from '../context/AuthContext';
-import { useAppState } from '../context/AppStateContext'; // Changed from useNavigationPersistence
+import { useAppState } from '../context/AppStateContext';
+import { useNavigationPersistence } from '../hooks/useNavigationPersistence';
 import { locationBroadcast } from '../services/locationBroadcast';
 import './navigation-modal.css'; // Custom CSS for better readability
 import QRCodeScanner from './QRCodeScanner'; // Import our existing QR scanner component
@@ -44,6 +45,7 @@ const NavigationQRModal = ({
 }) => {
   const { user } = useAuth();
   const { setActiveModal, clearActiveModal, activeModalData } = useAppState(); // Using AppStateContext
+  const { saveNavigationState, clearNavigationState } = useNavigationPersistence();
   const [mode, setMode] = useState('navigation'); // 'navigation' or 'qr'
   const [error, setError] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
@@ -1194,8 +1196,8 @@ const requestCameraPermission = useCallback(async () => {
             // Zoom map in to show both markers are close together
             if (mapRef.current && window.google?.maps) {
               const bounds = new window.google.maps.LatLngBounds();
-              bounds.extend({ lat: coords[0], lng: coords[1] });
-              bounds.extend({ lat: destination[0], lng: destination[1] });
+              bounds.extend({ lat: position.lat, lng: position.lng });
+              bounds.extend({ lat: destinationObj.lat, lng: destinationObj.lng });
               mapRef.current.fitBounds(bounds);
               // Set a minimum zoom so markers don't overlap
               const listener = window.google.maps.event.addListener(mapRef.current, 'idle', () => {
