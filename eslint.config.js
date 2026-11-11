@@ -40,7 +40,7 @@ export default defineConfig([
   },
   {
     // Node scripts and tool configuration.
-    files: ['scripts/**/*.{js,mjs,cjs}', '*.config.{js,mjs,cjs}', 'netlify/functions/**/*.{js,mjs}'],
+    files: ['scripts/**/*.{js,mjs,cjs}', '.github/scripts/**/*.{js,mjs,cjs}', '*.config.{js,mjs,cjs}', 'netlify/functions/**/*.{js,mjs}'],
     languageOptions: { globals: globals.node },
   },
 ])
