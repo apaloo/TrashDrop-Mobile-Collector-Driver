@@ -304,7 +304,7 @@ Deployment:
 
 - **Main Documentation:** `/docs/SOP_V4.5.6_COLLECTOR_IMPLEMENTATION.md`
 - **User Guide:** `/docs/COLLECTOR_PAYOUT_GUIDE.md`
-- **Implementation Summary:** `/IMPLEMENTATION_COMPLETE.md`
+- **Implementation Summary:** `docs/archive/IMPLEMENTATION_COMPLETE.md`
 - **SOP Document:** `/docs/SOP_V4.5.6_FINAL.md`
 
 ---
