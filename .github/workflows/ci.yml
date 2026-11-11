@@ -51,6 +51,11 @@ jobs:
       - name: Unit tests
         run: node scripts/ci/run-tests.mjs
 
+      # Report only: the whole app and each file in scripts/ci/critical-files.txt
+      - name: Test coverage (report)
+        if: always()
+        run: node scripts/ci/coverage-summary.mjs
+
       - name: Build
         env:
           VITE_SUPABASE_URL: https://ci-placeholder.supabase.co
