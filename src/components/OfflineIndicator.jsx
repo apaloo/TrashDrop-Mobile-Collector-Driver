@@ -5,7 +5,7 @@ import { useOffline } from '../contexts/OfflineContext';
  * Component that displays an offline status indicator and sync status
  */
 const OfflineIndicator = () => {
-  const { online, offlineQueue, syncing } = useOffline();
+  const { online, offlineQueue, syncing, syncOfflineActions } = useOffline();
   
   // If online and no pending items, don't show anything
   if (online && offlineQueue.length === 0 && !syncing) {
@@ -38,7 +38,7 @@ const OfflineIndicator = () => {
         {online && offlineQueue.length > 0 && !syncing && (
           <button 
             className="bg-white text-td-forest px-3 py-1 rounded-md text-xs font-medium"
-            onClick={() => useOffline().syncOfflineActions()}
+            onClick={() => syncOfflineActions()}
           >
             Sync Now
           </button>

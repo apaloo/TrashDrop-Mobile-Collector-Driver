@@ -631,8 +631,8 @@ export class RequestManagementService {
    */
   async getNotifications(unreadOnly = false) {
     if (import.meta.env.DEV) {
-      logger.debug('[DEV MODE] Using mock notifications');
-      return mockNotifications;
+      logger.debug('[DEV MODE] Notifications not loaded in development');
+      return { success: true, notifications: [] };
     }
 
     try {
@@ -654,8 +654,8 @@ export class RequestManagementService {
       return { success: true, notifications: data || [] };
     } catch (error) {
       if (import.meta.env.DEV) {
-        logger.debug('[DEV MODE] Error fetching notifications, using mock data:', error);
-        return mockNotifications;
+        logger.debug('[DEV MODE] Error fetching notifications, returning none:', error);
+        return { success: true, notifications: [] };
       }
       logger.error('Error getting notifications:', error);
       throw error;
