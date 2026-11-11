@@ -11,3 +11,8 @@ verify_jwt = false
 # Called by TrendiPay, which sends no Supabase token; the function checks
 # the x-trendipay-signature HMAC itself
 verify_jwt = false
+
+[functions.send-sms-hook]
+# Supabase Auth's "Send SMS" hook (sign-in codes by SMS via Arkesel). Auth
+# sends no user token; the function checks the Standard Webhooks signature
+verify_jwt = false

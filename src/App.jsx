@@ -209,7 +209,10 @@ function App() {
                       </ProtectedRoute>
                     } />
                     <Route path="/diagnostic" element={<Suspense fallback={<PageLoader />}><DiagnosticPage /></Suspense>} />
-                    <Route path="/payment-test" element={<Suspense fallback={<PageLoader />}><PaymentTest /></Suspense>} />
+                    {/* Gateway test page: local development only, never in production builds */}
+                    {import.meta.env.DEV && (
+                      <Route path="/payment-test" element={<Suspense fallback={<PageLoader />}><PaymentTest /></Suspense>} />
+                    )}
                     <Route path="/route-optimization" element={
                       <ProtectedRoute>
                         <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50">

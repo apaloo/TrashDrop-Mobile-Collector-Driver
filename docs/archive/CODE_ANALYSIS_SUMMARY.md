@@ -21,7 +21,7 @@ Your codebase demonstrates **excellent architecture** with modern React patterns
 
 2. **Remove hardcoded credentials** (`services/supabase.js`)
    ```javascript
-   // ❌ Line 52: const DEV_USER_ID = '6fba1031-839f-4985-a180-9ae0a04b7812';
+   // ❌ Line 52: const DEV_USER_ID = '<dev-user-id>';
    // ✅ Should be: const DEV_USER_ID = import.meta.env.VITE_DEV_USER_ID;
    ```
 

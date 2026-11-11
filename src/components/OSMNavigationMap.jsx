@@ -160,7 +160,7 @@ const OSMNavigationMap = ({
             logger.warn('⚠️ Not enough valid waypoints for routing, using direct path');
           }
           // Use fallback direct path with original waypoints (will be processed inside)
-          useDirectPath(waypoints, callback, context);
+          routeDirectPath(waypoints, callback, context);
           return;
         }
         
@@ -191,7 +191,7 @@ const OSMNavigationMap = ({
               safeCallback(null, routes);
             } else if (!callbackInvoked) {
               // OSRM failed, use direct path fallback
-              useDirectPath(validatedWaypoints, safeCallback, context);
+              routeDirectPath(validatedWaypoints, safeCallback, context);
             }
           }, context);
         } catch (error) {
@@ -206,12 +206,12 @@ const OSMNavigationMap = ({
             logger.warn('⚠️ OSRM router error, using direct path:', error.message);
           }
           
-          useDirectPath(validatedWaypoints, safeCallback, context);
+          routeDirectPath(validatedWaypoints, safeCallback, context);
         }
       };
       
       // Helper function for direct path creation to avoid code duplication
-      const useDirectPath = (waypoints, callback, context) => {
+      const routeDirectPath = (waypoints, callback, context) => {
         if (Math.random() < 0.05) { // Reduce console spam - 5% logging
           logger.info('📍 Showing direct path as fallback');
         }

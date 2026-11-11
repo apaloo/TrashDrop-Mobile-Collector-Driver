@@ -250,7 +250,7 @@ We welcome feedback on this release:
 - [Full Documentation](/docs/SOP_V4.5.6_COLLECTOR_IMPLEMENTATION.md)
 - [User Guide](/docs/COLLECTOR_PAYOUT_GUIDE.md)
 - [Quick Reference](/docs/QUICK_REFERENCE.md)
-- [Implementation Summary](/IMPLEMENTATION_COMPLETE.md)
+- [Implementation Summary](docs/archive/IMPLEMENTATION_COMPLETE.md)
 
 ---
 

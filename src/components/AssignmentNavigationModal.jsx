@@ -302,7 +302,7 @@ const AssignmentNavigationModal = ({
       
       // Save navigation state for persistence/recovery
       await saveNavigationState({
-        destination: parsedDestination,
+        destination: destinationObj,
         destinationName: assignmentTitle,
         userLocation,
         isNavigating: true,

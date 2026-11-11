@@ -1,0 +1,105 @@
+name: Deploy Edge Functions
+
+# Deploys this repository's Supabase Edge Functions (supabase/functions/*).
+# Functions are deployed from here only, never from a laptop: what runs in
+# production is then always what is in git (risk R14 in the household
+# repository's engineering/registers/risk-register.md).
+#
+# Runs only when someone starts it by hand:
+#   list    Compare this repository's functions with what is deployed. Safe;
+#           run it first.
+#   deploy  Deploy one function, or all of this repository's functions.
+#
+# The target is the GitHub Environment `production`, with secrets
+# SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_ID. Give it required reviewers
+# so every deploy waits for a named approval. verify_jwt settings come from
+# supabase/config.toml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: What to do
+        type: choice
+        options: [list, deploy]
+        default: list
+      function:
+        description: Function to deploy (folder name in supabase/functions), or "all"
+        type: string
+        default: all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: edge-functions-production
+  cancel-in-progress: false
+
+jobs:
+  functions:
+    name: ${{ inputs.mode }} ${{ inputs.mode == 'deploy' && inputs.function || '' }}
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      FUNCTION: ${{ inputs.function }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse to deploy from a branch other than main
+        if: inputs.mode == 'deploy' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Functions are deployed only from main (this run: ${{ github.ref }})."
+          exit 1
+
+      - name: Functions in this repository
+        id: local
+        run: |
+          names=$(find supabase/functions -mindepth 1 -maxdepth 1 -type d ! -name '_*' -printf '%f\n' | sort)
+          echo "$names" > local-functions.txt
+          echo "Functions in this repository:"; sed 's/^/  /' local-functions.txt
+          if [ "$FUNCTION" != "all" ] && ! grep -qx -- "$FUNCTION" local-functions.txt; then
+            echo "::error::'$FUNCTION' is not a folder in supabase/functions."
+            exit 1
+          fi
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deployed functions
+        run: |
+          curl -fsS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/functions" > deployed.json
+          jq -r '.[] | "\(.slug)\tv\(.version)\tverify_jwt=\(.verify_jwt)\tupdated \(.updated_at / 1000 | floor | strftime("%Y-%m-%d"))"' deployed.json | sort > deployed.txt
+          cut -f1 deployed.txt > deployed-names.txt
+          {
+            echo "### Edge Functions"
+            echo
+            echo "| Function | In this repository | Deployed |"
+            echo "|---|---|---|"
+            sort -u local-functions.txt deployed-names.txt | while read -r f; do
+              here=$(grep -qx -- "$f" local-functions.txt && echo yes || echo "")
+              dep=$(grep -P "^\Q$f\E\t" deployed.txt | cut -f2- | tr '\t' ' ' || true)
+              echo "| \`$f\` | $here | ${dep:-not deployed} |"
+            done
+            echo
+            echo "Functions that aren't in this repository belong to another TrashDrop repository; the household repository's infrastructure register lists the owner of each. A deployed function that is in no repository is a finding: add its source before changing it."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Deployed:"; sed 's/^/  /' deployed.txt
+
+      - name: Deploy
+        if: inputs.mode == 'deploy'
+        run: |
+          if [ "$FUNCTION" = "all" ]; then
+            targets=$(cat local-functions.txt)
+          else
+            targets="$FUNCTION"
+          fi
+          for f in $targets; do
+            echo "::group::Deploy $f"
+            supabase functions deploy "$f" --project-ref "$SUPABASE_PROJECT_ID"
+            echo "::endgroup::"
+          done
+          echo "Deployed from $(git rev-parse --short HEAD): $targets" >> "$GITHUB_STEP_SUMMARY"

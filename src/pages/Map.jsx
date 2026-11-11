@@ -1538,7 +1538,7 @@ const MapPage = () => {
       showToast('Pickup request accepted!', 'success');
       
       // Refresh the data to ensure consistency
-      await fetchAssignments();
+      await refreshData();
     } catch (err) {
       logger.error('Error accepting assignment:', err);
       showToast('Failed to accept request. Please try again.', 'error');

@@ -1,3 +1,4 @@
+import React from 'react';
 import { globalPerformanceMonitor } from '../hooks/usePerformanceMonitor';
 import { logger } from './logger';
 

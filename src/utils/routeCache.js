@@ -49,9 +49,12 @@ export const getCachedRoute = (start, end) => {
  * Cache route data
  */
 export const setCachedRoute = (start, end, route) => {
+  // Declared outside the try so the storage-full retry below can use them
+  let key;
+  let data;
   try {
-    const key = generateCacheKey(start, end);
-    const data = {
+    key = generateCacheKey(start, end);
+    data = {
       route,
       timestamp: Date.now()
     };
@@ -67,7 +70,7 @@ export const setCachedRoute = (start, end, route) => {
     logger.warn('Failed to cache route:', error);
     
     // If storage is full, try to make space
-    if (error.name === 'QuotaExceededError') {
+    if (error.name === 'QuotaExceededError' && key) {
       clearOldRoutes();
       try {
         sessionStorage.setItem(key, JSON.stringify(data));
