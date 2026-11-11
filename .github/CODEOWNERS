@@ -5,3 +5,12 @@
 /src/services/disposalService.js                   @apaloo
 /src/services/paymentService.js                    @apaloo
 /src/utils/__tests__/promotionalPayout.test.js     @apaloo
+
+# Engineering controls (engineering/policies/repository-governance.md in
+# TrashDrop-Mobile-User-Domestic). Replace @apaloo with the team handle once
+# the GitHub organisation exists.
+/.github/                                          @apaloo
+/.gitleaks.toml                                    @apaloo
+/scripts/ci/                                       @apaloo
+/eslint.config.js                                  @apaloo
+/supabase/                                         @apaloo

@@ -1,0 +1,58 @@
+name: CI
+
+# Every pull request: lint the changed files, run the unit tests, build.
+# Netlify builds and deploys the site itself; this workflow only checks.
+# Process: engineering/policies/change-and-release.md in TrashDrop-Mobile-User-Domestic.
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # lint-changed compares against the base branch
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        env:
+          CYPRESS_INSTALL_BINARY: 0
+        run: npm ci
+
+      # New and edited files must be lint-clean. The existing backlog is
+      # reported, not enforced (see the technical-debt register).
+      - name: Lint changed files
+        if: github.event_name == 'pull_request'
+        run: scripts/ci/lint-changed.sh "${{ github.event.pull_request.base.sha }}"
+
+      - name: Lint backlog (report only)
+        continue-on-error: true
+        run: |
+          npx eslint . --quiet -f json -o eslint-report.json || true
+          node -e 'const r=require("./eslint-report.json");let e=0;for(const f of r)e+=f.errorCount;console.log(`ESLint errors in the codebase: ${e}`);require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY,`### Lint backlog\n${e} errors in the codebase (goal: 0)\n`)'
+
+      # Every Jest suite except scripts/ci/known-failing-tests.txt (may only
+      # shrink). Includes the protected promotionalPayout guard test.
+      - name: Unit tests
+        run: node scripts/ci/run-tests.mjs
+
+      - name: Build
+        env:
+          VITE_SUPABASE_URL: https://ci-placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_ci_placeholder
+        run: npm run build
