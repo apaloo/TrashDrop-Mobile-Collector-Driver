@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { initiateCollection, checkCollectionStatus } from '../services/paymentService';
-import { testConnection } from '../services/trendiPayService';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
 
@@ -213,48 +212,6 @@ export default function PaymentTest() {
     }
   };
 
-  const handleCheckWebhookServer = async () => {
-    setLoading(true);
-    setError(null);
-    setResult(null);
-
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL;
-      console.log('🧪 Checking webhook server:', apiUrl);
-      
-      const response = await fetch(`${apiUrl}/health`, {
-        headers: {
-          'ngrok-skip-browser-warning': 'true' // Skip ngrok interstitial page
-        }
-      });
-      
-      const contentType = response.headers.get('content-type');
-      
-      // Check if we got JSON (expected) or HTML (ngrok interstitial)
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error('Received HTML instead of JSON - ngrok may be showing interstitial page. Try accessing ' + apiUrl + '/health in a browser first.');
-      }
-      
-      const data = await response.json();
-      
-      console.log('📊 Webhook server status:', data);
-      setResult({
-        success: response.ok,
-        message: 'Webhook server is running',
-        data
-      });
-    } catch (err) {
-      console.error('❌ Webhook server check failed:', err);
-      setError(err.message || 'Webhook server not reachable');
-      setResult({
-        success: false,
-        error: err.message || 'Webhook server not reachable. Make sure backend_webhooks/server.js and ngrok are running.'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 pt-20 pb-24 px-4">
       <div className="max-w-2xl mx-auto">
@@ -271,27 +228,20 @@ export default function PaymentTest() {
             <h3 className="font-semibold text-blue-900 mb-2">🔧 Configuration</h3>
             <div className="text-sm space-y-1">
               <p><span className="font-medium">API URL:</span> {import.meta.env.VITE_TRENDIPAY_API_URL}</p>
-              <p><span className="font-medium">Webhook URL:</span> {import.meta.env.VITE_API_URL}</p>
+              <p><span className="font-medium">Webhook:</span> Supabase Edge Function <code>trendipay-webhook</code></p>
               <p><span className="font-medium">Terminal ID:</span> {import.meta.env.VITE_TRENDIPAY_TERMINAL_ID}</p>
               <p><span className="font-medium">TrendiPay Enabled:</span> {import.meta.env.VITE_ENABLE_TRENDIPAY}</p>
             </div>
           </div>
 
           {/* Quick Tests */}
-          <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="grid grid-cols-1 gap-3 mb-6">
             <button
               onClick={handleTestConnection}
               disabled={loading}
               className="bg-purple-600 text-white py-3 px-4 rounded-lg hover:bg-purple-700 disabled:bg-gray-400 font-medium text-sm"
             >
               🔧 Check Configuration
-            </button>
-            <button
-              onClick={handleCheckWebhookServer}
-              disabled={loading}
-              className="bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 disabled:bg-gray-400 font-medium text-sm"
-            >
-              🌐 Check Webhook Server
             </button>
           </div>
 
@@ -453,7 +403,6 @@ export default function PaymentTest() {
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-6">
             <h3 className="font-semibold text-gray-900 mb-2">📋 Testing Instructions</h3>
             <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside">
-              <li>First, click "Check Webhook Server" to ensure backend is running</li>
               <li>Click "Test API Connection" to verify TrendiPay credentials</li>
               <li>Fill in the collection payment form and click "Initiate Collection Payment"</li>
               <li>Check your phone for MoMo approval prompt (MTN *170#)</li>
@@ -466,10 +415,8 @@ export default function PaymentTest() {
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mt-4">
             <h3 className="font-semibold text-orange-900 mb-2">⚠️ Requirements</h3>
             <ul className="text-sm text-orange-700 space-y-1 list-disc list-inside">
-              <li>Webhook server must be running: <code className="bg-orange-100 px-1 py-0.5 rounded">cd backend_webhooks && node server.js</code></li>
-              <li>ngrok must be active: <code className="bg-orange-100 px-1 py-0.5 rounded">ngrok http 3000</code></li>
-              <li>VITE_API_URL must be set to ngrok URL in .env</li>
-              <li>TrendiPay credentials must be valid in .env</li>
+              <li>Payment results arrive at the Supabase Edge Function <code className="bg-orange-100 px-1 py-0.5 rounded">trendipay-webhook</code>: check its logs in the Supabase dashboard</li>
+              <li>The TrendiPay API key and webhook secret are Edge Function secrets, never in .env</li>
             </ul>
           </div>
         </div>
