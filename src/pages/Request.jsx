@@ -21,7 +21,7 @@ import { transformRequestsData, isScanForDigitalBin } from '../utils/requestUtil
 import { withBagPrices, finalizePickupPayout } from '../services/bagPricing';
 import { filterAvailableRequests, getCachedPosition, toLatLng } from '../utils/availableRequests';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
-import { getCurrentLocation, getLocationWithRetry, isWithinRadius } from '../utils/geoUtils';
+import { getCurrentLocation, getLocationWithRetry } from '../utils/geoUtils';
 import { registerConnectivityListeners } from '../utils/offlineUtils';
 import { saveJobs, loadJobs, savedAtLabel } from '../utils/offlineJobsCache';
 import { supabase, authService } from '../services/supabase';
@@ -60,7 +60,7 @@ const saveNavModalState = (state) => {
       localStorage.removeItem(NAV_MODAL_STATE_KEY);
       localStorage.removeItem(NAV_MODAL_TIME_KEY);
     }
-  } catch (e) {
+  } catch {
     // localStorage might be full, ignore
   }
 };
@@ -82,7 +82,7 @@ const loadNavModalState = () => {
     }
     
     return JSON.parse(stateStr);
-  } catch (e) {
+  } catch {
     return null;
   }
 };
@@ -91,8 +91,8 @@ const RequestPage = () => {
   const { id: requestId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { setActiveModal, clearActiveModal, activeModal, activeModalData } = useAppState(); // Add modal management
-  const [userProfile, setUserProfile] = useState(null);
+  const { setActiveModal } = useAppState(); // Add modal management
+  const [, setUserProfile] = useState(null);
   
   // Access filter context - hooks must be called unconditionally
   const filterContext = useFilters();
@@ -102,14 +102,7 @@ const RequestPage = () => {
   
   // Photo capture management
   const {
-    photos,
-    isInitialized: isPhotoCaptureInitialized,
-    error: photoError,
-    capturePhoto,
-    removePhoto,
-    clearPhotos,
-    getPhotoCount,
-    hasPhotos
+    error: photoError
   } = usePhotoCapture(requestId);
   
   const [activeTab, setActiveTab] = useState('available');
@@ -154,8 +147,8 @@ const RequestPage = () => {
 
   const [isLoading, setIsLoading] = useState(true);
   // OPTIMIZATION: Separate loading states for better UX
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [, setIsInitialLoading] = useState(true);
+  const [, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: '' });
   const [isOnlineStatus, setIsOnlineStatus] = useState(true);
@@ -189,7 +182,7 @@ const RequestPage = () => {
   const [navigationRequestId, setNavigationRequestId] = useState(savedNavState?.requestId || null);
   const [navigationWasteType, setNavigationWasteType] = useState(savedNavState?.wasteType || 'general');
   const [navigationSourceType, setNavigationSourceType] = useState(savedNavState?.sourceType || 'pickup_request');
-  const [navigationUserLocation, setNavigationUserLocation] = useState(savedNavState?.userLocation || null); // Restore user location
+  const [navigationUserLocation] = useState(savedNavState?.userLocation || null); // Restore user location
   
   // Log restoration for debugging
   if (savedNavState?.isOpen) {
@@ -285,16 +278,8 @@ const RequestPage = () => {
   });
 
   // Error boundary state
-  const [hasError, setHasError] = useState(false);
-  const [errorInfo, setErrorInfo] = useState(null);
 
   // Error boundary handler
-  const handleError = (error, info) => {
-    logger.error('RequestPage Error:', error);
-    setHasError(true);
-    setErrorInfo(info);
-    showToast('An error occurred. Please try refreshing the page.', 'error', 5000);
-  };
   
   // Fetch requests from Supabase
   // Connection lost or loading failed: keep showing the jobs saved on the phone
@@ -698,73 +683,15 @@ const RequestPage = () => {
   }, [user?.id]);
 
   // Handle file upload for photo capture
-  const handleFileChange = useCallback(async (event) => {
-    try {
-      const file = event.target.files[0];
-      if (!file) return;
-      
-      // Check file type
-      if (!file.type.startsWith('image/')) {
-        throw new Error('Please select a valid image file');
-      }
-      
-      // Check file size (max 5MB)
-      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-      if (file.size > MAX_FILE_SIZE) {
-        throw new Error('Image size must be less than 5MB');
-      }
-      
-      // Capture the photo
-      await capturePhoto(file);
-      
-      setToast({
-        show: true,
-        message: 'Photo captured successfully',
-        type: 'success',
-        duration: 3000
-      });
-      
-      // Reset file input to allow selecting the same file again
-      event.target.value = '';
-      
-    } catch (error) {
-      logger.error('Error capturing photo:', error);
-      setToast({
-        show: true,
-        message: error.message || 'Failed to capture photo',
-        type: 'error',
-        duration: 5000
-      });
-    }
-  }, [capturePhoto]);
   
   // Handle photo removal
-  const handleRemovePhoto = useCallback((photoId) => {
-    try {
-      removePhoto(photoId);
-      setToast({
-        show: true,
-        message: 'Photo removed',
-        type: 'info',
-        duration: 3000
-      });
-    } catch (error) {
-      logger.error('Error removing photo:', error);
-      setToast({
-        show: true,
-        message: 'Failed to remove photo',
-        type: 'error',
-        duration: 5000
-      });
-    }
-  }, [removePhoto]);
   
   // Cleanup on component unmount or when requestId changes
   useEffect(() => {
     return () => {
       // Cleanup blob URLs when component unmounts or requestId changes
       // The actual cleanup is handled by the usePhotoCapture hook
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         logger.debug('🧹 Cleaning up photo resources in Request component');
       }
     };
@@ -1007,10 +934,6 @@ const RequestPage = () => {
   // Filters and filtered requests are now declared at the top of the component
 
   // Format date to show in the format shown in screenshots
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-  };
 
   // Format date to show in the format shown in screenshots
 
@@ -1157,37 +1080,10 @@ const RequestPage = () => {
   }, [userLocation, activeTab, requests.picked_up, selectedDisposalCenter, checkWithinDisposalRange, parseSiteCoords]);
 
   // OPTIMIZATION: Handle tab change with memoization to avoid unnecessary operations
-  const handleTabChange = useCallback((tab) => {
-    if (tab !== activeTab) {
-      setActiveTab(tab);
-      // Only track tab changes, don't refetch data unnecessarily
-      logger.debug('Tab changed to:', tab);
-    }
-  }, [activeTab]);
 
   // OPTIMIZATION: Handle refresh with loading state management
-  const handleRefresh = useCallback(() => {
-    setIsRefreshing(true);
-    fetchRequests().finally(() => setIsRefreshing(false));
-  }, [fetchRequests]);
 
   // Format last updated time
-  const formatLastUpdated = () => {
-    if (!lastUpdated) return '';
-    
-    const now = new Date();
-    const diff = Math.floor((now - lastUpdated) / 1000); // difference in seconds
-    
-    if (diff < 60) {
-      return `${diff} seconds ago`;
-    } else if (diff < 3600) {
-      return `${Math.floor(diff / 60)} minutes ago`;
-    } else if (diff < 86400) {
-      return `${Math.floor(diff / 3600)} hours ago`;
-    } else {
-      return `${Math.floor(diff / 86400)} days ago`;
-    }
-  };
 
   // Fetch user profile
   useEffect(() => {
@@ -1552,7 +1448,6 @@ const RequestPage = () => {
       // ── Digital bin: full payment flow (same as NavigationQRModal) ──
       if (currentRequest.source_type === 'digital_bin') {
         const scannedBinId = scannedBags[0]?.id;
-        const scannedCode = scannedBags[0]?.code;
 
         // Validate scanned QR matches the accepted request (its own bin id)
         if (!isScanForDigitalBin(scannedBinId, currentRequest)) {
@@ -2479,7 +2374,6 @@ const GeofenceErrorModal = ({
     
     let successCount = 0;
     let totalEarnings = 0;
-    const disposalTimestamp = new Date().toISOString();
     const disposalSite = selectedDisposalCenter?.name || 'Disposal Center';
     
     try {

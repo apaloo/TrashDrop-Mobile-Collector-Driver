@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 /**
  * Top navigation bar component with logo and profile dropdown
  */
-export const TopNavBar = memo(({ user }) => {
+export const TopNavBar = memo(() => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
   

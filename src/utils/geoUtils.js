@@ -285,7 +285,6 @@ export const getCurrentLocation = () => {
  * @returns {Promise<{lat: number, lng: number, isFallback: boolean}>}
  */
 export const getLocationWithRetry = async (maxRetries = 3, delay = 2000) => {
-  let lastError = null;
   
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -309,7 +308,6 @@ export const getLocationWithRetry = async (maxRetries = 3, delay = 2000) => {
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     } catch (error) {
-      lastError = error;
       logger.warn(`❌ Attempt ${i + 1} failed:`, error);
       
       // If this isn't the last attempt, wait before trying again
@@ -600,7 +598,7 @@ export const reverseGeocode = async (lat, lng) => {
     // No address found, use coordinates
     // Fallback to formatted coordinates
     return formatCoordinates(lat, lng);
-  } catch (error) {
+  } catch {
     // Fallback to formatted coordinates on any error
     const coords = formatCoordinates(lat, lng);
     

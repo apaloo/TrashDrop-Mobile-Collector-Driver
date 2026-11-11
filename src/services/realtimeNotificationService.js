@@ -45,7 +45,7 @@ class RealtimeNotificationService {
       await audioAlertService.initialize();
       this.audioInitialized = true;
       logger.info('🔊 Audio alerts initialized for notifications');
-    } catch (error) {
+    } catch {
       logger.warn('⚠️ Audio initialization deferred - requires user interaction');
     }
 
@@ -91,7 +91,7 @@ class RealtimeNotificationService {
     // Cleanup existing subscription (guard against reconnect cascade)
     if (this.channel) {
       this._isReconnecting = true;
-      try { await supabase.removeChannel(this.channel); } catch (e) { /* ignore */ }
+      try { await supabase.removeChannel(this.channel); } catch { /* ignore */ }
       this.channel = null;
       this._isReconnecting = false;
     }
@@ -191,7 +191,7 @@ class RealtimeNotificationService {
     if (typeof requestCoords === 'string') {
       try {
         requestCoords = JSON.parse(requestCoords);
-      } catch (e) {
+      } catch {
         return null;
       }
     }
@@ -224,7 +224,7 @@ class RealtimeNotificationService {
       try {
         await audioAlertService.initialize();
         this.audioInitialized = true;
-      } catch (error) {
+      } catch {
         logger.warn('Could not initialize audio for alert');
       }
     }
@@ -380,7 +380,7 @@ class RealtimeNotificationService {
     
     if (this.channel) {
       this._isReconnecting = true; // Prevent CLOSED callback from triggering reconnect
-      try { await supabase.removeChannel(this.channel); } catch (e) { /* ignore */ }
+      try { await supabase.removeChannel(this.channel); } catch { /* ignore */ }
       this.channel = null;
       this._isReconnecting = false;
     }

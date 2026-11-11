@@ -61,14 +61,14 @@ export const CurrencyProvider = ({ children }) => {
                   } else {
                     logger.debug('[Currency] ✅ Currency unchanged, keeping current');
                   }
-                } catch (currencyError) {
+                } catch {
                   // Only log occasionally and with meaningful messages
                   if (Math.random() < 0.05) {
                     logger.warn('[Currency] ⚠️ Currency detection failed - keeping current currency');
                   }
                   // Keep current currency - don't change anything
                 }
-              } catch (error) {
+              } catch {
                 clearTimeout(timeoutId);
                 // Only log occasionally to prevent spam
                 if (Math.random() < 0.05) {

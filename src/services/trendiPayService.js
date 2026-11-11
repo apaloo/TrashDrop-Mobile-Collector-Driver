@@ -164,7 +164,7 @@ async function makeProxyRequest(action, payload = null, extra = {}, retryCount =
     const rawText = await response.text();
     try {
       data = JSON.parse(rawText);
-    } catch (parseErr) {
+    } catch {
       console.error('❌ [TrendiPay] Non-JSON response:', rawText.substring(0, 500));
       throw new Error(`Invalid JSON response (status ${response.status}): ${rawText.substring(0, 200)}`);
     }

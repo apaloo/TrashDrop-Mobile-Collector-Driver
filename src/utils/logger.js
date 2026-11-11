@@ -14,7 +14,6 @@
  */
 
 const isDevelopment = import.meta.env.DEV;
-const isProduction = import.meta.env.PROD;
 
 /**
  * Performance-aware logger with automatic grouping

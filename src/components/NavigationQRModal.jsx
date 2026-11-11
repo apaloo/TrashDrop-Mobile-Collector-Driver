@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import GoogleMapsNavigation from './GoogleMapsNavigation';
-import { getCurrentLocation, isWithinRadius, calculateDistance } from '../utils/geoUtils';
+import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
 import Toast from './Toast';
-import { debounce } from 'lodash';
 import { useAuth } from '../context/AuthContext';
 import { useAppState } from '../context/AppStateContext';
 import { useNavigationPersistence } from '../hooks/useNavigationPersistence';
@@ -15,13 +14,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { getPhrase, translateNavInstruction } from '../locales/navigationPhrases';
 import useWakeLock from '../hooks/useWakeLock';
 import { supabase } from '../services/supabase';
-import {
-  PICKUP_ARRIVAL_RADIUS_KM,
-  PICKUP_MANUAL_ARRIVAL_RADIUS_KM,
-  NAV_STEP_ADVANCE_RADIUS_KM,
-  GEOFENCE_DESCRIPTIONS,
-  kmToMeters
-} from '../config/geofenceConfig';
+import { PICKUP_ARRIVAL_RADIUS_KM, PICKUP_MANUAL_ARRIVAL_RADIUS_KM, NAV_STEP_ADVANCE_RADIUS_KM, GEOFENCE_DESCRIPTIONS } from '../config/geofenceConfig';
 
 // QR Scan Rate Limiting
 const QR_SCAN_RATE_LIMIT = 10; // per minute
@@ -44,13 +37,13 @@ const NavigationQRModal = ({
   initialUserLocation = null // Initial user location from saved state
 }) => {
   const { user } = useAuth();
-  const { setActiveModal, clearActiveModal, activeModalData } = useAppState(); // Using AppStateContext
-  const { saveNavigationState, clearNavigationState } = useNavigationPersistence();
+  const { activeModalData } = useAppState(); // Using AppStateContext
+  const { clearNavigationState } = useNavigationPersistence();
   const [mode, setMode] = useState('navigation'); // 'navigation' or 'qr'
   const [error, setError] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [isUsingFallbackLocation, setIsUsingFallbackLocation] = useState(false); // Track if using fallback GPS
-  const [navigationStarted, setNavigationStarted] = useState(false);
+  const [, setNavigationStarted] = useState(false);
   
   // Restore navigation state on mount
   useEffect(() => {
@@ -72,18 +65,17 @@ const NavigationQRModal = ({
   const [isLoading, setIsLoading] = useState(false);
   const [distanceToDestination, setDistanceToDestination] = useState(null);
   const [scanStartTime, setScanStartTime] = useState(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [locationRetryCount, setLocationRetryCount] = useState(0);
+  const [, setIsScanning] = useState(false);
   
   // Scan feedback overlay state - prominent visual feedback for low-literacy users
   const [scanFeedback, setScanFeedback] = useState(null); // { type: 'success'|'error'|'warning', message: string, subMessage: string }
   
   // Turn-by-turn navigation state (adopted from AssignmentNavigationModal)
   const [isNavigating, setIsNavigating] = useState(false);
-  const [navigationRoute, setNavigationRoute] = useState(null);
+  const [, setNavigationRoute] = useState(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [navigationInstructions, setNavigationInstructions] = useState([]);
-  const [isInstructionsCollapsed, setIsInstructionsCollapsed] = useState(false);
+  const [, setIsInstructionsCollapsed] = useState(false);
   const [hasAnnouncedArrival, setHasAnnouncedArrival] = useState(false);
   
   // Keep screen on during navigation
@@ -92,7 +84,7 @@ const NavigationQRModal = ({
   const mapRef = useRef(null);
   const routingControlRef = useRef(null);
   const qrScanner = useRef(null);
-  const mapContainerKey = useRef(`map-${Date.now()}`).current; // Unique key for map container to prevent reuse
+// Unique key for map container to prevent reuse
   const navigationControlRef = useRef(null);
 
   // Rate limiting for QR scans
@@ -273,12 +265,6 @@ const NavigationQRModal = ({
   }, []);
 
   // Format distance for display
-  const formatDistance = useCallback((distance) => {
-    if (distance < 1) {
-      return `${Math.round(distance * 1000)}m`;
-    }
-    return `${distance.toFixed(1)}km`;
-  }, []);
 
   // Initialize Google Maps Directions API
   const initializeDirectionsAPI = useCallback(() => {
@@ -686,54 +672,8 @@ const NavigationQRModal = ({
   }, [showScanFeedback]);
 
   // Handle map instance ready
-  const setMapInstance = useCallback((map) => {
-    if (map) {
-      mapRef.current = map;
-    }
-  }, []);
 
   // Handle starting navigation
-  const handleStartNavigation = useCallback(async () => {
-    setNavigationStarted(true);
-    
-    // Save navigation state for persistence/recovery
-    await saveNavigationState({
-      destination,
-      destinationName,
-      userLocation,
-      isNavigating: true,
-      requestId,
-      wasteType,
-      sourceType
-    });
-    
-    // Start broadcasting location to user
-    setIsCameraPreloading(true);
-    
-    // Set a timeout for camera initialization
-    if (cameraInitTimer.current) {
-      clearTimeout(cameraInitTimer.current);
-    }
-    cameraInitTimer.current = setTimeout(() => {
-      setIsCameraPreloading(false);
-      cameraInitTimer.current = null;
-    }, CAMERA_INIT_TIMEOUT);
-    
-    try {
-      // Request camera permission before switching to QR mode
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      stream.getTracks().forEach(track => track.stop()); // Release camera immediately
-      setHasCameraPermission(true);
-      setMode('qr');
-      setError(null);
-    } catch (err) {
-      logger.error('Camera permission error:', err);
-      setError({ type: 'error', message: 'Camera access denied. Please grant camera permissions.' });
-      setHasCameraPermission(false);
-    } finally {
-      setIsCameraPreloading(false);
-    }
-  }, []);
 
   // Handle switching to QR mode when already within geofence
   const handleSwitchToQR = useCallback(async () => {
@@ -798,76 +738,6 @@ const NavigationQRModal = ({
   }, [isWithinGeofence, isNavigating, stopVoiceNavigation, stopSpeaking, updateGeofenceState]);
 
   // Retry mechanism for location updates (declared first to avoid temporal dead zone)
-  const retryLocationUpdate = useCallback(async (maxRetries = LOCATION_RETRY_MAX_ATTEMPTS) => {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        setLocationRetryCount(attempt);
-        
-        // Get location from geoUtils utility
-        const locationResult = await getCurrentLocation();
-        
-        // Handle both direct position objects and the structured result from geoUtils
-        let coords;
-        
-        if (locationResult.coords) {
-          // Standard Geolocation API response
-          coords = [locationResult.coords.latitude, locationResult.coords.longitude];
-        } else if (locationResult.lat !== undefined && locationResult.lng !== undefined) {
-          // Our geoUtils response format
-          coords = [locationResult.lat, locationResult.lng];
-          
-          // If using fallback location, show warning
-          if (locationResult.isFallback) {
-            setError('Using approximate location. Enable location services for accurate navigation.');
-          }
-        } else {
-          throw new Error('Invalid location data format');
-        }
-        
-        setUserLocation(coords);
-        
-        // Validate destination before calculations
-        if (!destination || !Array.isArray(destination) || destination.length !== 2) {
-          throw new Error('Invalid destination coordinates');
-        }
-        
-        // Calculate distance and check geofence
-        const distance = calculateDistance({ lat: coords[0], lng: coords[1] }, { lat: destination[0], lng: destination[1] });
-        const withinAutoArrival = distance <= PICKUP_ARRIVAL_RADIUS_KM;
-        const withinManualRange = distance <= PICKUP_MANUAL_ARRIVAL_RADIUS_KM;
-        
-        // Use actual distance check (don't force geofence in dev mode for QR scanning)
-        const isWithin = withinAutoArrival;
-        
-        setDistanceToDestination(distance);
-        setIsWithinManualRange(withinManualRange && !withinAutoArrival);
-        updateGeofenceState(isWithin, 'retryLocationUpdate');
-        
-        // Only clear error if we have a non-fallback location
-        if (!locationResult.isFallback) {
-          setError(null);
-        }
-        
-        setLocationRetryCount(0);
-        return coords;
-        
-      } catch (err) {
-        logger.error(`Location attempt ${attempt} failed:`, err);
-        
-        if (attempt === maxRetries) {
-          // More user-friendly error message
-          setError({
-            type: 'error',
-            message: 'Unable to get your location. Please check your GPS settings.'
-          });
-          throw err;
-        }
-        
-        // Wait before retrying (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-      }
-    }
-  }, [destination, updateGeofenceState]);
 
   // Handle retry location button
   const handleRetryLocation = useCallback(async () => {
@@ -955,140 +825,12 @@ const NavigationQRModal = ({
   }, [showToast]);
 
   // Location tracking with debounce and retry logic
-  const updateLocation = useCallback(
-    debounce(async () => {
-      if (!isOpen || mode !== 'navigation') return;
-      setIsLoading(true);
-
-      try {
-        const coords = await retryLocationUpdate();
-        if (!coords) return;
-
-        setUserLocation(coords);
-        
-        // Update distance and geofence status if we have both points
-        if (destination) {
-          const distance = calculateDistance(
-            { lat: coords[0], lng: coords[1] },
-            { lat: destination[0], lng: destination[1] }
-          );
-          setDistanceToDestination(distance);
-          
-          const withinGeofence = distance <= PICKUP_ARRIVAL_RADIUS_KM;
-          setIsWithinManualRange(distance <= PICKUP_MANUAL_ARRIVAL_RADIUS_KM && !withinGeofence);
-          updateGeofenceState(withinGeofence, 'debouncedUpdateLocation');
-        }
-      } catch (err) {
-        logger.error('Error updating location:', err);
-        setError({
-          type: 'error',
-          message: 'Could not update your location. Please check your GPS settings.'
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    }, 1000),
-    [destination, isOpen, mode, retryLocationUpdate, updateGeofenceState]
-  );
 
 // Track scanned items
-const addScannedItem = useCallback(
-  (code) => {
-    // Validate code format or structure here if needed
-    if (!code) return false;
-    
-    const newItem = {
-      id: Date.now(),
-      code: code,
-      timestamp: new Date().toISOString()
-    };
-    
-    setScannedItems(prev => [...prev, newItem]);
-    return true;
-  },
-  []
-);
 
 
 
 // Request camera permission with timeout and enhanced error handling
-const requestCameraPermission = useCallback(async () => {
-  try {
-      // Check if browser supports mediaDevices
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('BROWSER_NOT_SUPPORTED');
-      }
-      
-      // Set timeout for camera initialization
-      const timeoutPromise = new Promise((_, reject) => {
-        cameraInitTimer.current = setTimeout(() => {
-          reject(new Error('CAMERA_TIMEOUT'));
-        }, CAMERA_INIT_TIMEOUT);
-      });
-      
-      // Try to access camera with optimal settings for QR scanning
-      const permissionPromise = navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          focusMode: { ideal: 'continuous' },
-          frameRate: { ideal: 30 }
-        } 
-      });
-      
-      const stream = await Promise.race([permissionPromise, timeoutPromise]);
-      
-      // Clean up timeout
-      if (cameraInitTimer.current) {
-        clearTimeout(cameraInitTimer.current);
-        cameraInitTimer.current = null;
-      }
-      
-      // Release camera immediately after permission check
-      stream.getTracks().forEach(track => track.stop());
-      setHasCameraPermission(true);
-      
-    } catch (err) {
-      logger.error('Camera permission error:', err);
-      setHasCameraPermission(false);
-      
-      // Enhanced error messages with specific guidance
-      switch(err.name || err.message) {
-        case 'BROWSER_NOT_SUPPORTED':
-          setError({ type: 'error', message: 'Your browser does not support camera access. Please try using Chrome, Firefox, or Safari.' });
-          break;
-        case 'CAMERA_TIMEOUT':
-          setError({ type: 'error', message: 'Camera initialization timed out. Please ensure no other apps are using your camera and try again.' });
-          break;
-        case 'NotAllowedError':
-        case 'PermissionDeniedError':
-          setError({
-            type: 'error',
-            message: 'Camera access denied. To scan QR codes:\n' +
-            '1. Click the camera icon in your address bar\n' +
-            '2. Select "Allow" for camera access\n' +
-            '3. Refresh the page'
-          });
-          break;
-        case 'NotFoundError':
-        case 'DevicesNotFoundError':
-          setError({ type: 'error', message: 'No camera detected. Please ensure your device has a working camera and try again.' });
-          break;
-        case 'NotReadableError':
-        case 'TrackStartError':
-          setError({ type: 'error', message: 'Cannot access camera. Please close other apps that might be using your camera.' });
-          break;
-        case 'OverconstrainedError':
-          setError({ type: 'error', message: 'Your camera does not support the required features. Try using your device\'s main camera.' });
-          break;
-        default:
-          setError({ type: 'error', message: 'Camera access failed. Please check your device settings and permissions.' });
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
 
   // Initialize map and location tracking
   useEffect(() => {
@@ -1579,7 +1321,7 @@ const requestCameraPermission = useCallback(async () => {
                       isWithinRange={isWithinGeofence}
                     />
                     {/* Debug info */}
-                    {process.env.NODE_ENV === 'development' && (
+                    {import.meta.env.DEV && (
                       <div className="mt-2 p-2 bg-gray-800 text-white text-xs rounded">
                         <div>Distance: {distanceToDestination ? `${Math.round(distanceToDestination * 1000)}m` : 'Calculating...'}</div>
                         <div>Within {GEOFENCE_DESCRIPTIONS.pickupArrival}: {isWithinGeofence ? '✅ Yes' : '❌ No'} | Manual range ({GEOFENCE_DESCRIPTIONS.pickupManual}): {isWithinManualRange ? '✅ Yes' : '❌ No'}</div>

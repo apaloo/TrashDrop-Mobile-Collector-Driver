@@ -112,7 +112,7 @@ async function seedDatabase() {
     const testData = await generateTestData();
     
     console.log('Inserting test data into Supabase...');
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('pickup_requests')
       .insert(testData);
     

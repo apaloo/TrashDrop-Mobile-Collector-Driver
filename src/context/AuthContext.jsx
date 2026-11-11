@@ -119,7 +119,7 @@ export const AuthProvider = ({ children }) => {
 
         // Check for current Supabase session
         logger.debug('🔐 Checking Supabase session...');
-        const { session, user, error } = await authService.getSession();
+        const { user, error } = await authService.getSession();
         
         if (user && !error) {
           logger.debug('✅ Found existing Supabase session:', user?.id);

@@ -10,7 +10,7 @@ import {
 } from '../utils/routeOptimizationUtils';
 import { calculateDistance } from '../utils/locationUtils';
 import { initOfflineMapStorage, createOfflineTileLayer, optimizeMapPerformance } from '../utils/mapUtils';
-import { startMarkerIcon, assignmentMarkerIcon, requestMarkerIcon, getStopIcon, tricycleIcon } from '../utils/markerIcons';
+import { getStopIcon, tricycleIcon } from '../utils/markerIcons';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import 'leaflet/dist/leaflet.css';
@@ -92,17 +92,14 @@ const MapOptimizer = ({ mapRef, offlineTileLayerRef, isOfflineMode }) => {
  * Route optimizer component for planning efficient collection routes
  */
 const RouteOptimizer = ({ assignments, requests, userLocation }) => {
-  const { saveNavigationState, restoreNavigationState, clearNavigationState } = useNavigationPersistence();
+  const { saveNavigationState, clearNavigationState } = useNavigationPersistence();
   const [optimizedRoute, setOptimizedRoute] = useState([]);
   const [totalDistance, setTotalDistance] = useState(0);
   const [estimatedTime, setEstimatedTime] = useState(0);
   const [mapCenter, setMapCenter] = useState([0, 0]);
-  const [mapZoom, setMapZoom] = useState(13);
+  const [mapZoom] = useState(13);
   const [isLoading, setIsLoading] = useState(true);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
-  const [isSavingTiles, setIsSavingTiles] = useState(false);
-  const [isClearingTiles, setIsClearingTiles] = useState(false);
-  const [savingProgress, setSavingProgress] = useState(0);
   const [cachedTileCount, setCachedTileCount] = useState(0);
   const [showNavigationModal, setShowNavigationModal] = useState(false);
   const [navigationWaypoints, setNavigationWaypoints] = useState([]);
@@ -425,152 +422,8 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
   };
   
   // Handle saving map tiles for offline use
-  const handleSaveMapTiles = () => {
-    if (!mapRef.current) {
-      logger.error('Map reference not available');
-      toast.info('Map is still initializing. Please try again in a moment.', {
-        position: "top-center",
-        autoClose: 3000,
-      });
-      // Try again after a short delay
-      setTimeout(() => {
-        if (mapRef.current) {
-          handleSaveMapTiles();
-        }
-      }, 1500);
-      return;
-    }
-    
-    setIsSavingTiles(true);
-    
-    // Get the current map bounds
-    const bounds = mapRef.current.getBounds();
-    const zoom = mapRef.current.getZoom();
-    
-    // Create offline layer if it doesn't exist
-    if (!offlineTileLayerRef.current) {
-      offlineTileLayerRef.current = createOfflineTileLayer();
-    }
-    
-    // Save tiles for offline use
-    const tileLayer = offlineTileLayerRef.current;
-    
-    // Check if saveTiles method exists
-    if (!tileLayer || typeof tileLayer.saveTiles !== 'function') {
-      logger.error('Offline tile layer not properly initialized or saveTiles method not available');
-      setIsSavingTiles(false);
-      toast.error('Offline map functionality is not available. Please refresh the page and try again.', {
-        position: "top-center",
-        autoClose: 5000,
-      });
-      return;
-    }
-    
-    logger.info(`Saving tiles for bounds: ${bounds.toBBoxString()}, zoom: ${zoom}`);
-    
-    // Calculate approximate tile count for better progress reporting
-    const tileBounds = L.bounds(
-      mapRef.current.project(bounds.getNorthWest(), zoom).divideBy(256).floor(),
-      mapRef.current.project(bounds.getSouthEast(), zoom).divideBy(256).ceil()
-    );
-    const width = tileBounds.max.x - tileBounds.min.x + 1;
-    const height = tileBounds.max.y - tileBounds.min.y + 1;
-    const zoomLevels = Math.min(zoom + 1, 18) - Math.max(zoom - 1, 0) + 1;
-    const approxTileCount = width * height * zoomLevels;
-    
-    logger.info(`Approximately ${approxTileCount} tiles will be saved`);
-    
-    // Show toast notification
-    toast.info(`Saving approximately ${approxTileCount} map tiles for offline use...`, {
-      position: "top-center",
-      autoClose: 5000,
-    });
-    
-    tileLayer.saveTiles({
-      bounds,
-      minZoom: Math.max(zoom - 1, 0),
-      maxZoom: Math.min(zoom + 1, 18),
-      validateTile: () => true,
-      // Add progress callback
-      progress: (count, total) => {
-        logger.debug(`Saved ${count} of ${total} tiles (${Math.round(count/total*100)}%)`);
-      }
-    }).then(() => {
-      logger.info('Tiles saved successfully');
-      
-      // Update the tile count
-      return tileLayer.getTileCount();
-    }).then((count) => {
-      setCachedTileCount(count);
-      // Don't set isOfflineMode here - it's controlled by actual network status
-      setIsSavingTiles(false);
-      
-      // Force a refresh of the map
-      if (mapRef.current) {
-        mapRef.current.invalidateSize();
-      }
-      
-      logger.info(`${count} tiles now cached`);
-      
-      // Show success notification
-      toast.success(`Successfully saved ${count} map tiles for offline use!`, {
-        position: "top-center",
-        autoClose: 3000,
-      });
-    }).catch((error) => {
-      logger.error('Error saving tiles:', error);
-      setIsSavingTiles(false);
-      
-      // Show error notification
-      toast.error(`Failed to save map tiles: ${error.message}`, {
-        position: "top-center",
-        autoClose: 5000,
-      });
-    });
-  };
   
   // Handle clearing map tiles
-  const handleClearMapTiles = () => {
-    if (!offlineTileLayerRef.current) {
-      logger.error('Offline tile layer not available');
-      return;
-    }
-    
-    setIsClearingTiles(true);
-    
-    // Show confirmation toast
-    toast.info(`Clearing ${cachedTileCount} cached map tiles...`, {
-      position: "top-center",
-      autoClose: 3000,
-    });
-    
-    offlineTileLayerRef.current.deleteTiles().then(() => {
-      logger.info('Tiles cleared successfully');
-      setCachedTileCount(0);
-      setIsOfflineMode(false);
-      setIsClearingTiles(false);
-      
-      // Force a refresh of the map
-      if (mapRef.current) {
-        mapRef.current.invalidateSize();
-      }
-      
-      // Show success notification
-      toast.success('All offline map tiles have been cleared!', {
-        position: "top-center",
-        autoClose: 3000,
-      });
-    }).catch((error) => {
-      logger.error('Error clearing tiles:', error);
-      setIsClearingTiles(false);
-      
-      // Show error notification
-      toast.error(`Failed to clear map tiles: ${error.message}`, {
-        position: "top-center",
-        autoClose: 5000,
-      });
-    });
-  };
 
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden">
@@ -882,7 +735,7 @@ View route: ${generateDirectionsUrl(optimizedRoute, {lat: userLocation.latitude,
                 destinationName={navigationWaypoints[navigationWaypoints.length - 1]?.name || 'final stop'}
                 waypoints={navigationWaypoints.slice(0, -1).map(wp => wp.position)}
                 navigationControlRef={navigationControlRef}
-                onMapReady={(map) => {
+                onMapReady={(_map) => {
                   logger.info('Route navigation map ready');
                 }}
                 onRouteCalculated={(routeInfo) => {

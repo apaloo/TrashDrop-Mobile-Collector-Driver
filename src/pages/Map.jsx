@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useFilters } from '../context/FilterContext';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import MapControls from '../components/MapControls';
 import { TopNavBar } from '../components/NavBar';
 import BottomNavBar from '../components/BottomNavBar';
@@ -13,7 +12,7 @@ import StatusButton from '../components/StatusButton';
 import { useAuth } from '../context/AuthContext';
 import { supabase, authService } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
-import { requestMarkerIcon, assignmentMarkerIcon, tricycleIcon, createTricycleIcon, calculateBearing, getStopIcon, digitalBinMarkerIcon } from '../utils/markerIcons';
+import { requestMarkerIcon, assignmentMarkerIcon, createTricycleIcon, calculateBearing, digitalBinMarkerIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
 import { filterAvailableRequests, WASTE_CATEGORIES } from '../utils/availableRequests';
 import useWakeLock from '../hooks/useWakeLock';
@@ -88,50 +87,9 @@ const LocationUpdater = ({ position, setMap }) => {
 };
 
 // Distance calculation
-const calculateDistance = (pos1, pos2) => {
-  if (!pos1 || !pos2 || pos1.length < 2 || pos2.length < 2) return 999;
-  
-  const [lat1, lon1] = pos1;
-  const [lat2, lon2] = pos2;
-  
-  const R = 6371; // Earth radius in km
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
-};
 
-const formatDistance = (distance) => {
-  if (distance < 1) {
-    return `${Math.round(distance * 1000)}m`;
-  }
-  return `${distance.toFixed(1)}km`;
-};
 
 // Function to get color based on waste type
-const getWasteTypeColor = (type, sourceType) => {
-  // Digital bins are always black
-  if (sourceType === 'digital_bin') {
-    return '#000000'; // black
-  }
-  
-  const colors = {
-    'plastic': '#3b82f6', // blue-500
-    'paper': '#eab308',   // yellow-500
-    'metal': '#6b7280',   // gray-500
-    'glass': '#93c5fd',   // blue-300
-    'organic': '#22c55e', // green-500
-    'general': '#ef4444', // red-500
-    'recycling': '#86efac', // green-300
-    'recyclable': '#2196F3', // blue
-    'hazardous': '#F44336', // red
-    'e-waste': '#9C27B0' // purple
-  };
-  return colors[type?.toLowerCase()] || '#6b7280'; // default to gray-500
-};
 
 
 
@@ -167,8 +125,6 @@ const FilterCard = ({ filters = {}, updateFilters, applyFilters, getMaxRadius })
   const currentMaxRadius = getMaxRadius ? getMaxRadius() : 10;
   // Ensure filters has all required properties with defaults (capped to current max)
   const safeFilters = filters || {};
-  const activeFilter = safeFilters.activeFilter || 'all';
-  const radiusKm = parseFloat(safeFilters.searchRadius) || 15;
   const handleFilterChange = (updates) => {
     updateFilters(updates);
     applyFilters();
@@ -380,10 +336,10 @@ const MapPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { filters, updateFilters, updateFilteredRequests, getMaxRadius } = useFilters();
-  const [map, setMap] = useState(null);
+  const [, setMap] = useState(null);
   
   // User profile data
-  const [userProfile, setUserProfile] = useState(null);
+  const [, setUserProfile] = useState(null);
   
   // Fallback location for immediate map load - Accra, Ghana
   const DEFAULT_POSITION = [5.6037, -0.1870]; // Accra coordinates
@@ -410,14 +366,13 @@ const MapPage = () => {
   const setIsWaitingForGPS = (v) => { isWaitingForGPSRef.current = v; setIsWaitingForGPSState(v); };
   const setIsUsingFallbackLocation = (v) => { isUsingFallbackLocationRef.current = v; setIsUsingFallbackLocationState(v); };
   const setHasGoodAccuracy = (v) => { hasGoodAccuracyRef.current = v; setHasGoodAccuracyState(v); };
-  const [watchId, setWatchId] = useState(null);
+  const [, setWatchId] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [locationAttempted, setLocationAttempted] = useState(false);
+  const [, setLocationAttempted] = useState(false);
   const [allRequests, setAllRequests] = useState([]); // All fetched requests
   const requestsLoadedRef = useRef(false); // set once fetchRequests has loaded the list
   const [requests, setRequests] = useState([]); // Filtered requests for display
   const [isLoading, setIsLoading] = useState(true);
-  const [shouldCenter, setShouldCenter] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [isOnlineStatus, setIsOnlineStatus] = useState(isOnline());
@@ -425,8 +380,6 @@ const MapPage = () => {
   const [toast, setToast] = useState({ show: false, message: '', type: 'info' });
   
   // Refs for error handling and fetch dedup
-  const lastErrorRef = useRef(null);
-  const errorToastShownRef = useRef(false);
   const isFetchingRef = useRef(false);
   const positionRef = useRef(position);
   // position starts as Accra or the cached last fix; only a real GPS fix may be
@@ -466,7 +419,7 @@ const MapPage = () => {
     };
 
     // Load cached position first (instant map load)
-    const hasCachedPosition = loadCachedPosition();
+    loadCachedPosition();
     
     if (!navigator.geolocation) {
       setError('Geolocation not supported');
@@ -612,7 +565,7 @@ const MapPage = () => {
               timeout: 25000,
               maximumAge: 60000
             };
-            navigator.geolocation.getCurrentPosition(onSuccess, (fallbackErr) => {
+            navigator.geolocation.getCurrentPosition(onSuccess, (_fallbackErr) => {
               // Even if fallback fails, keep trying - don't show permanent error
               logger.debug('⚠️ Network location also failed, continuing GPS attempts...');
             }, fallbackOptions);
@@ -762,9 +715,6 @@ const MapPage = () => {
   // REMOVED: Old hardcoded default location useEffect - now using real geolocation only
 
   // Recenter map handler
-  const handleRecenter = () => {
-    setShouldCenter(true);
-  };
 
   // Calculate distance between two coordinates in km
   const calculateDistance = (start, end) => {
@@ -1069,12 +1019,6 @@ const MapPage = () => {
   }, []);
 
   // Helper function to extract number from distance string
-  const getDistanceNumber = (distanceStr) => {
-    if (!distanceStr) return 0;
-    // Extract the first number from the string (e.g., "2.5 km away" -> 2.5)
-    const match = distanceStr.match(/(\d+\.?\d*)/);
-    return match ? parseFloat(match[0]) : 0;
-  };
 
   // On-Duty state, kept in sync with the status button so the list updates
   // the moment the collector goes On- or Off-Duty
@@ -1181,7 +1125,7 @@ const MapPage = () => {
             parsed.lng !== undefined ? parsed.lng : parsed.longitude
           ];
         }
-      } catch (e) {
+      } catch {
         // Not a JSON string, continue to other formats
       }
       
@@ -1496,67 +1440,11 @@ const MapPage = () => {
   }, [isOnlineStatus, user?.id]);
 
   // Handle accepting an assignment
-  const handleAcceptAssignment = async (requestId) => {
-    if (!isOnlineStatus) {
-      showToast('Cannot accept requests while offline', 'error');
-      return;
-    }
-    
-    try {
-      // Find the request by ID
-      const request = requests.find(r => r.id === requestId);
-      if (!request) {
-        showToast('Request not found', 'error');
-        return;
-      }
-      
-      // Show processing toast
-      showToast('Processing your request...', 'info');
-      
-      // Update request in Supabase
-      const { data, error } = await supabase
-        .from('pickup_requests')
-        .update({ 
-          status: 'accepted',
-          collector_id: user?.id,
-          accepted_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', requestId)
-        .select();
-      
-      if (error) throw error;
-      
-      // Remove the accepted request from the available requests
-      setAllRequests(prev => {
-        const updated = prev.filter(r => r.id !== requestId);
-        // Data updated
-        return updated;
-      });
-      
-      // Show success message
-      showToast('Pickup request accepted!', 'success');
-      
-      // Refresh the data to ensure consistency
-      await refreshData();
-    } catch (err) {
-      logger.error('Error accepting assignment:', err);
-      showToast('Failed to accept request. Please try again.', 'error');
-    }
-  };
 
   // Get color for waste type
   // Using the getWasteTypeColor function defined at the top of the file
 
   // Get priority badge color
-  const getPriorityBadgeColor = (priority) => {
-    const colors = {
-      high: 'bg-red-100 text-red-800',
-      medium: 'bg-yellow-100 text-yellow-800',
-      low: 'bg-green-100 text-green-800'
-    };
-    return colors[priority] || 'bg-gray-100 text-td-ink';
-  };
 
   // Waste type legend component
   const WasteLegend = () => {
@@ -1564,70 +1452,6 @@ const MapPage = () => {
   };
   
   // Handle location errors with more context and recovery options
-  const handleLocationError = useCallback((error) => {
-    logger.warn('Location warning:', error);
-    
-    // Don't show repeated errors to avoid spamming the user
-    const now = Date.now();
-    if (lastErrorRef.current && (now - lastErrorRef.current.timestamp < 30000)) {
-      logger.debug('Suppressing duplicate location error');
-      return;
-    }
-    
-    let errorMessage = 'Using default location. ';
-    let showRecovery = false;
-    
-    switch(error.code) {
-      case 1: // PERMISSION_DENIED
-        errorMessage += 'Location access was denied. Please enable location services in your browser settings.';
-        showRecovery = true;
-        break;
-      case 2: // POSITION_UNAVAILABLE
-        errorMessage += 'Location information is currently unavailable. Using default location.';
-        break;
-      case 3: // TIMEOUT
-        errorMessage += 'Location request timed out. Using default location.';
-        showRecovery = true;
-        break;
-      default:
-        errorMessage += 'Using default location due to an unknown error.';
-    }
-    
-    // Store this error to prevent duplicates
-    lastErrorRef.current = {
-      code: error.code,
-      message: error.message,
-      timestamp: now
-    };
-    
-    // Only show toast if we haven't shown one recently for this error
-    if (!errorToastShownRef.current) {
-      errorToastShownRef.current = true;
-      showToast(
-        <div>
-          <p className="font-medium">{errorMessage}</p>
-          {showRecovery && (
-            <button 
-              onClick={() => {
-                // Force a refresh of the page to retry geolocation
-                window.location.reload();
-              }}
-              className="mt-2 text-sm text-td-forest hover:underline"
-            >
-              Retry
-            </button>
-          )}
-        </div>, 
-        'warning',
-        10000 // Show for 10 seconds
-      );
-      
-      // Reset the error toast flag after some time
-      setTimeout(() => {
-        errorToastShownRef.current = false;
-      }, 30000);
-    }
-  }, [showToast]);
 
   // Initial data fetch
   useEffect(() => {

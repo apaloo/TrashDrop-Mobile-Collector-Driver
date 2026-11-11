@@ -30,7 +30,10 @@ export default defineConfig([
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // A leading _ marks an unused name on purpose (argument, caught error)
+      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_', ignoreRestSiblings: true }],
+      // A hot-reload hint for development, not a bug
+      'react-refresh/only-export-components': 'warn',
     },
   },
   {

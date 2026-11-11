@@ -203,7 +203,7 @@ const GoogleMapModalComponent = ({
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [loadingPhase, setLoadingPhase] = useState('Initializing map...');
   const [hasError, setHasError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [, setErrorMessage] = useState('');
   const initializationAttemptedRef = useRef(false);
 
   // Initialize map with enhanced error handling
@@ -413,7 +413,7 @@ const GoogleMapModalComponent = ({
           zIndex: 1000
         });
       }
-    } catch (error) {
+    } catch {
       // Fallback to legacy Marker if modern API fails
       userMarkerRef.current = new window.google.maps.Marker({
         position: { lat: normalizedUserLocation[0], lng: normalizedUserLocation[1] },
@@ -447,7 +447,7 @@ const GoogleMapModalComponent = ({
           zIndex: 1000
         });
       }
-    } catch (error) {
+    } catch {
       // Fallback to legacy Marker if modern API fails
       destinationMarkerRef.current = new window.google.maps.Marker({
         position: { lat: normalizedDestination[0], lng: normalizedDestination[1] },
@@ -506,12 +506,6 @@ const GoogleMapModalComponent = ({
     };
   }, []);
 
-  const handleRetry = () => {
-    initializationAttemptedRef.current = false;
-    setHasError(false);
-    setErrorMessage('');
-    initMap();
-  };
 
   return (
     <div className={`${className} rounded-lg relative`}>

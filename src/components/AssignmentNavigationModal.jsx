@@ -8,13 +8,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { getPhrase, translateNavInstruction } from '../locales/navigationPhrases';
 import useWakeLock from '../hooks/useWakeLock';
 import { useNavigationPersistence } from '../hooks/useNavigationPersistence';
-import {
-  ASSIGNMENT_ARRIVAL_RADIUS_KM,
-  ASSIGNMENT_MANUAL_ARRIVAL_RADIUS_KM,
-  NAV_STEP_ADVANCE_RADIUS_KM,
-  GEOFENCE_DESCRIPTIONS,
-  kmToMeters
-} from '../config/geofenceConfig';
+import { ASSIGNMENT_ARRIVAL_RADIUS_KM, ASSIGNMENT_MANUAL_ARRIVAL_RADIUS_KM, NAV_STEP_ADVANCE_RADIUS_KM, GEOFENCE_DESCRIPTIONS } from '../config/geofenceConfig';
 
 // Geofence radii imported from ../config/geofenceConfig.js — do NOT hardcode here
 const LOCATION_UPDATE_INTERVAL = 10000; // 10 seconds
@@ -25,13 +19,12 @@ const AssignmentNavigationModal = ({
   destination,
   assignmentId,
   assignmentTitle = 'Assignment',
-  onArrival,
   // Disposal trips only: when set, arrival shows a "Dispose waste" button
   // that hands the collector back to the disposal confirmation.
   onDisposeNow
 }) => {
-  const { saveNavigationState, restoreNavigationState, clearNavigationState } = useNavigationPersistence();
-  const { language: preferredLang, t, translateStep } = useLanguage();
+  const { saveNavigationState, clearNavigationState } = useNavigationPersistence();
+  const { language: preferredLang, t } = useLanguage();
   const [userLocation, setUserLocation] = useState(null);
   const [distanceToDestination, setDistanceToDestination] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -41,7 +34,7 @@ const AssignmentNavigationModal = ({
   const [withinGeofence, setWithinGeofence] = useState(false);
   const [isWithinManualRange, setIsWithinManualRange] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
-  const [navigationRoute, setNavigationRoute] = useState(null);
+  const [, setNavigationRoute] = useState(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [navigationInstructions, setNavigationInstructions] = useState([]);
   const [isInstructionsCollapsed, setIsInstructionsCollapsed] = useState(false);
@@ -107,42 +100,6 @@ const AssignmentNavigationModal = ({
   }, [distanceToDestination, isNavigating, showToast]);
 
   // Handle when user clicks "Start Cleaning" button
-  const handleStartCleaning = useCallback(async () => {
-    if (arrivalProcessing || !assignmentId) return;
-    
-    try {
-      setArrivalProcessing(true);
-      setHasArrived(true);
-      
-      logger.info(`✅ Assignment ${assignmentId} started - user clicked Start Cleaning`);
-      
-      // Call the onArrival callback to handle the assignment completion
-      if (onArrival) {
-        await onArrival(assignmentId);
-      }
-      
-      // Show success message
-      showToast({
-        message: 'Assignment started! Good luck with the cleaning.',
-        type: 'success'
-      });
-      
-    } catch (error) {
-      logger.error('Error starting assignment:', error);
-      showToast({
-        message: 'Error starting assignment. Please try again.',
-        type: 'error'
-      });
-      setArrivalProcessing(false);
-      setHasArrived(false);
-      return;
-    }
-    
-    // Close modal after 1 second
-    setTimeout(() => {
-      onClose();
-    }, 1000);
-  }, [assignmentId, onArrival, onClose, arrivalProcessing, showToast]);
 
   // Parse coordinates to handle different formats (defined early to prevent hoisting issues)
   const parseDestination = useCallback((dest) => {
@@ -775,9 +732,7 @@ const AssignmentNavigationModal = ({
                     {(() => {
                       // Hide GPS warning when we have distance calculation - only show during calculation phase
                       // Show GPS warning only when accuracy is above 50m OR using fallback coordinates
-                      const destinationObj = parseDestination(destination);
-                      const usingFallback = destinationObj?.isFallback || userLocation?.isFallback;
-                      const hasLowAccuracy = userLocation?.accuracy && userLocation.accuracy > 50;
+                      parseDestination(destination);
                       
                       // Don't show warning when we have valid distance calculation
                       const shouldShowWarning = false; // Never show when distance is calculated

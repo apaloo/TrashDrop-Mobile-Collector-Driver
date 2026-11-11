@@ -22,7 +22,6 @@ const CompletionModal = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [locationVerified, setLocationVerified] = useState(isGeofenceVerified);
   const [isWithinRange, setIsWithinRange] = useState(isGeofenceVerified);
-  const [showLocationModal, setShowLocationModal] = useState(false);
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [shouldZoomToUser, setShouldZoomToUser] = useState(false);
   const cameraInputRef = useRef(null);
@@ -48,9 +47,7 @@ const CompletionModal = ({
     capturePhoto,
     removePhoto,
     clearPhotos,
-    isUploading,
-    error: photoError,
-    hasPhotos
+    error: photoError
   } = usePhotoCapture(assignment?.id);
   
   // Fix Leaflet icon issues with Webpack/Vite

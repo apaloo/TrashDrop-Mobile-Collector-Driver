@@ -44,14 +44,10 @@ function generateRandomPoint(center, radius) {
 
 // Generate random assignment data
 function generateRandomAssignment(index) {
-  const wasteTypes = ['general', 'recyclable', 'hazardous', 'organic', 'e-waste'];
   const statuses = ['pending', 'in_progress', 'completed', 'cancelled'];
-  const priorities = ['low', 'medium', 'high'];
   const zones = ['East Legon', 'Osu', 'Cantonments', 'Airport Residential', 'Labone', 'Teshie', 'Madina', 'Adenta'];
   
   const now = new Date();
-  const createdAt = new Date(now.getTime() - Math.random() * 30 * 24 * 60 * 60 * 1000); // Random date in last 30 days
-  const dueDate = new Date(createdAt.getTime() + (7 + Math.floor(Math.random() * 14)) * 24 * 60 * 60 * 1000); // 7-21 days after creation
   
   // Generate random coordinates within 15km radius
   const coords = generateRandomPoint({ lat: centerLat, lng: centerLng }, radiusKm);

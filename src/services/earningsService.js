@@ -111,7 +111,7 @@ class EarningsAnalytics {
       // Keep only last 100 events
       const trimmed = existing.slice(-100);
       localStorage.setItem(key, JSON.stringify(trimmed));
-    } catch (err) {
+    } catch {
       // Silent fail - analytics shouldn't break the app
     }
   }
@@ -165,7 +165,7 @@ class EarningsCacheManager {
       const cached = localStorage.getItem(this.cacheKey);
       if (!cached) return null;
       
-      const { data, timestamp, version } = JSON.parse(cached);
+      const { data, timestamp } = JSON.parse(cached);
       const age = Date.now() - timestamp;
       const isOnline = navigator.onLine;
       
@@ -380,61 +380,6 @@ function calculateCollectorEarnings(pickup) {
  * @param {number} actualCollectedAmount - Actual amount collected from client (from bin_payments.total_bill)
  * @returns {number} Collector's total earnings
  */
-function calculateBinCollectorEarnings(bin, actualCollectedAmount = null) {
-  // Only use actual collected amount from bin_payments
-  // No actual payment processed = no earnings
-  if (actualCollectedAmount === null || actualCollectedAmount === undefined) {
-    return 0; // No payment processed through TrendiPay
-  }
-  
-  const totalBill = actualCollectedAmount;
-  
-  // CRITICAL: Exclude platform request fee from sharing - it goes directly to platform
-  const platformRequestFee = PAYMENT_SPLITS.PLATFORM_REQUEST_FEE;
-  const shareableAmount = Math.max(0, totalBill - platformRequestFee);
-  if (shareableAmount === 0) return 0;
-  
-  const isUrgent = bin.is_urgent || false;
-  const deadheadKm = parseFloat(bin.deadhead_km) || 0;
-  const deadheadShare = deadheadKm > 0 ? getDeadheadShare(deadheadKm) : PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
-  
-  // Extract base and urgent portions FROM shareable amount (fee already includes urgent)
-  let basePortion, urgentPortion;
-  if (isUrgent) {
-    // shareableAmount = base + (base * 0.30) = base * 1.30
-    basePortion = shareableAmount / 1.30;
-    urgentPortion = shareableAmount - basePortion;
-  } else {
-    basePortion = shareableAmount;
-    urgentPortion = 0;
-  }
-  
-  // Collector core payout (deadhead share of base)
-  const collectorCore = basePortion * deadheadShare;
-  
-  // Collector urgent payout (75% of urgent portion)
-  const collectorUrgent = urgentPortion * PAYMENT_SPLITS.URGENT_COLLECTOR_SHARE;
-  
-  // Total payout from fee (before external sources)
-  let collectorTotal = collectorCore + collectorUrgent;
-  
-  // Add tips (100%) - external source
-  if (bin.collector_tips) {
-    collectorTotal += bin.collector_tips * PAYMENT_SPLITS.TIPS_COLLECTOR_SHARE;
-  }
-  
-  // Add recyclables (60%) - external source from recycler
-  if (bin.recycler_gross_payout) {
-    collectorTotal += bin.recycler_gross_payout * PAYMENT_SPLITS.RECYCLABLES_COLLECTOR_SHARE;
-  }
-  
-  // Add loyalty cashback - external source from platform
-  if (bin.collector_loyalty_cashback) {
-    collectorTotal += bin.collector_loyalty_cashback;
-  }
-  
-  return collectorTotal;
-}
 
 /**
  * Calculate platform earnings (App Bucket) from a pickup request applying SOP v4.5.6 percentage shares
@@ -453,7 +398,6 @@ function calculatePlatformEarnings(pickup) {
     const collectorCore = pickup.collector_core_payout || 0;
     const collectorUrg = pickup.collector_urgent_payout || 0;
     const collectorSurge = pickup.collector_surge_payout || 0;
-    const collectorRecyclables = pickup.collector_recyclables_payout || 0;
     
     // Platform gets the remainder of shared amounts
     const platformCore = baseFeeForSharing - collectorCore;
@@ -744,6 +688,7 @@ class EarningsService {
       // TODO: Rebuild the RPC to match the full method output, then re-enable.
       logger.info('✅ Using full earnings calculation (RPC bypassed)');
       return this.getEarningsData();
+      /* eslint-disable no-unreachable -- the RPC path below stays in place until the RPC is rebuilt (TODO above) */
 
       const { startDate, endDate } = options;
       
@@ -875,6 +820,7 @@ class EarningsService {
       // Fall back to legacy method
       return this.getEarningsData();
     }
+    /* eslint-enable no-unreachable */
   }
 
   async getEarningsData() {
@@ -973,7 +919,6 @@ class EarningsService {
       }
       
       // For downstream references
-      const binPayments = Object.keys(binPaymentModeMap).length;
 
       // DEBUG: Log total_bill map for verification
       if (Object.keys(binPaymentAmountMap).length > 0) {
@@ -1253,7 +1198,7 @@ class EarningsService {
 
       // === CALCULATE REAL COMPLETION RATE ===
       // Include both pickup_requests AND digital_bins in completion rate
-      const { data: allAcceptedPickups, error: acceptedError } = await supabase
+      const { data: allAcceptedPickups } = await supabase
         .from('pickup_requests')
         .select('id, status')
         .eq('collector_id', this.collectorId)

@@ -46,29 +46,6 @@ export default defineConfig({
       
       return config
     },
-    setupNodeEvents(on, config) {
-      // Add custom event listeners here
-      on('before:browser:launch', (browser = {}, launchOptions) => {
-        // Add browser launch options
-        if (browser.family === 'chromium' && browser.name !== 'electron') {
-          // Auto-open devtools in headed mode
-          launchOptions.args.push('--auto-open-devtools-for-tabs');
-        }
-        return launchOptions;
-      });
-      
-      // Log browser console messages
-      on('task', {
-        log(message) {
-          console.log(message);
-          return null;
-        },
-        table(message) {
-          console.table(message);
-          return null;
-        }
-      });
-    },
   },
   component: {
     devServer: {

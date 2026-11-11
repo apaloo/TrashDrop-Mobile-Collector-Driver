@@ -15,7 +15,7 @@ const readPermission = async () => {
     if (!navigator.permissions?.query) return 'unknown';
     const status = await navigator.permissions.query({ name: 'geolocation' });
     return status?.state || 'unknown';
-  } catch (err) {
+  } catch {
     return 'unknown';
   }
 };

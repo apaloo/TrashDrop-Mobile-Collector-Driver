@@ -277,7 +277,7 @@ class OfflineMapService {
         try {
           await this.cacheTile(tile.z, tile.x, tile.y);
           cached++;
-        } catch (error) {
+        } catch {
           failed++;
         }
       }));

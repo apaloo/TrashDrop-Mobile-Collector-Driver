@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { initiateCollection, checkCollectionStatus } from '../services/paymentService';
-import { testConnection } from '../services/trendiPayService';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
 

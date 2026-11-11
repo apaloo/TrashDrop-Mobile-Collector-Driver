@@ -87,7 +87,7 @@ export const useNavigationPersistence = () => {
   const hasNavigationState = useCallback(async () => {
     try {
       return await statePersistence.hasState(statePersistence.KEYS.NAVIGATION_STATE);
-    } catch (error) {
+    } catch {
       return false;
     }
   }, []);

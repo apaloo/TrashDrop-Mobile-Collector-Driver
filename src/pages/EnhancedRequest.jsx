@@ -20,7 +20,7 @@ import { logger } from '../utils/logger';
  */
 const EnhancedRequestPage = () => {
   const { user } = useAuth();
-  const { filters, updateFilteredRequests } = useFilters();
+  const { updateFilteredRequests } = useFilters();
   
   // Enhanced session management
   const {
@@ -39,7 +39,6 @@ const EnhancedRequestPage = () => {
     acceptRequest,
     updateRequestStatus,
     refreshAllRequests,
-    loadNotifications,
     markNotificationRead,
     clearFilter
   } = useRequestSession(user?.id);
@@ -100,7 +99,7 @@ const EnhancedRequestPage = () => {
       } else {
         showToast(result.error || 'Failed to apply filters', 'error');
       }
-    } catch (error) {
+    } catch {
       showToast('Error applying filters', 'error');
     } finally {
       setIsLoading(false);
@@ -129,7 +128,7 @@ const EnhancedRequestPage = () => {
       } else {
         showToast(result.error || 'Failed to accept request', 'error');
       }
-    } catch (error) {
+    } catch {
       showToast('Error accepting request', 'error');
     } finally {
       setIsLoading(false);
@@ -154,7 +153,7 @@ const EnhancedRequestPage = () => {
       } else {
         showToast(result.error || 'Failed to update status', 'error');
       }
-    } catch (error) {
+    } catch {
       showToast('Error updating status', 'error');
     } finally {
       setIsLoading(false);
@@ -446,7 +445,7 @@ const EnhancedRequestPage = () => {
 };
 
 // Filter Modal Component
-const FilterModal = ({ isOpen, onClose, filters, onFiltersChange, onApply, currentLocation }) => {
+const FilterModal = ({ isOpen, onClose, filters, onFiltersChange, onApply }) => {
   if (!isOpen) return null;
 
   const handleFilterChange = (key, value) => {

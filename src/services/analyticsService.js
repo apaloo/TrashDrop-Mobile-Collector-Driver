@@ -114,7 +114,6 @@ export class AnalyticsService {
       // Calculate analytics with available data and estimates
       const totalPickups = completedPickups?.length || 0;
       const totalEarnings = completedPickups?.reduce((sum, pickup) => sum + (pickup.fee || 0), 0) || 0;
-      const totalBags = completedPickups?.reduce((sum, pickup) => sum + (pickup.bag_count || 1), 0) || 0;
       
       // Estimate distances and times based on pickup data
       // These are estimates since the actual columns don't exist yet
@@ -243,12 +242,12 @@ export class AnalyticsService {
       logger.info(`📦 Found ${acceptedDigitalBins?.length || 0} accepted digital bins for collector ${this.collectorId}`);
       
       // DIAGNOSTIC: Query ALL accepted items to see what collector_ids exist
-      const { data: allAcceptedPickups, error: allError } = await supabase
+      const { data: allAcceptedPickups } = await supabase
         .from('pickup_requests')
         .select('id, collector_id, status, location')
         .in('status', ['accepted', 'en_route', 'arrived']);
       
-      const { data: allAcceptedBins, error: allBinsError } = await supabase
+      const { data: allAcceptedBins } = await supabase
         .from('digital_bins')
         .select('id, collector_id, status, location')
         .in('status', ['accepted', 'en_route', 'arrived']);

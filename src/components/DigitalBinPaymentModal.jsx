@@ -37,7 +37,6 @@ const DigitalBinPaymentModal = ({
   const [showScanner, setShowScanner] = useState(false);
   const [scannerError, setScannerError] = useState('');
   const [duplicateWarning, setDuplicateWarning] = useState('');
-  const scannerContainerRef = useRef(null);
   const html5QrCodeRef = useRef(null);
   const scannerActiveRef = useRef(false);
 
@@ -254,7 +253,7 @@ const DigitalBinPaymentModal = ({
         await html5QrCodeRef.current.stop();
       }
       if (html5QrCodeRef.current) {
-        try { await html5QrCodeRef.current.clear(); } catch (e) { /* ignore */ }
+        try { await html5QrCodeRef.current.clear(); } catch { /* ignore */ }
         html5QrCodeRef.current = null;
       }
       scannerActiveRef.current = false;
@@ -363,7 +362,7 @@ const DigitalBinPaymentModal = ({
           }
           setShowScanner(false);
         },
-        (errorMessage) => {
+        (_errorMessage) => {
           // Silently ignore "no QR found" messages
         }
       );
@@ -386,21 +385,6 @@ const DigitalBinPaymentModal = ({
   }, [cleanupScanner]);
 
   // Remove a scanned bin and recalculate total
-  const removeBag = useCallback((bagId) => {
-    setScannedBags(prev => {
-      const updated = prev.filter(b => b.id !== bagId);
-      const sum = updated.reduce((acc, b) => acc + (b.fee || 0), 0);
-      setAutoCalculatedBill(sum);
-      // Only auto-update totalBill if collector hasn't manually edited
-      setBillManuallyEdited(wasEdited => {
-        if (!wasEdited) {
-          setTotalBill(sum > 0 ? sum.toFixed(2) : '');
-        }
-        return wasEdited;
-      });
-      return updated;
-    });
-  }, []);
 
   // Validate form
   const validate = () => {

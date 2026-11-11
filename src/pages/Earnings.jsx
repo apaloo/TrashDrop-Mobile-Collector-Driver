@@ -7,7 +7,7 @@ import { authService } from '../services/supabase';
 import { logger } from '../utils/logger';
 
 // Cash Out Modal Component
-const CashOutModal = ({ isOpen, onClose, totalEarnings, availableForWithdrawal, pendingDisposalAmount = 0, onWithdrawalSuccess }) => {
+const CashOutModal = ({ isOpen, onClose, availableForWithdrawal, pendingDisposalAmount = 0, onWithdrawalSuccess }) => {
   // Available for withdrawal is only from disposed bins
   const withdrawableAmount = availableForWithdrawal ?? 0;
   const hasPendingEarnings = pendingDisposalAmount > 0;
@@ -365,7 +365,7 @@ const TransactionItem = ({ transaction }) => {
 
 const EarningsPage = () => {
   const { user, hasInitiallyChecked } = useAuth();
-  const [userProfile, setUserProfile] = useState(null);
+  const [, setUserProfile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('summary');
   const [period, setPeriod] = useState('week');
@@ -375,7 +375,7 @@ const EarningsPage = () => {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [fromCache, setFromCache] = useState(false);
   const [cacheAge, setCacheAge] = useState(null);
-  const [lastRefresh, setLastRefresh] = useState(null);
+  const [, setLastRefresh] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false); // Separate state for overlay loader
   
   // Monitor online/offline status

@@ -31,7 +31,6 @@ const DisposalModal = ({
   isOpen, 
   onClose, 
   onDispose,
-  onGetDirections,
   onArrivalAtDisposalSite
 }) => {
   const [selectedSite, setSelectedSite] = useState(null);

@@ -164,8 +164,6 @@ const OSMNavigationMap = ({
           return;
         }
         
-        const start = validatedWaypoints[0];
-        const end = validatedWaypoints[validatedWaypoints.length - 1];
         let callbackInvoked = false; // Prevent duplicate callbacks
         let routeSucceeded = false; // Track if route succeeded
         
@@ -349,7 +347,7 @@ const OSMNavigationMap = ({
       // Create a custom itinerary builder that does nothing to prevent appendChild errors
       const noOpItinerary = L.Class.extend({
         initialize: function() {},
-        onAdd: function(map) {
+        onAdd: function(_map) {
           try {
             // Return a hidden dummy element instead of creating UI
             const dummyDiv = L.DomUtil.create('div', 'leaflet-routing-hidden');
@@ -362,7 +360,7 @@ const OSMNavigationMap = ({
             dummyDiv.appendChild = function() { return null; };
             
             return dummyDiv;
-          } catch (e) {
+          } catch {
             // Return a minimal element if creation fails
             return document.createElement('div');
           }
@@ -533,7 +531,7 @@ const OSMNavigationMap = ({
       if (routingControlRef.current && mapInstanceRef.current) {
         try {
           mapInstanceRef.current.removeControl(routingControlRef.current);
-        } catch (e) {
+        } catch {
           // Ignore cleanup errors
         }
       }

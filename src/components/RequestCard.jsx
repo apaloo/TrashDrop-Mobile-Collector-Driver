@@ -21,7 +21,6 @@ const RequestCard = ({
   onCompletePickup, 
   onLocateSite, 
   onDisposeBag, 
-  onViewDetails,
   onScanQRBlocked,
   onDisposeBagBlocked,
   selectable = false,
@@ -262,7 +261,7 @@ const RequestCard = ({
     
     switch (request.status) {
       case PickupRequestStatus.AVAILABLE:
-      case 'pending': // Handle legacy 'pending' status
+      case 'pending': { // Handle legacy 'pending' status
         // Different styling for digital bins (but same workflow)
         const buttonClasses = isDigitalBin 
           ? "w-full bg-black hover:bg-gray-800 text-white py-3 px-4 rounded-md flex items-center justify-center"
@@ -281,6 +280,7 @@ const RequestCard = ({
             </button>
           </div>
         );
+      }
       case PickupRequestStatus.ACCEPTED:
       case PickupRequestStatus.EN_ROUTE:
       case PickupRequestStatus.ARRIVED:
