@@ -207,12 +207,13 @@ export const generateDirectionsUrl = (route, startPosition) => {
     return '';
   }
   
-  // Start with the origin
-  let coordinates = `${startPosition.lng},${startPosition.lat}`;
+  // openstreetmap.org/directions takes latitude,longitude pairs (see the
+  // example above). Longitude first put Accra pickups in the Gulf of Guinea.
+  let coordinates = `${startPosition.lat},${startPosition.lng}`;
   
   // Add all route points
   route.forEach(assignment => {
-    coordinates += `;${assignment.longitude},${assignment.latitude}`;
+    coordinates += `;${assignment.latitude},${assignment.longitude}`;
   });
   
   // Create OSRM URL using GraphHopper (OSM-based routing)
