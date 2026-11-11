@@ -80,15 +80,18 @@ Deno.serve(async (req) => {
 
   const rawBody = await req.text();
 
-  if (webhookSecret) {
-    if (!signatureHeader) {
-      return jsonResponse({ success: false, error: 'Missing signature' }, 401);
-    }
-
-    const expected = await hmacSha256Hex(webhookSecret, rawBody);
-    if (!timingSafeEqualHex(signatureHeader, expected)) {
-      return jsonResponse({ success: false, error: 'Invalid signature' }, 401);
-    }
+  // Every request must carry a valid signature. Without the secret nothing
+  // can be verified, so refuse rather than accept unsigned updates.
+  if (!webhookSecret) {
+    console.error('TRENDIPAY_WEBHOOK_SECRET is not set; refusing unsigned webhook');
+    return jsonResponse({ success: false, error: 'Webhook not configured on server' }, 500);
+  }
+  if (!signatureHeader) {
+    return jsonResponse({ success: false, error: 'Missing signature' }, 401);
+  }
+  const expected = await hmacSha256Hex(webhookSecret, rawBody);
+  if (!timingSafeEqualHex(signatureHeader, expected)) {
+    return jsonResponse({ success: false, error: 'Invalid signature' }, 401);
   }
 
   let payload: any;

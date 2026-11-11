@@ -11,13 +11,19 @@
  *   POST /  { action: "check-collection-status", transactionId, terminalId }
  *   POST /  { action: "check-disbursement-status", transactionId, terminalId }
  *
- * initiate-disbursement sends money out, so it requires the caller's Supabase
- * JWT (Authorization: Bearer <access_token>) and an active collector profile
- * (public.is_active_collector). payload.reference must be one of the caller's
- * pending withdrawals (created by request_withdrawal) and payload.amount must
- * equal it in pesewas; td_begin_payout marks it processing first, so a
- * withdrawal can only be paid once, and td_finish_payout records the result.
- * Other actions are unchanged.
+ * Every action needs the caller's Supabase JWT (Authorization: Bearer
+ * <access_token>):
+ *   - initiate-collection and initiate-disbursement: an active collector
+ *     profile (public.is_active_collector);
+ *   - status checks: any signed-in user, and always against this server's
+ *     own merchant account (a merchantId sent by the caller is ignored).
+ * Terminal and transaction ids must be plain ids (letters, digits, - and _).
+ *
+ * initiate-disbursement sends money out: payload.reference must be one of the
+ * caller's pending withdrawals (created by request_withdrawal) and
+ * payload.amount must equal it in pesewas; td_begin_payout marks it processing
+ * first, so a withdrawal can only be paid once, and td_finish_payout records
+ * the result.
  *
  * Required Deno env secrets (set via `supabase secrets set`):
  *   TRENDIPAY_API_URL        – e.g. https://api.trendipay.com
@@ -34,9 +40,13 @@ const CORS_HEADERS: Record<string, string> = {
   'access-control-allow-headers': 'content-type, authorization, apikey',
 };
 
-// Resolve the caller from their JWT and check they are an active collector.
-// Returns { userId } when allowed, or { denied } with an error response.
-async function requireActiveCollector(req: Request): Promise<{ userId?: string; denied?: Response }> {
+// Resolve the caller from their JWT. With requireCollector, also check they
+// are an active collector. Returns { userId } when allowed, or { denied } with
+// an error response.
+async function requireSignedIn(
+  req: Request,
+  { requireCollector = false, signInMessage = 'Sign in to continue' } = {},
+): Promise<{ userId?: string; denied?: Response }> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const anonKey = getPublishableKey();
   const authHeader = req.headers.get('authorization') ?? '';
@@ -45,7 +55,7 @@ async function requireActiveCollector(req: Request): Promise<{ userId?: string; 
     return { denied: json({ success: false, error: 'Server not configured (missing SUPABASE_URL or Supabase publishable key)' }, 500) };
   }
   if (!/^Bearer\s+\S+/i.test(authHeader)) {
-    return { denied: json({ success: false, error: 'Sign in to cash out' }, 401) };
+    return { denied: json({ success: false, error: signInMessage }, 401) };
   }
 
   const supabase = createClient(supabaseUrl, anonKey, {
@@ -55,8 +65,9 @@ async function requireActiveCollector(req: Request): Promise<{ userId?: string; 
 
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
-    return { denied: json({ success: false, error: 'Sign in to cash out' }, 401) };
+    return { denied: json({ success: false, error: signInMessage }, 401) };
   }
+  if (!requireCollector) return { userId: user.id };
 
   const { data: isActive, error: rpcError } = await supabase.rpc('is_active_collector', { p_user_id: user.id });
   if (rpcError) {
@@ -64,7 +75,7 @@ async function requireActiveCollector(req: Request): Promise<{ userId?: string; 
     return { denied: json({ success: false, error: 'Could not verify collector account' }, 500) };
   }
   if (isActive !== true) {
-    return { denied: json({ success: false, error: 'Only registered, active collectors can cash out' }, 403) };
+    return { denied: json({ success: false, error: 'Only registered, active collectors can do this' }, 403) };
   }
   return { userId: user.id };
 }
@@ -75,6 +86,9 @@ function adminClient() {
   if (!supabaseUrl || !secretKey) return null;
   return createClient(supabaseUrl, secretKey, { auth: { persistSession: false } });
 }
+
+// Terminal ids and transaction references go into the gateway URL path.
+const PLAIN_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 const lastNineDigits = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-9);
 
@@ -137,16 +151,20 @@ Deno.serve(async (req) => {
   let requestBody: any = undefined;
 
   const tid = terminalId || payload?.terminalId || '';
+  if (tid && !PLAIN_ID.test(String(tid))) return json({ success: false, error: 'Invalid terminalId' }, 400);
 
   switch (action) {
-    case 'initiate-collection':
+    case 'initiate-collection': {
+      const { denied } = await requireSignedIn(req, { requireCollector: true, signInMessage: 'Sign in to collect a payment' });
+      if (denied) return denied;
       if (!tid) return json({ success: false, error: 'Missing terminalId' }, 400);
       endpoint = `/v1/terminals/${tid}/collections`;
       requestBody = payload;
       break;
+    }
 
     case 'initiate-disbursement': {
-      const { userId, denied } = await requireActiveCollector(req);
+      const { userId, denied } = await requireSignedIn(req, { requireCollector: true, signInMessage: 'Sign in to cash out' });
       if (denied) return denied;
       if (!tid) return json({ success: false, error: 'Missing terminalId' }, 400);
 
@@ -185,9 +203,14 @@ Deno.serve(async (req) => {
     case 'check-collection-status':
     case 'check-disbursement-status': {
       // Official API: GET /v1/merchants/:merchantID/transactions/:rrn/status
-      const mid = body.merchantId || merchantId;
-      if (!mid || !transactionId) return json({ success: false, error: 'Missing merchantId or transactionId (rrn)' }, 400);
-      endpoint = `/v1/merchants/${mid}/transactions/${transactionId}/status`;
+      const { denied } = await requireSignedIn(req, { signInMessage: 'Sign in to check a payment' });
+      if (denied) return denied;
+      // Always this server's merchant account; a caller-supplied merchantId is ignored
+      if (!merchantId) return json({ success: false, error: 'Payment gateway not configured on server (merchant)' }, 500);
+      if (!transactionId || !PLAIN_ID.test(String(transactionId))) {
+        return json({ success: false, error: 'Missing or invalid transactionId (rrn)' }, 400);
+      }
+      endpoint = `/v1/merchants/${merchantId}/transactions/${transactionId}/status`;
       method = 'GET';
       break;
     }
