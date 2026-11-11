@@ -1,6 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { logger } from './utils/logger'
+import { initMonitoring } from './utils/monitoring'
+
+// Error monitoring first, so start-up errors are caught (no-op without VITE_SENTRY_DSN)
+initMonitoring();
 
 // CRITICAL: Performance logging and aggressive startup optimization
 const startupStartTime = Date.now();

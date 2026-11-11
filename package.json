@@ -25,6 +25,7 @@
     }
   },
   "dependencies": {
+    "@sentry/react": "8.55.0",
     "@yudiel/react-qr-scanner": "^2.3.1",
     "autoprefixer": "^10.4.21",
     "framer-motion": "^12.23.22",
