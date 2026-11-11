@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import Toast from './Toast';
 import { logger } from '../utils/logger';
+import { captureError } from '../utils/monitoring';
 
 /**
  * Enhanced error boundary component with analytics and detailed error reporting
@@ -17,7 +18,7 @@ class ErrorBoundary extends Component {
     this.lastGoodChildren = null;
   }
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError() {
     // Update state so the next render will show the fallback UI
     return { hasError: true };
   }
@@ -38,7 +39,9 @@ class ErrorBoundary extends Component {
   }
   
   reportError = (error, errorInfo) => {
-    // Future: Send to error monitoring service like Sentry
+    // Error monitoring (Sentry); does nothing until VITE_SENTRY_DSN is set
+    captureError(error, { componentStack: errorInfo?.componentStack, tags: { boundary: 'app' } });
+
     const errorReport = {
       message: error.message,
       stack: error.stack,
@@ -113,7 +116,7 @@ class ErrorBoundary extends Component {
                   </button>
                 </div>
                 
-                {error && process.env.NODE_ENV === 'development' && (
+                {error && import.meta.env.DEV && (
                   <details className="mt-6 p-4 border border-td-border-strong rounded-lg text-left">
                     <summary className="text-sm text-td-sage cursor-pointer hover:text-td-ink">
                       Technical Details (Development)
