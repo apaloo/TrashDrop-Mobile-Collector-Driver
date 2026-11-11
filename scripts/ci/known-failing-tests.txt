@@ -1,0 +1,11 @@
+# Test suites that already failed when CI was switched on (2026-11-11).
+# They are out of date with the code, not evidence of new breakage. Each is a
+# ticket for the team.
+#
+# Rules: this list may only shrink. Adding a line needs the Technical Lead's
+# review (CODEOWNERS). Never list promotionalPayout.test.js (protected payout
+# rules, see CLAUDE.md). When you fix a suite, delete its line in the same PR.
+src/utils/__tests__/imageManager.test.js
+src/hooks/__tests__/usePhotoCapture.test.js
+src/tests/routeOptimizationUtils.test.js
+src/tests/RouteOptimizer.test.js
