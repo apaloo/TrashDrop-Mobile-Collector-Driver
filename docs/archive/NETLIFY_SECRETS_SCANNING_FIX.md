@@ -20,7 +20,7 @@ Secrets scanning found secrets in build.
 **Issue**: Google Maps API key was hardcoded directly in the component
 ```javascript
 // BEFORE (Insecure)
-const GOOGLE_MAPS_API_KEY = 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
+const GOOGLE_MAPS_API_KEY = 'your_google_maps_api_key';
 ```
 
 ### 2. Secrets in Build Output

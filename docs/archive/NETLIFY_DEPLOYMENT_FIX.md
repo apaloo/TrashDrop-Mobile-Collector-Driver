@@ -41,7 +41,7 @@ Build failed due to a user error: Build script returned non-zero exit code: 2
 
 ```
 Key: VITE_GOOGLE_MAPS_API_KEY
-Value: AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA
+Value: your_google_maps_api_key
 ```
 
 6. **Scopes**: Select "All deploy contexts" (Production, Deploy Previews, Branch deploys)
@@ -118,7 +118,7 @@ If other developers need to work on this project:
 
 2. **Add the API key to `.env`**:
    ```bash
-   VITE_GOOGLE_MAPS_API_KEY=AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA
+   VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
    ```
 
 3. **Never commit `.env`** - It's already in `.gitignore`

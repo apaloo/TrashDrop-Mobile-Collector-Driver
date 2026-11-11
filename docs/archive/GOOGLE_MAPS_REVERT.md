@@ -40,7 +40,7 @@ Routing error: TypeError: Cannot read properties of undefined (reading 'appendCh
 ### Current Setup
 The Google Maps API key is hardcoded in the component:
 ```javascript
-const GOOGLE_MAPS_API_KEY = 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
+const GOOGLE_MAPS_API_KEY = 'your_google_maps_api_key';
 ```
 
 ### Optional: Move to Environment Variable
@@ -48,7 +48,7 @@ If you prefer to use environment variables, follow these steps:
 
 1. **Add to `.env` file**:
 ```bash
-VITE_GOOGLE_MAPS_API_KEY=AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA
+VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 ```
 
 2. **Add to `.env.example`**:
@@ -59,7 +59,7 @@ VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
 
 3. **Update GoogleMapsNavigation.jsx**:
 ```javascript
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'AIzaSyDuYitEO0gBP2iqywnD0X76XGvGzAr9nQA';
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'your_google_maps_api_key';
 ```
 
 ## Benefits of This Change

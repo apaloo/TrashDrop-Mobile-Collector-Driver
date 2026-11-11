@@ -22,10 +22,10 @@
 **Code Change:**
 ```javascript
 // Before:
-const DEV_USER_ID = '6fba1031-839f-4985-a180-9ae0a04b7812';
+const DEV_USER_ID = '<dev-user-id>';
 
 // After:
-const DEV_USER_ID = import.meta.env.VITE_DEV_USER_ID || '6fba1031-839f-4985-a180-9ae0a04b7812';
+const DEV_USER_ID = import.meta.env.VITE_DEV_USER_ID || '<dev-user-id>';
 
 // Added production safety check:
 if (DEV_MODE && import.meta.env.PROD) {
@@ -270,7 +270,7 @@ To verify all fixes are working:
 1. **Check Environment Variables:**
    ```bash
    cat .env | grep VITE_DEV_USER_ID
-   # Should show: VITE_DEV_USER_ID=6fba1031...
+   # Should show: VITE_DEV_USER_ID=<dev-user-id>
    ```
 
 2. **Verify No Backup Files:**
