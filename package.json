@@ -21,7 +21,8 @@
       "<rootDir>/src/setupTests.js"
     ],
     "moduleNameMapper": {
-      "\\.(css|less|scss|sass)$": "identity-obj-proxy"
+      "\\.(css|less|scss|sass)$": "identity-obj-proxy",
+      "\\.(png|jpe?g|gif|webp|avif|svg|ico|mp3|wav|mp4|webm)$": "<rootDir>/test/fileMock.js"
     }
   },
   "dependencies": {

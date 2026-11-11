@@ -2,6 +2,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useRef } from 'react';
 import usePhotoCapture from '../usePhotoCapture';
 import ImageManager from '../../utils/imageManager';
+import { authService } from '../../services/supabase';
 
 // Mock the File constructor
 class MockFile extends File {
@@ -24,6 +25,11 @@ jest.mock('../../utils/imageManager', () => ({
   getCapturedPhotos: jest.fn(),
   saveCapturedPhotos: jest.fn(),
   clearAllImages: jest.fn()
+}));
+
+// The hook uploads through the Supabase service; keep the real client out of Jest
+jest.mock('../../services/supabase', () => ({
+  authService: { uploadPhoto: jest.fn() }
 }));
 
 // Mock the useRef hook
@@ -62,6 +68,9 @@ describe('usePhotoCapture', () => {
     ImageManager.getCapturedPhotos.mockResolvedValue([]);
     ImageManager.saveCapturedPhotos.mockResolvedValue(true);
     ImageManager.clearAllImages.mockResolvedValue(true);
+
+    // Photos upload to cloud storage before they are kept
+    authService.uploadPhoto.mockResolvedValue({ success: true, url: 'https://storage.example/photo.jpg' });
     
     // Mock useRef for file input
     useRef.mockImplementation(() => ({
@@ -114,10 +123,12 @@ describe('usePhotoCapture', () => {
       expect(ImageManager.saveCapturedPhotos).toHaveBeenCalledWith(
         requestId,
         expect.arrayContaining([
+          // Saved with the permanent cloud URL, not the temporary blob preview
           expect.objectContaining({
             id: expect.any(String),
-            url: expect.any(String),
-            file: mockPhoto.file,
+            url: 'https://storage.example/photo.jpg',
+            cloudUrl: 'https://storage.example/photo.jpg',
+            isUploading: false,
             timestamp: expect.any(String),
           })
         ])
@@ -125,8 +136,11 @@ describe('usePhotoCapture', () => {
       
       // Verify the photo was added to the state
       expect(result.current.photos.length).toBe(1);
-      expect(result.current.photos[0].file).toBe(mockPhoto.file);
+      expect(result.current.photos[0].url).toBe('https://storage.example/photo.jpg');
+      // A blob preview showed while uploading, then was freed
       expect(createObjectURL).toHaveBeenCalledWith(mockPhoto.file);
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
+      expect(authService.uploadPhoto).toHaveBeenCalledWith(mockPhoto.file, `assignment_${requestId}`);
     });
   });
 
@@ -196,25 +210,15 @@ describe('usePhotoCapture', () => {
     });
   });
 
-  it('should handle errors when capturing photos', async () => {
-    // Mock empty photos from storage initially
+  it('drops the preview and reports the error when the upload fails', async () => {
     ImageManager.getCapturedPhotos.mockResolvedValueOnce([]);
-    
     const { result } = renderHook(() => usePhotoCapture(requestId));
-    
-    // Wait for initial load
     await waitFor(() => {
       expect(result.current.isInitialized).toBe(true);
     });
-    
-    // Spy on console.error
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    
-    // Mock a failure when saving
-    const error = new Error('Failed to save photos');
-    ImageManager.saveCapturedPhotos.mockRejectedValueOnce(error);
-    
-    // Try to capture a photo - this should throw an error
+
+    authService.uploadPhoto.mockResolvedValueOnce({ success: false, error: 'Network down' });
+
     let captureError;
     await act(async () => {
       try {
@@ -223,22 +227,15 @@ describe('usePhotoCapture', () => {
         captureError = err;
       }
     });
-    
-    // Verify the error was thrown
+
     expect(captureError).toBeDefined();
-    expect(captureError.message).toBe('Failed to save photos');
-    
-    // Wait for the error to be logged
-    await waitFor(() => {
-      // Verify the error was logged
-      expect(consoleErrorSpy).toHaveBeenCalledWith('Error capturing photo:', error);
-      
-      // The photo should not be added to the state on error
-      expect(result.current.photos.length).toBe(0);
-    });
-    
-    // Clean up the spy
-    consoleErrorSpy.mockRestore();
+    expect(captureError.message).toBe('Network down');
+    expect(result.current.error).toBe('Network down');
+    expect(result.current.isUploading).toBe(false);
+    // The temporary preview is removed and its blob URL freed; nothing is saved
+    expect(result.current.photos).toHaveLength(0);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
+    expect(ImageManager.saveCapturedPhotos).not.toHaveBeenCalled();
   });
 
   it('should revoke object URLs when removing photos', async () => {
@@ -365,7 +362,7 @@ describe('usePhotoCapture', () => {
         requestId2,
         expect.arrayContaining([
           expect.objectContaining({
-            file: newPhoto,
+            url: 'https://storage.example/photo.jpg',
           })
         ])
       );

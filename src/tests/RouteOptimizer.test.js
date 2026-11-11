@@ -17,132 +17,91 @@ jest.mock('react-leaflet', () => ({
   )),
   Popup: jest.fn(({ children }) => <div data-testid="map-popup">{children}</div>),
   Polyline: jest.fn(() => <div data-testid="map-polyline" />),
+  useMap: () => ({
+    on: () => {}, off: () => {}, addLayer: () => {}, removeLayer: () => {}, hasLayer: () => false,
+    fitBounds: () => {}, setView: () => {}, invalidateSize: () => {}, getZoom: () => 13,
+  }),
 }));
 
-// Mock the window.open function
-const mockOpen = jest.fn();
-window.open = mockOpen;
+// Offline tiles and map tuning need a real Leaflet map
+jest.mock('../utils/mapUtils', () => ({
+  initOfflineMapStorage: () => Promise.resolve(),
+  createOfflineTileLayer: () => null,
+  optimizeMapPerformance: () => {},
+}));
+jest.mock('leaflet.offline', () => ({}));
 
-describe('RouteOptimizer Component', () => {
-  // Sample test data
-  const mockAssignments = [
-    {
-      id: '1',
-      status: 'accepted',
-      location: '123 Main St, City',
-      customer_name: 'John Doe',
-      latitude: 37.7749,
-      longitude: -122.4194
-    },
-    {
-      id: '2',
-      status: 'accepted',
-      location: '456 Oak Ave, City',
-      customer_name: 'Jane Smith',
-      latitude: 37.3382,
-      longitude: -121.8863
-    }
+// In-app navigation (Google Maps) is its own component: record what it is given
+jest.mock('../components/GoogleMapsNavigation', () => (props) => (
+  <div data-testid="in-app-navigation" data-destination={`${props.destination.lat},${props.destination.lng}`} data-waypoints={props.waypoints.length} />
+));
+
+
+const job = (id, status, name, latitude, longitude) => ({
+  id, status, customer_name: name, location: `${name}'s address`, latitude, longitude,
+});
+
+describe('RouteOptimizer', () => {
+  const userLocation = { latitude: 5.6037, longitude: -0.187 }; // Accra
+  const accepted = [
+    job('1', 'accepted', 'Ama Owusu', 5.6145, -0.2057),
+    job('2', 'accepted', 'Kofi Mensah', 5.5560, -0.1969),
   ];
-  
-  const mockUserLocation = {
-    latitude: 37.7749,
-    longitude: -122.4194
-  };
-  
-  test('renders loading state when no data is provided', () => {
-    render(<RouteOptimizer assignments={[]} userLocation={null} />);
-    
-    // Should show no assignments message
-    expect(screen.getByText(/No accepted assignments to optimize/i)).toBeInTheDocument();
+
+  beforeEach(() => {
+    window.open = jest.fn();
   });
-  
-  test('renders route information when data is provided', () => {
-    render(
-      <RouteOptimizer 
-        assignments={mockAssignments} 
-        userLocation={mockUserLocation} 
-      />
-    );
-    
-    // Should show distance and time information
-    expect(screen.getByText(/Total distance/i)).toBeInTheDocument();
+
+  test('with no jobs it tells the collector to accept some first', async () => {
+    render(<RouteOptimizer assignments={[]} userLocation={userLocation} />);
+    expect(await screen.findByText('No jobs on your route')).toBeInTheDocument();
+    expect(screen.queryByText('Navigate Route')).not.toBeInTheDocument();
+  });
+
+  test('shows distance, time, the map and a Navigate button for accepted jobs', async () => {
+    render(<RouteOptimizer assignments={accepted} userLocation={userLocation} />);
+
+    expect(await screen.findByText(/Total distance/i)).toBeInTheDocument();
     expect(screen.getByText(/Estimated time/i)).toBeInTheDocument();
-    
-    // Should render the map
     expect(screen.getByTestId('map-container')).toBeInTheDocument();
-    
-    // Should render the navigate button
-    const navigateButton = screen.getByText(/Navigate Route/i);
-    expect(navigateButton).toBeInTheDocument();
+    expect(screen.getByText('Navigate Route')).toBeInTheDocument();
+    expect(screen.getByText('Ama Owusu')).toBeInTheDocument();
+    expect(screen.getByText('Kofi Mensah')).toBeInTheDocument();
   });
-  
-  test('navigate button opens Google Maps with directions', () => {
-    render(
-      <RouteOptimizer 
-        assignments={mockAssignments} 
-        userLocation={mockUserLocation} 
-      />
-    );
-    
-    // Click the navigate button
-    const navigateButton = screen.getByText(/Navigate Route/i);
-    fireEvent.click(navigateButton);
-    
-    // Should call window.open with a Google Maps URL
-    expect(mockOpen).toHaveBeenCalledTimes(1);
-    expect(mockOpen.mock.calls[0][0]).toContain('https://www.google.com/maps/dir/');
-    expect(mockOpen.mock.calls[0][1]).toBe('_blank');
+
+  test('Navigate opens in-app navigation through every stop', async () => {
+    render(<RouteOptimizer assignments={accepted} userLocation={userLocation} />);
+    fireEvent.click(await screen.findByText('Navigate Route'));
+
+    const nav = await screen.findByTestId('in-app-navigation');
+    // Two stops: one waypoint, then the final stop as the destination
+    expect(nav).toHaveAttribute('data-waypoints', '1');
+    expect(['5.6145,-0.2057', '5.556,-0.1969']).toContain(nav.getAttribute('data-destination'));
+    expect(window.open).not.toHaveBeenCalled();
   });
-  
-  test('renders route details with correct number of stops', () => {
-    render(
-      <RouteOptimizer 
-        assignments={mockAssignments} 
-        userLocation={mockUserLocation} 
-      />
-    );
-    
-    // Should render the correct number of stops in the route details
-    const listItems = screen.getAllByRole('listitem');
-    expect(listItems.length).toBe(mockAssignments.length);
-    
-    // Should display customer names
-    expect(screen.getByText('John Doe')).toBeInTheDocument();
-    expect(screen.getByText('Jane Smith')).toBeInTheDocument();
-  });
-  
-  test('handles empty assignments array', () => {
-    render(<RouteOptimizer assignments={[]} userLocation={mockUserLocation} />);
-    
-    // Should show no assignments message
-    expect(screen.getByText(/No accepted assignments to optimize/i)).toBeInTheDocument();
-  });
-  
-  test('filters out non-accepted assignments', () => {
-    const mixedAssignments = [
-      ...mockAssignments,
-      {
-        id: '3',
-        status: 'available',
-        location: '789 Pine Rd, City',
-        customer_name: 'Bob Johnson',
-        latitude: 37.8715,
-        longitude: -122.2730
-      }
+
+  test('only active jobs (accepted, en route, arrived) are on the route', async () => {
+    const mixed = [
+      ...accepted,
+      job('3', 'en_route', 'Yaw Boateng', 5.5900, -0.2200),
+      job('4', 'available', 'Not Mine', 5.6000, -0.1800),
+      job('5', 'completed', 'Already Done', 5.6100, -0.1700),
     ];
-    
+    render(<RouteOptimizer assignments={mixed} userLocation={userLocation} />);
+
+    expect(await screen.findByText('Yaw Boateng')).toBeInTheDocument();
+    expect(screen.getByText('Ama Owusu')).toBeInTheDocument();
+    expect(screen.queryByText('Not Mine')).not.toBeInTheDocument();
+    expect(screen.queryByText('Already Done')).not.toBeInTheDocument();
+  });
+
+  test('jobs without usable coordinates are left off the route', async () => {
     render(
-      <RouteOptimizer 
-        assignments={mixedAssignments} 
-        userLocation={mockUserLocation} 
+      <RouteOptimizer
+        assignments={[job('6', 'accepted', 'No Location', 0, 0), job('7', 'accepted', 'Bad Location', NaN, NaN)]}
+        userLocation={userLocation}
       />
     );
-    
-    // Should only show accepted assignments
-    const listItems = screen.getAllByRole('listitem');
-    expect(listItems.length).toBe(2); // Only the 2 accepted assignments
-    
-    // Should not display the available assignment's customer name
-    expect(screen.queryByText('Bob Johnson')).not.toBeInTheDocument();
+    expect(await screen.findByText('No jobs on your route')).toBeInTheDocument();
   });
 });

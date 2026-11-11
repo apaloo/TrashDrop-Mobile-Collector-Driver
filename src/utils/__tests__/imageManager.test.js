@@ -101,17 +101,31 @@ describe('ImageManager', () => {
     });
 
     it('should return saved photos for the request', () => {
+      const cloudPhotos = [
+        { id: '1', url: 'https://storage.example/1.jpg' },
+        { id: '2', url: 'data:image/jpeg;base64,AAAA' }
+      ];
       sessionStorage.setItem(
-        `trashdrop_photos_${mockRequestId}`, 
+        `trashdrop_photos_${mockRequestId}`,
+        JSON.stringify({ requestId: mockRequestId, photos: cloudPhotos, timestamp: Date.now() })
+      );
+
+      expect(ImageManager.getCapturedPhotos(mockRequestId)).toEqual(cloudPhotos);
+    });
+
+    it('should drop blob URLs, which stop working after a page refresh', () => {
+      sessionStorage.setItem(
+        `trashdrop_photos_${mockRequestId}`,
         JSON.stringify({
           requestId: mockRequestId,
-          photos: mockPhotos,
+          photos: [...mockPhotos, { id: '3', url: 'https://storage.example/3.jpg' }],
           timestamp: Date.now()
         })
       );
 
-      const photos = ImageManager.getCapturedPhotos(mockRequestId);
-      expect(photos).toEqual(mockPhotos);
+      expect(ImageManager.getCapturedPhotos(mockRequestId)).toEqual([
+        { id: '3', url: 'https://storage.example/3.jpg' }
+      ]);
     });
 
     it('should return empty array for expired data', () => {
