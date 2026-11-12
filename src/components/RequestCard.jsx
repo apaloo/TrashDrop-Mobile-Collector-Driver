@@ -171,7 +171,7 @@ const RequestCard = ({
     // For digital bins, validate QR match then show flash
     if (request.source_type === 'digital_bin') {
       const bagId = qrData?.bagId;
-      const code = qrData?.code || (bagId ? `https://trashdrop.app/bin/${bagId}` : null);
+      const code = qrData?.code || (bagId ? `https://app.trashdrops.com/bin/${bagId}` : null);
       logger.debug('📦 Digital bin QR scanned via RequestCard:', bagId);
 
       // Validate: the code must be this request's own bin id (see isScanForDigitalBin)
@@ -909,7 +909,7 @@ const RequestCard = ({
                       scanFeedbackTimer.current = setTimeout(() => setScanFeedback(null), 3000);
                     }
                   } catch (_jsonErr) {
-                    // Not JSON — check if it's a TrashDrop URL (e.g. https://trashdrop.app/bin/<id>)
+                    // Not JSON — check if it's a TrashDrop URL (e.g. https://app.trashdrops.com/bin/<id>)
                     try {
                       const url = new URL(decodedText);
                       const pathParts = url.pathname.split('/').filter(Boolean);

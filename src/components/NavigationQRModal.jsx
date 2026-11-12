@@ -613,7 +613,7 @@ const NavigationQRModal = ({
     
     // Extract ID from scanned text (handles both full URLs and plain IDs)
     const extractId = (text) => {
-      // If it's a URL like "https://trashdrop.app/bin/6fd90afb-...", extract the ID
+      // If it's a URL like "https://app.trashdrops.com/bin/6fd90afb-...", extract the ID
       const urlMatch = text.match(/\/bin\/([a-f0-9-]+)$/i);
       if (urlMatch) {
         return urlMatch[1];
