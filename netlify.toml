@@ -13,6 +13,8 @@
 
 # Secrets scanning configuration
 [build.environment]
+  # Node 22 LTS (supported to April 2027); Node 20 reached end of life in April 2026
+  NODE_VERSION = "22"
   # Omit documentation files and example files from secrets scanning
   SECRETS_SCAN_OMIT_PATHS = "*.md,.env.example,scripts/**/*.sql,dist/**/*.js"
   # Vite prefixed variables are meant to be exposed in client-side code

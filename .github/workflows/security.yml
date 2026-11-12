@@ -67,7 +67,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       # Fails on a critical finding in a runtime dependency (TD11). High and
       # lower are reported in the summary (TD32). When a new critical advisory
       # turns this red, fix it in its own PR first (npm audit fix, or the
