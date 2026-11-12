@@ -1734,7 +1734,7 @@ class EarningsService {
         .select('*')
         .eq('collector_id', this.collectorId)
         .eq('month', currentMonthStr)
-        .single();
+        .maybeSingle(); // no tier yet is normal, not a 406 in the logs (owner-approved 2026-11-12)
 
       if (error && error.code !== 'PGRST116') throw error;
 
