@@ -20,6 +20,8 @@ household app repository (accepted by the owner 2026-11-12): collectors earn
 85–92% of the base by travel distance plus 75% of the urgent surcharge, never
 more than the payout the database stored at booking. The database keeps a
 bin's booked price and payout whatever this app sends
-(`supabase/migrations/20261112113921_keep_booked_payout.sql`), and the
-household repository's daily security watch fails if those database objects
-change without a recorded approval.
+(`supabase/migrations/20261112113921_keep_booked_payout.sql`), and works out
+the travel distance and the collector's share itself
+(`20261112120016_server_side_collector_share.sql`); the figures this app sends
+are ignored. The household repository's daily security watch fails if those
+database objects change without a recorded approval.
