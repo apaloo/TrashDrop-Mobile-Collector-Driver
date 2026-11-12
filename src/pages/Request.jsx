@@ -30,6 +30,7 @@ import { logger } from '../utils/logger';
 import { DISPOSAL_SITE_RADIUS_KM, GEOFENCE_DESCRIPTIONS } from '../config/geofenceConfig';
 import { initiateCollection } from '../services/paymentService';
 import { disposeDigitalBin, disposePickupRequest, notifyUserOfDisposal } from '../services/disposalService';
+import { earningsText, addEarnings, totalEarningsText } from '../utils/disposalEarnings';
 
 // OPTIMIZATION: Memoize RequestCard for better performance
 import { requestManager } from '../services/requestManagement';
@@ -2274,9 +2275,8 @@ const GeofenceErrorModal = ({
         logger.info('Digital bin disposed successfully:', result);
         
         // Show earnings info
-        const earnings = result.payoutBreakdown?.collector_total_payout || 0;
         showToast(
-          `Bin disposed! Your earnings: GHS ${earnings.toFixed(2)}`,
+          `Bin disposed! Your earnings: ${earningsText(result)}`,
           'success',
           5000
         );
@@ -2373,7 +2373,7 @@ const GeofenceErrorModal = ({
     showToast(`Disposing ${totalItems} item${totalItems > 1 ? 's' : ''}...`, 'info');
     
     let successCount = 0;
-    let totalEarnings = 0;
+    let totalEarnings = { confirmed: 0, pending: 0, failed: 0 };
     const disposalSite = selectedDisposalCenter?.name || 'Disposal Center';
     
     try {
@@ -2384,7 +2384,7 @@ const GeofenceErrorModal = ({
             const result = await disposeDigitalBin(request.id, user?.id, selectedDisposalCenter?.id, selectedDisposalCenter?.name);
             if (result.success) {
               successCount++;
-              totalEarnings += result.payoutBreakdown?.collector_total_payout || 0;
+              totalEarnings = addEarnings(totalEarnings, result);
             } else if (result.error) {
               logger.warn(`Skipped digital bin ${request.id}: ${result.error}`);
             }
@@ -2400,7 +2400,7 @@ const GeofenceErrorModal = ({
               });
               if (result.success) {
                 successCount++;
-                totalEarnings += result.payoutBreakdown?.collector_total_payout || 0;
+                totalEarnings = addEarnings(totalEarnings, result);
               } else if (result.error) {
                 logger.warn(`Skipped pickup request ${request.id}: ${result.error}`);
               }
@@ -2425,9 +2425,9 @@ const GeofenceErrorModal = ({
       // Show success message with earnings if applicable
       if (successCount === 0) {
         showToast(`Failed to dispose items at ${disposalSite}. Check individual items for errors.`, 'error', 5000);
-      } else if (totalEarnings > 0) {
+      } else if (totalEarnings.confirmed + totalEarnings.pending > 0 || totalEarnings.failed > 0) {
         showToast(
-          `✅ Disposed ${successCount}/${totalItems} items! Earnings: GHS ${totalEarnings.toFixed(2)}`,
+          `✅ Disposed ${successCount}/${totalItems} items! Earnings: ${totalEarningsText(totalEarnings)}`,
           'success',
           5000
         );
@@ -3117,8 +3117,7 @@ const GeofenceErrorModal = ({
                   throw new Error(result.error || 'Failed to dispose bin');
                 }
                 
-                const earnings = result.payoutBreakdown?.collector_total_payout || 0;
-                showToast(`Disposal confirmed at ${site.name}! Earnings: GHS ${earnings.toFixed(2)}`, 'success', 5000);
+                showToast(`Disposal confirmed at ${site.name}! Earnings: ${earningsText(result)}`, 'success', 5000);
               } else {
                 // Update pickup_requests status to 'disposed'
                 const { error } = await supabase
