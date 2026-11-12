@@ -39,6 +39,14 @@ jobs:
       - name: Lint
         run: npx eslint . --quiet
 
+      # Every package the app imports is a runtime dependency, so the
+      # dependency audit (npm audit --omit=dev) covers it and no update can
+      # remove it from under the build.
+      - name: Runtime dependency check
+        run: |
+          node scripts/ci/check-runtime-deps.cjs --self-test
+          node scripts/ci/check-runtime-deps.cjs src
+
       # Every supabase.rpc() call must name a database function that exists,
       # with parameter names it takes (production snapshot plus this
       # repository's migrations). Unit tests mock the database, so they can't.
