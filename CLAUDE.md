@@ -14,3 +14,12 @@ without the owner's written approval in the pull request. That covers
 `src/services/paymentService.js`. When a change is approved, update the
 household app's specification and `src/utils/__tests__/promotionalPayout.test.js`
 in step. Never weaken or skip that test to make a change pass.
+
+The payout rules themselves are specified in `docs/COLLECTOR_PAYOUTS.md` of the
+household app repository (accepted by the owner 2026-11-12): collectors earn
+85–92% of the base by travel distance plus 75% of the urgent surcharge, never
+more than the payout the database stored at booking. The database keeps a
+bin's booked price and payout whatever this app sends
+(`supabase/migrations/20261112113921_keep_booked_payout.sql`), and the
+household repository's daily security watch fails if those database objects
+change without a recorded approval.
