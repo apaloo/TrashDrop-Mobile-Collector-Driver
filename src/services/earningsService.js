@@ -952,12 +952,14 @@ class EarningsService {
       }
 
       // === ILLEGAL DUMPING CLEANUPS ===
-      // Paid by TrashDrop, 100% to the collector. `payment` comes from the
-      // database (td_cleanup_payment: the admin's fee, else size × severity;
-      // 0 for volunteer groups). Like pickups, withdrawable once disposed.
+      // 100% to the collector. `payment` comes from the database
+      // (td_cleanup_payment: the fee set, else size × severity; 0 for volunteer
+      // groups). Paid by TrashDrop: withdrawable once disposed. Assigned by an
+      // MMDA (fee_paid_by 'mmda'): the MMDA pays the team directly and TrashDrop
+      // only records it (owner's decision 2026-11-12), so never withdrawable here.
       const { data: cleanupRows, error: cleanupsError } = await supabase
         .from('collector_assignments_view')
-        .select('id, payment, original_status, location, disposed_at, updated_at')
+        .select('id, payment, original_status, location, disposed_at, updated_at, fee_paid_by')
         .eq('collector_id', this.collectorId)
         .in('original_status', ['completed', 'disposed']);
 
@@ -969,6 +971,9 @@ class EarningsService {
       const disposedCleanups = (cleanupRows || []).filter(c => c.original_status === 'disposed');
       const cleanupPendingDisposal = completedCleanups.reduce((sum, c) => sum + cleanupPay(c), 0);
       const cleanupDisposedEarnings = disposedCleanups.reduce((sum, c) => sum + cleanupPay(c), 0);
+      const paidByMmda = (c) => c.fee_paid_by === 'mmda';
+      const cleanupDisposedWithdrawable = disposedCleanups.filter(c => !paidByMmda(c)).reduce((sum, c) => sum + cleanupPay(c), 0);
+      const cleanupPaidByMmda = (cleanupRows || []).filter(paidByMmda).reduce((sum, c) => sum + cleanupPay(c), 0);
       const totalCleanupEarnings = cleanupPendingDisposal + cleanupDisposedEarnings;
 
       // === CALCULATE COLLECTOR EARNINGS (SOP v4.5.6 Percentage Sharing) ===
@@ -1070,7 +1075,7 @@ class EarningsService {
       const pickupDisposedWithdrawable = disposedRequests.reduce((sum, p) => sum + calculateCollectorEarnings(p), 0);
       // Disposed cleanups are paid by TrashDrop, so they are withdrawable too, and so
       // is TrashDrop's top-up on promotional bins paid in cash.
-      const withdrawableEarnings = binsDisposedDigitalEarnings + pickupDisposedWithdrawable + cleanupDisposedEarnings + promoCashSubsidyOwed;
+      const withdrawableEarnings = binsDisposedDigitalEarnings + pickupDisposedWithdrawable + cleanupDisposedWithdrawable + promoCashSubsidyOwed;
 
       // === CALCULATE PLATFORM EARNINGS (App Bucket) ===
       
@@ -1387,6 +1392,8 @@ class EarningsService {
             digitalBinEarnings: totalBinEarnings,
             authorityAssignmentEarnings: assignmentEarnings,
             dumpingCleanupEarnings: totalCleanupEarnings,
+            // Cleanups an MMDA assigned: the MMDA pays the team; recorded, not withdrawable
+            cleanupPaidByMmdaEarnings: cleanupPaidByMmda,
             // Platform earnings (App Bucket)
             platformEarnings: totalPlatformEarnings,
             pickupPlatformEarnings,
