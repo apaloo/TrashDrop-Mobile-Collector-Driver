@@ -23,3 +23,18 @@ it('keeps confirmed and pending apart when disposing several bins', () => {
   expect(totalEarningsText(totals)).toBe('GHS 30.00 (+ GHS 43.06 pending MoMo confirmation)');
   expect(totalEarningsText({ confirmed: 30, pending: 0 })).toBe('GHS 30.00');
 });
+
+it('shows GH₵0 and "payment failed" when the client MoMo payment failed', () => {
+  expect(earningsText({ payoutBreakdown: { collector_total_payout: 43.06 }, paymentFailed: true }))
+    .toBe("GHS 0.00: the client's MoMo payment failed");
+});
+
+it('counts failed payments when disposing several bins', () => {
+  let totals = { confirmed: 0, pending: 0, failed: 0 };
+  totals = addEarnings(totals, result(20));
+  totals = addEarnings(totals, { payoutBreakdown: { collector_total_payout: 43.06 }, paymentFailed: true });
+  totals = addEarnings(totals, result(12.5, true));
+  expect(totals).toEqual({ confirmed: 20, pending: 12.5, failed: 1 });
+  expect(totalEarningsText(totals)).toBe('GHS 20.00 (+ GHS 12.50 pending MoMo confirmation); 1 MoMo payment failed (GHS 0.00)');
+  expect(totalEarningsText({ confirmed: 0, pending: 0, failed: 2 })).toBe('GHS 0.00; 2 MoMo payments failed (GHS 0.00)');
+});

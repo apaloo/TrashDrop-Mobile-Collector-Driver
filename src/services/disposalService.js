@@ -353,11 +353,14 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
       };
     }
     
-    // 5. Payment not confirmed yet (MoMo/e-cash): disposal is never blocked at
-    // the site. A payment still pending shows the expected payout marked
-    // "pending" (owner's decision 2026-11-12); nothing is withdrawable until
-    // the gateway confirms it (td_withdrawable_items).
-    const paymentPending = paymentData.payment_mode !== 'cash' && paymentData.status === 'pending';
+    // 5. Payment not confirmed (MoMo/e-cash): disposal is never blocked at the
+    // site. Owner's decisions 2026-11-12: a payment still pending (or
+    // initiated) shows the expected payout marked "pending"; a failed payment
+    // shows GH₵0 and "payment failed". What is withdrawable is decided by the
+    // database (td_withdrawable_items), not by these figures.
+    const nonCash = paymentData.payment_mode !== 'cash';
+    const paymentPending = nonCash && ['pending', 'initiated'].includes(paymentData.status);
+    const paymentFailed = nonCash && paymentData.status === 'failed';
     if (paymentData.payment_mode !== 'cash' && paymentData.status !== 'success') {
       logger.warn('⚠️ Payment not confirmed at disposal:', {
         binId,
@@ -383,8 +386,8 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
     
     // 7. Calculate payment sharing using the algorithm with actual tips
     let payoutBreakdown = calculatePaymentSharing(digitalBin, paymentData, actualTips);
-    if (noPaymentRecord) {
-      // Nothing was recorded as collected from the client: show nothing earned
+    if (noPaymentRecord || paymentFailed) {
+      // Nothing was (or could be) collected from the client: show nothing earned
       payoutBreakdown = Object.fromEntries(Object.entries(payoutBreakdown)
         .map(([key, amount]) => [key, key.startsWith('collector_') ? 0 : amount]));
     }
@@ -430,6 +433,7 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
       binId,
       payoutBreakdown,
       paymentPending,
+      paymentFailed,
       message: 'Bin disposed successfully'
     };
     

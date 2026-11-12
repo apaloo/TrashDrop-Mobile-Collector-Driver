@@ -2373,7 +2373,7 @@ const GeofenceErrorModal = ({
     showToast(`Disposing ${totalItems} item${totalItems > 1 ? 's' : ''}...`, 'info');
     
     let successCount = 0;
-    let totalEarnings = { confirmed: 0, pending: 0 };
+    let totalEarnings = { confirmed: 0, pending: 0, failed: 0 };
     const disposalSite = selectedDisposalCenter?.name || 'Disposal Center';
     
     try {
@@ -2425,7 +2425,7 @@ const GeofenceErrorModal = ({
       // Show success message with earnings if applicable
       if (successCount === 0) {
         showToast(`Failed to dispose items at ${disposalSite}. Check individual items for errors.`, 'error', 5000);
-      } else if (totalEarnings.confirmed + totalEarnings.pending > 0) {
+      } else if (totalEarnings.confirmed + totalEarnings.pending > 0 || totalEarnings.failed > 0) {
         showToast(
           `✅ Disposed ${successCount}/${totalItems} items! Earnings: ${totalEarningsText(totalEarnings)}`,
           'success',
