@@ -46,6 +46,14 @@ jobs:
           npx eslint . --quiet -f json -o eslint-report.json || true
           node -e 'const r=require("./eslint-report.json");let e=0;for(const f of r)e+=f.errorCount;console.log(`ESLint errors in the codebase: ${e}`);require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY,`### Lint backlog\n${e} errors in the codebase (goal: 0)\n`)'
 
+      # Every supabase.rpc() call must name a database function that exists,
+      # with parameter names it takes (production snapshot plus this
+      # repository's migrations). Unit tests mock the database, so they can't.
+      - name: Database call check
+        run: |
+          node scripts/ci/check-rpc-calls.mjs --self-test
+          node scripts/ci/check-rpc-calls.mjs
+
       # Every Jest suite except scripts/ci/known-failing-tests.txt (may only
       # shrink). Includes the protected promotionalPayout guard test.
       - name: Unit tests
