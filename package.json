@@ -26,7 +26,7 @@
     }
   },
   "dependencies": {
-    "@sentry/react": "8.55.0",
+    "@sentry/react": "8.55.2",
     "@supabase/supabase-js": "^2.119.0",
     "@yudiel/react-qr-scanner": "^2.6.0",
     "autoprefixer": "^10.6.2",
@@ -36,7 +36,7 @@
     "leaflet.offline": "^3.2.2",
     "localforage": "^1.10.0",
     "lodash": "^4.18.1",
-    "lucide-react": "^0.555.0",
+    "lucide-react": "^0.577.0",
     "postcss": "^8.5.32",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -64,7 +64,7 @@
     "dotenv": "^17.4.2",
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.26",
+    "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^16.5.0",
     "identity-obj-proxy": "^3.0.0",
     "jest": "^29.7.0",
