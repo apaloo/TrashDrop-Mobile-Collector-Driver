@@ -92,6 +92,45 @@ const PLAIN_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 const lastNineDigits = (value: unknown) => String(value ?? '').replace(/\D/g, '').slice(-9);
 
+// TrendiPay status words → success | failed | pending (same as trendipay-webhook)
+function mapGatewayStatus(status: unknown, code?: unknown): 'success' | 'failed' | 'pending' {
+  const s = String(status ?? '').toLowerCase();
+  if (['successful', 'success', 'completed'].includes(s) || code === '000') return 'success';
+  if (['failed', 'declined', 'expired', 'canceled', 'cancelled', 'reversed'].includes(s)) return 'failed';
+  return 'pending';
+}
+
+// TD53: a collection's final result, read from TrendiPay by this server, is
+// recorded here with the service key, so the database marks it confirmed by
+// the gateway (bin_payments.confirmed_by). Only the caller's own bins, and
+// only payments still open or confirmed by the collector themselves; a
+// result the gateway already recorded is left alone.
+async function recordCollectionResult(admin: any, rrn: string, userId: string, gateway: any) {
+  const result = mapGatewayStatus(gateway?.status, gateway?.code);
+  if (result === 'pending') return;
+  const { data: rows, error } = await admin
+    .from('bin_payments')
+    .select('id, digital_bin_id, status, confirmed_by')
+    .eq('type', 'collection')
+    .or(`gateway_reference.eq.${rrn},gateway_transaction_id.eq.${rrn}`);
+  if (error) {
+    console.error('[trendipay-proxy] Payment lookup failed:', error.message);
+    return;
+  }
+  for (const row of rows ?? []) {
+    if (gateway?.reference && String(gateway.reference) !== String(row.id)) continue;
+    const open = ['pending', 'initiated'].includes(row.status) || (row.status === 'success' && row.confirmed_by === 'collector');
+    if (!open) continue;
+    const { data: bin } = await admin.from('digital_bins').select('collector_id').eq('id', row.digital_bin_id).maybeSingle();
+    if (!bin || bin.collector_id !== userId) continue;
+    const update: Record<string, unknown> = { status: result, updated_at: new Date().toISOString() };
+    if (result === 'failed') update.gateway_error = gateway?.reason || gateway?.message || 'Payment failed';
+    const { error: updateError } = await admin.from('bin_payments').update(update).eq('id', row.id);
+    if (updateError) console.error('[trendipay-proxy] Could not record the gateway result:', updateError.message);
+    else console.log(`[trendipay-proxy] Payment ${row.id}: gateway says ${result}`);
+  }
+}
+
 // Record the gateway result on the withdrawal (failed frees its items again)
 async function finishPayout(admin: any, withdrawalId: string, ok: boolean, details: { transactionId?: string; response?: unknown; error?: string }) {
   const { error } = await admin.rpc('td_finish_payout', {
@@ -147,6 +186,7 @@ Deno.serve(async (req) => {
   let endpoint = '';
   let admin: any = null;
   let payoutWithdrawalId: string | null = null;
+  let collectionCheck: { rrn: string; userId: string } | null = null;
   let method = 'POST';
   let requestBody: any = undefined;
 
@@ -203,7 +243,7 @@ Deno.serve(async (req) => {
     case 'check-collection-status':
     case 'check-disbursement-status': {
       // Official API: GET /v1/merchants/:merchantID/transactions/:rrn/status
-      const { denied } = await requireSignedIn(req, { signInMessage: 'Sign in to check a payment' });
+      const { userId: checkerId, denied } = await requireSignedIn(req, { signInMessage: 'Sign in to check a payment' });
       if (denied) return denied;
       // Always this server's merchant account; a caller-supplied merchantId is ignored
       if (!merchantId) return json({ success: false, error: 'Payment gateway not configured on server (merchant)' }, 500);
@@ -212,6 +252,9 @@ Deno.serve(async (req) => {
       }
       endpoint = `/v1/merchants/${merchantId}/transactions/${transactionId}/status`;
       method = 'GET';
+      if (action !== 'check-disbursement-status' && checkerId) {
+        collectionCheck = { rrn: String(transactionId), userId: checkerId };
+      }
       break;
     }
 
@@ -287,6 +330,17 @@ Deno.serve(async (req) => {
         gatewayStatus: resp.status,
         gatewayResponse: data,
       }, resp.status >= 500 ? 502 : resp.status);
+    }
+
+    if (collectionCheck) {
+      const recorder = adminClient();
+      if (recorder) {
+        try {
+          await recordCollectionResult(recorder, collectionCheck.rrn, collectionCheck.userId, data?.data ?? data);
+        } catch (recordErr: any) {
+          console.error('[trendipay-proxy] Recording the gateway result failed:', recordErr?.message);
+        }
+      }
     }
 
     return json({ success: true, data });

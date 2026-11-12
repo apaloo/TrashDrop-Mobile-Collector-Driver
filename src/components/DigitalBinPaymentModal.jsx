@@ -567,8 +567,9 @@ const DigitalBinPaymentModal = ({
                                 .update({ status: 'success' })
                                 .eq('id', paymentId);
                               setPaymentStatus('success');
-                              setProcessingMessage('Payment confirmed! 🎉');
-                              setTimeout(() => onClose(), 1500);
+                              // Cashable once TrendiPay (or an admin) confirms it (TD53)
+                              setProcessingMessage("Marked as paid. You can cash it out once TrendiPay confirms the payment.");
+                              setTimeout(() => onClose(), 3000);
                             } catch (err) {
                               console.error('Failed to confirm payment:', err);
                             }
