@@ -434,7 +434,7 @@ class CollectorStatusService {
         .from('collector_sessions')
         .select('status, last_status_change, is_active')
         .eq('collector_id', userData.user.id)
-        .single();
+        .maybeSingle(); // no session yet is normal: null, not a 406 in the logs
 
       if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
         logger.error('❌ Error syncing status:', error);
