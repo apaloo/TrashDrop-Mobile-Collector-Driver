@@ -25,3 +25,9 @@ the travel distance and the collector's share itself
 (`20261112120016_server_side_collector_share.sql`); the figures this app sends
 are ignored. The household repository's daily security watch fails if those
 database objects change without a recorded approval.
+
+## Database changes go in the household repository
+Decided by the owner on 2026-11-12 (ADR-001): new database migrations go in
+`trashdrop/supabase/migrations/` of apaloo/TrashDrop-Mobile-User-Domestic, not
+here (`supabase/migrations/README.md`). A pull request here that needs a
+schema change links the household pull request that makes it.
