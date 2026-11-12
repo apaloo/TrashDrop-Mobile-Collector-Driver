@@ -9,7 +9,7 @@ import { useLocation } from 'react-router-dom';
 import { statePersistence } from '../services/statePersistence';
 import { logger } from '../utils/logger';
 import { debounce } from 'lodash';
-import { saveLastPage, getLastPage } from '../utils/pagePersistence'; // Add for validation
+import { getLastPage } from '../utils/pagePersistence'; // Add for validation
 
 const AppStateContext = createContext();
 
@@ -27,7 +27,7 @@ const saveRouteSync = (route) => {
     try {
       localStorage.setItem(LAST_ROUTE_KEY, route);
       localStorage.setItem(LAST_ROUTE_TIME_KEY, Date.now().toString());
-    } catch (e) {
+    } catch {
       // localStorage might be full, ignore
     }
   }
@@ -54,7 +54,7 @@ const getLastRouteSync = () => {
       return route;
     }
     return null;
-  } catch (e) {
+  } catch {
     return null;
   }
 };
@@ -73,7 +73,7 @@ const saveNavigationModalStateSync = (state) => {
       localStorage.removeItem(NAV_MODAL_STATE_KEY);
       localStorage.removeItem(NAV_MODAL_TIME_KEY);
     }
-  } catch (e) {
+  } catch {
     // localStorage might be full, ignore
   }
 };
@@ -94,7 +94,7 @@ const getNavigationModalState = () => {
     }
     
     return JSON.parse(stateStr);
-  } catch (e) {
+  } catch {
     return null;
   }
 };
@@ -113,7 +113,7 @@ const saveUserLocationSync = (location) => {
       localStorage.removeItem(USER_LOCATION_KEY);
       localStorage.removeItem(USER_LOCATION_TIME_KEY);
     }
-  } catch (e) {
+  } catch {
     // localStorage might be full, ignore
   }
 };
@@ -134,7 +134,7 @@ const getCurrentUserLocation = () => {
     }
     
     return JSON.parse(locationStr);
-  } catch (e) {
+  } catch {
     return null;
   }
 };
@@ -463,7 +463,7 @@ export const AppStateProvider = ({ children }) => {
       localStorage.removeItem(NAV_MODAL_TIME_KEY);
       localStorage.removeItem(USER_LOCATION_KEY);
       localStorage.removeItem(USER_LOCATION_TIME_KEY);
-    } catch (e) {
+    } catch {
       // Ignore localStorage errors
     }
     

@@ -26,7 +26,6 @@ export const useOfflineSupport = (options = {}) => {
   const [syncInProgress, setSyncInProgress] = useState(false);
   
   const watchId = useRef(null);
-  const syncQueue = useRef([]);
   const locationCache = useRef(null);
 
   // Enhanced connectivity detection

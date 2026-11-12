@@ -22,7 +22,7 @@ const RouteOptimizationPage = () => {
   const [userLocation, setUserLocation] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [usingFallback, setUsingFallback] = useState(false);
+  const [, setUsingFallback] = useState(false);
   const [analyticsService, setAnalyticsService] = useState(null);
   
   // Get offline status

@@ -154,7 +154,7 @@ class CachedTileLayer extends L.TileLayer {
 }
 
 // Map controller component to handle map updates
-const MapController = ({ center, zoom, userLocation, followUser }) => {
+const MapController = ({zoom, userLocation, followUser }) => {
   const map = useMap();
   
   useEffect(() => {
@@ -178,7 +178,7 @@ const OfflineNavigationMap = ({
   isNavigating = false
 }) => {
   const mapRef = useRef(null);
-  const [isMapReady, setIsMapReady] = useState(false);
+  const [, setIsMapReady] = useState(false);
   const [followUser, setFollowUser] = useState(true);
   const [distanceToDestination, setDistanceToDestination] = useState(null);
   const [cachedRouteCoords, setCachedRouteCoords] = useState([]);

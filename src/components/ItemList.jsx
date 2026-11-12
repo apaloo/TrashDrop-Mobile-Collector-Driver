@@ -12,7 +12,7 @@ const ItemList = ({ assignments, requests, userLocation }) => {
   const [filteredItems, setFilteredItems] = useState([]);
   const [sortOption, setSortOption] = useState('distance');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [filterType, setFilterType] = useState('all');
+  const [filterType] = useState('all');
   
   // Process items when data changes
   useEffect(() => {

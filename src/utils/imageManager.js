@@ -32,7 +32,7 @@ class ImageManager {
       
       sessionStorage.removeItem(storageKey);
       
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         logger.debug(`ℹ️ Cleared image data for request ${requestId}`);
       }
     }
@@ -61,7 +61,7 @@ class ImageManager {
     sessionStorage.removeItem(IMAGE_KEYS.CAPTURED_PHOTOS);
     sessionStorage.removeItem(IMAGE_KEYS.ASSIGNMENT_ID);
     
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       logger.debug('ℹ️ Cleared all image data from session storage');
     }
   }
@@ -75,7 +75,7 @@ class ImageManager {
       if (photo?.url?.startsWith?.('blob:')) {
         try {
           URL.revokeObjectURL(photo.url);
-          if (process.env.NODE_ENV === 'development') {
+          if (import.meta.env.DEV) {
             logger.debug('ℹ️ Revoked blob URL:', photo.url.substring(0, 25) + '...');
           }
         } catch (error) {
@@ -96,7 +96,7 @@ class ImageManager {
     
     // Clear previous assignment's images if starting a new assignment
     if (currentAssignment && currentAssignment !== assignmentId) {
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         logger.debug(`🔄 New assignment detected (${assignmentId}), clearing previous assignment data`);
       }
       this.clearAllImages();
@@ -220,7 +220,7 @@ class ImageManager {
       
       sessionStorage.setItem(storageKey, JSON.stringify(data));
       
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         logger.debug(`💾 Saved ${photos.length} photos for request ${requestId}`);
       }
     } catch (error) {
@@ -285,7 +285,7 @@ class ImageManager {
       
       // Update the photos in storage
       this.saveCapturedPhotos(currentAssignment, photos);
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         logger.debug(`🗑️ Removed photo ${photoId}`);
       }
     }
@@ -319,7 +319,7 @@ class ImageManager {
       }
     });
     
-    if (process.env.NODE_ENV === 'development' && cleanedCount > 0) {
+    if (import.meta.env.DEV && cleanedCount > 0) {
       logger.debug(`🧹 Cleaned up ${cleanedCount} expired image entries`);
     }
     

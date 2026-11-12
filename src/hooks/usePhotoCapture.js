@@ -26,7 +26,7 @@ const usePhotoCapture = (requestId) => {
           setPhotos(savedPhotos);
           setIsInitialized(true);
           
-          if (process.env.NODE_ENV === 'development') {
+          if (import.meta.env.DEV) {
             logger.debug(`📸 Loaded ${savedPhotos.length} saved photos for request ${requestId}`);
           }
         }
@@ -152,7 +152,7 @@ const usePhotoCapture = (requestId) => {
       
       setPhotos(updatedPhotos);
       
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         logger.debug(`🗑️ Removed photo ${photoId} from request ${requestId}`);
       }
     } catch (err) {
@@ -183,7 +183,7 @@ const usePhotoCapture = (requestId) => {
       setPhotos([]);
       setError(null);
       
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         logger.debug(`🧹 Cleared all photos for request ${requestId}`);
       }
     } catch (err) {

@@ -10,13 +10,13 @@ export const noteAndroidLayer = () => {
     if (new URLSearchParams(window.location.search).has('android_layer')) {
       sessionStorage.setItem(FLAG, '1');
     }
-  } catch (err) { /* storage blocked: treated as a browser */ }
+  } catch { /* storage blocked: treated as a browser */ }
 };
 
 export const hasAndroidLayer = () => {
   try {
     return sessionStorage.getItem(FLAG) === '1';
-  } catch (err) {
+  } catch {
     return false;
   }
 };

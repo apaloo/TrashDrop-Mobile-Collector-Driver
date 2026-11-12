@@ -98,7 +98,7 @@ const cleanupCache = () => {
         try {
           const data = JSON.parse(sessionStorage.getItem(key));
           return { key, timestamp: data.timestamp || 0 };
-        } catch (e) {
+        } catch {
           return { key, timestamp: 0 };
         }
       });
@@ -152,7 +152,7 @@ export const getCacheStats = () => {
       maxSize: MAX_CACHE_SIZE,
       usage: `${Math.round((keys.length / MAX_CACHE_SIZE) * 100)}%`
     };
-  } catch (error) {
+  } catch {
     return { count: 0, maxSize: MAX_CACHE_SIZE, usage: '0%' };
   }
 };

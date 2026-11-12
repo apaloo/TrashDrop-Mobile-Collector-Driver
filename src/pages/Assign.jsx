@@ -13,7 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAppState } from '../context/AppStateContext';
 import { logger } from '../utils/logger';
 import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
-import { ASSIGNMENT_COMPLETION_RADIUS_KM, GEOFENCE_DESCRIPTIONS, kmToMeters } from '../config/geofenceConfig';
+import { ASSIGNMENT_COMPLETION_RADIUS_KM, GEOFENCE_DESCRIPTIONS } from '../config/geofenceConfig';
 import ClaimReports from '../components/ClaimReports';
 import { releaseClaim } from '../services/volunteerService';
 import { isVolunteerProfile, cleanupPhotoUrls, claimErrorMessage } from '../utils/volunteer';
@@ -296,7 +296,7 @@ const saveAssignNavModalState = (state) => {
       localStorage.removeItem(ASSIGN_NAV_MODAL_STATE_KEY);
       localStorage.removeItem(ASSIGN_NAV_MODAL_TIME_KEY);
     }
-  } catch (e) {
+  } catch {
     // localStorage might be full, ignore
   }
 };
@@ -318,17 +318,17 @@ const loadAssignNavModalState = () => {
     }
     
     return JSON.parse(stateStr);
-  } catch (e) {
+  } catch {
     return null;
   }
 };
 
 // Helper: Save/load active tab
 const saveAssignActiveTab = (tab) => {
-  try { localStorage.setItem(ASSIGN_ACTIVE_TAB_KEY, tab); } catch (e) {}
+  try { localStorage.setItem(ASSIGN_ACTIVE_TAB_KEY, tab); } catch { /* storage full or blocked: the tab just isn't remembered */ }
 };
 const loadAssignActiveTab = (fallback = 'available') => {
-  try { return localStorage.getItem(ASSIGN_ACTIVE_TAB_KEY) || fallback; } catch (e) { return fallback; }
+  try { return localStorage.getItem(ASSIGN_ACTIVE_TAB_KEY) || fallback; } catch { return fallback; }
 };
 
 const AssignPage = () => {
@@ -336,7 +336,7 @@ const AssignPage = () => {
   // Volunteer clean-up groups also get a Claim tab, and see no pay
   const volunteer = isVolunteerProfile(profile);
   const { setActiveModal, clearActiveModal } = useAppState();
-  const [userProfile, setUserProfile] = useState(null);
+  const [, setUserProfile] = useState(null);
   const [activeTabState, setActiveTabState] = useState(() => loadAssignActiveTab(volunteer ? 'claim' : 'available'));
   // The Claim tab is for volunteer groups only
   const activeTab = activeTabState === 'claim' && !volunteer ? 'available' : activeTabState;
@@ -368,7 +368,7 @@ const AssignPage = () => {
     accepted: [],
     completed: []
   });
-  const [fetchError, setFetchError] = useState(null);
+  const [, setFetchError] = useState(null);
 
   // Lists saved on the phone for when the connection drops. savedAt is set
   // while the page is showing saved (not freshly loaded) lists.
@@ -905,76 +905,6 @@ const AssignPage = () => {
   };
   
   // Legacy Google Maps navigation (keeping for fallback)
-  const handleLegacyNavigate = (assignment) => {
-    logger.debug('🗺️ Opening Google Maps navigation for assignment:', assignment?.id);
-    logger.debug('📍 Assignment coordinates data:', assignment?.coordinates);
-    
-    let googleMapsUrl = '';
-    let lat, lng;
-    
-    // Enhanced GPS coordinate parsing to handle multiple formats
-    if (assignment && assignment.coordinates) {
-      try {
-        // Handle different coordinate formats
-        if (Array.isArray(assignment.coordinates) && assignment.coordinates.length >= 2) {
-          // Format: [lat, lng]
-          lat = parseFloat(assignment.coordinates[0]);
-          lng = parseFloat(assignment.coordinates[1]);
-          logger.debug('📍 Parsed array coordinates:', { lat, lng });
-        } 
-        else if (typeof assignment.coordinates === 'object' && assignment.coordinates !== null && !Array.isArray(assignment.coordinates)) {
-          // Format: {lat: x, lng: y} or {latitude: x, longitude: y}
-          lat = parseFloat(assignment.coordinates.lat || assignment.coordinates.latitude);
-          lng = parseFloat(assignment.coordinates.lng || assignment.coordinates.longitude);
-          logger.debug('📍 Parsed object coordinates:', { lat, lng });
-        } 
-        else if (typeof assignment.coordinates === 'string') {
-          // Handle PostGIS POINT format: "POINT(lng lat)"
-          const pointMatch = assignment.coordinates.match(/POINT\(([+-]?\d+\.?\d*) ([+-]?\d+\.?\d*)\)/);
-          if (pointMatch) {
-            lng = parseFloat(pointMatch[1]);
-            lat = parseFloat(pointMatch[2]);
-            logger.debug('📍 Parsed PostGIS POINT coordinates:', { lat, lng });
-          } else {
-            // Try parsing as "lat,lng" string
-            const coordParts = assignment.coordinates.split(',').map(c => c.trim());
-            if (coordParts.length === 2) {
-              lat = parseFloat(coordParts[0]);
-              lng = parseFloat(coordParts[1]);
-              logger.debug('📍 Parsed comma-separated coordinates:', { lat, lng });
-            }
-          }
-        }
-        
-        // Validate GPS coordinates
-        if (lat && lng && !isNaN(lat) && !isNaN(lng) && 
-            lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-          googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
-          logger.debug('✅ Using GPS coordinates for navigation:', googleMapsUrl);
-        } else {
-          logger.warn('⚠️ Invalid GPS coordinates, falling back to address search');
-          logger.debug('❌ Invalid coordinates:', { lat, lng, assignment: assignment.coordinates });
-          throw new Error('Invalid coordinates');
-        }
-      } catch (error) {
-        logger.warn('⚠️ Error parsing GPS coordinates:', error);
-        // Fallback to location string search
-        googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(assignment.location || 'assignment location')}`;
-        logger.debug('🔄 Using address search fallback:', googleMapsUrl);
-      }
-    } else {
-      // No coordinates available, use location string
-      googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(assignment.location || 'assignment location')}`;
-      logger.debug('🔄 No coordinates found, using address search:', googleMapsUrl);
-    }
-    
-    // Open Google Maps
-    logger.debug('🚀 Opening Google Maps:', googleMapsUrl);
-    window.open(googleMapsUrl, '_blank');
-    
-    // Close modal
-    setDetailsModalOpen(false);
-  };
   
   // Handle complete assignment
   const handleComplete = (assignmentId) => {
@@ -1071,45 +1001,6 @@ const AssignPage = () => {
   };
   
   // Handle get directions to dumping site with GPS coordinates
-  const handleGetDirections = (site) => {
-    logger.info('Opening directions for site:', site);
-    
-    let googleMapsUrl = '';
-    
-    // Parse GPS coordinates from disposal site
-    if (site && site.coordinates) {
-      let lat, lng;
-      
-      // Handle different coordinate formats
-      if (Array.isArray(site.coordinates) && site.coordinates.length >= 2) {
-        lat = site.coordinates[0];
-        lng = site.coordinates[1];
-      } else if (typeof site.coordinates === 'object' && site.coordinates !== null) {
-        lat = site.coordinates.lat || site.coordinates.latitude;
-        lng = site.coordinates.lng || site.coordinates.longitude;
-      }
-      
-      logger.info('Parsed coordinates:', { lat, lng });
-      
-      // Use GPS coordinates if valid
-      if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
-        googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
-        logger.info('Google Maps URL:', googleMapsUrl);
-      } else {
-        logger.warn('Invalid coordinates, using address fallback');
-        // Fallback to address search
-        googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.address || site.name || 'disposal site')}`;
-      }
-    } else {
-      logger.warn('No coordinates found, using address fallback');
-      // Fallback to address search
-      googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.address || site.name || 'disposal site')}`;
-    }
-    
-    // Open Google Maps
-    logger.info('Opening URL:', googleMapsUrl);
-    window.open(googleMapsUrl, '_blank');
-  };
   
   // Handle dispose
   const handleDispose = async (assignmentId, site) => {
@@ -1193,40 +1084,6 @@ const AssignPage = () => {
   };
   
   // Sorting function for assignments
-  const sortAssignments = (assignmentsData) => {
-    return {
-      // Available tab: Sort by proximity (nearest first)
-      available: [...assignmentsData.available].sort((a, b) => {
-        // Extract distance values (assuming format like "1.7 km")
-        const distanceA = parseFloat((a.distance || '0').split(' ')[0]);
-        const distanceB = parseFloat((b.distance || '0').split(' ')[0]);
-        return distanceA - distanceB; // Ascending order (nearest first)
-      }),
-      
-      // Accepted tab: Sort by timestamp (oldest first) and then by proximity
-      accepted: [...assignmentsData.accepted].sort((a, b) => {
-        // First sort by timestamp (oldest first)
-        const timeA = new Date(a.accepted_at || a.created_at).getTime();
-        const timeB = new Date(b.accepted_at || b.created_at).getTime();
-        
-        if (timeA !== timeB) {
-          return timeA - timeB; // Ascending order (oldest first)
-        }
-        
-        // If timestamps are equal, sort by proximity
-        const distanceA = parseFloat((a.distance || '0').split(' ')[0]);
-        const distanceB = parseFloat((b.distance || '0').split(' ')[0]);
-        return distanceA - distanceB; // Ascending order (nearest first)
-      }),
-      
-      // Completed tab: Sort by completion time (newest first)
-      completed: [...assignmentsData.completed].sort((a, b) => {
-        const timeA = new Date(a.completed_at || a.created_at).getTime();
-        const timeB = new Date(b.completed_at || a.created_at).getTime();
-        return timeB - timeA; // Descending order (newest first)
-      })
-    };
-  };
 
   return (
     <div className="app-container bg-gray-100 min-h-screen flex flex-col">

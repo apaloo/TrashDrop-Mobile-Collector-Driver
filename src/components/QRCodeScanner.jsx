@@ -20,7 +20,7 @@ const QRCodeScanner = ({ onScanSuccess, onScanError, isWithinRange = true }) => 
   const [cameraError, setCameraError] = useState('');
   const [scannerActive, setScannerActive] = useState(false);
   const [scanStartTime, setScanStartTime] = useState(Date.now());
-  const [isScanning, setIsScanning] = useState(false);
+  const [, setIsScanning] = useState(false);
 
   // Debug log geofence state changes
   useEffect(() => {

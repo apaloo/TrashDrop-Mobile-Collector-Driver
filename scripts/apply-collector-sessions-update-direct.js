@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -34,18 +33,6 @@ async function applyMigration() {
       if (alterError.code === 'PGRST104') {
         console.log('Table does not exist, creating collector_sessions table...');
         
-        const createTableSQL = `
-          CREATE TABLE IF NOT EXISTS public.collector_sessions (
-            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-            collector_id uuid NOT NULL REFERENCES auth.users(id),
-            status TEXT DEFAULT 'offline',
-            status_reason TEXT,
-            last_status_change TIMESTAMPTZ DEFAULT NOW(),
-            is_active BOOLEAN DEFAULT FALSE,
-            last_activity TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-          );
-        `;
         
         // We need to use the REST API directly since we can't execute SQL directly
         const response = await fetch(`${supabaseUrl}/rest/v1/`, {

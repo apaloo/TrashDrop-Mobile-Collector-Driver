@@ -71,7 +71,7 @@ class StatePersistenceService {
         // Fallback to localStorage for critical state
         try {
           localStorage.setItem(`fallback_${key}`, JSON.stringify(state));
-        } catch (e) {
+        } catch {
           // Ignore localStorage errors
         }
       }
@@ -104,7 +104,7 @@ class StatePersistenceService {
         if (fallback) {
           try {
             return JSON.parse(fallback);
-          } catch (e) {
+          } catch {
             return defaultValue;
           }
         }
@@ -178,7 +178,7 @@ class StatePersistenceService {
     try {
       const state = await localforage.getItem(key);
       return state !== null;
-    } catch (error) {
+    } catch {
       return false;
     }
   }

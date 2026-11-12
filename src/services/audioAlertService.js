@@ -315,17 +315,20 @@ class AudioAlertService {
 
     logger.info('🎉 Announcing arrival at:', locationName);
 
+    // playSound is a const from the destructuring above; reassigning it threw
+    let soundOn = playSound;
+
     // Try to resume audio context on user interaction
     if (!this.isInitialized || this.audioContext?.state === 'suspended') {
       const resumed = await this.resumeOnUserInteraction();
-      if (!resumed && playSound) {
+      if (!resumed && soundOn) {
         logger.warn('🔊 Audio not available - skipping sound');
-        playSound = false;
+        soundOn = false;
       }
     }
 
     // Play arrival sound
-    if (playSound && this.arrivalSound) {
+    if (soundOn && this.arrivalSound) {
       try {
         this.arrivalSound();
       } catch (error) {

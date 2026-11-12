@@ -30,12 +30,6 @@ describe('transformRequestsData', () => {
   ];
 
   // Mock calculateDistance function
-  const calculateDistance = (coord1, coord2) => {
-    // Simple distance calculation for testing
-    const latDiff = Math.abs(coord1.lat - coord2.lat);
-    const lngDiff = Math.abs(coord1.lng - coord2.lng);
-    return Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * 100; // Scale for km
-  };
 
   beforeEach(() => {
     // Mock the calculateDistance function

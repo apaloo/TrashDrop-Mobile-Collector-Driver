@@ -236,7 +236,7 @@ export const authService = {
       logger.debug(`📤 Uploading ${type} photo...`);
       
       // Upload file to Supabase Storage
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('collector-photos')
         .upload(filePath, file, {
           cacheControl: '3600',

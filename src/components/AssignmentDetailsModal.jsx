@@ -27,7 +27,7 @@ const AssignmentDetailsModal = ({
   onDumpingSite,
   onDispose,
   onViewReport,
-  tabContext = null, // New prop to determine which tab opened the modal
+// New prop to determine which tab opened the modal
   hidePayment = false // Volunteer clean-up groups aren't paid
 }) => {
   if (!isOpen || !assignment) return null;
