@@ -43,6 +43,21 @@ const TRENDIPAY_CONFIG = {
   retryDelay: 2000, // 2 seconds
 };
 
+// Phone numbers (MoMo accounts) never go to the console in full: requests and
+// gateway answers are logged through this. Keeps the first 3 and last 2 digits.
+const PERSONAL_KEYS = /^(accountnumber|account_number|msisdn|phone|phonenumber|phone_number|momo|clientmomo|client_momo|mobilenumber)$/i;
+export function redactForLog(value) {
+  if (Array.isArray(value)) return value.map(redactForLog);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([k, v]) => {
+    if (PERSONAL_KEYS.test(k) && v != null && typeof v !== 'object') {
+      const s = String(v);
+      return [k, s.length > 5 ? `${s.slice(0, 3)}***${s.slice(-2)}` : '***'];
+    }
+    return [k, redactForLog(v)];
+  }));
+}
+
 // === DEBUG: Log TrendiPay config on module load ===
 console.log('🔧 [TrendiPay] Config loaded:', {
   apiUrl: TRENDIPAY_CONFIG.apiUrl,
@@ -120,7 +135,7 @@ async function makeProxyRequest(action, payload = null, extra = {}, retryCount =
   const useProxy = !!TRENDIPAY_CONFIG.proxyUrl;
 
   console.log(`📡 [TrendiPay] makeProxyRequest — action: ${action}, useProxy: ${useProxy}, retryCount: ${retryCount}`);
-  console.log(`📡 [TrendiPay] Payload:`, JSON.stringify(payload, null, 2));
+  console.log(`📡 [TrendiPay] Payload:`, JSON.stringify(redactForLog(payload), null, 2));
 
   try {
     let url, options;
@@ -151,7 +166,7 @@ async function makeProxyRequest(action, payload = null, extra = {}, retryCount =
         body: JSON.stringify(proxyBody),
       };
       console.log(`📡 [TrendiPay] Proxy URL: ${url}`);
-      console.log(`📡 [TrendiPay] Proxy body:`, JSON.stringify(proxyBody, null, 2));
+      console.log(`📡 [TrendiPay] Proxy body:`, JSON.stringify(redactForLog(proxyBody), null, 2));
     } else {
       // The API key is held by the proxy only; the browser can't call TrendiPay directly.
       throw new Error('TrendiPay proxy URL is not configured (VITE_SUPABASE_URL missing)');
@@ -169,10 +184,10 @@ async function makeProxyRequest(action, payload = null, extra = {}, retryCount =
       throw new Error(`Invalid JSON response (status ${response.status}): ${rawText.substring(0, 200)}`);
     }
 
-    console.log(`📡 [TrendiPay] Response body:`, JSON.stringify(data, null, 2));
+    console.log(`📡 [TrendiPay] Response body:`, JSON.stringify(redactForLog(data), null, 2));
 
     if (!response.ok) {
-      console.error(`❌ [TrendiPay] API error ${response.status}:`, data);
+      console.error(`❌ [TrendiPay] API error ${response.status}:`, redactForLog(data));
       throw new Error(data.error || data.message || `API error: ${response.status}`);
     }
 
@@ -284,12 +299,12 @@ export async function initiateCollection({
       currency: currency || 'GHS'
     };
     
-    console.log('💳 [TrendiPay] Full payload:', JSON.stringify(payload, null, 2));
+    console.log('💳 [TrendiPay] Full payload:', JSON.stringify(redactForLog(payload), null, 2));
     
     // Call TrendiPay API via proxy
     const result = await makeProxyRequest('initiate-collection', payload);
     
-    console.log('💳 [TrendiPay] API result:', JSON.stringify(result, null, 2));
+    console.log('💳 [TrendiPay] API result:', JSON.stringify(redactForLog(result), null, 2));
     
     if (!result.success) {
       console.error('❌ [TrendiPay] Collection API failed:', result.error);
@@ -350,7 +365,7 @@ export async function checkCollectionStatus(transactionId, reference) {
       merchantId: TRENDIPAY_CONFIG.merchantId
     });
     
-    console.log('🔍 [TrendiPay] Status check result:', JSON.stringify(result, null, 2));
+    console.log('🔍 [TrendiPay] Status check result:', JSON.stringify(redactForLog(result), null, 2));
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to check status');
@@ -464,12 +479,12 @@ export async function initiateDisbursement({
       currency: currency || 'GHS'
     };
     
-    console.log('💸 [TrendiPay] Full payload:', JSON.stringify(payload, null, 2));
+    console.log('💸 [TrendiPay] Full payload:', JSON.stringify(redactForLog(payload), null, 2));
     
     // Call TrendiPay API via proxy
     const result = await makeProxyRequest('initiate-disbursement', payload);
     
-    console.log('💸 [TrendiPay] API result:', JSON.stringify(result, null, 2));
+    console.log('💸 [TrendiPay] API result:', JSON.stringify(redactForLog(result), null, 2));
     
     if (!result.success) {
       console.error('❌ [TrendiPay] Disbursement API failed:', result.error);
