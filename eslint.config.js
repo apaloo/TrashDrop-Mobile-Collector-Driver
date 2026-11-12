@@ -11,7 +11,6 @@ export default defineConfig([
     // End-to-end specs and the legacy local webhook server have their own
     // runtimes; they are tracked for clean-up in the engineering handbook.
     'cypress',
-    'backend_webhooks',
   ]),
   {
     files: ['**/*.{js,jsx}'],
