@@ -72,3 +72,24 @@ it('a confirmed MoMo payment still shows the payout', async () => {
   expect(res.success).toBe(true);
   expect(res.payoutBreakdown.collector_total_payout).toBeGreaterThan(0);
 });
+
+// Owner's decision 2026-11-12: a client MoMo payment still pending shows the
+// expected payout, marked pending (nothing is withdrawable until confirmed).
+it('a pending MoMo payment shows the expected payout, marked pending', async () => {
+  payment = { data: { id: 'pay-1', payment_mode: 'momo', status: 'pending', total_bill: 50 }, error: null };
+  const res = await disposeDigitalBin('bin-1', COLLECTOR);
+  expect(res.success).toBe(true);
+  expect(res.paymentPending).toBe(true);
+  expect(res.payoutBreakdown.collector_total_payout).toBeGreaterThan(0);
+  expect(binUpdates[0]).toMatchObject({ status: 'disposed' });
+});
+
+it.each([
+  ['a confirmed MoMo payment', { data: { id: 'pay-1', payment_mode: 'momo', status: 'success', total_bill: 50 }, error: null }],
+  ['cash', { data: { id: 'pay-1', payment_mode: 'cash', status: 'pending', total_bill: 50 }, error: null }],
+  ['no payment record', { data: null, error: null }],
+])('%s is not marked pending', async (_label, p) => {
+  payment = p;
+  const res = await disposeDigitalBin('bin-1', COLLECTOR);
+  expect(res.paymentPending).toBe(false);
+});
