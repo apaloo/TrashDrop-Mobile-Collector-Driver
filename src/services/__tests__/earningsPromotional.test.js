@@ -26,10 +26,10 @@ const promoBin = {
   id: 'bin-promo', collector_id: COLLECTOR, status: 'disposed', is_promotional: true,
   bin_size_liters: 240, bag_count: 1, fee: 22, collector_core_payout: 40, updated_at: '2026-10-24T10:00:00Z',
 };
-const promoPayment = (mode) => ({
+const promoPayment = (mode, confirmedBy = mode === 'cash' ? 'collector' : 'gateway') => ({
   digital_bin_id: 'bin-promo', payment_mode: mode, total_bill: '22.00', collector_share: '40',
   platform_share: '0', platform_subsidy: '18.00', is_promotional: true, type: 'collection',
-  status: 'success', created_at: '2026-10-24T09:00:00Z',
+  status: 'success', confirmed_by: confirmedBy, created_at: '2026-10-24T09:00:00Z',
 });
 
 const load = async (payment, extraBins = [], extraPayments = []) => {
@@ -69,6 +69,23 @@ describe('earnings for a promotional bin paid by MoMo', () => {
     expect(stats.promoCashSubsidyOwed).toBe(0);
     expect(stats.withdrawableEarnings).toBe(40);
     expect(stats.paymentModeBreakdown.digital.collected).toBe(22);
+  });
+});
+
+// Owner's decision 2026-11-12 (TD53): MoMo is cashable only once the gateway
+// or an admin confirms it, never on the collector's own "Client has paid"
+describe('a MoMo payment the collector confirmed themselves', () => {
+  it('counts as earned but is not withdrawable until TrendiPay or an admin confirms it', async () => {
+    const stats = await load(promoPayment('momo', 'collector'));
+    expect(stats.totalEarnings).toBe(40);
+    expect(stats.withdrawableEarnings).toBe(0);
+    expect(stats.awaitingConfirmationEarnings).toBe(40);
+  });
+
+  it('becomes withdrawable once an admin confirms it', async () => {
+    const stats = await load(promoPayment('momo', 'staff'));
+    expect(stats.withdrawableEarnings).toBe(40);
+    expect(stats.awaitingConfirmationEarnings).toBe(0);
   });
 });
 

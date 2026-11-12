@@ -877,11 +877,12 @@ class EarningsService {
       const binPaymentPlatformShareMap = {};  // platform_share — SUCCESS records only
       const binPaymentSubsidyMap = {};        // platform_subsidy — SUCCESS only (promotional top-up)
       const binPaymentPromoMap = {};          // is_promotional — SUCCESS only
+      const binPaymentServerConfirmedMap = {}; // SUCCESS confirmed by the gateway or an admin (TD53)
       
       if (binIds.length > 0) {
         const { data: payments, error: paymentsError } = await supabase
           .from('bin_payments')
-          .select('digital_bin_id, payment_mode, total_bill, collector_share, platform_share, platform_subsidy, is_promotional, type, status, created_at')
+          .select('digital_bin_id, payment_mode, total_bill, collector_share, platform_share, platform_subsidy, is_promotional, type, status, confirmed_by, created_at')
           .in('digital_bin_id', binIds)
           .eq('type', 'collection')
           .order('created_at', { ascending: false });
@@ -913,6 +914,7 @@ class EarningsService {
               }
               binPaymentSubsidyMap[binId] = parseFloat(p.platform_subsidy) || 0;
               binPaymentPromoMap[binId] = p.is_promotional === true;
+              binPaymentServerConfirmedMap[binId] = ['gateway', 'staff'].includes(p.confirmed_by);
             }
           });
         }
@@ -1024,9 +1026,18 @@ class EarningsService {
       // Split disposed bin earnings by payment mode:
       // - Digital (momo/e_cash): platform holds funds → collector can withdraw
       // - Cash: collector already received from client → not withdrawable via platform
+      // Owner's decision 2026-11-12 (TD53): a MoMo/e-Cash payment is cashable only
+      // once the gateway or an admin confirms it, never on the collector's own
+      // "Client has paid" (same rule as td_withdrawable_items on the server).
       const binsDisposedDigitalEarnings = disposedBins.reduce((sum, b) => {
         const mode = binPaymentModeMap[b.id];
         if (mode === 'cash') return sum; // Already in collector's hands
+        if (!binPaymentServerConfirmedMap[b.id]) return sum; // Awaiting gateway confirmation
+        return sum + resolveBinCollectorEarnings(b);
+      }, 0);
+      const binsAwaitingConfirmationEarnings = disposedBins.reduce((sum, b) => {
+        const mode = binPaymentModeMap[b.id];
+        if (mode === undefined || mode === 'cash' || binPaymentServerConfirmedMap[b.id]) return sum;
         return sum + resolveBinCollectorEarnings(b);
       }, 0);
       const binsDisposedCashEarnings = disposedBins.reduce((sum, b) => {
@@ -1401,6 +1412,8 @@ class EarningsService {
             // Withdrawal-ready amount: disposed digital bins + disposed pickup requests
             // + TrashDrop's top-up on promotional bins paid in cash
             withdrawableEarnings,
+            // MoMo bins the collector confirmed themselves: cashable once TrendiPay or an admin confirms
+            awaitingConfirmationEarnings: binsAwaitingConfirmationEarnings,
             promoCashSubsidyOwed,
             // Estimated pending: what collector can expect after disposing current collecting bins/pickups
             estimatedPendingEarnings,

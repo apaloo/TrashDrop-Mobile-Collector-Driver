@@ -12,7 +12,8 @@
  *   trendipay-proxy): the result is also confirmed with TrendiPay's
  *   transaction-status API, and the amount checked, before
  *   td_complete_payout() marks the withdrawal completed or failed.
- * - Anything else: collections; updates a pending `bin_payments` row.
+ * - Anything else: collections; updates an open `bin_payments` row, or one
+ *   the collector confirmed themselves (the gateway result counts, TD53).
  *
  * Permanent callback URL:
  *   https://<project-ref>.supabase.co/functions/v1/trendipay-webhook
@@ -255,7 +256,11 @@ Deno.serve(async (req)=>{
     if (systemStatus === 'failed') {
       updateData.gateway_error = reason || `Payment ${status} (code: ${code})`;
     }
-    const { data: updatedPayment, error: updateError } = await supabase.from('bin_payments').update(updateData).eq('status', 'pending').eq('id', reference).select('id, digital_bin_id, collector_id, status').single();
+    // Open payments, and ones the collector confirmed themselves: the gateway's
+    // result is the one that counts (TD53, bin_payments.confirmed_by)
+    const { data: updatedPayment, error: updateError } = await supabase.from('bin_payments').update(updateData)
+      .or('status.in.(pending,initiated),and(status.eq.success,confirmed_by.eq.collector)')
+      .eq('id', reference).select('id, digital_bin_id, collector_id, status').single();
     if (updateError) {
       console.error('[trendipay-webhook] DB update error:', updateError.message);
       // Still return 200 so TrendiPay doesn't retry endlessly
