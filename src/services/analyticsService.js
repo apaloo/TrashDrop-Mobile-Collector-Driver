@@ -478,7 +478,7 @@ export class AnalyticsService {
         .from('collector_sessions')
         .select('*')
         .eq('collector_id', this.collectorId)
-        .single();
+        .maybeSingle(); // no session yet is normal: null, not a 406 in the logs
 
       if (error && error.code !== 'PGRST116') { // Not found error is ok
         throw error;

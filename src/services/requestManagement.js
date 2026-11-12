@@ -325,7 +325,7 @@ export class RequestManagementService {
           .from('collector_sessions')
           .select('reserved_requests')
           .eq('collector_id', this.collectorId)
-          .single();
+          .maybeSingle(); // no session yet is normal: null, not a 406 in the logs
 
         if (session) {
           const updatedReserved = (session.reserved_requests || [])
