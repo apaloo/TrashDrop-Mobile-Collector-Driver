@@ -323,8 +323,14 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
       .limit(1)
       .maybeSingle();
     
-    // If no payment record found, create a fallback using bin data
-    let paymentData = payment;
+    // No payment record, or it could not be read: the bin is treated as
+    // unconfirmed (GH₵0 shown below; the database decides what is owed), never
+    // as paid. Disposal at the site still goes ahead (TD52).
+    if (paymentError) {
+      logger.error('Could not read the payment record for bin disposal; treating it as unconfirmed:', { binId, message: paymentError.message });
+    }
+    let paymentData = paymentError ? null : payment;
+    const noPaymentRecord = !paymentData;
     if (!paymentData) {
       // Get actual fee from digital_bin - DO NOT use hardcoded fallback
       const actualFee = parseFloat(digitalBin.fee) || parseFloat(digitalBin.payout) || parseFloat(digitalBin.total_bill);
@@ -342,7 +348,7 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
         type: 'collection',
         payment_mode: 'digital',
         total_bill: actualFee,
-        status: 'success',
+        status: 'unconfirmed',
         created_at: digitalBin.created_at
       };
     }
@@ -375,7 +381,12 @@ export async function disposeDigitalBin(binId, collectorId, disposalSiteId = nul
     }
     
     // 7. Calculate payment sharing using the algorithm with actual tips
-    const payoutBreakdown = calculatePaymentSharing(digitalBin, paymentData, actualTips);
+    let payoutBreakdown = calculatePaymentSharing(digitalBin, paymentData, actualTips);
+    if (noPaymentRecord) {
+      // Nothing was recorded as collected from the client: show nothing earned
+      payoutBreakdown = Object.fromEntries(Object.entries(payoutBreakdown)
+        .map(([key, amount]) => [key, key.startsWith('collector_') ? 0 : amount]));
+    }
     
     // 7. Update digital_bins with disposal info and payout breakdown
     const { error: updateError } = await supabase
