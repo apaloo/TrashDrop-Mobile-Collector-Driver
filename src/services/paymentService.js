@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
+import { redactForLog } from '../utils/redactForLog';
 import * as TrendiPayService from './trendiPayService';
 import { computeBinPaymentShares, computePromotionalShares } from '../utils/paymentCalculations';
 
@@ -33,7 +34,7 @@ console.log('💰 [PaymentService] Loaded. ENABLE_TRENDIPAY:', ENABLE_TRENDIPAY,
 export async function initiateCollection(paymentData) {
   try {
     console.log('💰 [PaymentService] === INITIATE COLLECTION ===');
-    console.log('💰 [PaymentService] Input paymentData:', JSON.stringify(paymentData, null, 2));
+    console.log('💰 [PaymentService] Input paymentData:', JSON.stringify(redactForLog(paymentData), null, 2));
     console.log('💰 [PaymentService] ENABLE_TRENDIPAY:', ENABLE_TRENDIPAY);
 
     // Validate required fields
@@ -134,7 +135,7 @@ export async function initiateCollection(paymentData) {
       status: 'pending'
     };
 
-    console.log('💰 [PaymentService] Inserting bin_payments record:', JSON.stringify(paymentRecord, null, 2));
+    console.log('💰 [PaymentService] Inserting bin_payments record:', JSON.stringify(redactForLog(paymentRecord), null, 2));
 
     const { data, error } = await supabase
       .from('bin_payments')
@@ -183,11 +184,11 @@ export async function initiateCollection(paymentData) {
           description: `Digital bin ${paymentData.digitalBinId.substring(0, 8)}`,
           currency: 'GHS'
         };
-        console.log('💰 [PaymentService] Gateway params:', JSON.stringify(gatewayParams, null, 2));
+        console.log('💰 [PaymentService] Gateway params:', JSON.stringify(redactForLog(gatewayParams), null, 2));
         
         const gatewayResult = await TrendiPayService.initiateCollection(gatewayParams);
 
-        console.log('💰 [PaymentService] Gateway result:', JSON.stringify(gatewayResult, null, 2));
+        console.log('💰 [PaymentService] Gateway result:', JSON.stringify(redactForLog(gatewayResult), null, 2));
 
         if (!gatewayResult.success) {
           console.error('❌ [PaymentService] Gateway failed, updating DB with error...');
@@ -235,7 +236,7 @@ export async function initiateCollection(paymentData) {
           transactionId: gatewayResult.transactionId,
           authorizationSteps: gatewayResult.authorizationSteps // MoMo approval steps for user
         };
-        console.log('✅ [PaymentService] Returning to caller:', JSON.stringify(finalResult, null, 2));
+        console.log('✅ [PaymentService] Returning to caller:', JSON.stringify(redactForLog(finalResult), null, 2));
 
         return finalResult;
       } else {
@@ -343,7 +344,7 @@ export async function checkCollectionStatus(transactionId, reference) {
     
     const result = await TrendiPayService.checkCollectionStatus(transactionId, reference);
     
-    logger.info('TrendiPay status result:', result);
+    logger.info('TrendiPay status result:', redactForLog(result));
     
     return result;
 
@@ -383,7 +384,7 @@ export async function simulatePaymentSuccess(paymentId) {
  * Initialize disbursement (called from earnings cashout)
  * Phase 1: Not implemented yet (Phase 4)
  */
-export async function initiateDisbursement(collectorId, amount) {
+export async function initiateDisbursement(_collectorId, _amount) {
   logger.warn('Phase 1: Disbursement not yet implemented');
   
   // TODO Phase 4: Implement TrendiPay disbursement

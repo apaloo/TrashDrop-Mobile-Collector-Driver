@@ -111,6 +111,20 @@ describe('initiateCollection: MoMo through the gateway', () => {
     expect(res).toEqual({ success: false, error: 'Insufficient balance' });
   });
 
+  it('never writes the full MoMo number to the console', async () => {
+    let logged = '';
+    const capture = (...args) => { logged += args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ') + '\n'; };
+    console.log.mockImplementation(capture);
+    console.warn.mockImplementation(capture);
+    console.error.mockImplementation(capture);
+    mockGateway = (params) => ({ success: true, status: 'pending', transactionId: 't-1', gatewayReference: 'g-1', accountNumber: params.accountNumber });
+    const { initiateCollection } = load(true);
+    await initiateCollection(MOMO);
+    expect(mockCalls.find(c => c[0] === 'gateway')[1].accountNumber).toBe('0240000000');
+    expect(logged).not.toContain('0240000000');
+    expect(logged).toContain('024***00');
+  });
+
   it('with the gateway switched off, leaves the payment pending and never calls it', async () => {
     const { initiateCollection } = load(false);
     const res = await initiateCollection(MOMO);
