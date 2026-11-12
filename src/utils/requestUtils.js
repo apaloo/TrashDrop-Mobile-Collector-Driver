@@ -122,7 +122,7 @@ export const transformRequestsData = (
 
 /**
  * Whether a scanned digital bin code belongs to this accepted request.
- * The household app's code is https://trashdrop.app/bin/<digital bin id>, the
+ * The household app's code is https://app.trashdrops.com/bin/<digital bin id>, the
  * request's own id (the map's scan, NavigationQRModal, checks the same). A
  * bin's location id never counts: every booking at that address shares it.
  */

@@ -1519,7 +1519,7 @@ const RequestPage = () => {
         // Open payment modal FIRST (same as NavigationQRModal onQRScanned)
         logger.info('💰 Opening payment modal for digital bin:', requestId);
         setCurrentPaymentBinId(requestId);
-        setInitialScannedBags(scannedBags.map(b => ({ code: b.code || `https://trashdrop.app/bin/${b.id}`, timestamp: b.timestamp || Date.now() })));
+        setInitialScannedBags(scannedBags.map(b => ({ code: b.code || `https://app.trashdrops.com/bin/${b.id}`, timestamp: b.timestamp || Date.now() })));
         setShowPaymentModal(true);
         logger.info('✅ Payment modal state set to open');
 

@@ -28,8 +28,16 @@ describe('Scanning a digital bin from the Requests card', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
+  // Codes already shared use the old trashdrop.app domain: they must keep working
   it("accepts the household app's code: the request's own bin id", () => {
     const onScanQR = scan(`https://trashdrop.app/bin/${BIN_ID}`);
+    expect(screen.getByText('Bin scanned!')).toBeInTheDocument();
+    act(() => { jest.advanceTimersByTime(1500); });
+    expect(onScanQR).toHaveBeenCalledWith(BIN_ID, [expect.objectContaining({ id: BIN_ID })]);
+  });
+
+  it('accepts the new link domain (app.trashdrops.com, TD58) the same way', () => {
+    const onScanQR = scan(`https://app.trashdrops.com/bin/${BIN_ID}`);
     expect(screen.getByText('Bin scanned!')).toBeInTheDocument();
     act(() => { jest.advanceTimersByTime(1500); });
     expect(onScanQR).toHaveBeenCalledWith(BIN_ID, [expect.objectContaining({ id: BIN_ID })]);

@@ -388,12 +388,12 @@ export const AuthProvider = ({ children }) => {
       setProfileLoadState(PROFILE_STATE.LOADING);
       
       // Create user profile with additional data
-      // EMAIL STRATEGY: Auto-generate from phone number (no email collection in signup form)
-      // Priority: 1) Supabase session email, 2) phone number, 3) generated {phone}@trashdrop.app
-      // This approach is intentional - collectors primarily use phone-based communication
+      // EMAIL: the Supabase session email, else the phone number (collectors sign
+      // up by phone). Never a made-up address: the old {phone}@trashdrop.app
+      // fallback used a domain TrashDrop doesn't own (TD58).
       const profileData = {
         user_id: user.id,
-        email: user.email || user.phone || `${user.phone}@trashdrop.app`,
+        email: user.email || user.phone || null,
         first_name: userData.first_name,
         last_name: userData.last_name,
         phone: userData.phone,
