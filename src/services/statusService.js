@@ -402,7 +402,7 @@ class CollectorStatusService {
           is_active: status === COLLECTOR_STATUS.ONLINE,
           last_activity: new Date().toISOString(),
           updated_at: new Date().toISOString()
-        });
+        }, { onConflict: 'collector_id' }); // one session row per collector
 
       if (error) {
         // Foreign key constraint error - collector_profiles record missing

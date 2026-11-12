@@ -188,3 +188,19 @@ describe('duty status on the server', () => {
     expect(dutyWrites()).toEqual([expect.objectContaining({ on_duty: false })]);
   });
 });
+
+describe('Collector session record', () => {
+  // collector_sessions has one row per collector, keyed by the collector's
+  // user id (TD45): the row rules compare collector_id with auth.uid().
+  it("saves the status in the collector's own session row, updating it in place", async () => {
+    const upserts = [];
+    supabase.from.mockImplementation((table) => (table === 'collector_profiles'
+      ? { update }
+      : { upsert: (row, opts) => { upserts.push({ table, row, opts }); return Promise.resolve({ error: null }); } }));
+    await statusService.updateBackendStatus(COLLECTOR_STATUS.OFFLINE, 'test', new Date());
+    expect(upserts).toHaveLength(1);
+    expect(upserts[0].table).toBe('collector_sessions');
+    expect(upserts[0].row.collector_id).toBe('jack');
+    expect(upserts[0].opts).toEqual({ onConflict: 'collector_id' });
+  });
+});
