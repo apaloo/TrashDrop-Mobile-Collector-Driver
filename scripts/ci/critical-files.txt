@@ -1,0 +1,11 @@
+# Files behind the critical workflows and the protected payout rules
+# (CLAUDE.md). CI shows their test coverage on every pull request
+# (scripts/ci/coverage-summary.mjs). Add a file when it starts carrying
+# money or a critical workflow.
+src/utils/paymentCalculations.js
+src/services/disposalService.js
+src/services/paymentService.js
+src/services/earningsService.js
+src/services/trendiPayService.js
+src/services/requestManagement.js
+src/services/bagPricing.js

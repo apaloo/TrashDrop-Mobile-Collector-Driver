@@ -141,32 +141,27 @@ describe('Route Optimization Utils', () => {
       expect(result).toBe('');
     });
     
-    test('should generate a valid Google Maps URL', () => {
+    test('should generate an OpenStreetMap directions URL', () => {
       const route = calculateNearestNeighborRoute(sampleAssignments, startPosition);
       const url = generateDirectionsUrl(route, startPosition);
-      
-      // URL should start with Google Maps URL
-      expect(url).toContain('https://www.google.com/maps/dir/');
-      
-      // URL should contain origin
-      expect(url).toContain(`origin=${startPosition.lat},${startPosition.lng}`);
-      
-      // URL should contain destination (last point in route)
-      const lastPoint = route[route.length - 1];
-      expect(url).toContain(`destination=${lastPoint.latitude},${lastPoint.longitude}`);
-      
-      // URL should contain travel mode
-      expect(url).toContain('travelmode=driving');
+
+      expect(url.startsWith('https://www.openstreetmap.org/directions?engine=graphhopper_car&route=')).toBe(true);
     });
-    
-    test('should include waypoints for routes with multiple stops', () => {
+
+    test('lists the start, then each stop in route order, as latitude,longitude', () => {
       const route = calculateNearestNeighborRoute(sampleAssignments, startPosition);
       const url = generateDirectionsUrl(route, startPosition);
-      
-      // URL should contain waypoints if route has more than 1 point
-      if (route.length > 1) {
-        expect(url).toContain('waypoints=');
-      }
+      const points = url.split('route=')[1].split(';');
+
+      expect(points[0]).toBe(`${startPosition.lat},${startPosition.lng}`);
+      expect(points.slice(1)).toEqual(route.map(stop => `${stop.latitude},${stop.longitude}`));
+    });
+
+    test('an Accra pickup stays in Accra (latitude first)', () => {
+      const accra = { lat: 5.6037, lng: -0.187 };
+      const url = generateDirectionsUrl([{ id: 'a', latitude: 5.6145, longitude: -0.2057 }], accra);
+
+      expect(url.endsWith('route=5.6037,-0.187;5.6145,-0.2057')).toBe(true);
     });
   });
 });

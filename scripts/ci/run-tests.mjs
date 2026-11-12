@@ -18,7 +18,10 @@ const escape = (p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const jest = path.join(root, 'node_modules', '.bin', 'jest');
 
 console.log(`Running all suites except ${known.length} known-failing ones…`);
-const main = spawnSync(jest, ['--ci', '--testPathIgnorePatterns', '/node_modules/', ...known.map(escape)], { cwd: root, stdio: 'inherit' });
+// Coverage is collected from all of src, so untested files count too.
+// scripts/ci/coverage-summary.mjs reports it (never fails the build).
+const coverage = ['--coverage', '--collectCoverageFrom=src/**/*.{js,jsx}', '--coverageReporters=json-summary', '--coverageReporters=text-summary'];
+const main = spawnSync(jest, ['--ci', ...coverage, '--testPathIgnorePatterns', '/node_modules/', ...known.map(escape)], { cwd: root, stdio: 'inherit' });
 
 if (known.length) {
   console.log('\nChecking known-failing suites (information only)…');

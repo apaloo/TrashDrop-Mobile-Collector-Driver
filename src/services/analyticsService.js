@@ -241,39 +241,6 @@ export class AnalyticsService {
 
       logger.info(`📦 Found ${acceptedDigitalBins?.length || 0} accepted digital bins for collector ${this.collectorId}`);
       
-      // DIAGNOSTIC: Query ALL accepted items to see what collector_ids exist
-      const { data: allAcceptedPickups } = await supabase
-        .from('pickup_requests')
-        .select('id, collector_id, status, location')
-        .in('status', ['accepted', 'en_route', 'arrived']);
-      
-      const { data: allAcceptedBins } = await supabase
-        .from('digital_bins')
-        .select('id, collector_id, status, location')
-        .in('status', ['accepted', 'en_route', 'arrived']);
-      
-      const totalAccepted = (allAcceptedPickups?.length || 0) + (allAcceptedBins?.length || 0);
-      
-      if (totalAccepted > 0) {
-        logger.info(`🔍 DIAGNOSTIC: Found ${totalAccepted} total accepted items in database:`);
-        logger.info(`  - ${allAcceptedPickups?.length || 0} pickup requests`);
-        logger.info(`  - ${allAcceptedBins?.length || 0} digital bins`);
-        
-        if (allAcceptedPickups && allAcceptedPickups.length > 0) {
-          allAcceptedPickups.forEach(req => {
-            const isMatch = req.collector_id === this.collectorId;
-            logger.info(`  ${isMatch ? '✅' : '❌'} Pickup: ${req.id}, Collector: ${req.collector_id}, Match: ${isMatch}`);
-          });
-        }
-        
-        if (allAcceptedBins && allAcceptedBins.length > 0) {
-          allAcceptedBins.forEach(bin => {
-            const isMatch = bin.collector_id === this.collectorId;
-            logger.info(`  ${isMatch ? '✅' : '❌'} Bin: ${bin.id}, Collector: ${bin.collector_id}, Match: ${isMatch}`);
-          });
-        }
-      }
-      
       // Log each accepted item for debugging
       const totalMyAccepted = (acceptedPickups?.length || 0) + (acceptedDigitalBins?.length || 0);
       
