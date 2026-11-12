@@ -1,6 +1,6 @@
 name: CI
 
-# Every pull request: lint the changed files, run the unit tests, build.
+# Every pull request: lint the whole app, run the unit tests, build.
 # Netlify builds and deploys the site itself; this workflow only checks.
 # Process: engineering/policies/change-and-release.md in TrashDrop-Mobile-User-Domestic.
 on:
@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # lint-changed compares against the base branch
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -34,17 +34,10 @@ jobs:
           CYPRESS_INSTALL_BINARY: 0
         run: npm ci
 
-      # New and edited files must be lint-clean. The existing backlog is
-      # reported, not enforced (see the technical-debt register).
-      - name: Lint changed files
-        if: github.event_name == 'pull_request'
-        run: scripts/ci/lint-changed.sh "${{ github.event.pull_request.base.sha }}"
-
-      - name: Lint backlog (report only)
-        continue-on-error: true
-        run: |
-          npx eslint . --quiet -f json -o eslint-report.json || true
-          node -e 'const r=require("./eslint-report.json");let e=0;for(const f of r)e+=f.errorCount;console.log(`ESLint errors in the codebase: ${e}`);require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY,`### Lint backlog\n${e} errors in the codebase (goal: 0)\n`)'
+      # The whole app must be lint-clean: the backlog reached 0 errors on
+      # 2026-11-12 (TD26). Warnings are reported, not enforced.
+      - name: Lint
+        run: npx eslint . --quiet
 
       # Every supabase.rpc() call must name a database function that exists,
       # with parameter names it takes (production snapshot plus this
