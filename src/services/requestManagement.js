@@ -4,60 +4,6 @@ import { calculateDistance, getCurrentLocation } from '../utils/geoUtils.js';
 import { logger } from '../utils/logger.js';
 
 // Mock data for development mode - initialized with real data from Supabase
-let mockPickupRequests = [
-  {
-    id: '74faaadc-73aa-4830-aca9-fb0aad5b9e8c',
-    waste_type: 'recyclable',
-    status: 'pending',
-    coordinates: [5.617959595507786, -0.19255473872904202],
-    location: 'East Legon, Accra',
-    fee: 150,
-    bag_count: 2,
-    created_at: new Date().toISOString(),
-    collector_id: null,
-    accepted_at: null,
-    assignment_expires_at: null
-  },
-  {
-    id: 'b6f0317b-8264-47a9-a2df-f5a4b325d14f',
-    waste_type: 'general',
-    status: 'pending', 
-    coordinates: [5.620000, -0.190000],
-    location: 'Osu, Accra',
-    fee: 120,
-    bag_count: 1,
-    created_at: new Date().toISOString(),
-    collector_id: null,
-    accepted_at: null,
-    assignment_expires_at: null
-  },
-  {
-    id: '85d1795b-834c-44ca-bfa5-551ecbcdfa49',
-    waste_type: 'hazardous',
-    status: 'pending',
-    coordinates: [5.615000, -0.195000], 
-    location: 'Adabraka, Accra',
-    fee: 200,
-    bag_count: 3,
-    created_at: new Date().toISOString(),
-    collector_id: null,
-    accepted_at: null,
-    assignment_expires_at: null
-  },
-  {
-    id: '3193e0ee-7eb1-4483-85db-76fd004a8567',
-    waste_type: 'recyclable',
-    status: 'pending',
-    coordinates: [5.625000, -0.185000],
-    location: 'Labadi, Accra', 
-    fee: 175,
-    bag_count: 2,
-    created_at: new Date().toISOString(),
-    collector_id: null,
-    accepted_at: null,
-    assignment_expires_at: null
-  }
-];
 
 /**
  * Request Management Service
@@ -738,11 +684,15 @@ export class RequestManagementService {
     }
 
     try {
-      // Find assignments that have expired
+      // Find accepted requests whose assignment has expired. Only these can go
+      // back to the pool: the database's status flow allows accepted ->
+      // pending but refuses en_route/arrived -> pending (the collector is on
+      // the way or there). Including those made the whole batch update fail,
+      // every minute, so expired accepted requests were never released either.
       const { data: expiredAssignments, error } = await supabase
         .from('pickup_requests')
         .select('id')
-        .in('status', ['accepted', 'en_route', 'arrived'])
+        .eq('status', 'accepted')
         .lt('assignment_expires_at', new Date().toISOString());
 
       if (error) {
@@ -766,7 +716,8 @@ export class RequestManagementService {
           accepted_at: null,
           assignment_expires_at: null
         })
-        .in('id', expiredAssignments.map(a => a.id));
+        .in('id', expiredAssignments.map(a => a.id))
+        .eq('status', 'accepted'); // skip any that moved on since the select
 
       if (updateError) {
         if (import.meta.env.DEV) {
@@ -839,7 +790,7 @@ export class RequestManagementService {
         'system',
         { event: 'connection_status' },
         (payload) => {
-          const { event, status } = payload;
+          const { status } = payload;
           console.log(`Realtime connection status: ${status}`);
           
           if (status === 'connected') {
