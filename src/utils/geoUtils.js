@@ -45,37 +45,6 @@ export const isWithinRadius = (location, center, radiusKm) => {
   return distance <= radiusKm;
 };
 
-// IP-based geolocation fallback (similar to what Google Maps uses)
-// Provides approximate location when GPS is unavailable
-const getIPBasedLocation = async () => {
-  try {
-    // Use ip-api.com (free, no API key required, CORS-enabled)
-    const response = await fetch('http://ip-api.com/json/?fields=lat,lon,city,country,status', {
-      timeout: 5000
-    });
-    
-    if (!response.ok) throw new Error('IP geolocation failed');
-    
-    const data = await response.json();
-    
-    if (data.status === 'success' && data.lat && data.lon) {
-      logger.info(`📍 IP-based location: ${data.city}, ${data.country} (${data.lat}, ${data.lon})`);
-      return {
-        lat: data.lat,
-        lng: data.lon,
-        isFallback: true,
-        isIPBased: true,
-        accuracy: 5000, // ~5km accuracy for IP-based
-        source: 'ip-geolocation',
-        city: data.city,
-        country: data.country
-      };
-    }
-  } catch (error) {
-    logger.debug('IP geolocation failed:', error.message);
-  }
-  return null;
-};
 
 // Location caching to reduce repeated failed attempts
 let locationCache = {
@@ -236,17 +205,9 @@ export const getCurrentLocation = () => {
           return;
         }
 
-        // If both GPS methods fail, try IP-based geolocation as last resort
-        // This is what Google Maps does - it can show approximate location from IP
-        const ipLocation = await getIPBasedLocation();
-        if (ipLocation) {
-          logger.info('📍 Using IP-based location as fallback (city-level accuracy)');
-          locationCache.lastSuccessfulLocation = ipLocation;
-          // Don't reset failure count - still want to try GPS next time
-          locationCache.isCurrentlyFetching = false;
-          resolve(ipLocation);
-          return;
-        }
+        // No IP-address fallback: an IP location is only good to ~5 km, too
+        // coarse for a collector's position, and it sent the IP over plain
+        // HTTP to a third party (it never ran: the site's CSP blocked it).
         
         // If everything fails, increment failure count
         locationCache.consecutiveFailures++;
