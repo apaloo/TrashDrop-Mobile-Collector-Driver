@@ -17,7 +17,13 @@ entropy = 4.0
 keywords = ["eaa"]
 
 [allowlist]
-description = "Known-safe files"
+description = "Known-safe files and values"
+# Supabase publishable keys are public by design: every app bundle ships one,
+# and row-level security decides what they can reach. Secret keys
+# (sb_secret_...) and service role JWTs are still caught.
+regexes = [
+  '''^sb_publishable_[A-Za-z0-9_-]+$''',
+]
 paths = [
   # Self-signed certificates for local HTTPS development only
   # (regenerate with generate-cert.js). Tracked as tech debt for removal.
