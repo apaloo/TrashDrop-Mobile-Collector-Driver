@@ -738,11 +738,15 @@ export class RequestManagementService {
     }
 
     try {
-      // Find assignments that have expired
+      // Find accepted requests whose assignment has expired. Only these can go
+      // back to the pool: the database's status flow allows accepted ->
+      // pending but refuses en_route/arrived -> pending (the collector is on
+      // the way or there). Including those made the whole batch update fail,
+      // every minute, so expired accepted requests were never released either.
       const { data: expiredAssignments, error } = await supabase
         .from('pickup_requests')
         .select('id')
-        .in('status', ['accepted', 'en_route', 'arrived'])
+        .eq('status', 'accepted')
         .lt('assignment_expires_at', new Date().toISOString());
 
       if (error) {
@@ -766,7 +770,8 @@ export class RequestManagementService {
           accepted_at: null,
           assignment_expires_at: null
         })
-        .in('id', expiredAssignments.map(a => a.id));
+        .in('id', expiredAssignments.map(a => a.id))
+        .eq('status', 'accepted'); // skip any that moved on since the select
 
       if (updateError) {
         if (import.meta.env.DEV) {
