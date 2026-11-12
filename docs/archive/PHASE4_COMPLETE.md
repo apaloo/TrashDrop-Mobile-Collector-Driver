@@ -345,7 +345,7 @@ REACT_APP_ENABLE_TRENDIPAY=false
 ```env
 REACT_APP_ENABLE_TRENDIPAY=true
 REACT_APP_TRENDIPAY_API_URL=https://sandbox.trendipay.com/v1
-REACT_APP_TRENDIPAY_API_KEY=test_key_abc123
+REACT_APP_TRENDIPAY_API_KEY=<your-sandbox-api-key>
 ```
 
 **Collection Test:**
