@@ -33,12 +33,6 @@ const RouteOptimizationPage = () => {
       const service = createAnalyticsService(user.id);
       setAnalyticsService(service);
       logger.debug('✅ Analytics service initialized for collector:', user.id);
-      logger.debug('👤 Current user object:', {
-        id: user.id,
-        email: user.email,
-        phone: user.phone,
-        full_user: user
-      });
     } else {
       logger.warn('⚠️ User or user.id not available for analytics service');
       logger.debug('👤 User object received:', user);
