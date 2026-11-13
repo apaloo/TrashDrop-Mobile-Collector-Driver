@@ -40,7 +40,6 @@ const TermsPage = lazyWithRetry(() => import('./pages/Terms'));
 const PrivacyPage = lazyWithRetry(() => import('./pages/Privacy'));
 const LoginPage = lazyWithRetry(() => import('./pages/Login'));
 const SignupPage = lazyWithRetry(() => import('./pages/Signup'));
-const DiagnosticPage = lazyWithRetry(() => import('./pages/DiagnosticPage'));
 const PaymentTest = lazyWithRetry(() => import('./pages/PaymentTest'));
 
 const MapPage = lazyWithRetry(() => import('./pages/Map'));
@@ -208,7 +207,6 @@ function App() {
                         </Suspense>
                       </ProtectedRoute>
                     } />
-                    <Route path="/diagnostic" element={<Suspense fallback={<PageLoader />}><DiagnosticPage /></Suspense>} />
                     {/* Gateway test page: local development only, never in production builds */}
                     {import.meta.env.DEV && (
                       <Route path="/payment-test" element={<Suspense fallback={<PageLoader />}><PaymentTest /></Suspense>} />
