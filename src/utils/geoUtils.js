@@ -488,7 +488,7 @@ const performReverseGeocode = async (lat, lng, retryCount = 0) => {
     }
     
     if (address) {
-      logger.info(`✅ Geocoded: ${lat},${lng} → ${address.substring(0, 50)}`);
+      logger.info('✅ Geocoded a position to an address');
       // Record success with circuit breaker
       circuitBreaker.recordSuccess();
     }

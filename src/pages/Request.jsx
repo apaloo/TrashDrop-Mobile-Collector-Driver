@@ -736,11 +736,6 @@ const RequestPage = () => {
       
       logger.info(`🔄 Accepting request ${requestId} as ${isPickupRequest ? 'pickup_request' : isDigitalBin ? 'digital_bin' : 'authority_assignment'}`);
       logger.info(`👤 DIAGNOSTIC: Collector ID from Request page: ${user?.id}`);
-      logger.info(`👤 DIAGNOSTIC: User object:`, {
-        id: user?.id,
-        email: user?.email,
-        phone: user?.phone
-      });
       
       if (isDigitalBin) {
         // Handle digital bin acceptance - update digital_bins table to 'accepted' status
