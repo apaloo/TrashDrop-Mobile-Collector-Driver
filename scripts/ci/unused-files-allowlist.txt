@@ -1,0 +1,3 @@
+# Source files the unused-files check can't see being used (scripts/ci/check-unused-files.cjs).
+# One path per line, then " # " and why it stays. Remove an entry when its file goes.
+src/theme/brand.js # design tokens for inline styles; the counterpart of src/theme/tokens.css, kept in step with the admin design system
