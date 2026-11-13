@@ -1,6 +1,4 @@
 import { supabase } from './supabase.js';
-import { calculatePaymentBreakdown, calculateBilledDistance, applyOnlyDownRule } from '../utils/paymentCalculations.js';
-import { calculateDistance, getCurrentLocation } from '../utils/geoUtils.js';
 import { logger } from '../utils/logger.js';
 
 // Mock data for development mode - initialized with real data from Supabase
@@ -162,10 +160,10 @@ export class RequestManagementService {
       const currentTime = new Date().toISOString();
       const assignmentExpiry = new Date(Date.now() + this.ASSIGNMENT_DURATION).toISOString();
       
-      // First check if the request exists and is available (fetch all fields for payment calculation)
+      // First check if the request exists and is available
       const { data: existingRequest, error: checkError } = await supabase
         .from('pickup_requests')
-        .select('*') // Get all fields for payment calculation
+        .select('id, status, collector_id')
         .eq('id', requestId)
         .single();
 
@@ -188,104 +186,18 @@ export class RequestManagementService {
         throw new Error('Request has already been accepted by another collector');
       }
 
-      // Calculate payment breakdown (SOP v4.5.6)
-      let paymentFields = {};
-      
-      try {
-        // Get collector's current GPS position
-        const collectorLocation = await getCurrentLocation();
-        
-        if (collectorLocation && existingRequest.coordinates) {
-          // Parse coordinates (supports arrays or PostGIS formats)
-          let pickupCoords = existingRequest.coordinates;
-          if (Array.isArray(pickupCoords)) {
-            pickupCoords = { lat: pickupCoords[0], lng: pickupCoords[1] };
-          }
-          
-          // Calculate deadhead distance (collector to pickup)
-          const deadheadKm = calculateDistance(
-            { lat: collectorLocation.lat, lng: collectorLocation.lng },
-            pickupCoords
-          );
-          
-          // T1 Anchor: Distance at accept time
-          const anchorT1 = deadheadKm;
-          
-          // Apply only-down rule if T0 anchor exists
-          const finalDeadhead = applyOnlyDownRule(
-            existingRequest.anchor_dmin_t0_km,
-            anchorT1,
-            deadheadKm
-          );
-          
-          // Calculate billed distance (only if urgent and >5km)
-          const billedKm = calculateBilledDistance(
-            existingRequest.urgent_enabled || false,
-            finalDeadhead
-          );
-          
-          // Get active surge multiplier (or use what's already set)
-          const surgeMultiplier = existingRequest.surge_multiplier || 1.0;
-          
-          // Calculate full payment breakdown
-          const breakdown = calculatePaymentBreakdown({
-            base: existingRequest.base_amount || existingRequest.fee || 0, // Fallback to fee
-            onSite: existingRequest.onsite_surcharges || 0,
-            discount: existingRequest.discount_amount || 0,
-            urgentEnabled: existingRequest.urgent_enabled || false,
-            deadheadKm: finalDeadhead,
-            billedKm,
-            surgeMultiplier,
-            requestFee: existingRequest.request_fee || 1.0,
-            taxes: existingRequest.taxes || 0,
-            tips: 0, // Tips added after completion
-            recyclerGross: 0, // Settled later
-            loyaltyRate: 0 // Calculated monthly
-          });
-          
-          // Build payment fields to update
-          paymentFields = {
-            deadhead_km: finalDeadhead,
-            anchor_d_accept_km: anchorT1,
-            billed_km_final: billedKm,
-            distance_billed_km: billedKm,
-            distance_amount: breakdown.distanceAmt,
-            surge_multiplier: surgeMultiplier,
-            surge_uplift_amount: breakdown.surgeUplift,
-            collector_core_payout: breakdown.collectorCore,
-            collector_urgent_payout: breakdown.collectorUrg,
-            collector_distance_payout: breakdown.collectorDist,
-            collector_surge_payout: breakdown.collectorSurge,
-            collector_total_payout: breakdown.collectorTotal,
-            platform_core_margin: breakdown.platformCore,
-            platform_urgent_share: breakdown.platformUrg,
-            platform_surge_share: breakdown.platformSurge,
-            total_user_paid: breakdown.userTotal,
-            anchors_computed_at: currentTime
-          };
-          
-          logger.debug('💰 Payment breakdown calculated:', {
-            deadheadKm: finalDeadhead.toFixed(2),
-            collectorTotal: breakdown.collectorTotal.toFixed(0),
-            breakdown: `Core: ₵${breakdown.collectorCore.toFixed(0)} + Urgent: ₵${breakdown.collectorUrg.toFixed(0)} + Distance: ₵${breakdown.collectorDist.toFixed(0)}`
-          });
-        } else {
-          logger.warn('⚠️ Could not get GPS location or coordinates for payment calculation');
-        }
-      } catch (calcError) {
-        // Payment calculation is non-critical, log and continue
-        logger.warn('⚠️ Payment calculation failed:', calcError.message);
-        logger.debug('ℹ️  Falling back to legacy fee-based payment');
-        // No paymentFields - update will use existing values
-      }
+      // No payout is worked out here (TD34, owner's decision 2026-11-13). A
+      // pickup request is prepaid bags: the database pays the collector 100%
+      // of the scanned bags' prices plus tips when it is disposed
+      // (finalize_pickup_request_payout → td_apply_prepaid_bag_payout). The
+      // digital-bin formula this used to run never applied, and was never stored.
 
       // Now try to accept the request with detailed logging
       logger.info('🔄 Attempting to accept request:', {
         requestId,
         collectorId: this.collectorId,
         passedCollectorId: effectiveCollectorId,
-        currentStatus: existingRequest.status,
-        hasPaymentBreakdown: Object.keys(paymentFields).length > 0
+        currentStatus: existingRequest.status
       });
       
       logger.info(`📊 DIAGNOSTIC: Setting collector_id in database to: ${this.collectorId}`);

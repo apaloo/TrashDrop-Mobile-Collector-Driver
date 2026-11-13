@@ -7,6 +7,7 @@
 // triggers refuse accepted -> accepted). These tests cover the app's side.
 import { RequestManagementService } from '../requestManagement';
 import { supabase } from '../supabase';
+import { getCurrentLocation } from '../../utils/geoUtils';
 
 jest.mock('../../utils/logger', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
@@ -129,6 +130,17 @@ describe('acceptRequest: accepting', () => {
     const [[, , notification]] = did('notifications', 'insert');
     expect(notification).toMatchObject({ user_id: HOUSEHOLD, type: 'pickup_accepted', read: false });
     expect(notification.message).toMatch(/^Kofi Mensah has accepted your general pickup request/);
+  });
+
+  // TD34 (owner's decision 2026-11-13): a pickup is paid 100% of its bag
+  // prices by the database at disposal, so accepting works out no payout
+  it('works out no payout and asks for no location: only status, collector and times are written', async () => {
+    database(pending);
+    const result = await service().acceptRequest(REQUEST);
+    expect(result.success).toBe(true);
+    expect(getCurrentLocation).not.toHaveBeenCalled();
+    const [[, , written]] = did('pickup_requests', 'update');
+    expect(Object.keys(written).sort()).toEqual(['accepted_at', 'assignment_expires_at', 'collector_id', 'status']);
   });
 
   it('still succeeds when the household notification cannot be written', async () => {
