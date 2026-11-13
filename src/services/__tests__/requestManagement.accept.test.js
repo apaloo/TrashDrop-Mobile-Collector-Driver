@@ -176,3 +176,48 @@ describe('acceptRequest: accepting', () => {
     expect(result).toEqual({ success: false, error: 'Access denied - authentication issue' });
   });
 });
+
+describe('shared phone: the collector signed in now, never the previous one', () => {
+  it('writes, looks up and names the collector passed in, not the one the service started for', async () => {
+    database(pending);
+    const s = service({ collectorId: OTHER }); // started earlier for another collector
+    const result = await s.acceptRequest(REQUEST, COLLECTOR);
+    expect(result.success).toBe(true);
+    const update = did('pickup_requests', 'update')[0][2];
+    expect(update.collector_id).toBe(COLLECTOR);
+    expect(did('collector_sessions', 'eq').every((c) => c[3] === COLLECTOR)).toBe(true);
+    expect(did('collector_profiles', 'eq')).toContainEqual(['collector_profiles', 'eq', 'user_id', COLLECTOR]);
+    expect(calls.flat()).not.toContain(OTHER);
+  });
+
+  it('initialize starts over for a different collector, and reuses itself for the same one', async () => {
+    jest.useFakeTimers();
+    try {
+      const s = new RequestManagementService();
+      await s.initialize(OTHER);
+      const firstTimer = s.cleanupTimer;
+      expect(await s.initialize(OTHER)).toBe(s);
+      expect(s.cleanupTimer).toBe(firstTimer);
+      await s.initialize(COLLECTOR);
+      expect(s.collectorId).toBe(COLLECTOR);
+      expect(s.isInitialized).toBe(true);
+      expect(s.cleanupTimer).not.toBe(firstTimer);
+      expect(jest.getTimerCount()).toBe(1); // one timer, never one per sign-in
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('a failing release is caught: no unhandled rejection from the timer', async () => {
+    jest.useFakeTimers();
+    try {
+      const s = new RequestManagementService();
+      s.cleanupExpiredAssignments = jest.fn().mockRejectedValue(new Error('offline'));
+      s.startCleanupTimer();
+      await jest.advanceTimersByTimeAsync(s.CLEANUP_INTERVAL);
+      expect(s.cleanupExpiredAssignments).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});

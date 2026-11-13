@@ -818,11 +818,8 @@ const RequestPage = () => {
         logger.info('✅ Digital bin accepted in database:', data[0]);
         result = { success: true, data: data[0] }; // Normalize response format
       } else if (isPickupRequest) {
-        // Ensure requestManager is initialized
-        if (!requestManager.isInitialized) {
-          logger.info('🔄 Initializing requestManager before accepting request...');
-          await requestManager.initialize(user?.id);
-        }
+        // Started for the collector signed in now (returns at once when it is)
+        await requestManager.initialize(user?.id);
         
         // Use requestManager for pickup requests
         logger.debug('📦 Using requestManager.acceptRequest()...');
