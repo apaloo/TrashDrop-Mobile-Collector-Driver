@@ -38,10 +38,3 @@ export const getLastPage = () => {
   }
 };
 
-export const clearLastPage = () => {
-  try {
-    localStorage.removeItem(PAGE_PERSISTENCE_KEY);
-  } catch (error) {
-    console.warn('Failed to clear last page:', error);
-  }
-};

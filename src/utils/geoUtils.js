@@ -574,28 +574,6 @@ export const reverseGeocode = async (lat, lng) => {
 };
 
 /**
- * Formats a location string (handles both POINT() format and regular strings)
- * Synchronous version - returns coordinates for POINT() strings
- * @param {string} location - Location string (POINT() or address)
- * @returns {string} Formatted location
- */
-export const formatLocation = (location) => {
-  if (!location) return 'Location unavailable';
-  
-  // If it's a POINT() string, parse and format coordinates
-  if (location.includes('POINT(')) {
-    const coords = parsePointString(location);
-    if (coords) {
-      return formatCoordinates(coords.lat, coords.lng);
-    }
-    return 'Invalid location format';
-  }
-  
-  // Otherwise, return as-is (it's already an address)
-  return location;
-};
-
-/**
  * Formats a location string with reverse geocoding (async version)
  * Converts POINT() coordinates to actual addresses
  * @param {string} location - Location string (POINT() or address)

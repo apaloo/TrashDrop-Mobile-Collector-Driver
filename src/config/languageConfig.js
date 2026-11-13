@@ -85,12 +85,6 @@ export const getLanguageByCode = (code) =>
 // Get BCP-47 tag for Web Speech API
 export const getBcp47 = (code) => getLanguageByCode(code)?.bcp47 || 'en-GH';
 
-// Get display label (e.g. "Twi (Akan)")
-export const getLanguageLabel = (code) => getLanguageByCode(code)?.label || 'English';
-
-// Get native label (e.g. "Twi")
-export const getNativeLabel = (code) => getLanguageByCode(code)?.nativeLabel || 'English';
-
 // localStorage key
 export const LANGUAGE_STORAGE_KEY = 'preferred_language';
 
