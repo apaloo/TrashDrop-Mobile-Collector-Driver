@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { logger } from '../utils/logger';
 import * as TrendiPayService from './trendiPayService';
 import { getDeadheadShare } from '../utils/paymentCalculations';
+import { binEarningBuckets } from '../utils/binEarnings';
 
 // Feature flag for TrendiPay integration
 const ENABLE_TRENDIPAY = import.meta.env.VITE_ENABLE_TRENDIPAY === 'true';
@@ -1535,14 +1536,17 @@ class EarningsService {
       if (breakdownBinIds.length > 0) {
         const { data: bPayments } = await supabase
           .from('bin_payments')
-          .select('digital_bin_id, total_bill')
+          .select('digital_bin_id, total_bill, collector_share')
           .in('digital_bin_id', breakdownBinIds)
           .eq('type', 'collection')
           .not('status', 'eq', 'failed');
         
         if (bPayments) {
           bPayments.forEach(p => {
-            breakdownBinPaymentMap[p.digital_bin_id] = parseFloat(p.total_bill) || 0;
+            breakdownBinPaymentMap[p.digital_bin_id] = {
+              totalBill: parseFloat(p.total_bill) || 0,
+              collectorShare: p.collector_share,
+            };
           });
         }
       }
@@ -1607,27 +1611,15 @@ class EarningsService {
         }
         
         // Only count earnings if there's an actual bin_payments record
-        const actualBill = breakdownBinPaymentMap[bin.id];
-        if (actualBill === undefined || actualBill === null) {
+        const binPayment = breakdownBinPaymentMap[bin.id];
+        if (!binPayment) {
           return; // Skip - no actual payment processed
         }
-        
-        // Use stored payout fields if available and valid. A promotional payout is
-        // above the client's fee by design (TrashDrop tops it up), so it is valid too.
-        if (bin.collector_core_payout !== null && bin.collector_core_payout !== undefined && 
-            (bin.collector_core_payout < actualBill || bin.is_promotional === true)) {
-          buckets.core += bin.collector_core_payout || 0;
-          buckets.urgent += bin.collector_urgent_payout || 0;
-          buckets.distance += bin.collector_distance_payout || 0;
-          buckets.surge += bin.collector_surge_payout || 0;
-          buckets.tips += bin.collector_tips || 0;
-          buckets.recyclables += bin.collector_recyclables_payout || 0;
-          buckets.loyalty += bin.collector_loyalty_cashback || 0;
-        } else {
-          // Calculate from actual bill using SOP v4.5.6
-          const shareableAmount = Math.max(0, actualBill - (PAYMENT_SPLITS.PLATFORM_REQUEST_FEE || 1.0));
-          buckets.core += shareableAmount * PAYMENT_SPLITS.DEFAULT_DEADHEAD_SHARE;
-        }
+
+        // What the database recorded as the collector's share (owner-approved
+        // 2026-11-13); the payout columns on the bin aren't used
+        const binBuckets = binEarningBuckets(bin, binPayment);
+        Object.keys(binBuckets).forEach(type => { buckets[type] += binBuckets[type]; });
       });
 
       const total = Object.values(buckets).reduce((sum, val) => sum + val, 0);

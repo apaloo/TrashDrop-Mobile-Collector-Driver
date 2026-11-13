@@ -6,6 +6,7 @@ import { isWithinRadius } from '../utils/locationUtils';
 import { useCurrency } from '../context/CurrencyContext';
 import { formatCurrency } from '../utils/currencyUtils';
 import { displayFee } from '../utils/requestFee';
+import { estimateBinEarning } from '../utils/binEarnings';
 import { scanPickupBag } from '../services/bagPricing';
 import { formatLocationAsync } from '../utils/geoUtils';
 import { logger } from '../utils/logger';
@@ -591,7 +592,8 @@ const RequestCard = ({
             </>
           ) : (
             <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm whitespace-nowrap">
-              {formatCurrency(displayFee(request), currency)}
+              {/* Standard digital bins: what the collector earns, not the client's fee */}
+              {formatCurrency(request.source_type === 'digital_bin' ? estimateBinEarning(request).amount : displayFee(request), currency)}
             </span>
           )}
         </div>
@@ -612,6 +614,41 @@ const RequestCard = ({
           <div className="mb-4 p-3 bg-td-cream rounded-md space-y-3">
             {/* Payment Breakdown - show for both new and legacy requests */}
             {(() => {
+              // Standard digital bin: the database's formula (owner-approved
+              // 2026-11-13). The payout columns stored on the bin are the
+              // booked ceiling, not what the collector earns.
+              if (request.source_type === 'digital_bin' && !request.is_promotional) {
+                const est = estimateBinEarning(request);
+                return (
+                  <div className="bg-white p-3 rounded border border-green-200">
+                    <h4 className="text-sm font-semibold text-td-ink mb-2">What you earn</h4>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">
+                          {est.sharePercent}% of the base{est.km != null ? ` (${est.km.toFixed(1)} km away)` : ' (distance unknown)'}
+                        </span>
+                        <span className="font-medium">{formatCurrency(est.base, currency)}</span>
+                      </div>
+                      {est.urgent > 0 && (
+                        <div className="flex justify-between text-orange-600">
+                          <span>⚡ 75% of the urgent surcharge</span>
+                          <span className="font-medium">{formatCurrency(est.urgent, currency)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-bold text-green-600 border-t pt-1 mt-1">
+                        <span>You earn</span>
+                        <span>{formatCurrency(est.amount, currency)}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-td-sage mt-2">
+                      {est.kmSource === 'recorded'
+                        ? `💡 From the client's ${formatCurrency(request.fee, currency)}, less the ${formatCurrency(est.requestFee, currency)} request fee, at the distance recorded when you accepted. Plus any tips.`
+                        : `💡 From the client's ${formatCurrency(request.fee, currency)}, less the ${formatCurrency(est.requestFee, currency)} request fee. Your share is 85–92% by your distance to the bin when you accept (87% if your location is off). Plus any tips.`}
+                    </p>
+                  </div>
+                );
+              }
+
               // New payment model - has breakdown data
               if (request.collector_core_payout) {
                 return (

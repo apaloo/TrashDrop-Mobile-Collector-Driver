@@ -87,6 +87,7 @@ export const transformRequestsData = (
         bag_count: item.bag_count || null, // For digital bins
         photo_urls: item.photo_urls || null, // For digital bin images
         is_promotional: item.is_promotional || false, // Promotional pricing flag
+        is_urgent: item.is_urgent || false, // Urgent bins earn 75% of the surcharge (job card estimate)
         collector_total_payout: item.collector_total_payout || null, // Pre-computed collector payout
         bin_size_liters: item.bin_size_liters || null // Bin size for promotional schedule lookup
       };
