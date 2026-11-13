@@ -161,7 +161,11 @@ class EarningsCacheManager {
     this.cacheKey = `${CACHE_CONFIG.EARNINGS_CACHE_KEY}_${collectorId}`;
   }
 
-  async get() {
+  /**
+   * @param {{ fallback?: boolean }} [options] fallback: the fetch just failed,
+   *   so any copy from the last 24 hours beats an error, online or not
+   */
+  async get({ fallback = false } = {}) {
     try {
       const cached = localStorage.getItem(this.cacheKey);
       if (!cached) return null;
@@ -171,7 +175,7 @@ class EarningsCacheManager {
       const isOnline = navigator.onLine;
       
       // Determine cache validity based on online status
-      const maxAge = isOnline 
+      const maxAge = isOnline && !fallback
         ? CACHE_CONFIG.CACHE_DURATION_MS 
         : CACHE_CONFIG.OFFLINE_CACHE_DURATION_MS;
       
@@ -610,8 +614,11 @@ class EarningsService {
       this.analytics.trackError('fetch_error', error.message);
       this.analytics.trackEarningsFetch('error', Date.now() - startTime, false, 0);
       
-      // Try to return stale cache as fallback
-      const staleCache = await this.cache.get();
+      // Try to return stale cache as fallback. Up to 2026-11-13 this asked
+      // for the same 5-minute copy as a normal load, so on a weak connection
+      // (online, but the fetch fails) anything older gave an error instead of
+      // the last earnings; the page labels the copy with its age.
+      const staleCache = await this.cache.get({ fallback: true });
       if (staleCache) {
         logger.warn('Using stale cache due to fetch error');
         return {
