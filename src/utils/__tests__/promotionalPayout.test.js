@@ -1,4 +1,5 @@
 import { promotionalPayout, computePromotionalShares } from '../paymentCalculations';
+import { binEarningBuckets } from '../binEarnings';
 
 describe('promotional payout', () => {
   it('uses the payout and fee the database stored when the bin was booked', () => {
@@ -25,5 +26,15 @@ describe('promotional payout', () => {
     expect(r.collectorShare).toBe(80);
     expect(r.platformShare).toBe(0);
     expect(r.platformSubsidy).toBe(36);
+  });
+});
+
+// Added with the payout display change (owner-approved 2026-11-13): the
+// Earnings breakdown keeps a promotional bin's booked payout, above the fee
+describe('promotional payout in the Earnings breakdown', () => {
+  it('is the booked promotional payout, whatever the client paid', () => {
+    const bin = { is_promotional: true, fee: 44, collector_core_payout: 80, collector_total_payout: 80 };
+    expect(binEarningBuckets(bin, { totalBill: 44, collectorShare: 80 }).core).toBe(80);
+    expect(binEarningBuckets(bin, { totalBill: 0, collectorShare: null }).core).toBe(80);
   });
 });
