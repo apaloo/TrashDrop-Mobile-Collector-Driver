@@ -514,49 +514,9 @@ export async function initiateDisbursement({
   }
 }
 
-/**
- * Check disbursement status
- * 
- * @param {string} transactionId - TrendiPay transaction ID
- * @param {string} reference - Original disbursement reference
- * @returns {Promise<Object>} Current status
- */
-export async function checkDisbursementStatus(transactionId, reference) {
-  try {
-    console.log('🔍 [TrendiPay] Checking disbursement status:', { transactionId, reference });
-    
-    // Uses same endpoint as collection status check
-    const result = await makeProxyRequest('check-transaction-status', null, {
-      transactionId, // rrn value
-      merchantId: TRENDIPAY_CONFIG.merchantId
-    });
-    
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to check status');
-    }
-    
-    const data = result.data;
-    const { status, amount } = data;
-    const message = data.reason || data.message;
-    const completedAt = data.lastUpdated;
-    
-    return {
-      success: true,
-      status, // 'pending', 'processing', 'success', 'failed', 'expired'
-      message,
-      amount,
-      completedAt,
-      transactionId
-    };
-    
-  } catch (error) {
-    logger.error('Error checking disbursement status:', error);
-    return {
-      success: false,
-      error: error.message || 'Failed to check status'
-    };
-  }
-}
+// No checkDisbursementStatus: nothing in the app asked for it, and it read the
+// proxy's answer one level too shallow (status always undefined). A payout's
+// status comes from the gateway's webhook on the server (trendipay-webhook).
 
 /**
  * Check that the app is set up to reach the TrendiPay proxy.
@@ -576,6 +536,5 @@ export default {
   initiateCollection,
   checkCollectionStatus,
   initiateDisbursement,
-  checkDisbursementStatus,
   testConnection
 };

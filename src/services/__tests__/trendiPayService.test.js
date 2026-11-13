@@ -88,3 +88,117 @@ describe('initiateCollection', () => {
     expect(await initiateCollection(COLLECT)).toEqual({ success: false, error: 'Only active collectors can do this' });
   });
 });
+
+// Added 2026-11-13 (TD33): status checks confirm a client's MoMo payment
+// (paymentService), and disbursements pay collectors (Earnings cash-out).
+describe('checkCollectionStatus', () => {
+  it('asks the proxy about the transaction and reads the gateway answer inside its envelope', async () => {
+    mockResponse = () => ({ status: 200, body: { success: true, data: { success: true, data: { status: 'success', reason: 'Approved', amount: 2650, lastUpdated: '2026-11-13T09:00:00Z', accountNumber: MOMO } } } });
+    const { checkCollectionStatus } = load();
+    const res = await checkCollectionStatus('rrn-1', 'pay-1');
+    expect(requests[0].body).toMatchObject({ action: 'check-transaction-status', transactionId: 'rrn-1', payload: null });
+    expect(res).toMatchObject({ success: true, status: 'success', message: 'Approved', amount: 2650, completedAt: '2026-11-13T09:00:00Z', transactionId: 'rrn-1' });
+    expect(logged).not.toContain(MOMO);
+  });
+
+  it('also reads an answer without the inner envelope', async () => {
+    mockResponse = () => ({ status: 200, body: { success: true, data: { status: 'failed', message: 'Insufficient funds' } } });
+    const { checkCollectionStatus } = load();
+    expect(await checkCollectionStatus('rrn-2')).toMatchObject({ success: true, status: 'failed', message: 'Insufficient funds' });
+  });
+
+  it("reports the proxy's refusal instead of a status", async () => {
+    mockResponse = () => ({ status: 400, body: { success: false, error: 'Missing or invalid transactionId (rrn)' } });
+    const { checkCollectionStatus } = load();
+    expect(await checkCollectionStatus('bad id')).toEqual({ success: false, error: 'Missing or invalid transactionId (rrn)' });
+  });
+});
+
+describe('initiateDisbursement (paying a collector)', () => {
+  const PAYOUT = { reference: 'wd-1', accountNumber: MOMO, rSwitch: 'TELECEL', amount: 21.75, accountName: 'Kofi Mensah' };
+
+  it('sends the payout in pesewas as a deposit, with the collector\'s name, through the proxy', async () => {
+    mockResponse = () => ({ status: 200, body: { success: true, data: { success: true, data: { rrn: 'rrn-9', status: 'processing', reason: 'Queued' } } } });
+    const { initiateDisbursement } = load();
+    const res = await initiateDisbursement(PAYOUT);
+    const [req] = requests;
+    expect(req.body).toMatchObject({ action: 'initiate-disbursement', terminalId: 'T1' });
+    expect(req.options.headers.Authorization).toBe('Bearer user-token');
+    expect(req.body.payload).toMatchObject({
+      reference: 'wd-1', accountNumber: MOMO, amount: 2175, type: 'deposit', currency: 'GHS',
+      accountName: 'Kofi Mensah', senderName: 'TrashDrop',
+      callbackUrl: 'https://proj.supabase.co/functions/v1/trendipay-webhook',
+    });
+    expect(req.body.payload.rSwitch).toBe(req.body.payload.rSwitch.toLowerCase());
+    expect(res).toMatchObject({ success: true, transactionId: 'rrn-9', rrn: 'rrn-9', status: 'processing', message: 'Queued' });
+  });
+
+  it('never writes the full MoMo number to the console', async () => {
+    const { initiateDisbursement } = load();
+    await initiateDisbursement(PAYOUT);
+    expect(logged).not.toContain(MOMO);
+  });
+
+  it('without a name, the account number stands in (the gateway requires one)', async () => {
+    const { initiateDisbursement } = load();
+    await initiateDisbursement({ ...PAYOUT, accountName: '' });
+    expect(requests[0].body.payload.accountName).toBe(MOMO);
+  });
+
+  it.each([
+    ['no MoMo number', { ...PAYOUT, accountNumber: '' }, 'Missing required disbursement parameters: accountNumber'],
+    ['no amount', { ...PAYOUT, amount: 0 }, 'Missing required disbursement parameters: amount'],
+    ['a negative amount', { ...PAYOUT, amount: -5 }, 'Amount must be greater than zero'],
+    ['less than GH₵1', { ...PAYOUT, amount: 0.99 }, 'Amount must be at least 1.00 GHS (100 pesewas)'],
+  ])('%s: refused without calling the gateway', async (_l, params, message) => {
+    const { initiateDisbursement } = load();
+    expect(await initiateDisbursement(params)).toEqual({ success: false, error: message });
+    expect(requests).toEqual([]);
+  });
+
+  it("reports the proxy's refusal (only active collectors may cash out)", async () => {
+    mockResponse = () => ({ status: 403, body: { error: 'Only active collectors can do this' } });
+    const { initiateDisbursement } = load();
+    expect(await initiateDisbursement(PAYOUT)).toEqual({ success: false, error: 'Only active collectors can do this' });
+  });
+});
+
+describe('talking to the proxy', () => {
+  it('a reply that is not JSON is an error, not a payment', async () => {
+    global.fetch = async (url, options) => {
+      requests.push({ url, options, body: JSON.parse(options.body) });
+      return { ok: false, status: 502, statusText: 'Bad Gateway', text: async () => '<html>502</html>' };
+    };
+    const { initiateCollection } = load();
+    const res = await initiateCollection(COLLECT);
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/Invalid JSON response \(status 502\)/);
+  });
+
+  it('retries a dropped connection, then succeeds', async () => {
+    let attempts = 0;
+    global.fetch = async (url, options) => {
+      attempts++;
+      requests.push({ url, options, body: JSON.parse(options.body) });
+      if (attempts === 1) throw new TypeError('Failed to fetch');
+      return { ok: true, status: 200, statusText: '', text: async () => JSON.stringify({ success: true, data: { success: true, data: { rrn: 'rrn-1', status: 'pending' } } }) };
+    };
+    const { initiateCollection } = load();
+    const res = await initiateCollection(COLLECT);
+    expect(attempts).toBe(2);
+    expect(res).toMatchObject({ success: true, transactionId: 'rrn-1' });
+  }, 10000);
+
+  it('a refused request is not retried', async () => {
+    mockResponse = () => ({ status: 403, body: { error: 'Sign in to check a payment' } });
+    const { checkCollectionStatus } = load();
+    await checkCollectionStatus('rrn-1');
+    expect(requests).toHaveLength(1);
+  });
+
+  it('there is no way to check a payout from the app (that status comes from the server\'s webhook)', () => {
+    const mod = load();
+    expect(mod.checkDisbursementStatus).toBeUndefined();
+    expect(mod.default.checkDisbursementStatus).toBeUndefined();
+  });
+});
