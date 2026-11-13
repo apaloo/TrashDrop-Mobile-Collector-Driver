@@ -123,8 +123,6 @@ const createDigitalBinIcon = () => {
   });
 };
 
-// Create dustbin icons for different types
-export const startMarkerIcon = createDustbinIcon('#22c55e', 'start'); // Green
 export const assignmentMarkerIcon = createDustbinIcon('#3b82f6', 'assignment'); // Blue
 export const requestMarkerIcon = createDustbinIcon('#ef4444', 'request'); // Red
 export const digitalBinMarkerIcon = createDigitalBinIcon(); // Black for digital bins

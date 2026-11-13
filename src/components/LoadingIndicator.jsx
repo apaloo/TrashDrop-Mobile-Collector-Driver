@@ -36,20 +36,6 @@ const LoadingIndicator = ({ size = 'md', color = 'primary', fullScreen = false, 
 };
 
 /**
- * Full-screen loading overlay
- */
-export const FullScreenLoading = ({ text = 'Loading...' }) => (
-  <LoadingIndicator size="lg" fullScreen={true} text={text} />
-);
-
-/**
- * Inline loading indicator for buttons or small containers
- */
-export const InlineLoading = ({ color = 'primary' }) => (
-  <LoadingIndicator size="sm" color={color} />
-);
-
-/**
  * Loading indicator for sections or cards
  */
 export const SectionLoading = ({ text = 'Loading...' }) => (
