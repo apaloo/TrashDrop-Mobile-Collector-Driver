@@ -1,10 +1,16 @@
 {
-  "_comment": "Database calls (rpc() functions, or from() tables in \"table\") that already fail and are tracked, so CI flags only new ones (scripts/ci/check-rpc-calls.mjs). Each needs its register item in the household repository's engineering/registers/tech-debt.md. Delete an entry when it is fixed; CI fails while a fixed entry is still listed.",
+  "_comment": "Database calls (rpc() functions; from() tables in \"table\", with \"column\" for a column) that already fail and are tracked, so CI flags only new ones (scripts/ci/check-rpc-calls.mjs). Each needs its register item in the household repository's engineering/registers/tech-debt.md. Delete an entry when it is fixed; CI fails while a fixed entry is still listed.",
   "problems": [
     {
       "file": "src/services/statusService.js",
       "table": "collector_status_history",
       "ref": "TD66"
+    },
+    {
+      "file": "src/services/disposalService.js",
+      "table": "collector_tips",
+      "column": "status",
+      "ref": "TD69"
     }
   ]
 }
