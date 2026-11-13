@@ -8,6 +8,7 @@ import { supabase } from './supabase.js';
 import { audioAlertService } from './audioAlertService.js';
 import { logger } from '../utils/logger.js';
 import { calculateDistance } from '../utils/geoUtils.js';
+import { toLatLng } from '../utils/availableRequests.js';
 
 class RealtimeNotificationService {
   constructor() {
@@ -185,24 +186,13 @@ class RealtimeNotificationService {
       return null; // Can't filter by distance without location
     }
 
-    let requestCoords = request.coordinates;
-    
-    // Parse coordinates if needed
-    if (typeof requestCoords === 'string') {
-      try {
-        requestCoords = JSON.parse(requestCoords);
-      } catch {
-        return null;
-      }
-    }
-    
-    if (Array.isArray(requestCoords)) {
-      requestCoords = { lat: requestCoords[0], lng: requestCoords[1] };
-    }
-
-    if (!requestCoords || !requestCoords.lat || !requestCoords.lng) {
-      return null;
-    }
+    // Realtime sends a geography column (pickup_requests.coordinates) as
+    // EWKB hex ("0101000020E6..."). Until 2026-11-13 this tried JSON.parse on
+    // it, failed, and so alerted for every new request whatever its distance.
+    const point = toLatLng(request.coordinates)
+      || toLatLng({ lat: request.latitude, lng: request.longitude });
+    if (!point) return null;
+    const requestCoords = { lat: point[0], lng: point[1] };
 
     return calculateDistance(this.collectorLocation, requestCoords);
   }
