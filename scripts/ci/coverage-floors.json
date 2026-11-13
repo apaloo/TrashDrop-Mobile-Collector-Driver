@@ -10,6 +10,7 @@
     "src/services/requestManagement.js": 74.2,
     "src/services/bagPricing.js": 97.5,
     "src/utils/binEarnings.js": 100,
-    "src/utils/disposalEarnings.js": 100
+    "src/utils/disposalEarnings.js": 100,
+    "src/services/volunteerService.js": 100
   }
 }
