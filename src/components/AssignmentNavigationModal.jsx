@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import GoogleMapsNavigation from './GoogleMapsNavigation';
 import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
+import { toLatLng } from '../utils/availableRequests';
 import Toast from './Toast';
 import { debounce } from 'lodash';
 import { logger } from '../utils/logger';
@@ -122,14 +123,12 @@ const AssignmentNavigationModal = ({
           return { lat, lng, isFallback: false };
         }
         
-        // Handle PostGIS binary format - return null (no fallback coordinates)
+        // PostGIS EWKB hex ("0101000020E6..."), how Supabase returns a
+        // geography column: read with the app's one position reader (TD71);
+        // unreadable is still null, never a made-up position
         if (dest.startsWith('0101000020')) {
-          // Reduce PostGIS warning spam to 1% frequency
-          if (Math.random() < 0.01) {
-            logger.warn('⚠️ PostGIS binary format detected - cannot parse coordinates');
-          }
-          // Return null - NO FALLBACK COORDINATES
-          return null;
+          const point = toLatLng(dest);
+          return point ? { lat: point[0], lng: point[1], isFallback: false } : null;
         }
         
         // Handle "lat,lng" string

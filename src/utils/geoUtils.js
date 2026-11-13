@@ -1,4 +1,5 @@
 import { logger } from './logger';
+import { toLatLng } from './availableRequests';
 
 /**
  * Calculates the distance between two coordinates in kilometers
@@ -296,17 +297,10 @@ export const getLocationWithRetry = async (maxRetries = 3, delay = 2000) => {
  */
 export const parsePointString = (pointString) => {
   if (!pointString || typeof pointString !== 'string') return null;
-  
-  // Match POINT(lng lat) format
-  const match = pointString.match(/POINT\(([+-]?\d+\.?\d*)\s+([+-]?\d+\.?\d*)\)/i);
-  if (!match) return null;
-  
-  const lng = parseFloat(match[1]);
-  const lat = parseFloat(match[2]);
-  
-  if (isNaN(lat) || isNaN(lng)) return null;
-  
-  return { lat, lng };
+  // WKT "POINT(lng lat)" and the EWKB hex Supabase returns for a geography
+  // column, read with the app's one position reader (TD71)
+  const point = toLatLng(pointString);
+  return point ? { lat: point[0], lng: point[1] } : null;
 };
 
 /**
