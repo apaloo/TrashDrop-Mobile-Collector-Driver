@@ -2,8 +2,8 @@
   "_comment": "Line coverage floors (scripts/ci/coverage-summary.mjs): a pull request may not drop the whole app or a critical file more than 0.5 points below its floor, and raises a floor when coverage rises 2 or more points above it, so floors only go up. Set 2026-11-13 from that day's coverage, rounded down.",
   "total": 24.8,
   "files": {
-    "src/utils/paymentCalculations.js": 49.3,
-    "src/services/disposalService.js": 79.6,
+    "src/utils/paymentCalculations.js": 100,
+    "src/services/disposalService.js": 90.5,
     "src/services/paymentService.js": 85.9,
     "src/services/earningsService.js": 69.6,
     "src/services/trendiPayService.js": 91,

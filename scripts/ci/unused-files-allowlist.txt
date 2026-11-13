@@ -2,9 +2,3 @@
 # One path per line, then " # " and why it stays. Remove an entry when its file goes.
 src/theme/brand.js # design tokens for inline styles; the counterpart of src/theme/tokens.css, kept in step with the admin design system
 src/theme/brand.js:* # the design-token exports (TD, BTN, FF, TYPE) are the design system's inline-style API, kept in step with tokens.css
-src/utils/paymentCalculations.js:PROMOTIONAL_MAX_REQUESTS # protected payout file (CLAUDE.md): removed with the next owner-approved payout change
-src/utils/paymentCalculations.js:applyOnlyDownRule # protected payout file (CLAUDE.md): removed with the next owner-approved payout change
-src/utils/paymentCalculations.js:estimateCollectorPayout # protected payout file (CLAUDE.md): removed with the next owner-approved payout change
-src/utils/paymentCalculations.js:formatPayout # protected payout file (CLAUDE.md): removed with the next owner-approved payout change
-src/utils/paymentCalculations.js:getLoyaltyTierName # protected payout file (CLAUDE.md): removed with the next owner-approved payout change
-src/services/disposalService.js:getDisposalSummary # protected payout file (CLAUDE.md): removed with the next owner-approved payout change
