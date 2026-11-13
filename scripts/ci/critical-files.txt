@@ -9,3 +9,5 @@ src/services/earningsService.js
 src/services/trendiPayService.js
 src/services/requestManagement.js
 src/services/bagPricing.js
+src/utils/binEarnings.js
+src/utils/disposalEarnings.js
