@@ -224,6 +224,28 @@ export const authService = {
     }
   },
   
+  // Cleanup proof photos are public (owner's decision, 2026-11-13, TD70): they
+  // go to the public illegal-dumping-photos bucket, so the link saved with the
+  // job (illegal_dumping_mobile.cleanup_photos) opens for staff and the public
+  // map. ID and vehicle photos stay private (uploadPhoto below).
+  uploadCleanupPhoto: async (file, jobId) => {
+    try {
+      const fileExt = (file.name || '').split('.').pop() || 'jpg';
+      const filePath = `cleanup-photos/${jobId}/${Date.now()}.${fileExt}`;
+      const { error } = await supabase.storage
+        .from('illegal-dumping-photos')
+        .upload(filePath, file, { cacheControl: '3600', upsert: false });
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage
+        .from('illegal-dumping-photos')
+        .getPublicUrl(filePath);
+      return { success: true, url: publicUrl };
+    } catch (error) {
+      logger.error('❌ Error uploading cleanup photo:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
   // Upload photo to Supabase Storage
   uploadPhoto: async (file, type) => {
     try {

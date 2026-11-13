@@ -29,7 +29,7 @@ jest.mock('../../utils/imageManager', () => ({
 
 // The hook uploads through the Supabase service; keep the real client out of Jest
 jest.mock('../../services/supabase', () => ({
-  authService: { uploadPhoto: jest.fn() }
+  authService: { uploadPhoto: jest.fn(), uploadCleanupPhoto: jest.fn() }
 }));
 
 // Mock the useRef hook
@@ -70,7 +70,7 @@ describe('usePhotoCapture', () => {
     ImageManager.clearAllImages.mockResolvedValue(true);
 
     // Photos upload to cloud storage before they are kept
-    authService.uploadPhoto.mockResolvedValue({ success: true, url: 'https://storage.example/photo.jpg' });
+    authService.uploadCleanupPhoto.mockResolvedValue({ success: true, url: 'https://storage.example/photo.jpg' });
     
     // Mock useRef for file input
     useRef.mockImplementation(() => ({
@@ -140,7 +140,9 @@ describe('usePhotoCapture', () => {
       // A blob preview showed while uploading, then was freed
       expect(createObjectURL).toHaveBeenCalledWith(mockPhoto.file);
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:test-url');
-      expect(authService.uploadPhoto).toHaveBeenCalledWith(mockPhoto.file, `assignment_${requestId}`);
+      // Cleanup proof photos go to the public bucket (TD70), never the private ID-photo one
+      expect(authService.uploadCleanupPhoto).toHaveBeenCalledWith(mockPhoto.file, requestId);
+      expect(authService.uploadPhoto).not.toHaveBeenCalled();
     });
   });
 
@@ -217,7 +219,7 @@ describe('usePhotoCapture', () => {
       expect(result.current.isInitialized).toBe(true);
     });
 
-    authService.uploadPhoto.mockResolvedValueOnce({ success: false, error: 'Network down' });
+    authService.uploadCleanupPhoto.mockResolvedValueOnce({ success: false, error: 'Network down' });
 
     let captureError;
     await act(async () => {
