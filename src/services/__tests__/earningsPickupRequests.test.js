@@ -58,10 +58,15 @@ describe('calculatePlatformEarnings (pickup requests)', () => {
     expect(calculatePlatformEarnings({ fee: 1 })).toEqual({ platformCore: 0, platformUrg: 0, platformSurge: 0, platformRecyclables: 0, requestFee: 1, total: 1 });
   });
 
-  // Not pinned (found 2026-11-13, for the owner): for a prepaid-bag job with
-  // a stored payout, calculatePlatformEarnings counts the fee less the
-  // request fee as platform core (collector_core_payout is not set by the
-  // prepaid model), while the collector is shown 100% of it. The Earnings
-  // page's platform figures would overstate the platform share once a pickup
-  // request is disposed (none had been). A display change: COLLECTOR_PAYOUTS.md.
+  // TD64 (owner-approved 2026-11-13): for a prepaid-bag job TrashDrop counts
+  // only what the database recorded (platform_share, 0 for prepaid bags), so
+  // the collector's 100% and TrashDrop's share never add up to more than the job
+  it('a prepaid-bag job: TrashDrop counts only what the database recorded, no request fee', () => {
+    const job = { fee: 12.5, bag_count: 5, collector_total_payout: 12.5, platform_share: 0, payout_breakdown: { model: 'prepaid_bags' } };
+    expect(calculatePlatformEarnings(job)).toEqual({ platformCore: 0, platformUrg: 0, platformSurge: 0, platformRecyclables: 0, requestFee: 0, total: 0 });
+    expect(calculateCollectorEarnings(job) + calculatePlatformEarnings(job).total).toBe(12.5);
+    // whatever the database recorded, as recorded
+    expect(calculatePlatformEarnings({ ...job, platform_share: '0.75', payout_breakdown: { model: 'prepaid_bags_v2' } }).total).toBe(0.75);
+    expect(calculatePlatformEarnings({ ...job, platform_share: null }).total).toBe(0);
+  });
 });
