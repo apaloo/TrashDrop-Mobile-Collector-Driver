@@ -392,6 +392,16 @@ function calculateCollectorEarnings(pickup) {
  * @returns {Object} Platform earnings breakdown
  */
 function calculatePlatformEarnings(pickup) {
+  // Prepaid bags: the household paid for the bags in advance and the collector
+  // gets 100% of their unit prices; TrashDrop takes only what the database
+  // recorded for the job (td_apply_prepaid_bag_payout sets platform_share 0).
+  // Until 2026-11-13 this counted the fee less GH₵1 as TrashDrop's while the
+  // collector was shown 100% (TD64, owner-approved fix).
+  if (String(pickup.payout_breakdown?.model || '').startsWith('prepaid_bags')) {
+    const recorded = parseFloat(pickup.platform_share) || 0;
+    return { platformCore: recorded, platformUrg: 0, platformSurge: 0, platformRecyclables: 0, requestFee: 0, total: recorded };
+  }
+
   // Request fee is ALWAYS 100% platform revenue (GHC 1.00 default)
   const requestFee = pickup.request_fee || 1.0;
   
