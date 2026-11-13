@@ -649,28 +649,6 @@ class EarningsService {
   }
 
   /**
-   * Clear cached earnings data
-   */
-  clearCache() {
-    this.cache.clear();
-    this.analytics.track('cache_cleared');
-  }
-
-  /**
-   * Get cache statistics
-   */
-  getCacheStats() {
-    return this.cache.getStats();
-  }
-
-  /**
-   * Get analytics summary
-   */
-  getAnalyticsSummary() {
-    return this.analytics.generateSummary();
-  }
-
-  /**
    * Fix #5: Optimized earnings data fetch using single RPC call
    * Falls back to legacy multi-query method if RPC not available
    * 
@@ -679,7 +657,7 @@ class EarningsService {
    * @param {Date} options.endDate - End date for earnings period
    * @returns {Promise<Object>} Aggregated earnings data
    */
-  async getEarningsDataOptimized(options = {}) {
+  async getEarningsDataOptimized() {
     try {
       // NOTE: get_collector_earnings_aggregate RPC is currently unreliable:
       //   - Does not return withdrawableEarnings, estimatedPendingEarnings, cashCollectedEarnings
@@ -689,139 +667,11 @@ class EarningsService {
       // TODO: Rebuild the RPC to match the full method output, then re-enable.
       logger.info('✅ Using full earnings calculation (RPC bypassed)');
       return this.getEarningsData();
-      /* eslint-disable no-unreachable -- the RPC path below stays in place until the RPC is rebuilt (TODO above) */
-
-      const { startDate, endDate } = options;
-      
-      // Try the optimized RPC function first
-      const { data, error } = await supabase.rpc('get_collector_earnings_aggregate', {
-        p_collector_id: this.collectorId,
-        p_start_date: startDate?.toISOString() || null,
-        p_end_date: endDate?.toISOString() || null
-      });
-      
-      if (error) {
-        // RPC not available, fall back to legacy method
-        logger.warn('Earnings RPC not available, using legacy method:', error.message);
-        return this.getEarningsData();
-      }
-      
-      logger.info('✅ Earnings fetched via optimized RPC');
-      
-      // Transform RPC response to match existing data structure
-      const pickupEarnings = data.pickup_earnings || {};
-      const digitalBinEarnings = data.digital_bin_earnings || {};
-      const pendingEarnings = data.pending_earnings || {};
-      const settlements = data.settlements || {};
-      const jobCounts = data.job_counts || {};
-      const loyaltyTier = data.loyalty_tier || { tier: 'Silver', cashback_rate: 0.01 };
-      const tipsReceived = data.tips_received || { total: 0, count: 0 };
-      
-      // Calculate totals
-      const totalPickupEarnings = parseFloat(pickupEarnings.total) || 0;
-      const totalBinEarnings = parseFloat(digitalBinEarnings.total) || 0;
-      const totalEarnings = totalPickupEarnings + totalBinEarnings;
-      const pendingDisposalEarnings = parseFloat(pendingEarnings.total) || 0;
-      const disposedEarnings = totalEarnings - pendingDisposalEarnings;
-      
-      // Platform share
-      const platformShare = parseFloat(data.platform_share) || 0;
-      const grossRevenue = totalEarnings + platformShare;
-      
-      // Settlement calculations
-      const cashCollected = parseFloat(settlements.cash_collected) || 0;
-      const digitalCollected = parseFloat(settlements.digital_collected) || 0;
-      const netSettlement = cashCollected - platformShare;
-      
-      // Helper: validate collector_total_payout — if it equals or exceeds the bill,
-      // SOP was never applied (legacy bug). Recalculate from total_bill/fee.
-      const resolveRpcItemAmount = (item) => {
-        const payout = parseFloat(item.collector_total_payout);
-        const bill = parseFloat(item.total_bill) || parseFloat(item.fee) || 0;
-        // Trust payout only if it's less than the bill (SOP deducted platform cut)
-        if (payout && bill > 0 && payout < bill) return payout;
-        // Recalculate: (bill - platform fee) × deadhead share
-        return Math.max(0, bill - 1.0) * 0.87;
-      };
-
-      // Build transactions from items
-      const transactions = [
-        ...(pickupEarnings.items || []).map(item => ({
-          id: item.id,
-          type: 'pickup',
-          description: `${item.waste_type || 'Waste'} pickup`,
-          amount: resolveRpcItemAmount(item),
-          date: item.disposed_at || item.created_at,
-          status: item.status
-        })),
-        ...(digitalBinEarnings.items || []).map(item => ({
-          id: item.id,
-          type: 'digital_bin',
-          description: `Digital bin - ${item.waste_type || 'Waste'}`,
-          amount: resolveRpcItemAmount(item),
-          date: item.disposed_at || item.created_at,
-          status: item.status
-        }))
-      ].sort((a, b) => new Date(b.date) - new Date(a.date));
-      
-      // Build chart data
-      const chartData = {
-        week: (data.chart_data || []).slice(-7),
-        month: data.chart_data || [],
-        year: data.chart_data || []
-      };
-      
-      return {
-        totalEarnings,
-        pendingDisposalEarnings,
-        disposedEarnings,
-        platformEarnings: platformShare,
-        grossRevenue,
-        revenueSplit: {
-          collector: totalEarnings,
-          platform: platformShare
-        },
-        paymentSettlement: {
-          cashCollected,
-          digitalCollected,
-          platformShare,
-          netSettlement,
-          collectorOwes: netSettlement < 0,
-          amountDue: Math.abs(netSettlement)
-        },
-        jobCounts: {
-          pickedUp: jobCounts.total_picked_up || 0,
-          disposed: jobCounts.total_disposed || 0,
-          binsPickedUp: jobCounts.bins_picked_up || 0,
-          binsDisposed: jobCounts.bins_disposed || 0
-        },
-        completionRate: parseFloat(data.completion_rate) || 100,
-        weeklyEarnings: parseFloat(data.weekly_earnings) || 0,
-        monthlyEarnings: parseFloat(data.monthly_earnings) || 0,
-        loyaltyTier,
-        tipsReceived: parseFloat(tipsReceived.total) || 0,
-        transactions,
-        chartData,
-        // Breakdown by bucket type
-        earningsBreakdown: {
-          core: (parseFloat(pickupEarnings.core) || 0) + (parseFloat(digitalBinEarnings.core) || 0),
-          urgent: (parseFloat(pickupEarnings.urgent) || 0) + (parseFloat(digitalBinEarnings.urgent) || 0),
-          distance: (parseFloat(pickupEarnings.distance) || 0) + (parseFloat(digitalBinEarnings.distance) || 0),
-          surge: (parseFloat(pickupEarnings.surge) || 0) + (parseFloat(digitalBinEarnings.surge) || 0),
-          tips: (parseFloat(pickupEarnings.tips) || 0) + (parseFloat(digitalBinEarnings.tips) || 0),
-          recyclables: (parseFloat(pickupEarnings.recyclables) || 0) + (parseFloat(digitalBinEarnings.recyclables) || 0),
-          loyalty: (parseFloat(pickupEarnings.loyalty) || 0) + (parseFloat(digitalBinEarnings.loyalty) || 0)
-        },
-        _source: 'rpc_optimized',
-        _generatedAt: data.generated_at
-      };
-      
     } catch (error) {
       logger.error('Error in optimized earnings fetch:', error);
       // Fall back to legacy method
       return this.getEarningsData();
     }
-    /* eslint-enable no-unreachable */
   }
 
   async getEarningsData() {
@@ -1466,37 +1316,6 @@ class EarningsService {
     }
   }
 
-  async processWithdrawal(amount, paymentDetails) {
-    try {
-      // In production, this would integrate with a payment gateway
-      // For now, just record the withdrawal in our database
-      const { error } = await supabase
-        .from('withdrawals')
-        .insert({
-          collector_id: this.collectorId,
-          amount,
-          payment_method: paymentDetails.method,
-          payment_details: paymentDetails,
-          status: 'pending',
-          created_at: new Date().toISOString()
-        });
-
-      if (error) throw error;
-
-      return {
-        success: true,
-        message: 'Withdrawal request submitted successfully'
-      };
-
-    } catch (error) {
-      logger.error('Error processing withdrawal:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
-
   /**
    * Get detailed earnings breakdown by bucket type (SOP v4.5.6)
    * Falls back to legacy fee calculation if new fields unavailable
@@ -1656,56 +1475,6 @@ class EarningsService {
   }
 
   /**
-   * Get payout transactions with type breakdown
-   * 
-   * @param {string} [timeframe='30d'] - Timeframe for transactions (7d, 30d, 90d)
-   * @returns {Promise<Object>} Transactions grouped by type
-   */
-  async getPayoutTransactions(timeframe = '30d') {
-    try {
-      // Calculate date range
-      const endDate = new Date();
-      const startDate = new Date();
-      const days = parseInt(timeframe) || 30;
-      startDate.setDate(endDate.getDate() - days);
-
-      const { data: transactions, error } = await supabase
-        .from('payout_transactions')
-        .select('*')
-        .eq('collector_id', this.collectorId)
-        .gte('created_at', startDate.toISOString())
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      // Group by transaction type
-      const byType = {};
-      transactions?.forEach(tx => {
-        if (!byType[tx.transaction_type]) {
-          byType[tx.transaction_type] = 0;
-        }
-        byType[tx.transaction_type] += tx.amount || 0;
-      });
-
-      return {
-        success: true,
-        data: {
-          transactions: transactions || [],
-          byType
-        }
-      };
-
-    } catch (error) {
-      logger.error('Error fetching payout transactions:', error);
-      return {
-        success: false,
-        error: error.message,
-        data: { transactions: [], byType: {} }
-      };
-    }
-  }
-
-  /**
    * The collector's average rating from households (1-5), or 0 when nobody
    * has rated them yet. Set by the database when a household rates a job.
    * @returns {Promise<number>}
@@ -1777,66 +1546,6 @@ class EarningsService {
           cashback_earned: 0,
           remaining: 100
         }
-      };
-    }
-  }
-
-  /**
-   * Get tips received (all-time and by timeframe)
-   * 
-   * @param {string} [timeframe='30d'] - Timeframe for tips
-   * @returns {Promise<Object>} Tips summary
-   */
-  async getTipsReceived(timeframe = '30d') {
-    try {
-      const endDate = new Date();
-      const startDate = new Date();
-      const days = parseInt(timeframe) || 30;
-      startDate.setDate(endDate.getDate() - days);
-
-      const { data: tips, error } = await supabase
-        .from('collector_tips')
-        .select('*')
-        .eq('collector_id', this.collectorId)
-        .eq('status', 'confirmed')
-        .gte('created_at', startDate.toISOString());
-
-      if (error) throw error;
-
-      const total = tips?.reduce((sum, tip) => sum + (tip.amount || 0), 0) || 0;
-      const count = tips?.length || 0;
-      const average = count > 0 ? total / count : 0;
-
-      const byType = {
-        pre_checkout: 0,
-        post_completion: 0
-      };
-
-      tips?.forEach(tip => {
-        if (tip.tip_type === 'pre_checkout') {
-          byType.pre_checkout += tip.amount || 0;
-        } else {
-          byType.post_completion += tip.amount || 0;
-        }
-      });
-
-      return {
-        success: true,
-        data: {
-          total,
-          count,
-          average,
-          byType,
-          tips: tips || []
-        }
-      };
-
-    } catch (error) {
-      logger.error('Error fetching tips:', error);
-      return {
-        success: false,
-        error: error.message,
-        data: { total: 0, count: 0, average: 0, byType: {}, tips: [] }
       };
     }
   }
@@ -1914,203 +1623,6 @@ class EarningsService {
     }
   }
 
-  /**
-   * Fix #6: Retry failed disbursement
-   * Attempts to retry a previously failed disbursement
-   * 
-   * @param {string} disbursementId - ID of the failed disbursement to retry
-   * @param {Object} paymentDetails - Updated payment details (optional)
-   * @returns {Promise<Object>} Result with success status
-   */
-  async retryFailedDisbursement(disbursementId, paymentDetails = null) {
-    try {
-      logger.info('Retrying failed disbursement:', { disbursementId, collectorId: this.collectorId });
-
-      // Step 1: Fetch the failed disbursement record
-      const { data: disbursement, error: fetchError } = await supabase
-        .from('bin_payments')
-        .select('*')
-        .eq('id', disbursementId)
-        .eq('type', 'disbursement')
-        .eq('status', 'failed')
-        .single();
-
-      if (fetchError || !disbursement) {
-        throw new Error('Failed disbursement not found or already processed');
-      }
-
-      // Step 2: Verify ownership
-      const { data: collectorProfile } = await supabase
-        .from('collector_profiles')
-        .select('id')
-        .eq('user_id', this.collectorId)
-        .single();
-
-      if (!collectorProfile || disbursement.collector_id !== collectorProfile.id) {
-        throw new Error('Unauthorized: This disbursement belongs to another collector');
-      }
-
-      // Step 3: Use updated payment details or existing ones
-      const momoNumber = paymentDetails?.momoNumber || disbursement.collector_account_number;
-      const momoProvider = paymentDetails?.momoProvider || disbursement.client_rswitch;
-      const amount = disbursement.collector_share;
-
-      // Step 4: Increment retry count
-      const retryCount = (disbursement.retry_count || 0) + 1;
-      const maxRetries = 3;
-
-      if (retryCount > maxRetries) {
-        throw new Error(`Maximum retry attempts (${maxRetries}) exceeded. Please contact support.`);
-      }
-
-      // Step 5: Update record to pending and increment retry count
-      await supabase
-        .from('bin_payments')
-        .update({ 
-          status: 'pending',
-          retry_count: retryCount,
-          gateway_error: null,
-          updated_at: new Date().toISOString(),
-          collector_account_number: momoNumber,
-          client_rswitch: momoProvider
-        })
-        .eq('id', disbursementId);
-
-      logger.info(`Retry attempt ${retryCount}/${maxRetries} for disbursement:`, disbursementId);
-
-      // Step 6: Call TrendiPay disbursement API
-      if (ENABLE_TRENDIPAY) {
-        const gatewayResult = await TrendiPayService.initiateDisbursement({
-          reference: `${disbursementId}_retry${retryCount}`,
-          accountNumber: momoNumber,
-          rSwitch: momoProvider,
-          amount: amount,
-          description: `TrashDrop payout retry #${retryCount}`,
-          currency: 'GHS'
-        });
-
-        if (!gatewayResult.success) {
-          // Update with new error
-          await supabase
-            .from('bin_payments')
-            .update({ 
-              status: 'failed',
-              gateway_error: gatewayResult.error,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', disbursementId);
-
-          throw new Error(gatewayResult.error || 'Disbursement retry failed');
-        }
-
-        // Update with success
-        await supabase
-          .from('bin_payments')
-          .update({ 
-            status: gatewayResult.status,
-            gateway_reference: gatewayResult.gatewayReference,
-            gateway_transaction_id: gatewayResult.transactionId,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', disbursementId);
-
-        logger.info('✅ Disbursement retry successful:', {
-          disbursementId,
-          transactionId: gatewayResult.transactionId,
-          retryCount
-        });
-
-        return {
-          success: true,
-          disbursementId,
-          transactionId: gatewayResult.transactionId,
-          amount,
-          message: `Withdrawal retry #${retryCount} initiated successfully`,
-          status: gatewayResult.status,
-          retryCount
-        };
-      } else {
-        // Stub mode
-        await supabase
-          .from('bin_payments')
-          .update({ 
-            status: 'success',
-            gateway_reference: `stub_retry_${Date.now()}`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', disbursementId);
-
-        return {
-          success: true,
-          disbursementId,
-          amount,
-          message: `Retry #${retryCount} processed successfully (stub mode)`,
-          retryCount
-        };
-      }
-
-    } catch (error) {
-      logger.error('Error retrying disbursement:', error);
-      return {
-        success: false,
-        error: error.message || 'Failed to retry withdrawal'
-      };
-    }
-  }
-
-  /**
-   * Fix #6: Get all failed disbursements for this collector
-   * Returns list of failed disbursements that can be retried
-   * 
-   * @returns {Promise<Object>} List of failed disbursements
-   */
-  async getFailedDisbursements() {
-    try {
-      const { data: collectorProfile } = await supabase
-        .from('collector_profiles')
-        .select('id')
-        .eq('user_id', this.collectorId)
-        .single();
-
-      if (!collectorProfile) {
-        return { success: true, disbursements: [] };
-      }
-
-      const { data: failed, error } = await supabase
-        .from('bin_payments')
-        .select('id, collector_share, gateway_error, retry_count, created_at, updated_at, collector_account_number, client_rswitch')
-        .eq('collector_id', collectorProfile.id)
-        .eq('type', 'disbursement')
-        .eq('status', 'failed')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        throw error;
-      }
-
-      const maxRetries = 3;
-      const disbursements = (failed || []).map(d => ({
-        ...d,
-        canRetry: (d.retry_count || 0) < maxRetries,
-        retriesRemaining: maxRetries - (d.retry_count || 0)
-      }));
-
-      return {
-        success: true,
-        disbursements,
-        totalFailed: disbursements.length,
-        canRetryCount: disbursements.filter(d => d.canRetry).length
-      };
-
-    } catch (error) {
-      logger.error('Error fetching failed disbursements:', error);
-      return {
-        success: false,
-        error: error.message,
-        disbursements: []
-      };
-    }
-  }
 }
 
 export const createEarningsService = (collectorId) => {
