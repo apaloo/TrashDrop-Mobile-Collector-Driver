@@ -1203,15 +1203,11 @@ class EarningsService {
       const completedJobs = totalPickedUpJobs + totalDisposedJobs;
       const avgPerJob = completedJobs > 0 ? totalEarnings / completedJobs : 0;
 
-      // === CALCULATE REAL RATING ===
-      // Get ratings from completed requests that have ratings
-      const ratingsData = [...(allPickups || []), ...(authorityAssignments || [])]
-        .filter(item => item.rating !== null && item.rating !== undefined)
-        .map(item => item.rating);
-      
-      const rating = ratingsData.length > 0 
-        ? ratingsData.reduce((sum, r) => sum + r, 0) / ratingsData.length 
-        : 0;
+      // === RATING ===
+      // The average of households' ratings, kept by the database on the
+      // collector's own profile (td_rate_job; household repository issue #186).
+      // Collectors see only this average, never individual ratings or comments.
+      const rating = await this.getMyRating();
 
       // === CALCULATE REAL COMPLETION RATE ===
       // Include both pickup_requests AND digital_bins in completion rate
@@ -1706,6 +1702,26 @@ class EarningsService {
         error: error.message,
         data: { transactions: [], byType: {} }
       };
+    }
+  }
+
+  /**
+   * The collector's average rating from households (1-5), or 0 when nobody
+   * has rated them yet. Set by the database when a household rates a job.
+   * @returns {Promise<number>}
+   */
+  async getMyRating() {
+    try {
+      const { data, error } = await supabase
+        .from('collector_profiles')
+        .select('rating')
+        .eq('user_id', this.collectorId)
+        .maybeSingle(); // no profile yet: no rating, not a 406 in the logs
+      if (error || !data) return 0;
+      const rating = parseFloat(data.rating);
+      return Number.isFinite(rating) && rating >= 1 && rating <= 5 ? rating : 0;
+    } catch {
+      return 0;
     }
   }
 

@@ -1177,11 +1177,12 @@ const EarningsPage = () => {
               <h3 className="font-bold text-lg mb-2">Performance</h3>
               <div className="flex justify-between mb-2">
                 <span className="text-sm">Rating</span>
-                <span className="font-bold">{(stats.rating || 0).toFixed(1)}/5.0</span>
+                <span className="font-bold" data-testid="collector-rating">{stats.rating >= 1 ? `${stats.rating.toFixed(1)}/5.0` : 'No ratings yet'}</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
+              <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1">
                 <div className="bg-primary h-2.5 rounded-full" style={{ width: `${((stats.rating || 0) / 5) * 100}%` }}></div>
               </div>
+              <p className="text-xs text-td-sage mb-4">Average of the ratings households give you after a pickup.</p>
               
               <div className="flex justify-between mb-2">
                 <span className="text-sm">Completion Rate</span>
