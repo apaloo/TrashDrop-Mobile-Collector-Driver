@@ -84,7 +84,8 @@ const usePhotoCapture = (requestId) => {
 
       // Upload to Supabase Storage for permanent web URL
       logger.debug('📤 Uploading photo to cloud storage...');
-      const uploadResult = await authService.uploadPhoto(file, `assignment_${requestId}`);
+      // Cleanup proof photos are public (TD70): the public bucket, so the saved link opens
+      const uploadResult = await authService.uploadCleanupPhoto(file, requestId);
       
       if (!uploadResult.success) {
         // Upload failed - remove temp photo and show error
