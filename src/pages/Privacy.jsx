@@ -42,6 +42,9 @@ const PrivacyPage = () => {
             <li>Usage data (interaction with the App, time spent on pages, features used)</li>
             <li>Log information (IP address, browser type, referring/exit pages, timestamps)</li>
           </ul>
+
+          <h3 className="font-bold mt-3 mb-1">2.3 Ratings from Households</h3>
+          <p className="mb-2">After a pickup, the household can rate you from 1 to 5 stars and add a comment. In the App you see only your average rating, never individual ratings, comments or who gave them. TrashDrop staff see each rating and comment so they can recognise good service and follow up on poor service.</p>
         </div>
         
         <div className="card mb-4">
@@ -55,6 +58,7 @@ const PrivacyPage = () => {
             <li>To communicate with you about services, updates, and promotions</li>
             <li>To monitor and analyze usage patterns and trends</li>
             <li>To verify your identity and prevent fraud</li>
+            <li>To review service quality using the ratings households give</li>
             <li>To comply with legal obligations</li>
           </ul>
         </div>
@@ -126,7 +130,7 @@ const PrivacyPage = () => {
         </div>
         
         <div className="text-center text-sm text-td-sage mt-8 mb-4">
-          Last Updated: July 1, 2025
+          Last Updated: November 13, 2026
         </div>
         
         <div className="flex justify-center mb-6">
