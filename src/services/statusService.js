@@ -374,9 +374,6 @@ class CollectorStatusService {
       
       this.sessionStats.totalOnlineTime = sessionDuration;
       
-      // Save session to backend
-      await this.saveSessionToBackend(this.sessionStart, sessionEnd, sessionDuration);
-      
       this.sessionStart = null;
       localStorage.removeItem('collector_session_start');
       
@@ -451,35 +448,6 @@ class CollectorStatusService {
       }
     } catch (error) {
       logger.error('❌ Error syncing with backend:', error);
-    }
-  }
-
-  /**
-   * Save session data to backend
-   */
-  async saveSessionToBackend(startTime, endTime, duration) {
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
-
-      const { error } = await supabase
-        .from('collector_status_history')
-        .insert({
-          collector_id: userData.user.id,
-          status: COLLECTOR_STATUS.ONLINE,
-          session_start: startTime.toISOString(),
-          session_end: endTime.toISOString(),
-          session_duration: Math.round(duration / 1000), // in seconds
-          requests_accepted: this.sessionStats.requestsAccepted,
-          requests_completed: this.sessionStats.requestsCompleted,
-          created_at: new Date().toISOString()
-        });
-
-      if (error) {
-        logger.error('❌ Error saving session:', error);
-      }
-    } catch (error) {
-      logger.error('❌ Error in session save:', error);
     }
   }
 
