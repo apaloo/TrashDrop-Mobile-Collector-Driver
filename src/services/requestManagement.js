@@ -1,36 +1,37 @@
 import { supabase } from './supabase.js';
 import { logger } from '../utils/logger.js';
 
-// Mock data for development mode - initialized with real data from Supabase
-
 /**
  * Request Management Service
  * Handles the complete lifecycle of pickup requests including:
- * - Filtering and reserving requests
- * - Request acceptance and assignment
- * - Time-based cleanup and expiration
- * - Real-time notifications and concurrency control
+ * - Request acceptance and assignment (with the household's notice)
+ * - Giving back accepted requests whose assignment expired
  */
 export class RequestManagementService {
   constructor() {
-    this.RESERVATION_DURATION = 5 * 60 * 1000; // 5 minutes in ms
     this.ASSIGNMENT_DURATION = 10 * 60 * 60 * 1000; // 10 hours in ms
     this.EXCLUSION_DURATION = 5 * 60 * 1000; // 5 minutes in ms
-    this.HEARTBEAT_INTERVAL = 30 * 1000; // 30 seconds in ms
     this.CLEANUP_INTERVAL = 60 * 1000; // 1 minute in ms
     
-    this.heartbeatTimer = null;
     this.cleanupTimer = null;
-    this.subscriptions = [];
     this.isInitialized = false;
     this.collectorId = null;
     this.initializationPromise = null;
   }
 
   /**
-   * Initialize the service with session management and cleanup timers
+   * Start the service for the signed-in collector (again, if another
+   * collector was signed in before on this phone)
    */
   async initialize(collectorId) {
+    // A different collector signed in on this phone: start over for them
+    if (this.collectorId && collectorId && this.collectorId !== collectorId) {
+      if (this.cleanupTimer) clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+      this.isInitialized = false;
+      this.initializationPromise = null;
+    }
+
     // IMMEDIATE: Skip initialization if already initialized with same collector
     if (this.isInitialized && this.collectorId === collectorId) {
       // Debug only - service already initialized
@@ -50,31 +51,13 @@ export class RequestManagementService {
         this.collectorId = collectorId;
         logger.info('Initializing RequestManagementService for collector:', collectorId);
       
-      // Start session with error handling
-      try {
-        await this.startSession();
-        logger.debug('✅ Session started successfully');
-      } catch (error) {
-        logger.error('❌ Failed to start session:', error);
-        if (!import.meta.env.DEV) throw error; // In production, fail fast
-      }
-      
-      // Skip heartbeat for now to avoid RLS issues
-      logger.debug('⏭️ Skipping heartbeat to avoid RLS complications');
-      
-      // Start cleanup timer with error handling
-      try {
-        this.startCleanupTimer();
-        logger.debug('✅ Cleanup timer started successfully');
-      } catch (error) {
-        logger.error('❌ Failed to start cleanup timer:', error);
-        // Continue even if cleanup fails
-      }
-      
-      // Skip realtime subscriptions for now to avoid WebSocket issues
-      logger.debug('⏭️ Skipping realtime subscriptions to avoid WebSocket complications');
+      // The phone's only background job: every minute, give back accepted
+      // pickup requests whose assignment has expired (the database allows
+      // that only after assignment_expires_at). Realtime subscriptions, a
+      // heartbeat and reservations were never switched on and were removed
+      // on 2026-11-13.
+      this.startCleanupTimer();
 
-      
       this.isInitialized = true;
       logger.info('🎉 RequestManagementService initialized successfully');
       
@@ -89,34 +72,14 @@ export class RequestManagementService {
     return this.initializationPromise;
   }
   /**
-   * Start or resume a collector session
-   */
-  async startSession() {
-    try {
-      // Simplified session - just log for now to avoid RLS issues
-      logger.debug('✅ Session started for collector:', this.collectorId);
-      return { 
-        success: true,
-        session: {
-          id: 'session-' + Math.random().toString(36).substr(2, 9),
-          collector_id: this.collectorId,
-          is_active: true,
-          last_activity: new Date().toISOString()
-        }
-      };
-    } catch (error) {
-      logger.error('Session error:', error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
    * Accept a request and move it to the Accepted tab
    * @param {string} requestId - The ID of the request to accept
    * @param {string} collectorId - The ID of the collector accepting the request
    */
   async acceptRequest(requestId, collectorId = null) {
-    // Set the collector ID for this operation
+    // The collector signed in now. Never the one the service was first
+    // started for: on a shared phone that was the previous collector, and the
+    // database refuses to give a request to someone else.
     const effectiveCollectorId = collectorId || this.collectorId;
     
     // Check if service is initialized
@@ -182,7 +145,7 @@ export class RequestManagementService {
         throw new Error(`Request is no longer available - current status: ${existingRequest.status}`);
       }
 
-      if (existingRequest.collector_id && existingRequest.collector_id !== this.collectorId) {
+      if (existingRequest.collector_id && existingRequest.collector_id !== effectiveCollectorId) {
         throw new Error('Request has already been accepted by another collector');
       }
 
@@ -195,12 +158,11 @@ export class RequestManagementService {
       // Now try to accept the request with detailed logging
       logger.info('🔄 Attempting to accept request:', {
         requestId,
-        collectorId: this.collectorId,
-        passedCollectorId: effectiveCollectorId,
+        collectorId: effectiveCollectorId,
         currentStatus: existingRequest.status
       });
       
-      logger.info(`📊 DIAGNOSTIC: Setting collector_id in database to: ${this.collectorId}`);
+      logger.info(`📊 DIAGNOSTIC: Setting collector_id in database to: ${effectiveCollectorId}`);
 
       // Try simple update first (without RLS restrictions)
       // NOTE: pickup_requests table doesn't have payment calculation columns
@@ -208,7 +170,7 @@ export class RequestManagementService {
         .from('pickup_requests')
         .update({
           status: 'accepted',
-          collector_id: this.collectorId,
+          collector_id: effectiveCollectorId,
           accepted_at: currentTime,
           assignment_expires_at: assignmentExpiry
         })
@@ -236,7 +198,7 @@ export class RequestManagementService {
         const { data: session } = await supabase
           .from('collector_sessions')
           .select('reserved_requests')
-          .eq('collector_id', this.collectorId)
+          .eq('collector_id', effectiveCollectorId)
           .maybeSingle(); // no session yet is normal: null, not a 406 in the logs
 
         if (session) {
@@ -249,7 +211,7 @@ export class RequestManagementService {
               reserved_requests: updatedReserved,
               last_activity: currentTime
             })
-            .eq('collector_id', this.collectorId);
+            .eq('collector_id', effectiveCollectorId);
         }
       } catch (sessionError) {
         // Session table may not exist or no session found - this is not critical
@@ -259,7 +221,7 @@ export class RequestManagementService {
       logger.info('Request accepted successfully:', data[0]);
       
       // Notify the user about request acceptance
-      await this.notifyUserOfAcceptance(data[0]);
+      await this.notifyUserOfAcceptance(data[0], effectiveCollectorId);
       
       return { success: true, request: data[0] };
     } catch (error) {
@@ -282,7 +244,7 @@ export class RequestManagementService {
   /**
    * Notify user when their request is accepted
    */
-  async notifyUserOfAcceptance(acceptedRequest) {
+  async notifyUserOfAcceptance(acceptedRequest, collectorId = this.collectorId) {
     try {
       // Skip if no user_id (shouldn't happen but safety check)
       if (!acceptedRequest.user_id) {
@@ -294,8 +256,8 @@ export class RequestManagementService {
       const { data: collectorProfile } = await supabase
         .from('collector_profiles')
         .select('first_name, last_name, phone, vehicle_type, license_plate')
-        .eq('user_id', this.collectorId)
-        .single();
+        .eq('user_id', collectorId)
+        .maybeSingle();
 
       const collectorName = collectorProfile 
         ? `${collectorProfile.first_name} ${collectorProfile.last_name}`
@@ -327,68 +289,6 @@ export class RequestManagementService {
     } catch (error) {
       logger.error('Error notifying user of acceptance:', error);
       // Don't throw - notification failure shouldn't block request acceptance
-    }
-  }
-
-  /**
-   * Cleanup expired reservations
-   */
-  async cleanupExpiredReservations() {
-    if (import.meta.env.DEV) {
-      // Reduce logging frequency - only log every 10th cleanup
-      this.reservationCleanupCount = (this.reservationCleanupCount || 0) + 1;
-      if (this.reservationCleanupCount % 10 === 0) {
-        logger.debug(`[DEV MODE] Simulating cleanup of expired reservations (${this.reservationCleanupCount})`);
-      }
-      return { success: true, cleaned: 0 };
-    }
-
-    try {
-      const currentTime = new Date().toISOString();
-      
-      // Find reservations that have expired
-      const { data: expiredReservations, error } = await supabase
-        .from('pickup_requests')
-        .select('id')
-        .eq('status', 'pending')
-        .not('reserved_by', 'is', null)
-        .lt('reserved_until', currentTime);
-
-      if (error) {
-        if (import.meta.env.DEV) {
-          logger.debug('[DEV MODE] Error cleaning up reservations:', error);
-          return { success: true, cleaned: 0 };
-        }
-        throw error;
-      }
-
-      if (!expiredReservations || expiredReservations.length === 0) {
-        return { success: true, cleaned: 0 };
-      }
-
-      // Clear expired reservations
-      const { error: updateError } = await supabase
-        .from('pickup_requests')
-        .update({
-          reserved_by: null,
-          reserved_at: null,
-          reserved_until: null
-        })
-        .in('id', expiredReservations.map(r => r.id));
-
-      if (updateError) {
-        if (import.meta.env.DEV) {
-          logger.debug('[DEV MODE] Error updating expired reservations:', updateError);
-          return { success: true, cleaned: 0 };
-        }
-        throw updateError;
-      }
-
-      logger.info(`Cleaned up ${expiredReservations.length} expired reservations`);
-      return { success: true, cleaned: expiredReservations.length };
-    } catch (error) {
-      logger.error('Error cleaning up expired reservations:', error);
-      throw error;
     }
   }
 
@@ -457,314 +357,20 @@ export class RequestManagementService {
   }
 
   /**
-   * Start heartbeat timer to keep session alive
-   */
-  startHeartbeat() {
-    logger.debug('Starting heartbeat timer');
-
-    this.heartbeatTimer = setInterval(async () => {
-      if (this.collectorId) {
-        try {
-          // Update last_activity timestamp to keep session alive
-          const { error } = await supabase
-            .from('collector_sessions')
-            .update({
-              last_activity: new Date().toISOString()
-            })
-            .eq('collector_id', this.collectorId)
-            .eq('is_active', true);
-
-          if (error) {
-            logger.error('Heartbeat error:', error);
-          }
-        } catch (error) {
-          logger.error('Heartbeat failed:', error);
-        }
-      }
-    }, this.HEARTBEAT_INTERVAL);
-  }
-
-  /**
    * Start cleanup timer
    */
   startCleanupTimer() {
+    if (this.cleanupTimer) clearInterval(this.cleanupTimer); // one timer, also after a new sign-in
     this.cleanupTimer = setInterval(async () => {
-      await this.cleanupExpiredReservations();
-      await this.cleanupExpiredAssignments();
+      try {
+        await this.cleanupExpiredAssignments();
+      } catch {
+        // already logged; try again next minute
+      }
     }, this.CLEANUP_INTERVAL);
   }
 
-  /**
-   * Setup real-time subscriptions with error handling and reconnection logic
-   */
-  setupRealtimeSubscriptions() {
-    try {
-      console.log('Setting up real-time subscriptions with error handling');
-      
-      // Track connection state
-      this.realtimeConnected = false;
-      this.reconnectAttempts = 0;
-      this.MAX_RECONNECT_ATTEMPTS = 5;
-      this.RECONNECT_DELAY = 5000; // 5 seconds initial delay
-      
-      // Setup connection status handler
-      supabase.channel('system').on(
-        'system',
-        { event: 'connection_status' },
-        (payload) => {
-          const { status } = payload;
-          console.log(`Realtime connection status: ${status}`);
-          
-          if (status === 'connected') {
-            this.realtimeConnected = true;
-            this.reconnectAttempts = 0;
-            console.log('✅ Supabase realtime connected successfully');
-          } else if (status === 'disconnected' && this.realtimeConnected) {
-            this.realtimeConnected = false;
-            console.warn('⚠️ Supabase realtime disconnected, will attempt reconnection');
-            this.setupReconnectTimer();
-          }
-        }
-      );
 
-      // Real Supabase subscriptions for production with error handling
-      const requestChannel = supabase.channel('request_updates', {
-        config: {
-          broadcast: { self: true },
-          presence: { key: this.collectorId || 'anonymous' }
-        }
-      });
-
-      const requestSubscription = requestChannel
-        .on('postgres_changes', {
-          event: '*',
-          schema: 'public',
-          table: 'pickup_requests'
-        }, (payload) => {
-          try {
-            this.handleRequestUpdate(payload);
-          } catch (err) {
-            console.error('Error handling request update:', err);
-          }
-        })
-        .on('error', (error) => {
-          console.error('Error on request channel:', error);
-          this.handleChannelError('request_updates');
-        })
-        .subscribe((status) => {
-          console.log(`Request channel subscription status: ${status}`);
-        });
-
-      // Subscribe to notifications with error handling
-      const notificationChannel = supabase.channel('collector_notifications', {
-        config: {
-          broadcast: { self: true },
-          presence: { key: this.collectorId || 'anonymous' }
-        }
-      });
-
-      const notificationSubscription = notificationChannel
-        .on('postgres_changes', {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'request_notifications',
-          filter: `collector_id=eq.${this.collectorId || '00000000-0000-0000-0000-000000000000'}`
-        }, (payload) => {
-          try {
-            this.handleNotification(payload);
-          } catch (err) {
-            console.error('Error handling notification:', err);
-          }
-        })
-        .on('error', (error) => {
-          console.error('Error on notification channel:', error);
-          this.handleChannelError('collector_notifications');
-        })
-        .subscribe((status) => {
-          console.log(`Notification channel subscription status: ${status}`);
-        });
-
-      this.subscriptions.push(requestSubscription, notificationSubscription);
-    } catch (error) {
-      console.error('Failed to setup realtime subscriptions:', error);
-      // Don't re-throw to prevent app crash, but show warning to user
-      window.dispatchEvent(new CustomEvent('realtimeError', {
-        detail: { message: 'Real-time updates temporarily unavailable' }
-      }));
-    }
-  }
-
-  /**
-   * Handle real-time request updates
-   */
-  handleRequestUpdate(payload) {
-    const { eventType, new: newRecord, old: oldRecord } = payload;
-    
-    // Dispatch custom events that components can listen to
-    if (eventType === 'UPDATE') {
-      // Request became unavailable
-      if (newRecord.status === 'accepted' && oldRecord.status !== 'accepted' && 
-          newRecord.collector_id !== this.collectorId) {
-        window.dispatchEvent(new CustomEvent('requestUnavailable', {
-          detail: { requestId: newRecord.id, message: 'Request accepted by another collector' }
-        }));
-      }
-      
-      // Request became available again
-      if (newRecord.status === 'pending' && oldRecord.status !== 'pending') {
-        window.dispatchEvent(new CustomEvent('requestAvailable', {
-          detail: { requestId: newRecord.id, message: 'Request is now available' }
-        }));
-      }
-    }
-  }
-
-  /**
-   * Handle real-time notifications
-   */
-  handleNotification(payload) {
-    const { new: notification } = payload;
-    
-    // Dispatch notification event
-    window.dispatchEvent(new CustomEvent('newNotification', {
-      detail: notification
-    }));
-  }
-
-  /**
-   * Cleanup resources
-   */
-  destroy() {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
-    
-    if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer);
-      this.cleanupTimer = null;
-    }
-    
-    // Clean up reconnect timer if it exists
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-
-    // Clean up subscriptions
-    this.cleanupSubscriptions();
-
-    // Mark session as inactive
-    if (this.collectorId && !import.meta.env.DEV) {
-      supabase
-        .from('collector_sessions')
-        .update({ is_active: false })
-        .eq('collector_id', this.collectorId)
-        .then(() => console.log('Session marked as inactive'))
-        .catch(err => console.warn('Failed to mark session inactive:', err));
-    } else if (import.meta.env.DEV) {
-      console.log('[DEV MODE] Skipping session deactivation');
-    }
-  }
-  
-  /**
-   * Cleanup subscriptions on destroy
-   */
-  cleanupSubscriptions() {
-    // Clear any mock subscription timers
-    if (this.mockSubscriptionTimer) {
-      clearInterval(this.mockSubscriptionTimer);
-      this.mockSubscriptionTimer = null;
-    }
-
-    // Clean up all subscriptions
-    this.subscriptions.forEach(subscription => {
-      try {
-        if (subscription && subscription.unsubscribe) {
-          subscription.unsubscribe();
-        }
-      } catch (e) {
-        console.warn('Error unsubscribing:', e);
-      }
-    });
-
-    this.subscriptions = [];
-  }
-  
-  /**
-   * Set up a timer to attempt reconnection with exponential backoff
-   */
-  setupReconnectTimer() {
-    // Clear any existing reconnect timer
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    
-    if (this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
-      console.warn(`Maximum reconnect attempts (${this.MAX_RECONNECT_ATTEMPTS}) reached. Giving up automatic reconnection.`);
-      window.dispatchEvent(new CustomEvent('realtimeError', {
-        detail: { message: 'Could not reconnect to real-time updates. Please reload the app.' }
-      }));
-      return;
-    }
-    
-    // Calculate delay with exponential backoff
-    const delay = this.RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts);
-    console.log(`Attempting to reconnect in ${delay/1000} seconds... (attempt ${this.reconnectAttempts + 1}/${this.MAX_RECONNECT_ATTEMPTS})`);
-    
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectAttempts++;
-      this.attemptReconnect();
-    }, delay);
-  }
-  
-  /**
-   * Attempt to reconnect to Supabase realtime
-   */
-  attemptReconnect() {
-    console.log('Attempting to reconnect to Supabase realtime...');
-    
-    // Clean up existing subscriptions
-    this.cleanupSubscriptions();
-    
-    // Try to set up subscriptions again
-    this.setupRealtimeSubscriptions();
-  }
-  
-  /**
-   * Handle channel-specific errors
-   * @param {string} channelName - The name of the channel with error
-   */
-  handleChannelError(channelName) {
-    console.warn(`Channel error on ${channelName}, will attempt to recreate the subscription`);
-    
-    // Refresh the problematic subscription
-    const affectedSubscriptions = this.subscriptions.filter(sub => 
-      sub && sub.topic && sub.topic.includes(channelName)
-    );
-    
-    affectedSubscriptions.forEach(sub => {
-      try {
-        if (sub && sub.unsubscribe) {
-          sub.unsubscribe();
-          // Remove from subscriptions array
-          const index = this.subscriptions.indexOf(sub);
-          if (index > -1) {
-            this.subscriptions.splice(index, 1);
-          }
-        }
-      } catch (e) {
-        console.warn(`Error unsubscribing from ${channelName}:`, e);
-      }
-    });
-    
-    // Schedule a reconnection attempt for this specific channel
-    setTimeout(() => {
-      console.log(`Attempting to recreate ${channelName} subscription...`);
-      this.setupRealtimeSubscriptions();
-    }, 3000);
-  }
 }
 
 // Lazy singleton instance - only created when first accessed
