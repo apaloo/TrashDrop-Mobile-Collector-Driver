@@ -13,3 +13,4 @@ src/utils/binEarnings.js
 src/utils/disposalEarnings.js
 src/services/volunteerService.js
 src/services/realtimeNotificationService.js
+src/services/supabase.js

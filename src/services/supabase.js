@@ -33,13 +33,15 @@ export const formatPhoneNumber = (phoneNumber) => {
   let digits = phoneNumber.replace(/\D/g, '');
   
   // Default to Ghana country code for demo purposes if no + prefix
-  if (!phoneNumber.startsWith('+')) {
+  if (!phoneNumber.trim().startsWith('+')) {
     // Remove leading zeros
     digits = digits.replace(/^0+/, '');
     return `+233${digits}`;
   }
   
-  return phoneNumber;
+  // E.164: "+" then digits only. A number typed with spaces or dashes
+  // ("+233 24 123 4567") used to be sent as typed (2026-11-13)
+  return `+${digits}`;
 };
 
 // Phone authentication helper methods
