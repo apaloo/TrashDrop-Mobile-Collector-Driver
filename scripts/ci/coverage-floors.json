@@ -5,7 +5,7 @@
     "src/utils/paymentCalculations.js": 49.3,
     "src/services/disposalService.js": 59.2,
     "src/services/paymentService.js": 57.8,
-    "src/services/earningsService.js": 45.5,
+    "src/services/earningsService.js": 55.5,
     "src/services/trendiPayService.js": 91,
     "src/services/requestManagement.js": 74.2,
     "src/services/bagPricing.js": 97.5

@@ -1625,6 +1625,10 @@ class EarningsService {
 
 }
 
+// For tests: what the Earnings page shows for a pickup request (the payout
+// itself is the database's: finalize_pickup_request_payout, COLLECTOR_PAYOUTS.md)
+export { calculateCollectorEarnings, calculatePlatformEarnings };
+
 export const createEarningsService = (collectorId) => {
   return new EarningsService(collectorId);
 };
