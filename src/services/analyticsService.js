@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { logger } from '../utils/logger';
+import { toLatLng } from '../utils/availableRequests';
 
 /**
  * Parse coordinates from any format into { lat, lng }.
@@ -12,8 +13,13 @@ const parseCoordinates = (raw) => {
 
   let coords = raw;
 
-  // 1. String → try JSON parse, then comma-separated
+  // 1. String → PostGIS EWKB hex or WKT (how Supabase returns a geography
+  // column such as pickup_requests.coordinates: until 2026-11-13 these failed
+  // JSON.parse and every such job was left off the route), then JSON, then
+  // comma-separated
   if (typeof coords === 'string') {
+    const point = toLatLng(coords);
+    if (point) return { lat: point[0], lng: point[1] };
     try {
       coords = JSON.parse(coords);
     } catch {
@@ -332,12 +338,8 @@ export class AnalyticsService {
             };
             logger.info(`✅ Converted GeoJSON Point coordinates:`, coords);
           } else if (typeof binCoords === 'string') {
-            try {
-              coords = JSON.parse(binCoords);
-              logger.info(`✅ Parsed string coordinates:`, coords);
-            } catch (e) {
-              logger.warn(`Failed to parse coordinates for bin ${bin.id}:`, e);
-            }
+            // EWKB hex, WKT or JSON: read by parseCoordinates below
+            coords = binCoords;
           } else if (Array.isArray(binCoords) && binCoords.length === 2) {
             // Handle array format [lat, lng]
             coords = { lat: binCoords[0], lng: binCoords[1] };
