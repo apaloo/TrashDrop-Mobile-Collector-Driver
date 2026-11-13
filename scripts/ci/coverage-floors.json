@@ -12,6 +12,7 @@
     "src/utils/binEarnings.js": 100,
     "src/utils/disposalEarnings.js": 100,
     "src/services/volunteerService.js": 100,
-    "src/services/realtimeNotificationService.js": 40.6
+    "src/services/realtimeNotificationService.js": 40.6,
+    "src/services/supabase.js": 80.1
   }
 }
