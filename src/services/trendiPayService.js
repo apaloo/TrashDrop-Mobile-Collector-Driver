@@ -518,23 +518,8 @@ export async function initiateDisbursement({
 // proxy's answer one level too shallow (status always undefined). A payout's
 // status comes from the gateway's webhook on the server (trendipay-webhook).
 
-/**
- * Check that the app is set up to reach the TrendiPay proxy.
- * The credentials themselves live in the Supabase Edge Functions, so this
- * only checks the public settings the browser needs.
- *
- * @returns {Object} Configuration check result
- */
-export function testConnection() {
-  const ready = !!(TRENDIPAY_CONFIG.proxyUrl && TRENDIPAY_CONFIG.merchantId && TRENDIPAY_CONFIG.terminalId);
-  return ready
-    ? { success: true, message: 'TrendiPay proxy configured', config: { merchantId: TRENDIPAY_CONFIG.merchantId } }
-    : { success: false, error: 'TrendiPay proxy, merchant or terminal not configured' };
-}
-
 export default {
   initiateCollection,
   checkCollectionStatus,
-  initiateDisbursement,
-  testConnection
+  initiateDisbursement
 };
