@@ -8,9 +8,9 @@ export default defineConfig([
   globalIgnores([
     'dist',
     'dev-dist',
-    // End-to-end specs and the legacy local webhook server have their own
-    // runtimes; they are tracked for clean-up in the engineering handbook.
-    'cypress',
+    // Browser-test output (Playwright report and traces)
+    'playwright-report',
+    'test-results',
   ]),
   {
     files: ['**/*.{js,jsx}'],

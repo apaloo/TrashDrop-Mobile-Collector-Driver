@@ -30,8 +30,6 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        env:
-          CYPRESS_INSTALL_BINARY: 0
         run: npm ci
 
       # The whole app must be lint-clean: the backlog reached 0 errors on
@@ -115,8 +113,6 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        env:
-          CYPRESS_INSTALL_BINARY: 0
         run: npm ci
 
       - name: Install Chromium
