@@ -1207,95 +1207,16 @@ const RequestPage = () => {
         coordinates_type: typeof request.coordinates
       });
       
-      // Helper function to parse PostGIS binary format (WKB - Well-Known Binary)
-      const parsePostGISBinary = (hexString) => {
-        try {
-          // PostGIS binary format: 0101000020E6100000 + 16 hex chars (lng) + 16 hex chars (lat)
-          if (!hexString || typeof hexString !== 'string' || !hexString.startsWith('0101000020')) {
-            return null;
-          }
-          
-          // Extract the coordinate bytes (skip the header)
-          const coordStart = 18; // After "0101000020E6100000"
-          const lngHex = hexString.substring(coordStart, coordStart + 16);
-          const latHex = hexString.substring(coordStart + 16, coordStart + 32);
-          
-          // Convert hex to IEEE 754 double (little-endian)
-          const hexToDouble = (hex) => {
-            const bytes = new Uint8Array(8);
-            for (let i = 0; i < 8; i++) {
-              bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
-            }
-            return new DataView(bytes.buffer).getFloat64(0, true); // true = little-endian
-          };
-          
-          const lng = hexToDouble(lngHex);
-          const lat = hexToDouble(latHex);
-          
-          logger.info('✅ Parsed PostGIS binary coordinates:', { lat, lng, source: hexString.substring(0, 20) + '...' });
-          return { lat, lng };
-        } catch (error) {
-          logger.warn('⚠️ Failed to parse PostGIS binary:', error.message);
-          return null;
-        }
-      };
-      
-      // Parse coordinates from various formats
-      let lat, lng;
-      let coordinatesSource = null;
-      
-      // CRITICAL: For digital bins, get coordinates from bin_locations (joined table)
-      if (request.source_type === 'digital_bin' && request.bin_locations?.coordinates) {
-        coordinatesSource = request.bin_locations.coordinates;
-        logger.info('📍 Using bin_locations coordinates for digital bin:', coordinatesSource);
-        
-        // Handle GeoJSON Point format from PostGIS: {type: 'Point', coordinates: [lng, lat]}
-        if (coordinatesSource.type === 'Point' && Array.isArray(coordinatesSource.coordinates) && coordinatesSource.coordinates.length === 2) {
-          lng = coordinatesSource.coordinates[0]; // longitude first in GeoJSON
-          lat = coordinatesSource.coordinates[1]; // latitude second
-          logger.info('✅ Parsed GeoJSON Point from bin_locations:', { lat, lng });
-        }
-      } 
-      // Fallback: For digital bins without bin_locations, or for pickup requests, use the regular coordinates field
-      else if (request.coordinates) {
-        coordinatesSource = request.coordinates;
-        if (request.source_type === 'digital_bin') {
-          logger.info('📍 bin_locations not available, using direct coordinates field for digital bin:', coordinatesSource);
-        }
-        
-        // Handle array format [lat, lng]
-        if (Array.isArray(coordinatesSource) && coordinatesSource.length >= 2) {
-          lat = coordinatesSource[0];
-          lng = coordinatesSource[1];
-        }
-        // Handle object format {lat: x, lng: y} or {latitude: x, longitude: y}
-        else if (typeof coordinatesSource === 'object' && coordinatesSource !== null) {
-          lat = coordinatesSource.lat || coordinatesSource.latitude;
-          lng = coordinatesSource.lng || coordinatesSource.longitude;
-        }
-        // Handle PostGIS formats (string-based)
-        else if (typeof coordinatesSource === 'string') {
-          // Try PostGIS binary format first (WKB hex string)
-          if (coordinatesSource.startsWith('0101000020')) {
-            const parsed = parsePostGISBinary(coordinatesSource);
-            if (parsed) {
-              lat = parsed.lat;
-              lng = parsed.lng;
-            }
-          }
-          // Try PostGIS text format "POINT(lng lat)"
-          else {
-            const pointMatch = coordinatesSource.match(/POINT\(([+-]?\d+\.?\d*) ([+-]?\d+\.?\d*)\)/);
-            if (pointMatch) {
-              lng = parseFloat(pointMatch[1]); // longitude first in PostGIS
-              lat = parseFloat(pointMatch[2]);  // latitude second
-            }
-          }
-        }
-      }
-      
+      // Where to go: a digital bin's own location (bin_locations), else the
+      // request's coordinates. toLatLng reads every stored format, EWKB hex
+      // included (TD71: this page had its own reader that couldn't read a
+      // bin location stored as EWKB)
+      const point = (request.source_type === 'digital_bin' && toLatLng(request.bin_locations?.coordinates))
+        || toLatLng(request.coordinates);
+      const [lat, lng] = point || [];
+
       // If we have valid coordinates, open in-app navigation
-      if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
+      if (point) {
         // Get current user location
         let currentUserLocation = null;
         try {
@@ -1369,7 +1290,7 @@ const RequestPage = () => {
         logger.info('✅ Opening navigation to:', { lat, lng, location, wasteType: request.waste_type, sourceType: request.source_type });
       } else {
         // Fallback to external navigation if coordinates are invalid
-        logger.warn('⚠️ Invalid coordinates, falling back to search:', { lat, lng, coordinatesSource });
+        logger.warn('⚠️ Invalid coordinates, falling back to search:', { coordinates: request.coordinates, bin: request.bin_locations?.coordinates });
         const fallbackUrl = `https://www.openstreetmap.org/search?query=${encodeURIComponent(location || 'pickup location')}`;
         window.open(fallbackUrl, '_blank');
         showToast(`Opening directions to ${location || 'pickup location'}`, 'info');

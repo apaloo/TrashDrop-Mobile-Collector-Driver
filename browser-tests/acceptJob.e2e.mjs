@@ -70,3 +70,35 @@ test('a job already holding another collector is not claimed again', async ({ pa
   await expect(page.getByText(/already been accepted by another collector/i).first()).toBeVisible();
   expect(claims(calls)).toEqual([]);
 });
+
+// An accepted digital bin whose only position is its bin location, stored as
+// EWKB hex. The Request page had its own reader that read EWKB only on a
+// pickup's own coordinates, so Directions fell back to a map search (TD71).
+test('Directions on an accepted digital bin opens in-app navigation from its EWKB bin location', async ({ page }) => {
+  const errors = collectPageErrors(page);
+  await fakeSupabase(page, {
+    account,
+    rpc: { collector_phone_registered: true },
+    tables: {
+      collector_profiles: [PROFILE],
+      digital_bins: [{ id: 'bin-1', status: 'accepted', collector_id: account.user.id, waste_type: 'general', bin_size_liters: 120, fee: 36, created_at: new Date().toISOString(), bin_locations: { coordinates: OSU_EWKB, location_name: 'Osu Bin Station' } }],
+    },
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open App' }).click();
+  await page.getByRole('textbox', { name: '0501234567' }).fill('0501234567');
+  await page.getByRole('button', { name: /Send Code/ }).click();
+  await page.getByRole('textbox', { name: 'Code number 1' }).click();
+  await page.keyboard.type('123456');
+  await page.getByRole('button', { name: /Sign In/ }).click();
+  await expect(page).toHaveURL(/\/map$/);
+  await page.getByRole('link', { name: 'Request', exact: true }).filter({ visible: true }).click();
+  await page.getByRole('button', { name: /^Accepted/ }).click();
+
+  const popups = [];
+  page.on('popup', (p) => popups.push(p.url()));
+  await page.getByRole('button', { name: /Directions/ }).click();
+  await expect(page.getByText('Opening in-app navigation to Osu Bin Station')).toBeVisible();
+  expect(popups).toEqual([]);
+  expect(errors).toEqual([]);
+});
