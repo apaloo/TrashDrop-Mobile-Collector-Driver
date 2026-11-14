@@ -1624,7 +1624,7 @@ const RequestPage = () => {
       logger.debug(`⚡ QR scan processed in ${processingTime.toFixed(2)}ms`);
       
       showToast(
-        `✅ Scanned ${scannedBags.length} bag${scannedBags.length > 1 ? 's' : ''} • ${totalPoints} points • $${totalFee.toFixed(2)}`, 
+        `✅ Scanned ${scannedBags.length} bag${scannedBags.length > 1 ? 's' : ''} • ${totalPoints} points • ₵${totalFee.toFixed(2)}`, 
         'success'
       );
     } catch (err) {
@@ -1647,17 +1647,11 @@ const RequestPage = () => {
       // Show processing toast
       showToast('Processing your request...', 'info');
       
-      // Calculate environmental impact
-      const environmentalImpact = {
-        plastic_saved: Math.floor(Math.random() * 5) + 1,
-        co2_reduced: (Math.random() * 10 + 5).toFixed(2),
-        water_saved: Math.floor(Math.random() * 100) + 50
-      };
-      
-      // Calculate completion bonus (10% of total bag fees)
-      const totalBagFees = scannedBags.reduce((sum, bag) => sum + bag.fee, 0);
-      const completionBonus = totalBagFees * 0.1;
-      const totalEarnings = totalBagFees + completionBonus;
+      // No earnings are worked out here. A pickup request is prepaid bags: the
+      // database pays the collector 100% of the scanned bags' prices plus tips
+      // when they are disposed (docs/COLLECTOR_PAYOUTS.md; the app shows the
+      // database's figure, never more). This used to announce a 10%
+      // "completion bonus" nothing paid, and random environmental figures.
       
       // Check if the request ID is a valid UUID (for Supabase) or a custom format (for demo/local data)
       const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId);
@@ -1708,75 +1702,13 @@ const RequestPage = () => {
         logger.debug(`Skipping database update for non-UUID request ID: ${requestId} (using local state only)`); 
       }
       
-      // Store additional data in localStorage since they don't exist in the schema
+      // Keep the scanned bags on this phone (the schema has no column for them)
       try {
         const pickupData = JSON.parse(localStorage.getItem(`pickup_data_${requestId}`) || '{}');
         pickupData.scanned_bags = scannedBags;
-        pickupData.environmental_impact = environmentalImpact;
-        pickupData.completion_bonus = completionBonus;
-        pickupData.total_earnings = totalEarnings;
         localStorage.setItem(`pickup_data_${requestId}`, JSON.stringify(pickupData));
       } catch (localStorageError) {
         logger.error('Error storing pickup data in localStorage:', localStorageError);
-      }
-      
-      // Create completion bonus transaction
-      const bonusTransaction = {
-        user_id: user?.id,
-        type: 'completion_bonus',
-        amount: completionBonus,
-        points: Math.floor(completionBonus * 5), // 5 points per cedi as bonus
-        date: new Date().toISOString(),
-        note: `Completion bonus for pickup #${requestId}`,
-        request_id: requestId
-      };
-      
-      // Note: The earnings_transactions table doesn't exist in the schema
-      // Instead of trying to insert into a non-existent table, we'll store bonus transaction locally
-      // Log the bonus transaction for debugging purposes
-      logger.debug('Bonus transaction (not saved to DB):', bonusTransaction);
-      
-      // Store transaction in localStorage for persistence across sessions
-      try {
-        // Get existing transactions or initialize empty array
-        const existingTransactions = JSON.parse(localStorage.getItem('earnings_transactions') || '[]');
-        // Add new bonus transaction
-        existingTransactions.push(bonusTransaction);
-        // Save back to localStorage
-        localStorage.setItem('earnings_transactions', JSON.stringify(existingTransactions));
-      } catch (localStorageError) {
-        logger.error('Error storing bonus transaction in localStorage:', localStorageError);
-      }
-      
-      // Note: The user_stats table exists but doesn't have the columns we're trying to update
-      // Instead of trying to update non-existent columns, we'll store stats locally
-      
-      // Store user stats in localStorage for persistence across sessions
-      try {
-        // Get existing stats or initialize with defaults
-        const existingStats = JSON.parse(localStorage.getItem(`user_stats_${user?.id}`) || JSON.stringify({
-          user_id: user?.id,
-          today_earnings: 0,
-          today_points: 0,
-          total_earnings: 0,
-          total_points: 0,
-          last_updated: new Date().toISOString()
-        }));
-        
-        // Update stats with completion bonus
-        existingStats.today_earnings = (existingStats.today_earnings || 0) + completionBonus;
-        existingStats.today_points = (existingStats.today_points || 0) + Math.floor(completionBonus * 5);
-        existingStats.total_earnings = (existingStats.total_earnings || 0) + completionBonus;
-        existingStats.total_points = (existingStats.total_points || 0) + Math.floor(completionBonus * 5);
-        existingStats.last_updated = new Date().toISOString();
-        
-        // Save back to localStorage
-        localStorage.setItem(`user_stats_${user?.id}`, JSON.stringify(existingStats));
-        
-        // Log the updated stats for debugging
-        logger.debug('Updated user stats with bonus (stored in localStorage):', existingStats);
-      } catch (statsError) {
-        logger.error('Error updating user stats with bonus in localStorage:', statsError);
       }
       
       // Update the status
@@ -1784,10 +1716,7 @@ const RequestPage = () => {
         ...requestToComplete,
         status: PickupRequestStatus.PICKED_UP,
         picked_up_at: new Date().toISOString(),
-        scanned_bags: scannedBags,
-        environmental_impact: environmentalImpact,
-        completion_bonus: completionBonus,
-        total_earnings: totalEarnings
+        scanned_bags: scannedBags
       };
       
       // Remove from accepted list
@@ -1805,9 +1734,8 @@ const RequestPage = () => {
       
       setRequests(updatedRequests);
       
-      // Show success toast with bonus info
       showToast(
-        `Successfully completed pickup! Earned ₵${completionBonus.toFixed(2)} bonus for ${scannedBags.length} bags.`,
+        `Picked up ${scannedBags.length} bag${scannedBags.length === 1 ? '' : 's'}. You earn their prices plus any tips once you dispose of them.`,
         'success'
       );
       
