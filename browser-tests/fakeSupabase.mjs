@@ -1,3 +1,5 @@
+// The same file in all three repositories (household trashdrop/e2e/, collector and
+// admin browser-tests/); change it in all three.
 // A stand-in for Supabase in the browser tests: the built app talks to
 // https://ci-placeholder.supabase.co (the placeholder CI builds with), and
 // every request to it is answered here, so the tests never reach a real
