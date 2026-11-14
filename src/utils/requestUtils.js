@@ -63,8 +63,12 @@ export const transformRequestsData = (
         id: item.id,
         location: item.location || 'Unknown location',
         coordinates: item.coordinates || null,
-        bags: item.bags || 1,
-        points: item.points || Math.floor(Math.random() * 50) + 50,
+        // A pickup request's bag count is its bag_count column (it has no `bags`
+        // column; bag prices may set `bags` later). 1 only when neither exists.
+        bags: item.bags || item.bag_count || 1,
+        // Only real points: neither pickup_requests nor digital_bins has a points
+        // column, and the card used to show a random 50-99 here
+        points: item.points ?? null,
         fee: actualFee,
         status: item.status || 'pending',
         created_at: item.created_at || new Date().toISOString(),

@@ -567,9 +567,9 @@ const RequestCard = ({
               : `${request.bags || 1} ${(request.bags || 1) === 1 ? 'bag' : 'bags'}`
             }
           </span>
-          {request.source_type !== 'digital_bin' && (
+          {request.source_type !== 'digital_bin' && request.points != null && (
             <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm whitespace-nowrap">
-              {request.points || 100} points
+              {request.points} points
             </span>
           )}
           {request.source_type === 'digital_bin' && (
