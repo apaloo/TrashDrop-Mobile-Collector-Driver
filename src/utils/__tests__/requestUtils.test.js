@@ -65,6 +65,20 @@ describe('transformRequestsData', () => {
     });
   });
 
+  it('a pickup request shows its real bag count (bag_count), not "1 bag"', () => {
+    const [request] = transformRequestsData([{ id: 'r', bag_count: 30, fee: 300 }]);
+    expect(request.bags).toBe(30);
+    // bag prices from the database, when there are some, still win
+    expect(transformRequestsData([{ id: 'r', bags: 31, bag_count: 30 }])[0].bags).toBe(31);
+  });
+
+  it('never makes up points: none on the row means none shown', () => {
+    const runs = Array.from({ length: 5 }, () => transformRequestsData([{ id: 'r', bag_count: 2 }])[0].points);
+    expect(runs).toEqual([null, null, null, null, null]);
+    expect(transformRequestsData([{ id: 'r', points: 40 }])[0].points).toBe(40);
+    expect(transformRequestsData([{ id: 'r', points: 0 }])[0].points).toBe(0);
+  });
+
   it('should filter by status', () => {
     const result = transformRequestsData(
       mockRawData,
