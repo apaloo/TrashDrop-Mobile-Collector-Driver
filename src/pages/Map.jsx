@@ -14,7 +14,7 @@ import { supabase, authService } from '../services/supabase';
 import { AssignmentStatus, WasteType } from '../utils/types';
 import { requestMarkerIcon, assignmentMarkerIcon, createTricycleIcon, calculateBearing, digitalBinMarkerIcon } from '../utils/markerIcons';
 import { statusService, COLLECTOR_STATUS } from '../services/statusService';
-import { filterAvailableRequests, WASTE_CATEGORIES } from '../utils/availableRequests';
+import { filterAvailableRequests, toLatLng, WASTE_CATEGORIES } from '../utils/availableRequests';
 import useWakeLock from '../hooks/useWakeLock';
 import { audioAlertService } from '../services/audioAlertService';
 import { logger } from '../utils/logger';
@@ -1089,86 +1089,14 @@ const MapPage = () => {
     return () => { if (filterTimerRef.current) clearTimeout(filterTimerRef.current); };
   }, [applyFilters]);
   
-  // Helper function to parse PostGIS POINT string to [lat, lng] array
+  // [lat, lng] from a stored position, through the app's one reader (TD71).
   // Returns null when the coordinates can't be read: the request is then left
   // off the map. (It used to return the collector's own position, which put
   // the request on top of the collector and counted it as "within your radius".)
-  const parseCoordinates = (pointString) => {
-    if (!pointString) {
-      logger.warn('No coordinates provided, skipping request');
-      return null;
-    }
-    
-    // If it's already in the correct format [lat, lng]
-    if (Array.isArray(pointString) && pointString.length === 2) {
-      return pointString;
-    }
-    
-    // Handle string format (WKT or JSON)
-    if (typeof pointString === 'string') {
-      // Check for WKT format (e.g., "POINT(lng lat)" or "SRID=4326;POINT(lng lat)")
-      const wktMatch = pointString.match(/(?:SRID=\d+;)?POINT\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
-      if (wktMatch) {
-        const lng = parseFloat(wktMatch[1]);
-        const lat = parseFloat(wktMatch[2]);
-        if (!isNaN(lat) && !isNaN(lng)) {
-          return [lat, lng];
-        }
-      }
-      
-      // Try to parse as JSON
-      try {
-        const parsed = JSON.parse(pointString);
-        if (parsed && (parsed.lat !== undefined || parsed.latitude !== undefined)) {
-          return [
-            parsed.lat !== undefined ? parsed.lat : parsed.latitude,
-            parsed.lng !== undefined ? parsed.lng : parsed.longitude
-          ];
-        }
-      } catch {
-        // Not a JSON string, continue to other formats
-      }
-      
-      // Try to parse as comma-separated string
-      const coords = pointString.split(',').map(coord => parseFloat(coord.trim()));
-      if (coords.length >= 2 && !coords.some(isNaN)) {
-        return [coords[0], coords[1]];
-      }
-    }
-    
-    // Handle object format
-    if (typeof pointString === 'object') {
-      if (pointString.lat !== undefined && pointString.lng !== undefined) {
-        return [pointString.lat, pointString.lng];
-      }
-      if (pointString.latitude !== undefined && pointString.longitude !== undefined) {
-        return [pointString.latitude, pointString.longitude];
-      }
-      if (Array.isArray(pointString) && pointString.length >= 2) {
-        return [pointString[0], pointString[1]];
-      }
-    }
-    
-    // Handle PostGIS binary format (0101000020E6100000...)
-    if (typeof pointString === 'string' && pointString.startsWith('0101000020E6100000')) {
-      try {
-        // Extract the hex part after the SRID (first 8 bytes)
-        const hex = pointString.substring(18);
-        // Convert hex to bytes and then to double (little endian)
-        const lngBytes = hex.substring(0, 16);
-        const latBytes = hex.substring(16, 32);
-        const lng = new DataView(new Uint8Array(lngBytes.match(/.{2}/g).map(b => parseInt(b, 16))).buffer).getFloat64(0, true);
-        const lat = new DataView(new Uint8Array(latBytes.match(/.{2}/g).map(b => parseInt(b, 16))).buffer).getFloat64(0, true);
-        if (!isNaN(lat) && !isNaN(lng)) {
-          return [lat, lng];
-        }
-      } catch (e) {
-        logger.error('Error parsing PostGIS binary format:', e);
-      }
-    }
-    
-    logger.warn('Could not parse coordinates, skipping request:', pointString);
-    return null;
+  const parseCoordinates = (value) => {
+    const point = toLatLng(value);
+    if (!point) logger.warn('Could not parse coordinates, skipping request:', value);
+    return point;
   };
 
 

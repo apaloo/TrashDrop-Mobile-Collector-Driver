@@ -83,6 +83,22 @@ describe('toLatLng coordinate formats', () => {
     expect(toLatLng({ x: -0.286, y: 5.721 })).toEqual([5.721, -0.286]);
   });
 
+  it('reads "lat,lng" text and JSON text (TD71: the Map and Assign pages stored these)', () => {
+    expect(toLatLng('5.721, -0.286')).toEqual([5.721, -0.286]);
+    expect(toLatLng('{"lat":5.721,"lng":-0.286}')).toEqual([5.721, -0.286]);
+    expect(toLatLng('{"latitude":"5.721","longitude":"-0.286"}')).toEqual([5.721, -0.286]);
+    expect(toLatLng('[5.721,-0.286]')).toEqual([5.721, -0.286]);
+    expect(toLatLng('{"type":"Point","coordinates":[-0.286,5.721]}')).toEqual([5.721, -0.286]);
+  });
+
+  it('rejects broken JSON, out-of-range pairs and non-point JSON', () => {
+    expect(toLatLng('{"lat":')).toBeNull();
+    expect(toLatLng('[1]')).toBeNull();
+    expect(toLatLng('"5.7,-0.2"')).toBeNull();
+    expect(toLatLng('95, 10')).toBeNull();
+    expect(toLatLng('5.7,-0.2,3')).toBeNull();
+  });
+
   it('rejects text that is not a point', () => {
     expect(toLatLng('Pokuase')).toBeNull();
     expect(toLatLng('0102000020E6100000')).toBeNull();
