@@ -9,7 +9,6 @@ import { useFilters } from '../context/FilterContext';
 import { useAuth } from '../context/AuthContext';
 import { useAppState } from '../context/AppStateContext'; // Add for modal management
 import { TopNavBar } from '../components/NavBar';
-import BottomNavBar from '../components/BottomNavBar';
 import RequestCard from '../components/RequestCard';
 import NavigationQRModal from '../components/NavigationQRModal';
 import DisposalModal from '../components/DisposalModal';
@@ -2835,7 +2834,6 @@ const GeofenceErrorModal = ({
         </button>
       )}
       
-      <BottomNavBar activeTab="request" />
       
       {/* Toast Notification */}
       {toast.show && (

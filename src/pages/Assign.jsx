@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { TopNavBar } from '../components/NavBar';
-import BottomNavBar from '../components/BottomNavBar';
 import { AssignmentStatus } from '../utils/types';
 import AssignmentDetailsModal from '../components/AssignmentDetailsModal';
 import CompletionModal from '../components/CompletionModal';
@@ -1208,7 +1207,6 @@ const AssignPage = () => {
         </div>
       </main>
       
-      <BottomNavBar activeTab="assign" />
       
       {/* Modals */}
       <AssignmentDetailsModal

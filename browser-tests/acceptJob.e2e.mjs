@@ -28,8 +28,7 @@ async function signInToRequests(page, pickups) {
   await page.keyboard.type('123456');
   await page.getByRole('button', { name: /Sign In/ }).click();
   await expect(page).toHaveURL(/\/map$/);
-  // Two bottom bars are drawn on top of each other; the one on top takes the tap
-  await page.getByRole('link', { name: 'Request', exact: true }).filter({ visible: true }).last().click();
+  await page.getByRole('link', { name: 'Request', exact: true }).filter({ visible: true }).click();
   await expect(page).toHaveURL(/\/request$/);
   return calls;
 }
