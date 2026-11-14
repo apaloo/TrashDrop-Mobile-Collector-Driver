@@ -1,6 +1,6 @@
 {
   "_comment": "Line coverage floors (scripts/ci/coverage-summary.mjs): a pull request may not drop the whole app or a critical file more than 0.5 points below its floor, and raises a floor when coverage rises 2 or more points above it, so floors only go up. Set 2026-11-13 from that day's coverage, rounded down.",
-  "total": 24.8,
+  "total": 27,
   "files": {
     "src/utils/paymentCalculations.js": 100,
     "src/services/disposalService.js": 90.5,
@@ -12,7 +12,7 @@
     "src/utils/binEarnings.js": 100,
     "src/utils/disposalEarnings.js": 100,
     "src/services/volunteerService.js": 100,
-    "src/services/realtimeNotificationService.js": 40.6,
+    "src/services/realtimeNotificationService.js": 97.9,
     "src/services/supabase.js": 80.1
   }
 }
