@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { TopNavBar } from '../components/NavBar';
 import SignOutSection from '../components/SignOutSection';
-import BottomNavBar from '../components/BottomNavBar';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { authService } from '../services/supabase';
@@ -141,7 +140,6 @@ const ProfilePage = () => {
             <p className="text-td-sage">Loading profile...</p>
           </div>
         </div>
-        <BottomNavBar />
       </div>
     );
   }
@@ -160,7 +158,6 @@ const ProfilePage = () => {
             </a>
           </div>
         </div>
-        <BottomNavBar />
       </div>
     );
   }
@@ -401,7 +398,6 @@ const ProfilePage = () => {
         </div>
       )}
       
-      <BottomNavBar />
     </div>
   );
 };

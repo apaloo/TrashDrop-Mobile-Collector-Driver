@@ -74,8 +74,10 @@ test('the right code opens the jobs map, with the bottom bar', async ({ page }) 
 
   await expect(page).toHaveURL(/\/map$/);
   await expect(page.getByRole('slider', { name: 'Search radius in kilometres' })).toBeVisible();
+  // One bottom bar (it used to be drawn twice, one on top of the other: TD73)
+  await expect(page.locator('nav.nav-bottom-bar')).toHaveCount(1);
   for (const name of ['Map', 'Request', 'Assign', 'Routes']) {
-    await expect(page.getByRole('link', { name, exact: true }).filter({ visible: true }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name, exact: true }).filter({ visible: true })).toHaveCount(1);
   }
   expect(errors).toEqual([]);
 });

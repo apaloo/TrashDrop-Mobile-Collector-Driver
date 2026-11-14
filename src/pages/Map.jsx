@@ -6,7 +6,6 @@ import { useFilters } from '../context/FilterContext';
 import { useNavigate } from 'react-router-dom';
 import MapControls from '../components/MapControls';
 import { TopNavBar } from '../components/NavBar';
-import BottomNavBar from '../components/BottomNavBar';
 import Toast from '../components/Toast';
 import StatusButton from '../components/StatusButton';
 import { useAuth } from '../context/AuthContext';
@@ -1660,7 +1659,6 @@ const MapPage = () => {
         )}
       </div>
       
-      <BottomNavBar />
     </div>
   );
 };

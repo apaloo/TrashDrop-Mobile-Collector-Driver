@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { TopNavBar } from '../components/NavBar';
-import BottomNavBar from '../components/BottomNavBar';
 import { useAuth } from '../context/AuthContext';
 import { createEarningsService } from '../services/earningsService';
 import { authService } from '../services/supabase';
@@ -676,7 +675,6 @@ const EarningsPage = () => {
             </p>
           </div>
         </div>
-        <BottomNavBar />
       </div>
     );
   }
@@ -691,7 +689,6 @@ const EarningsPage = () => {
             <p className="text-sm text-td-sage mt-2">Redirecting to login...</p>
           </div>
         </div>
-        <BottomNavBar />
       </div>
     );
   }
@@ -1237,7 +1234,6 @@ const EarningsPage = () => {
         </div>
       </div>
       
-      <BottomNavBar />
     </div>
   );
 };
