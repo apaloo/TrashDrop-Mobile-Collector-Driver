@@ -50,3 +50,7 @@ DIGITAL_BIN_QR_SCAN_VERIFICATION.md
 
 # Jest coverage output
 coverage/
+
+# Browser tests (Playwright)
+/test-results
+/playwright-report
