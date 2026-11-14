@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-le
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { isWithinRadius } from '../utils/locationUtils';
+import { toLatLng } from '../utils/availableRequests';
 import usePhotoCapture from '../hooks/usePhotoCapture';
 import { logger } from '../utils/logger';
 import { ASSIGNMENT_COMPLETION_RADIUS_KM, GEOFENCE_DESCRIPTIONS, kmToMeters } from '../config/geofenceConfig';
@@ -65,40 +66,6 @@ const CompletionModal = ({
   const [coordinates, setCoordinates] = useState(null);
   const [userCoordinates, setUserCoordinates] = useState(null);
   
-  // Helper to parse coordinates from various formats
-  const parseCoordinates = (coords) => {
-    if (!coords) return null;
-    
-    // Array format [lat, lng]
-    if (Array.isArray(coords) && coords.length >= 2) {
-      const lat = parseFloat(coords[0]);
-      const lng = parseFloat(coords[1]);
-      if (!isNaN(lat) && !isNaN(lng)) {
-        return [lat, lng];
-      }
-    }
-    
-    // Object format {lat, lng}
-    if (coords.lat !== undefined && coords.lng !== undefined) {
-      const lat = parseFloat(coords.lat);
-      const lng = parseFloat(coords.lng);
-      if (!isNaN(lat) && !isNaN(lng)) {
-        return [lat, lng];
-      }
-    }
-    
-    // Object format {latitude, longitude}
-    if (coords.latitude !== undefined && coords.longitude !== undefined) {
-      const lat = parseFloat(coords.latitude);
-      const lng = parseFloat(coords.longitude);
-      if (!isNaN(lat) && !isNaN(lng)) {
-        return [lat, lng];
-      }
-    }
-    
-    return null;
-  };
-  
   // Sync geofence verification state when modal opens or prop changes
   useEffect(() => {
     if (isOpen && isGeofenceVerified) {
@@ -119,8 +86,8 @@ const CompletionModal = ({
   // Set assignment coordinates on component mount
   useEffect(() => {
     if (isOpen && assignment) {
-      // Parse assignment coordinates from various formats
-      const parsedCoords = parseCoordinates(assignment.coordinates);
+      // The app's one coordinate reader (TD71): EWKB, WKT, GeoJSON, arrays, objects
+      const parsedCoords = toLatLng(assignment.coordinates);
       
       if (parsedCoords) {
         logger.debug('📍 CompletionModal: Using assignment coordinates:', parsedCoords);

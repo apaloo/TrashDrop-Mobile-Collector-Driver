@@ -31,7 +31,8 @@ const pointFromWkbHex = (hex) => {
 /**
  * [lat, lng] from any coordinate format the apps use; null if unusable:
  * [lat, lng], {lat, lng}, {latitude, longitude}, GeoJSON Point, {x, y},
- * WKT "POINT(lng lat)" (optionally "SRID=4326;...") and EWKB hex.
+ * WKT "POINT(lng lat)" (optionally "SRID=4326;..."), EWKB hex, "lat,lng"
+ * text and JSON text of any of these. The one reader for the whole app (TD71).
  */
 export const toLatLng = (value) => {
   if (!value) return null;
@@ -40,10 +41,26 @@ export const toLatLng = (value) => {
   if (Array.isArray(value)) {
     [lat, lng] = value;
   } else if (typeof value === 'string') {
-    const wkt = value.match(/^\s*(?:SRID=\d+;)?POINT\s*\(\s*([-\d.eE+]+)\s+([-\d.eE+]+)\s*\)\s*$/i);
-    const point = wkt ? [wkt[1], wkt[2]] : pointFromWkbHex(value.trim());
-    if (!point) return null;
-    [lng, lat] = point;
+    const text = value.trim();
+    // JSON text of any format above, e.g. '{"lat":5.7,"lng":-0.29}'
+    if (/^[[{]/.test(text)) {
+      try {
+        const parsed = JSON.parse(text);
+        return typeof parsed === 'object' ? toLatLng(parsed) : null;
+      } catch {
+        return null;
+      }
+    }
+    // "lat,lng" text (latitude first, unlike WKT)
+    const pair = text.match(/^([-\d.eE+]+)\s*,\s*([-\d.eE+]+)$/);
+    if (pair) {
+      [, lat, lng] = pair;
+    } else {
+      const wkt = text.match(/^(?:SRID=\d+;)?POINT\s*\(\s*([-\d.eE+]+)\s+([-\d.eE+]+)\s*\)$/i);
+      const point = wkt ? [wkt[1], wkt[2]] : pointFromWkbHex(text);
+      if (!point) return null;
+      [lng, lat] = point;
+    }
   } else if (typeof value === 'object') {
     if (value.type === 'Point' && Array.isArray(value.coordinates)) {
       [lng, lat] = value.coordinates;

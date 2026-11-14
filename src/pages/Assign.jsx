@@ -13,6 +13,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAppState } from '../context/AppStateContext';
 import { logger } from '../utils/logger';
 import { getCurrentLocation, calculateDistance } from '../utils/geoUtils';
+import { toLatLng } from '../utils/availableRequests';
 import { ASSIGNMENT_COMPLETION_RADIUS_KM, GEOFENCE_DESCRIPTIONS } from '../config/geofenceConfig';
 import ClaimReports from '../components/ClaimReports';
 import { releaseClaim } from '../services/volunteerService';
@@ -668,57 +669,14 @@ const AssignPage = () => {
     };
   }, []);
 
-  // Parse assignment coordinates from various formats
+  // The assignment's position as {lat, lng}, through the app's one reader
+  // (TD71): its coordinates in any stored format (EWKB hex included, which
+  // this used to give up on and then waive the on-site check), else its
+  // latitude/longitude or lat/lng fields
   const parseAssignmentCoordinates = useCallback((assignment) => {
     if (!assignment) return null;
-
-    // Try coordinates field first (may be array, object, or string)
-    if (assignment.coordinates) {
-      const coords = assignment.coordinates;
-      
-      // Array format [lat, lng]
-      if (Array.isArray(coords) && coords.length >= 2) {
-        return { lat: coords[0], lng: coords[1] };
-      }
-      
-      // Object format {lat, lng}
-      if (typeof coords === 'object' && coords.lat !== undefined) {
-        return { lat: coords.lat, lng: coords.lng || coords.lon };
-      }
-      
-      // String format "lat,lng" or PostGIS POINT format
-      if (typeof coords === 'string') {
-        // PostGIS POINT format: "POINT(lng lat)"
-        const pointMatch = coords.match(/POINT\(([+-]?\d+\.?\d*)\s+([+-]?\d+\.?\d*)\)/i);
-        if (pointMatch) {
-          return { lat: parseFloat(pointMatch[2]), lng: parseFloat(pointMatch[1]) };
-        }
-        
-        // PostGIS binary format - cannot parse
-        if (coords.startsWith('0101000020')) {
-          logger.warn('⚠️ PostGIS binary format detected - cannot verify location');
-          return null;
-        }
-        
-        // Simple "lat,lng" format
-        const parts = coords.split(',').map(c => parseFloat(c.trim()));
-        if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-          return { lat: parts[0], lng: parts[1] };
-        }
-      }
-    }
-
-    // Try latitude/longitude fields
-    if (assignment.latitude !== undefined && assignment.longitude !== undefined) {
-      return { lat: assignment.latitude, lng: assignment.longitude };
-    }
-
-    // Try lat/lng fields
-    if (assignment.lat !== undefined && assignment.lng !== undefined) {
-      return { lat: assignment.lat, lng: assignment.lng };
-    }
-
-    return null;
+    const point = toLatLng(assignment.coordinates) || toLatLng(assignment);
+    return point ? { lat: point[0], lng: point[1] } : null;
   }, []);
 
   // Check if user is within assignment completion geofence
